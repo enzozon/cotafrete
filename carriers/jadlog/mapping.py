@@ -42,15 +42,20 @@ FATOR_CUBAGEM = Decimal(300)
 PESO_MAX_PUDO_KG = Decimal(30)       # ponto de postagem parceiro
 PESO_MAX_FRANQUIA_KG = Decimal(120)  # franquia Jadlog
 
-# ⚠ confirmar no PDF do contrato — variam por cliente
+# VERIFICADO no simulador público da Jadlog (simulacao.jad), 12/08/2026 — são os
+# códigos que o próprio <select name="modalidade"> da transportadora expõe.
+# Os presumidos anteriores erravam 3 de 7: 6 é Doc (estava "corporate"), 12 é
+# Cargo (estava "standard"), 9 (.Com) faltava, e 14/"pickup" não existe —
+# retirada em ponto é tpentrega="R", não modalidade.
+# Continua valendo conferir no contrato se a sua franquia habilita todas.
 MODALIDADES = {
-    "expresso": 0,
-    "package": 3,
-    "rodoviario": 4,
-    "economico": 5,
-    "corporate": 6,
-    "standard": 12,
-    "pickup": 14,
+    "expresso": 0,      # JadLog Expresso
+    "package": 3,       # JadLog Package
+    "rodoviario": 4,    # JadLog Rodo
+    "economico": 5,     # JadLog Econômico
+    "doc": 6,           # JadLog Doc
+    "com": 9,           # JadLog .Com
+    "cargo": 12,        # JadLog Cargo
 }
 
 TP_ENTREGA_DOMICILIO = "D"
@@ -75,7 +80,8 @@ def campos_obrigatorios(req: CotacaoRequest) -> list[CampoSpec]:
 
 
 # ------------------------------------------------------------------ validação
-def validar(req: CotacaoRequest, *, modalidade: str = "package") -> list[ErroValidacao]:
+def validar(req: CotacaoRequest, *, modalidade: str = "package",
+            tpentrega: str = TP_ENTREGA_DOMICILIO) -> list[ErroValidacao]:
     erros: list[ErroValidacao] = []
 
     for lado, local in (("origem", req.origem), ("destino", req.destino)):
@@ -100,7 +106,9 @@ def validar(req: CotacaoRequest, *, modalidade: str = "package") -> list[ErroVal
             f"({PESO_MAX_FRANQUIA_KG} kg). Esta carga é perfil de "
             f"transportadora de carga fracionada pesada, não de expresso.",
         ))
-    elif peso > PESO_MAX_PUDO_KG and modalidade == "pickup":
+    # quem define retirada em ponto é tpentrega, não a modalidade: não existe
+    # modalidade "pickup" no select da Jadlog.
+    elif peso > PESO_MAX_PUDO_KG and tpentrega == TP_ENTREGA_REDE:
         erros.append(ErroValidacao(
             "peso",
             f"{peso} kg passa do limite de ponto de postagem "

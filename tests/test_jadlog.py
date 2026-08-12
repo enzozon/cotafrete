@@ -10,6 +10,7 @@ from decimal import Decimal
 
 import pytest
 
+from carriers.base import Severidade
 from carriers.jadlog import mapping as j
 from carriers.jadlog.adapter import JadlogAdapter, TokenAusente
 from core.models import (
@@ -85,6 +86,31 @@ def test_carga_pesada_demais_para_jadlog():
                                  peso_kg=Decimal(35))])
     erros = j.bloqueantes(j.validar(req))
     assert any(e.campo == "peso" for e in erros)
+
+
+def test_modalidades_batem_com_o_select_da_jadlog():
+    """Códigos medidos no simulador público (simulacao.jad) em 12/08/2026.
+
+    Os presumidos erravam 3 de 7: 6 é Doc (não 'corporate'), 12 é Cargo (não
+    'standard'), 9 (.Com) faltava, e 14/'pickup' não existe — retirada em ponto
+    é tpentrega='R', não uma modalidade."""
+    assert j.MODALIDADES == {
+        "expresso": 0, "package": 3, "rodoviario": 4,
+        "economico": 5, "doc": 6, "com": 9, "cargo": 12,
+    }
+
+
+def test_limite_de_ponto_de_postagem_usa_tpentrega_nao_modalidade():
+    """O aviso de peso PUDO dependia de modalidade=='pickup', que não existe.
+    Quem define retirada em ponto é tpentrega."""
+    req = montar(volumes=[Volume(qtd=1, comprimento_cm=Decimal(30),
+                                 largura_cm=Decimal(30), altura_cm=Decimal(30),
+                                 peso_kg=Decimal(50))])
+    avisos = j.validar(req, tpentrega=j.TP_ENTREGA_REDE)
+    assert any(e.campo == "peso" and e.severidade is Severidade.AVISO
+               for e in avisos)
+    assert not any(e.campo == "peso" and e.severidade is Severidade.AVISO
+                   for e in j.validar(req, tpentrega=j.TP_ENTREGA_DOMICILIO))
 
 
 def test_modalidade_invalida():
