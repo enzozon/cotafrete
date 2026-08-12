@@ -97,8 +97,19 @@
   <button type="button" id="btn-orcamento">Pedir orçamento</button>
 </form>
 
-<!-- reCAPTCHA v3: script presente, NENHUM desafio visível -->
+<!--
+  reCAPTCHA v3 como o site realmente entrega: o badge É VISÍVEL (256x60, canto
+  inferior) e o anchor É um iframe visível — mas com size=invisible. Nada disso
+  é desafio; é só o selo de "protegido por reCAPTCHA".
+-->
 <script src="https://www.google.com/recaptcha/api.js?render=6LeoqC0qAAAAAIMFq"></script>
+<div class="grecaptcha-badge" style="width:256px;height:60px">
+  <div class="grecaptcha-logo">
+    <iframe title="reCAPTCHA"
+            src="https://www.google.com/recaptcha/api2/anchor?ar=1&k=6LeoqC0qAAAAAIMFq&hl=pt-BR&size=invisible&cb=naqfsfto608e"
+            width="256" height="60"></iframe>
+  </div>
+</div>
 
 <script>
 const CIDADES = {

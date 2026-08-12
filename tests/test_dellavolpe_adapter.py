@@ -124,11 +124,25 @@ def test_recaptcha_v3_invisivel_nao_bloqueia(adapter, page):
 
 
 def test_desafio_de_captcha_visivel_bloqueia(adapter, page):
-    """Contrapartida: um desafio de verdade PRECISA continuar bloqueando."""
+    """Contrapartida: um desafio de verdade PRECISA continuar bloqueando.
+
+    bframe é o iframe do desafio de imagens do reCAPTCHA — só aparece quando o
+    Google decide interrogar, e aí realmente exige humano."""
     page.evaluate("""() => {
         const f = document.createElement('iframe');
-        f.src = 'https://www.google.com/recaptcha/api2/anchor?k=teste';
-        f.width = 300; f.height = 78;
+        f.src = 'https://www.google.com/recaptcha/api2/bframe?k=teste';
+        f.width = 400; f.height = 580;
+        document.body.appendChild(f);
+    }""")
+    assert adapter._tem_captcha(page) is True
+
+
+def test_checkbox_do_recaptcha_v2_bloqueia(adapter, page):
+    """v2 'não sou um robô': anchor SEM size=invisible. Também exige humano."""
+    page.evaluate("""() => {
+        const f = document.createElement('iframe');
+        f.src = 'https://www.google.com/recaptcha/api2/anchor?k=teste&size=normal';
+        f.width = 304; f.height = 78;
         document.body.appendChild(f);
     }""")
     assert adapter._tem_captcha(page) is True

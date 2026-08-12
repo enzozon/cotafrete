@@ -68,6 +68,16 @@ def peso_br(v: Decimal) -> str:
     return s.replace(".", ",")
 
 
+def medida_br(v: Decimal) -> str:
+    """Medida em cm com UMA casa decimal — formato que o site declara e exige.
+
+    O campo tem máscara que reserva uma casa: digitar '100' vira '10,0' e a
+    carga é cotada 10x menor, sem nenhum aviso. O placeholder do próprio
+    formulário documenta o formato: 'Comprimento (ex. 12,5m = 1.250,0cm)'.
+    Medido no site em produção — não usar peso_br() aqui."""
+    return num_br(v, 1)
+
+
 # ------------------------------------------------------------- especificação
 def campos_obrigatorios(req: CotacaoRequest) -> list[CampoSpec]:
     campos = [
@@ -171,10 +181,11 @@ def preparar_payload(req: CotacaoRequest) -> dict[str, Any]:
         "Peso total": peso_br(req.peso_total_kg),
         "Quantidade de Volumes": str(req.quantidade_volumes),
 
-        # Medidas em cm, do MAIOR volume quando há medidas distintas
-        "Comprimento": peso_br(mv.comprimento_cm),
-        "Largura": peso_br(mv.largura_cm),
-        "Altura": peso_br(mv.altura_cm),
+        # Medidas em cm, do MAIOR volume quando há medidas distintas.
+        # medida_br, não peso_br: o campo tem máscara de 1 casa decimal.
+        "Comprimento": medida_br(mv.comprimento_cm),
+        "Largura": medida_br(mv.largura_cm),
+        "Altura": medida_br(mv.altura_cm),
 
         "Valor total da nota fiscal": num_br(req.nota_fiscal.valor_total),
         "Tipo de Material que será transportado": req.mercadoria.tipo_material,

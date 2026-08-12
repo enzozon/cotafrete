@@ -105,6 +105,19 @@ def test_peso_sem_separador_de_milhar():
     assert dv.peso_br(Decimal("1500.5")) == "1500,5"
 
 
+def test_medidas_usam_uma_casa_decimal_por_causa_da_mascara():
+    """Medido no site em produção: o campo de medida tem máscara que reserva
+    UMA casa decimal. Digitar '100' vira '10,0' — a carga seria cotada 10x
+    menor, em silêncio. O próprio placeholder declara o formato esperado:
+    'Comprimento (ex. 12,5m = 1.250,0cm)'.
+
+    peso_br() é formatador de PESO e não serve aqui: ele corta a casa decimal."""
+    assert dv.medida_br(Decimal(100)) == "100,0"
+    assert dv.medida_br(Decimal(40)) == "40,0"
+    assert dv.medida_br(Decimal(1250)) == "1.250,0"
+    assert dv.medida_br(Decimal("12.5")) == "12,5"
+
+
 # ----------------------------------------------------------------- payload
 def test_payload_mapeia_todos_os_campos_obrigatorios():
     campos = dv.campos_do_formulario(dv.preparar_payload(montar()))
@@ -123,9 +136,9 @@ def test_payload_valores_exatos():
     assert p["Selecione o estado de origem"] == "ES"
     assert p["Peso total"] == "20"
     assert p["Quantidade de Volumes"] == "2"
-    assert p["Comprimento"] == "100"
-    assert p["Largura"] == "50"
-    assert p["Altura"] == "40"
+    assert p["Comprimento"] == "100,0"    # máscara de 1 casa; ver medida_br()
+    assert p["Largura"] == "50,0"
+    assert p["Altura"] == "40,0"
     assert p["Valor total da nota fiscal"] == "25.000,00"
 
 
@@ -153,7 +166,7 @@ def test_medidas_distintas_usam_o_maior_volume():
                altura_cm=Decimal(40), peso_kg=Decimal(10)),
     ])
     p = dv.preparar_payload(r)
-    assert (p["Comprimento"], p["Largura"], p["Altura"]) == ("100", "50", "40")
+    assert (p["Comprimento"], p["Largura"], p["Altura"]) == ("100,0", "50,0", "40,0")
     assert p["Anexar Planilha"] == ["__PLANILHA_VOLUMES__"]
 
 

@@ -24,7 +24,16 @@ from core.models import CotacaoRequest, StatusCotacao
 
 URL_PRODUCAO = "https://dellavolpe.com.br/#cotacao"
 
-SINAIS_CAPTCHA = ("recaptcha", "hcaptcha", "turnstile", "cf-challenge")
+# Só DESAFIO conta como bloqueio. O reCAPTCHA v3 do site entrega um badge
+# VISÍVEL de 256x60 (div.grecaptcha-badge + iframe api2/anchor?...size=invisible)
+# em toda página — é selo, não interrogatório. Medido no site em produção.
+SELETORES_DESAFIO_CAPTCHA = (
+    'iframe[src*="api2/bframe" i]',                                # v2: imagens
+    'iframe[src*="recaptcha" i]:not([src*="size=invisible" i])',   # v2: checkbox
+    'iframe[src*="hcaptcha" i]',
+    'iframe[src*="turnstile" i]',
+    'div[class*="cf-challenge" i]',
+)
 
 # Atributos name= reais, medidos por recon_dellavolpe.py contra produção.
 # ÚLTIMO recurso do _localizar: só entra quando label, placeholder e texto de
@@ -209,11 +218,9 @@ class DellavolpeAdapter:
         O site carrega reCAPTCHA v3 (invisível, por score) em toda página, então
         procurar a string 'recaptcha' no HTML fazia o adapter abortar com
         INTERVENCAO_NECESSARIA em 100% das execuções reais, sem digitar nada."""
-        for sinal in SINAIS_CAPTCHA:
-            widget = page.locator(
-                f'iframe[src*="{sinal}" i], div[class*="{sinal}" i]:not(:empty)')
+        for seletor in SELETORES_DESAFIO_CAPTCHA:
             try:
-                if self._primeiro_visivel(widget) is not None:
+                if self._primeiro_visivel(page.locator(seletor)) is not None:
                     return True
             except Exception:
                 continue
