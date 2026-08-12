@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8">
+<title>Fixture — DOM real da Della Volpe</title>
+<!--
+  Réplica das ARMADILHAS do formulário real, medidas por recon_dellavolpe.py.
+  Não é uma cópia visual: é uma cópia das coisas que quebram o adapter.
+
+    1. NENHUM <label> na página. Tudo é placeholder. Os <select> não têm nem
+       placeholder — só o texto da primeira <option>.
+    2. Um formulário duplicado OCULTO vem ANTES do visível no DOM, com os
+       mesmos name= e placeholders. No site real há 9 desses.
+    3. Os name= reais não são os do mock: cnpj_origem / cnpj_destino / cnpj,
+       peso, qtd-volume, material, valor, estado_origem, tipo-veiculo.
+    4. Os input[type=file] têm name="" e usam data-name, com classe d-none.
+    5. O select de cidade só popula depois de um atraso maior que o
+       wait_for_timeout fixo do adapter.
+    6. reCAPTCHA v3 (invisível, por score) presente — sem desafio bloqueando.
+-->
+<style>
+  .oculto { display: none; }
+  .d-none { display: none; }
+  body { font-family: system-ui, sans-serif; padding: 20px; }
+  input, select { display: block; width: 320px; margin: 6px 0; padding: 6px; }
+</style>
+</head><body>
+
+<!-- ============ formulário duplicado OCULTO, primeiro no DOM ============ -->
+<form id="form-armazenagem" class="oculto">
+  <input name="nome"     type="text"  placeholder="Nome completo*">
+  <input name="email"    type="email" placeholder="E-mail*">
+  <input name="whatsapp" type="tel"   placeholder="Whatsapp*">
+  <input name="cnpj"     type="text"  placeholder="CNPJ da empresa que pagará o frete*">
+  <select name="estado_origem"><option value="">Selecione o estado de origem*</option>
+    <option value="SP">São Paulo</option></select>
+  <select name="cidade_origem"><option value="">Selecione a cidade de origem*</option></select>
+  <select name="estado_destino"><option value="">Selecione o estado de destino*</option>
+    <option value="SP">São Paulo</option></select>
+  <select name="cidade_destino"><option value="">Selecione a cidade de destino*</option></select>
+  <input type="file" data-name="anexo-vol" class="d-none" multiple>
+</form>
+
+<!-- ================= formulário de cotação, VISÍVEL ==================== -->
+<form id="form-fracionado">
+  <input name="nome"     type="text"  placeholder="Nome completo*">
+  <input name="email"    type="email" placeholder="E-mail*">
+  <input name="whatsapp" type="tel"   placeholder="WhatsApp*">
+
+  <select name="servico" id="servico">
+    <option value="">Qual o serviço que você procura?</option>
+    <option value="Fracionado -LTL">Fracionado -LTL</option>
+    <option value="Lotação/Dedicado-FTL">Lotação/Dedicado-FTL</option>
+  </select>
+
+  <input name="cnpj_origem" type="text" placeholder="CNPJ - Remetente*">
+  <select name="estado_origem" id="estado_origem">
+    <option value="">Selecione o estado de origem*</option>
+    <option value="ES">Espírito Santo</option>
+    <option value="SP">São Paulo</option>
+  </select>
+  <select name="cidade_origem" id="cidade_origem">
+    <option value="">Selecione a cidade de origem*</option>
+  </select>
+
+  <input name="cnpj_destino" type="text" placeholder="CNPJ - Destinatário*">
+  <select name="estado_destino" id="estado_destino">
+    <option value="">Selecione o estado de destino*</option>
+    <option value="ES">Espírito Santo</option>
+    <option value="SP">São Paulo</option>
+  </select>
+  <select name="cidade_destino" id="cidade_destino">
+    <option value="">Selecione a cidade de destino*</option>
+  </select>
+
+  <!-- só aparece quando servico = FTL -->
+  <div id="veiculo-bloco" class="oculto">
+    <select name="tipo-veiculo">
+      <option value="">Escolha o tipo de veículo*</option>
+      <option value="Fiorino (até 500 kg)">Fiorino (até 500 kg)</option>
+      <option value="Truck (até 12.500 kg)">Truck (até 12.500 kg)</option>
+      <option value="Carreta Vanderleia (até 34.000 kg)">Carreta Vanderleia (até 34.000 kg)</option>
+    </select>
+  </div>
+
+  <input name="peso"        type="text"   placeholder="Peso total (1 ~ 34.000kg)*">
+  <input name="qtd-volume"  type="number" placeholder="Quantidade de Volumes*">
+  <input name="comprimento" type="text"   placeholder="Comprimento (ex. 12,5m = 1.250,0cm)*">
+  <input name="largura"     type="text"   placeholder="Largura (ex. 2,5m = 250,0cm)*">
+  <input name="altura"      type="text"   placeholder="Altura (ex. 2,9m = 290,0cm)*">
+
+  <input type="file" data-name="anexo-vol"   class="d-none" multiple>
+  <input type="file" data-name="anexo-fispq" class="d-none" multiple>
+
+  <input name="valor"    type="text" placeholder="Valor total da nota fiscal*">
+  <input name="material" type="text" placeholder="Tipo de Material que será transportado*">
+  <input name="cnpj"     type="text" placeholder="CNPJ da empresa que pagará o frete*">
+
+  <button type="button" id="btn-orcamento">Pedir orçamento</button>
+</form>
+
+<!-- reCAPTCHA v3: script presente, NENHUM desafio visível -->
+<script src="https://www.google.com/recaptcha/api.js?render=6LeoqC0qAAAAAIMFq"></script>
+
+<script>
+const CIDADES = {
+  ES: ['Vitória', 'Vila Velha', 'Serra'],
+  SP: ['São Paulo', 'Campinas', 'Santos'],
+};
+
+// ATRASO_MS > wait_for_timeout(1200) do adapter: expõe a race condition.
+const ATRASO_MS = 1800;
+
+function ligar(ufId, cidadeId) {
+  const uf = document.getElementById(ufId);
+  const cid = document.getElementById(cidadeId);
+  if (!uf || !cid) return;
+  uf.addEventListener('change', () => {
+    cid.innerHTML = '<option value="">Selecione a cidade*</option>';
+    setTimeout(() => {
+      (CIDADES[uf.value] || []).forEach(c => {
+        const o = document.createElement('option');
+        o.value = c; o.text = c; cid.appendChild(o);
+      });
+    }, ATRASO_MS);
+  });
+}
+ligar('estado_origem', 'cidade_origem');
+ligar('estado_destino', 'cidade_destino');
+
+// tipo-veiculo só existe visualmente depois de escolher FTL
+document.getElementById('servico').addEventListener('change', e => {
+  document.getElementById('veiculo-bloco').className =
+    e.target.value.includes('FTL') ? '' : 'oculto';
+});
+</script>
+</body></html>

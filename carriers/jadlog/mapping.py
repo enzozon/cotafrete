@@ -22,7 +22,7 @@ com o token, e ajuste em config. Não assuma que o default está certo.
 
 from __future__ import annotations
 
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
 from carriers.base import CampoSpec, ErroValidacao, Modo, ResultadoCotacao, Severidade
@@ -122,6 +122,20 @@ def bloqueantes(erros: list[ErroValidacao]) -> list[ErroValidacao]:
 
 
 # -------------------------------------------------------------------- payload
+CASAS_PESO = Decimal("0.001")     # grama
+CASAS_DINHEIRO = Decimal("0.01")  # centavo
+
+
+def _para_json(v: Decimal, casas: Decimal) -> float:
+    """JSON não tem Decimal, então a conversão para float é inevitável.
+
+    O que é evitável é o arredondamento ficar implícito: quantizar ANTES do
+    float() faz a última casa sair da regra comercial (ROUND_HALF_UP) em vez de
+    sair do binário. Com fator de cubagem fracionário a diferença aparece — e é
+    sobre esse número que a franquia fatura."""
+    return float(v.quantize(casas, rounding=ROUND_HALF_UP))
+
+
 def peso_para_api(req: CotacaoRequest, fator: Decimal = FATOR_CUBAGEM) -> Decimal:
     """Regra explícita da doc Jadlog: o MAIOR entre peso real e peso cubado."""
     return max(req.peso_total_kg, req.peso_cubado_kg(fator))
@@ -143,12 +157,12 @@ def preparar_payload(
         "cepori": limpa_doc(req.origem.cep or ""),
         "cepdes": limpa_doc(req.destino.cep or ""),
         "frap": frap,
-        "peso": float(peso_para_api(req, fator)),
+        "peso": _para_json(peso_para_api(req, fator), CASAS_PESO),
         "cnpj": limpa_doc(req.pagador_frete.cnpj),
         "modalidade": MODALIDADES.get(modalidade, MODALIDADES["package"]),
         "tpentrega": tpentrega,
         "tpseguro": tpseguro,
-        "vldeclarado": float(req.nota_fiscal.valor_total),
+        "vldeclarado": _para_json(req.nota_fiscal.valor_total, CASAS_DINHEIRO),
         "vlcoleta": 0,
     }
     if conta:
@@ -160,7 +174,13 @@ def preparar_payload(
 
 # ------------------------------------------------------------------- resposta
 def _num(v: Any) -> Decimal | None:
-    if v in (None, "", 0, "0"):
+    """Só None e string vazia são AUSÊNCIA.
+
+    Zero é valor legítimo: frete bonificado, rota com franquia de valor,
+    promoção da franquia, e prazo=0 é entrega no mesmo dia. Tratar 0 como
+    ausente apagava a cotação mais barata do comparativo e devolvia
+    'Resposta sem valor de frete' para uma resposta que a API considerou boa."""
+    if v is None or (isinstance(v, str) and not v.strip()):
         return None
     try:
         return Decimal(str(v))
@@ -189,8 +209,12 @@ def normalizar_resposta(raw: Any) -> ResultadoCotacao:
             erro=f"{erro.get('id', '?')}: {erro.get('descricao', 'sem descrição')}",
         )
 
-    valor = _num(item.get("vltotal")) or _num(item.get("vlfrete"))
-    prazo = item.get("prazo")
+    # `or` encadeado escorregaria de um vltotal legítimo igual a 0 para vlfrete
+    # e reportaria outro número: a checagem tem que ser contra None.
+    valor = _num(item.get("vltotal"))
+    if valor is None:
+        valor = _num(item.get("vlfrete"))
+    prazo = _num(item.get("prazo"))
 
     if valor is None:
         return ResultadoCotacao(SLUG, StatusCotacao.ERRO, raw_response=raw,
@@ -200,6 +224,6 @@ def normalizar_resposta(raw: Any) -> ResultadoCotacao:
         transportadora=SLUG,
         status=StatusCotacao.COTADO,
         valor_frete=valor,
-        prazo_dias=int(prazo) if str(prazo or "").isdigit() else None,
+        prazo_dias=int(prazo) if prazo is not None else None,
         raw_response=raw,
     )
