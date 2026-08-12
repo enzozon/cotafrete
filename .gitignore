@@ -1,0 +1,24 @@
+# credenciais — NUNCA commitar
+.env
+*.pem
+*.key
+
+# evidências de execução (contêm CNPJ, valores de NF, screenshots)
+runs/
+*.xlsx
+!tests/fixtures/*.xlsx
+
+# recon (pode conter nonce/token de sessão)
+recon_out/
+
+# python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# so
+.DS_Store
