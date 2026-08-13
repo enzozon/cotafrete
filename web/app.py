@@ -18,6 +18,7 @@ from concurrent.futures import ThreadPoolExecutor
 from decimal import Decimal
 from pathlib import Path
 
+from dotenv import load_dotenv
 from fastapi import FastAPI, Form
 from fastapi.responses import HTMLResponse
 
@@ -29,6 +30,9 @@ from core.models import (
     CotacaoRequest, Local, Mercadoria, NotaFiscal, Parte, Servico,
     Solicitante, StatusCotacao, Volume,
 )
+
+# antes de qualquer adapter ler os.getenv; terminal ganha do arquivo
+load_dotenv(override=False)
 
 app = FastAPI(title="Cotação de Fretes")
 

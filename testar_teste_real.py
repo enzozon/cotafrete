@@ -23,11 +23,19 @@ import time
 from decimal import Decimal
 from pathlib import Path
 
+from dotenv import load_dotenv
+
 from carriers.dellavolpe.adapter import DellavolpeAdapter
 from carriers.jadlog.simulador import JadlogSimuladorAdapter
 from core import cep
 from core.ficha import ler_ficha, ler_modalidade
 from core.models import CotacaoRequest, NotaFiscal, StatusCotacao, Volume
+
+# Carrega o .env ANTES de qualquer adapter ler os.getenv. Sem isto o arquivo é
+# decorativo: DV_ENVIO_REAL_AUTORIZADO=sim no .env não chega no processo e o
+# adapter recusa o envio real, dando a impressão de que a trava está com
+# defeito. `override=False`: variável setada no terminal ganha do arquivo.
+load_dotenv(override=False)
 
 RAIZ = Path("teste_real")
 PASTA_JADLOG = RAIZ / "jadlog"
