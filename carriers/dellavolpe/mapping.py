@@ -22,7 +22,11 @@ SLUG = "dellavolpe"
 NOME = "Transportes Della Volpe"
 MODO = Modo.ASSINCRONO_RAPIDO
 SLA_ESPERADO_MIN = 15
-FATOR_CUBAGEM = Decimal(300)  # ⚠ presumido — confirmar com o comercial
+# CONFIRMADO em 13/08/2026 por quatro propostas reais da Della Volpe, que
+# declaram o peso cubado calculado por eles: 7,20 kg para 0,024 m³; 18,00 para
+# 0,06; 28,80 para 0,096; 72,00 para 0,24. Todas dão 300. Propostas
+# 13320/26, 13322/26, 13324/26 e 13326/26.
+FATOR_CUBAGEM = Decimal(300)
 
 PESO_MIN_KG = Decimal(1)
 PESO_MAX_KG = Decimal(34_000)

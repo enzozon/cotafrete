@@ -84,6 +84,27 @@ def test_cubagem_soma_volumes_heterogeneos():
     assert r.tem_medidas_distintas is True
 
 
+@pytest.mark.parametrize("comp, larg, alt, cubado_na_proposta", [
+    (40, 30, 20, Decimal("7.20")),      # proposta 13320/26
+    (50, 40, 30, Decimal("18.00")),     # proposta 13322/26
+    (60, 40, 40, Decimal("28.80")),     # proposta 13324/26
+    (80, 60, 50, Decimal("72.00")),     # proposta 13326/26
+])
+def test_fator_300_confere_com_as_propostas_reais(comp, larg, alt,
+                                                  cubado_na_proposta):
+    """Fator CONFIRMADO em 13/08/2026, não mais presumido.
+
+    Quatro propostas da Della Volpe declararam o peso cubado que elas mesmas
+    calcularam, para cargas que nós enviamos. Dividindo pelo volume em m³ dá
+    300 nas quatro. Era a última suposição grande que restava no projeto.
+    """
+    req = montar(volumes=[Volume(qtd=1, comprimento_cm=Decimal(comp),
+                                 largura_cm=Decimal(larg),
+                                 altura_cm=Decimal(alt), peso_kg=Decimal(1))])
+
+    assert req.peso_cubado_kg(dv.FATOR_CUBAGEM) == cubado_na_proposta
+
+
 def test_peso_cubado_usa_fator_da_transportadora():
     r = montar()
     assert r.peso_cubado_kg(dv.FATOR_CUBAGEM) == Decimal("120.0")  # 0,4 x 300
