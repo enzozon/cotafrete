@@ -147,7 +147,10 @@ def main() -> int:
     # inteiro, printa e para antes do submit. Prova que a ficha virou os campos
     # certos, sem gerar cotação na fila de ninguém.
     dv = DellavolpeAdapter(workdir=str(PASTA_DELLAVOLPE))
-    if enviar_dv:
+    if "--so-jadlog" in sys.argv:
+        print("\n--- Della Volpe: PULADA (--so-jadlog) ---")
+        por_dv = []
+    elif enviar_dv:
         print(f"\n--- Della Volpe: {len(casos)} ENVIOS REAIS "
               f"({PAUSA_ENTRE_ENVIOS_S}s entre eles) ---")
         por_dv = []

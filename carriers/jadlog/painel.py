@@ -130,7 +130,11 @@ class JadlogPainelAdapter:
             "cep_origem": limpa_doc(req.origem.cep or ""),
             "cep_destino": limpa_doc(req.destino.cep or ""),
             "valor": f"{req.nota_fiscal.valor_total:.2f}".replace(".", ","),
-            "peso": f"{v.peso_kg.normalize():f}".replace(".", ","),
+            # SEMPRE 2 casas: o campo tem máscara de 2 decimais preenchida da
+            # direita para a esquerda. Medido em 13/08/2026: "1" vira 0,01 e
+            # "0,5" vira 0,05 — um centésimo/décimo da carga, cotado barato e
+            # sem nenhum aviso na tela. Só "1,00" produz 1,00.
+            "peso": f"{v.peso_kg:.2f}".replace(".", ","),
             ROTULO_ALTURA: f"{v.altura_cm.normalize():f}",
             ROTULO_LARGURA: f"{v.largura_cm.normalize():f}",
             ROTULO_COMPRIMENTO: f"{v.comprimento_cm.normalize():f}",

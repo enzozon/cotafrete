@@ -54,7 +54,7 @@ def test_payload_manda_o_peso_de_um_volume_nao_o_do_lote(adapter):
                                  peso_kg=Decimal(12))])
     p = adapter.preparar_payload(req)
 
-    assert p["peso"] == "12"           # não 36
+    assert p["peso"] == "12,00"        # não 36; e com 2 casas, pela máscara
     assert req.peso_total_kg == Decimal(36)
 
 
@@ -69,6 +69,42 @@ def test_medidas_vao_para_o_rotulo_certo(adapter):
     assert p[ROTULO_ALTURA] == "50"
     assert p[ROTULO_LARGURA] == "60"
     assert p[ROTULO_COMPRIMENTO] == "80"
+
+
+@pytest.mark.parametrize("kg, esperado", [
+    (Decimal(1), "1,00"),
+    (Decimal(12), "12,00"),
+    (Decimal("0.5"), "0,50"),
+    (Decimal(25), "25,00"),
+    (Decimal("1.5"), "1,50"),
+])
+def test_peso_vai_com_duas_casas_por_causa_da_mascara(adapter, kg, esperado):
+    """Máscara medida no site em 13/08/2026: o campo é de 2 casas, preenchido
+    da direita para a esquerda.
+
+        "1"    -> 0,01
+        "0,5"  -> 0,05
+        "1,00" -> 1,00
+
+    Mandar "1" cotava 0,01 kg — um centésimo da carga. O print do resultado
+    mostrava "Peso: 0.1kg" e o frete saía barato, sem erro nenhum na tela.
+    """
+    req = montar(volumes=[Volume(qtd=1, comprimento_cm=Decimal(30),
+                                 largura_cm=Decimal(30), altura_cm=Decimal(30),
+                                 peso_kg=kg)])
+    assert adapter.preparar_payload(req)["peso"] == esperado
+
+
+def test_medida_vai_sem_casa_decimal(adapter):
+    """O campo de medida NÃO tem máscara: "30" fica "30", e "30,0" vira
+    "30.0". Regra oposta à da Della Volpe, onde a medida precisa de uma casa.
+    Mesmo dado, dois formatos — é o adapter que resolve, não a ficha."""
+    req = montar(volumes=[Volume(qtd=1, comprimento_cm=Decimal(30),
+                                 largura_cm=Decimal(30), altura_cm=Decimal(30),
+                                 peso_kg=Decimal(1))])
+    p = adapter.preparar_payload(req)
+    assert p[ROTULO_ALTURA] == "30"
+    assert "," not in p[ROTULO_ALTURA] and "." not in p[ROTULO_ALTURA]
 
 
 def test_cep_sem_mascara_e_valor_em_virgula(adapter):
