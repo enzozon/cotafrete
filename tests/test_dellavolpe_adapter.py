@@ -186,6 +186,49 @@ def test_cidade_espera_as_opcoes_chegarem_do_xhr(adapter, page):
 
 
 # ------------------------------------------- integração: formulário inteiro
+def test_print_recorta_o_formulario_e_nao_o_site_inteiro(page, tmp_path):
+    """O print é a única forma de o Enzo conferir o que foi enviado.
+
+    Com full_page=True saía o site inteiro: o formulário virava uma tira no
+    topo, ilegível, seguida de metros de banner laranja e rodapé. Recortado no
+    <form>, cabe na tela e dá para ler campo por campo."""
+    adapter = DellavolpeAdapter()
+    destino = tmp_path / "preenchido.png"
+    assert adapter._print_formulario(page, destino) == [str(destino)]
+
+    dados = destino.read_bytes()
+    largura = int.from_bytes(dados[16:20], "big")
+    altura = int.from_bytes(dados[20:24], "big")
+
+    # cabe tudo: o recorte é a união dos campos mais a margem dos dois lados
+    campos = page.evaluate("""() => {
+        const form = [...document.querySelectorAll('form')].find(f =>
+            [...f.querySelectorAll('input,select,textarea')]
+                .some(x => x.offsetWidth || x.offsetHeight));
+        const r = [...form.querySelectorAll('input,select,textarea')]
+            .filter(x => x.offsetWidth || x.offsetHeight)
+            .map(x => x.getBoundingClientRect());
+        return {w: Math.max(...r.map(b => b.right)) - Math.min(...r.map(b => b.x)),
+                h: Math.max(...r.map(b => b.bottom)) - Math.min(...r.map(b => b.y))};
+    }""")
+    assert largura >= campos["w"]
+    assert altura >= campos["h"]
+
+    # e não é o site inteiro
+    altura_pagina = page.evaluate("() => document.documentElement.scrollHeight")
+    assert altura <= altura_pagina
+
+
+def test_print_cai_para_a_pagina_se_o_formulario_sumir(page, tmp_path):
+    """Sem formulário localizável ainda queremos evidência: print é melhor
+    que nada quando o envio já aconteceu."""
+    page.evaluate("() => document.querySelectorAll('form').forEach(f => f.remove())")
+    destino = tmp_path / "preenchido.png"
+
+    assert DellavolpeAdapter()._print_formulario(page, destino) == [str(destino)]
+    assert destino.exists()
+
+
 def test_preenche_todos_os_campos_do_dom_real(adapter, page):
     """Ponta a ponta no DOM real replicado: nenhum campo pode ficar vazio."""
     from carriers.dellavolpe import mapping as m

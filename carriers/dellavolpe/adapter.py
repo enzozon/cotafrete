@@ -74,6 +74,123 @@ ANEXO_POR_ROTULO = {
 # seguinte. A ordenação alfabética que havia aqui punha "Escolha o tipo de
 # veículo" (E) antes de "Qual o serviço que você procura?" (Q) — e no site o
 # select de veículo fica display:none até FTL ser escolhido.
+# Caixa do formulário para o print, em coordenadas da PÁGINA (não da janela).
+#
+# Os <form> do site são wpcf7-form com altura ZERO: não envolvem visualmente
+# nada, quem tem tamanho é o modal em volta. Por isso screenshot do <form>
+# falha com "element is not visible" e o print acabava saindo do site inteiro.
+# Daí a subida até o primeiro ancestral com altura de verdade.
+#
+# E o modal ainda ROLA POR DENTRO: o que está fora da área visível dele não
+# entra em screenshot nenhum. Por isso o print expande temporariamente os
+# containers com overflow antes de medir, e desfaz depois. É mexida só de
+# layout — nenhum valor de campo é tocado.
+ALTURA_MINIMA_CONTAINER = 200
+
+# O validador do site dispara enquanto o campo ainda está vazio e NÃO reavalia
+# sozinho depois que ele é preenchido. Resultado: "O campo é obrigatório" em
+# vermelho ao lado de um WhatsApp corretamente preenchido — mensagem velha, num
+# print que serve justamente para o Enzo conferir o que foi enviado. Reemitir
+# os eventos faz o validador rodar de novo com o valor atual.
+# NUNCA disparar em <select>, e nunca 'input'/'change': o select de estado tem
+# JS que repopula o de cidade e ZERA a escolha. A primeira versão disto
+# reemitia em tudo e apagou as duas cidades já selecionadas — teriam ido 6
+# cotações sem cidade nenhuma. Só 'blur', e só em campo de texto.
+JS_REVALIDAR = """() => {
+    const alvos = 'input[type=text], input[type=email], input[type=tel],'
+                + ' input[type=number], textarea';
+    document.querySelectorAll(alvos).forEach(e => {
+        if (!(e.offsetWidth || e.offsetHeight)) return;
+        if (!e.value) return;              // vazio de verdade: erro é legítimo
+        e.dispatchEvent(new Event('blur', {bubbles: true}));
+    });
+}"""
+
+JS_EXPANDIR_ROLAGEM = """() => {
+    // O form com MAIS campos visíveis, não o primeiro que tiver algum: o
+    // site mantém vários formulários no mesmo DOM e o primeiro com um campo
+    // visível era um de 7 campos, o que recortava o print pela metade.
+    const visiveis = (f) =>
+        [...f.querySelectorAll('input, select, textarea')]
+            .filter(x => x.offsetWidth || x.offsetHeight).length;
+    const form = [...document.querySelectorAll('form')]
+        .filter(f => visiveis(f) > 0)
+        .sort((a, b) => visiveis(b) - visiveis(a))[0];
+    if (!form) return 0;
+
+    let mexidos = 0;
+    for (let n = form; n && n !== document.body; n = n.parentElement) {
+        const s = getComputedStyle(n);
+        const rola = n.scrollHeight > n.clientHeight + 4;
+        if (rola || s.overflowY === 'auto' || s.overflowY === 'scroll'
+                 || s.maxHeight !== 'none') {
+            n.dataset.dvPrintAntes = JSON.stringify({
+                h: n.style.height, mh: n.style.maxHeight,
+                oy: n.style.overflowY, o: n.style.overflow,
+            });
+            n.style.height = 'auto';
+            n.style.maxHeight = 'none';
+            n.style.overflowY = 'visible';
+            n.style.overflow = 'visible';
+            mexidos++;
+        }
+    }
+    return mexidos;
+}"""
+
+JS_RESTAURAR_ROLAGEM = """() => {
+    document.querySelectorAll('[data-dv-print-antes]').forEach(n => {
+        const a = JSON.parse(n.dataset.dvPrintAntes);
+        n.style.height = a.h; n.style.maxHeight = a.mh;
+        n.style.overflowY = a.oy; n.style.overflow = a.o;
+        delete n.dataset.dvPrintAntes;
+    });
+}"""
+
+MARGEM_PRINT_PX = 24
+JS_CAIXA_DO_FORMULARIO = """() => {
+    // UNIÃO das caixas de TODOS os campos visíveis da página — sem escopar
+    // por <form>. Três tentativas anteriores falharam por escopo: o <form>
+    // tem altura 0; o ancestral com tamanho é ora metade do modal, ora o site
+    // inteiro; e os campos do modal estão espalhados em MAIS DE UM <form>, o
+    // que recortava o print na metade. Como só o modal aberto tem campos
+    // visíveis, "todo campo visível" é exatamente o formulário que interessa.
+    const partes = [...document.querySelectorAll('input, select, textarea')]
+        .filter(x => (x.offsetWidth || x.offsetHeight)
+                     && x.type !== 'hidden'
+                     // banner de cookies não faz parte da cotação
+                     && !x.closest('#onetrust-consent-sdk, [id*=onetrust i]'));
+    if (!partes.length) return null;
+
+    let x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity;
+    for (const e of partes) {
+        const r = e.getBoundingClientRect();
+        if (r.width <= 0 || r.height <= 0) continue;
+        x1 = Math.min(x1, r.x); y1 = Math.min(y1, r.y);
+        x2 = Math.max(x2, r.right); y2 = Math.max(y2, r.bottom);
+    }
+    if (!isFinite(x1) || x2 - x1 < 100 || y2 - y1 < 100) return null;
+
+    // O modal é position:fixed — a caixa já é relativa à JANELA e não
+    // acompanha a rolagem. Somar scrollY como se fosse coordenada de página
+    // empurrava o recorte para baixo: o print começava no meio do WhatsApp e
+    // sobrava faixa vazia embaixo, do tamanho exato da rolagem.
+    let fixo = false;
+    for (let n = partes[0]; n && n !== document.body; n = n.parentElement)
+        if (getComputedStyle(n).position === 'fixed') { fixo = true; break; }
+
+    const m = 24;
+    const dx = fixo ? 0 : window.scrollX;
+    const dy = fixo ? 0 : window.scrollY;
+    return {
+        fixo,
+        x: Math.max(0, x1 - m + dx),
+        y: Math.max(0, y1 - m + dy),
+        width: (x2 - x1) + 2 * m,
+        height: (y2 - y1) + 2 * m,
+    };
+}"""
+
 ORDEM_DEPENDENCIA = (
     "Qual o serviço que você procura?",
     "Escolha o tipo de veículo",
@@ -144,7 +261,13 @@ class DellavolpeAdapter:
 
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=self.headless)
-            page = browser.new_context(locale="pt-BR").new_page()
+            # Janela ALTA de proposito: o modal de cotacao rola por dentro,
+            # e o que fica fora da area visivel dele nao entra em screenshot
+            # nenhum. Com 2600px de altura o formulario inteiro cabe sem
+            # rolagem interna, e o print sai completo.
+            page = browser.new_context(
+                locale="pt-BR",
+                viewport={"width": 1280, "height": 2600}).new_page()
             page.set_default_timeout(self.timeout_ms)
             try:
                 page.goto(self.base_url, wait_until="networkidle")
@@ -168,22 +291,27 @@ class DellavolpeAdapter:
                 if fispq := arquivos.get("Anexar FISPQ / Licença"):
                     self._anexar(page, "Anexar FISPQ", [fispq])
 
-                page.screenshot(path=str(run / "preenchido.png"), full_page=True)
+                # ANTES do submit: é este print que permite conferir o que foi
+                # enviado quando o e-mail voltar com preço estranho.
+                evid_preenchido = self._print_formulario(
+                    page, run / "preenchido.png")
 
                 if not confirmar_envio:
                     return ResultadoCotacao(
                         self.slug, StatusCotacao.RASCUNHO,
                         raw_response="DRY-RUN: formulário preenchido, nada enviado.",
-                        evidencias=[str(run / "preenchido.png")],
+                        evidencias=evid_preenchido,
                     )
 
                 page.get_by_role("button", name="Pedir orçamento").click()
                 page.wait_for_load_state("networkidle")
-                page.screenshot(path=str(run / "resposta.png"), full_page=True)
 
                 res = self.normalizar_resposta(page.content())
                 res.enviado_em = datetime.now()
-                res.evidencias = [str(run / "preenchido.png"), str(run / "resposta.png")]
+                res.evidencias = [
+                    *evid_preenchido,
+                    *print_seguro(page, run / "resposta.png"),
+                ]
                 return res
 
             except Exception as exc:
@@ -304,6 +432,40 @@ class DellavolpeAdapter:
                     loc.select_option(value=valor)
             else:
                 loc.fill(valor)
+
+    def _print_formulario(self, page, destino: Path) -> list[str]:
+        """Print do FORMULÁRIO, não do site inteiro.
+
+        É a única evidência que o Enzo tem para conferir o que foi enviado,
+        já que o preço só volta por e-mail. Com full_page=True o formulário
+        saía como uma tira no topo de uma imagem de 5000px, seguida de banner
+        e rodapé — ilegível justamente na parte que importa.
+
+        Se o formulário não for localizável, cai para o print da página: com
+        o envio já feito, evidência ruim é melhor que nenhuma.
+        """
+        try:
+            page.evaluate(JS_REVALIDAR)
+            page.wait_for_timeout(600)
+            page.evaluate(JS_EXPANDIR_ROLAGEM)
+            page.wait_for_timeout(500)          # deixa o layout reassentar
+            try:
+                caixa = page.evaluate(JS_CAIXA_DO_FORMULARIO)
+                if caixa:
+                    fixo = caixa.pop("fixo", False)
+                    # Elemento fixo: coordenada de JANELA, print de janela.
+                    # Elemento normal: coordenada de PÁGINA, e full_page deixa
+                    # o recorte passar da altura da janela sem cortar o fim.
+                    page.screenshot(path=str(destino), full_page=not fixo,
+                                    clip=caixa, timeout=15_000)
+                    return [str(destino)]
+            finally:
+                # devolve o layout ao normal ANTES do submit, aconteça o que
+                # acontecer: o print não pode alterar o que o site recebe
+                page.evaluate(JS_RESTAURAR_ROLAGEM)
+        except Exception:
+            pass
+        return print_seguro(page, destino)
 
     def _form_visivel(self, page):
         """O <form> que está de fato aberto no accordion, ou None.
