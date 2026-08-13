@@ -5,6 +5,7 @@
 
 # evidências de execução (contêm CNPJ, valores de NF, screenshots)
 runs/
+teste_real/
 *.xlsx
 !tests/fixtures/*.xlsx
 
