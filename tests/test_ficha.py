@@ -14,7 +14,7 @@ import pytest
 
 from carriers.dellavolpe import mapping as dv
 from carriers.jadlog.simulador import JadlogSimuladorAdapter
-from core.ficha import CamposFaltando, ler_ficha
+from core.ficha import CamposFaltando, ler_ficha, ler_modalidade
 from core.models import Servico
 
 FICHA = """\
@@ -85,17 +85,70 @@ def test_valor_da_nota_aceita_os_dois_jeitos_de_escrever(escrito, esperado):
     assert ler_ficha(texto).nota_fiscal.valor_total == esperado
 
 
-def test_peso_total_vira_peso_por_volume():
-    """A ficha diz 'Peso TOTAL', o modelo guarda peso POR volume.
+def test_peso_e_de_UM_volume_e_multiplica_pela_quantidade():
+    """Regra do Enzo, 13/08/2026: o peso é o de UM produto.
 
-    Copiar o total para cada volume multiplica a carga pela quantidade —
-    3 volumes de 12kg viravam 36kg cada, 108kg no total."""
-    texto = (FICHA.replace("Peso Total (kg): 1", "Peso Total (kg): 36")
+    "3 de 12kg voce coloca 12kg e 3 volumes". Dividir pela quantidade — que
+    era o que este código fazia — cotaria 4kg por volume, 12kg no total: um
+    terço da carga real, e o frete sai barato demais sem nenhum aviso."""
+    texto = (FICHA.replace("Peso Total (kg): 1", "Peso Total (kg): 12")
                   .replace("Quantidade de Volumes: 1", "Quantidade de Volumes: 3"))
     req = ler_ficha(texto)
 
     assert req.volumes[0].peso_kg == Decimal(12)
     assert req.peso_total_kg == Decimal(36)
+
+
+# ------------------------------------------- cidade e UF vêm do CEP, não da mão
+def test_cidade_e_uf_saem_do_cep_quando_nao_estao_na_ficha():
+    """Regra 1: o CEP manda. Digitar cidade à mão foi o que gerou o erro de
+    13/08/2026 — a ficha dizia "São José dos Campos" e o CEP 09895-003 é São
+    Bernardo do Campo. A Jadlog cota por CEP e a Della Volpe por cidade, então
+    a mesma ficha cotava DUAS rotas diferentes."""
+    texto = "\n".join(l for l in FICHA.splitlines()
+                      if not l.lower().startswith(("uf ", "cidade ")))
+
+    def busca_falsa(cep: str):
+        return {"09895003": ("São Bernardo do Campo", "SP", "3548708"),
+                "29105770": ("Vila Velha", "ES", "3205200")}[cep]
+
+    req = ler_ficha(texto, buscar_cep=busca_falsa)
+
+    assert (req.origem.cidade, req.origem.uf) == ("São Bernardo do Campo", "SP")
+    assert (req.destino.cidade, req.destino.uf) == ("Vila Velha", "ES")
+    assert req.origem.codigo_ibge == "3548708"
+
+
+def test_cep_na_ficha_vence_a_cidade_digitada():
+    """Se os dois vierem, o CEP ganha — é ele que a transportadora usa para
+    calcular. Cidade digitada é lembrete humano, não fonte de verdade."""
+    def busca_falsa(cep: str):
+        return ("São Bernardo do Campo", "SP", "3548708")
+
+    req = ler_ficha(FICHA, buscar_cep=busca_falsa)
+    assert req.origem.cidade == "São Bernardo do Campo"    # não "São José dos Campos"
+
+
+def test_sem_busca_de_cep_a_cidade_da_ficha_e_usada():
+    """Camada pura continua pura: sem callable injetado, não há rede."""
+    assert ler_ficha(FICHA).origem.cidade == "São José dos Campos"
+
+
+# ------------------------------------------------------------------ modalidade
+# Fora do CotacaoRequest de propósito: modalidade é vocabulário da Jadlog, e o
+# modelo central não conhece transportadora. Por isso é função à parte.
+def test_modalidade_da_ficha_e_normalizada():
+    assert ler_modalidade(FICHA + "modalidade: Expresso\n") == "expresso"
+    assert ler_modalidade(FICHA + "Modalidade: RODOVIARIO\n") == "rodoviario"
+
+
+def test_modalidade_ausente_cai_no_padrao():
+    assert ler_modalidade(FICHA) == "expresso"
+
+
+def test_modalidade_desconhecida_e_erro_e_lista_as_validas():
+    with pytest.raises(ValueError, match="package"):
+        ler_modalidade(FICHA + "modalidade: turbo a jato\n")
 
 
 def test_linha_desconhecida_nao_quebra():
@@ -138,6 +191,31 @@ def test_cep_vai_so_com_digitos_para_a_jadlog(req):
 
     assert payload_jad["origem"] == "09895003"
     assert payload_jad["destino"] == "29105770"
+
+
+@pytest.mark.parametrize("escrito", [
+    "+55 (27) 3063-1564",
+    "+5527306315 64",
+    "5527306 31564",
+    "55 27 3063-1564",
+])
+def test_codigo_do_pais_e_removido_do_whatsapp(escrito):
+    """Medido no formulário da Della Volpe em 13/08/2026.
+
+    Mandamos '+55 (27) 3063-1564' e o campo, que tem máscara de telefone
+    brasileiro, mostrou '(55) 2730-631': o +55 virou DDD e o número inteiro
+    escorregou. O vendedor ligaria para um telefone que não existe, e nada
+    no envio acusa isso."""
+    texto = FICHA.replace("WhatsApp: 27999887766", f"WhatsApp: {escrito}")
+    req = ler_ficha(texto)
+
+    assert req.solicitante.whatsapp_formatado == "(27) 3063-1564"
+
+
+def test_numero_sem_codigo_do_pais_continua_igual():
+    """Não pode sair cortando '55' de quem tem DDD 55 (RS, Santa Maria)."""
+    texto = FICHA.replace("WhatsApp: 27999887766", "WhatsApp: (55) 99988-7766")
+    assert ler_ficha(texto).solicitante.whatsapp_formatado == "(55) 99988-7766"
 
 
 def test_valor_da_nota_vai_em_formato_brasileiro_nos_dois(req):

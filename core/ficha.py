@@ -18,11 +18,16 @@ from __future__ import annotations
 
 import unicodedata
 from decimal import Decimal, InvalidOperation
+from typing import Callable
 
 from core.models import (
     CotacaoRequest, Local, Mercadoria, NotaFiscal, Parte, Servico,
-    Solicitante, Volume,
+    Solicitante, Volume, limpa_doc,
 )
+
+# CEP só com dígitos -> (cidade, uf, código IBGE). Injetado para este módulo
+# não abrir rede: a implementação real mora em core/cep.py.
+BuscaCEP = Callable[[str], tuple[str, str, str | None]]
 
 
 class CamposFaltando(ValueError):
@@ -47,11 +52,7 @@ APELIDOS: dict[str, tuple[str, ...]] = {
     "Nome Completo": ("nome completo", "nome"),
     "email": ("email", "e-mail"),
     "WhatsApp": ("whatsapp", "telefone", "celular"),
-    "UF Origem": ("uf origem", "estado origem"),
-    "Cidade Origem": ("cidade origem",),
     "CEP ORIGEM": ("cep origem",),
-    "UF Destino": ("uf destino", "estado destino"),
-    "Cidade Destino": ("cidade destino",),
     "CEP DESTINO": ("cep destino",),
     "CNPJ Remetente": ("cnpj remetente",),
     "CNPJ Destinatario": ("cnpj destinatario",),
@@ -67,9 +68,21 @@ APELIDOS: dict[str, tuple[str, ...]] = {
     "Tipo de Serviço": ("tipo de servico", "servico"),
 }
 
+# Opcionais: cidade e UF são lembrete humano — o CEP é a fonte de verdade.
+# Ficaram fora de OBRIGATORIOS depois que uma ficha trouxe "São José dos
+# Campos" com CEP de São Bernardo do Campo, e cada site cotou uma rota.
+OPCIONAIS: dict[str, tuple[str, ...]] = {
+    "Cidade Origem": ("cidade origem",),
+    "UF Origem": ("uf origem", "estado origem"),
+    "Cidade Destino": ("cidade destino",),
+    "UF Destino": ("uf destino", "estado destino"),
+    "Modalidade": ("modalidade", "modalidade jadlog"),
+}
+
 # apelido normalizado -> rótulo canônico
 _DE_APELIDO = {_normalizar(a): canon
-               for canon, apelidos in APELIDOS.items() for a in apelidos}
+               for canon, apelidos in {**APELIDOS, **OPCIONAIS}.items()
+               for a in apelidos}
 
 SERVICO_POR_TEXTO = {
     "fracionado -ltl": Servico.FRACIONADO_LTL,
@@ -82,6 +95,26 @@ SERVICO_POR_TEXTO = {
 }
 
 OBRIGATORIOS = tuple(APELIDOS)
+
+# Códigos aceitos em "Modalidade". São os do <select> do simulador da Jadlog.
+MODALIDADE_PADRAO = "expresso"
+MODALIDADES_VALIDAS = ("expresso", "package", "rodoviario", "economico",
+                       "doc", "com", "cargo")
+
+
+def ler_modalidade(texto: str) -> str:
+    """Modalidade da Jadlog em minúsculas. Fora do CotacaoRequest de propósito:
+    é vocabulário de UMA transportadora, e o modelo central não conhece
+    transportadora nenhuma."""
+    escrito = separar_campos(texto).get("Modalidade")
+    if not escrito:
+        return MODALIDADE_PADRAO
+    codigo = _normalizar(escrito)
+    if codigo not in MODALIDADES_VALIDAS:
+        raise ValueError(
+            f"Modalidade não reconhecida: {escrito!r}. "
+            f"Use uma de: {', '.join(MODALIDADES_VALIDAS)}")
+    return codigo
 
 
 def num(escrito: str) -> Decimal:
@@ -114,8 +147,31 @@ def separar_campos(texto: str) -> dict[str, str]:
     return campos
 
 
-def ler_ficha(texto: str) -> CotacaoRequest:
-    """Ficha em texto -> CotacaoRequest. Levanta CamposFaltando se faltar algo."""
+def _local(c: dict[str, str], sufixo_cep: str, sufixo_cidade: str,
+           buscar_cep: BuscaCEP | None) -> Local:
+    """Monta origem/destino. O CEP manda; cidade digitada é só lembrete."""
+    cep = c[f"CEP {sufixo_cep}"]
+    cidade = c.get(f"Cidade {sufixo_cidade}")
+    uf = c.get(f"UF {sufixo_cidade}", "")
+    ibge = None
+
+    if buscar_cep is not None:
+        cidade, uf, ibge = buscar_cep(limpa_doc(cep))
+
+    if not cidade or not uf:
+        raise CamposFaltando([f"Cidade {sufixo_cidade}", f"UF {sufixo_cidade}"])
+
+    return Local(uf=uf.upper(), cidade=cidade, cep=cep, codigo_ibge=ibge)
+
+
+def ler_ficha(texto: str, buscar_cep: BuscaCEP | None = None) -> CotacaoRequest:
+    """Ficha em texto -> CotacaoRequest. Levanta CamposFaltando se faltar algo.
+
+    `buscar_cep` é injetado: sem ele este módulo continua puro, sem rede. Com
+    ele, cidade e UF saem do CEP e vencem o que estiver escrito na ficha — foi
+    escrever cidade à mão que fez uma ficha com CEP de São Bernardo do Campo
+    dizer "São José dos Campos", e cada site cotar uma rota diferente.
+    """
     c = separar_campos(texto)
 
     if faltando := [k for k in OBRIGATORIOS if k not in c]:
@@ -125,9 +181,10 @@ def ler_ficha(texto: str) -> CotacaoRequest:
     if qtd < 1:
         raise ValueError("Quantidade de Volumes precisa ser pelo menos 1.")
 
-    # A ficha diz peso TOTAL; o modelo guarda peso POR volume. Copiar o total
-    # para cada volume multiplicaria a carga pela quantidade.
-    peso_por_volume = num(c["Peso Total (kg)"]) / qtd
+    # O peso é o de UM volume, não o do lote: "3 de 12kg" são 12 aqui e 3 na
+    # quantidade, dando 36kg de carga. Dividir pela quantidade cotaria 12kg no
+    # total — um terço da carga, e o frete sai barato demais calado.
+    peso_por_volume = num(c["Peso Total (kg)"])
 
     servico = SERVICO_POR_TEXTO.get(_normalizar(c["Tipo de Serviço"]))
     if servico is None:
@@ -139,10 +196,8 @@ def ler_ficha(texto: str) -> CotacaoRequest:
         solicitante=Solicitante(nome=c["Nome Completo"], email=c["email"],
                                 whatsapp=c["WhatsApp"]),
         servico=servico,
-        origem=Local(uf=c["UF Origem"].upper(), cidade=c["Cidade Origem"],
-                     cep=c["CEP ORIGEM"]),
-        destino=Local(uf=c["UF Destino"].upper(), cidade=c["Cidade Destino"],
-                      cep=c["CEP DESTINO"]),
+        origem=_local(c, "ORIGEM", "Origem", buscar_cep),
+        destino=_local(c, "DESTINO", "Destino", buscar_cep),
         remetente=Parte(cnpj=c["CNPJ Remetente"]),
         destinatario=Parte(cnpj=c["CNPJ Destinatario"]),
         pagador_frete=Parte(cnpj=c["CNPJ Pagador"]),

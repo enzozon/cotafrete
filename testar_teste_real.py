@@ -25,7 +25,8 @@ from pathlib import Path
 
 from carriers.dellavolpe.adapter import DellavolpeAdapter
 from carriers.jadlog.simulador import JadlogSimuladorAdapter
-from core.ficha import ler_ficha
+from core import cep
+from core.ficha import ler_ficha, ler_modalidade
 from core.models import CotacaoRequest, NotaFiscal, StatusCotacao, Volume
 
 RAIZ = Path("teste_real")
@@ -87,7 +88,10 @@ def main() -> int:
 
     ficha = Path(sys.argv[1]).read_text(encoding="utf-8")
     enviar_dv = "--dellavolpe" in sys.argv
-    req = ler_ficha(ficha)
+    so_dv = "--so-dellavolpe" in sys.argv
+    # cidade e UF saem do CEP: é o CEP que a transportadora usa para calcular
+    req = ler_ficha(ficha, buscar_cep=cep.buscar)
+    modalidade = ler_modalidade(ficha)
 
     PASTA_JADLOG.mkdir(parents=True, exist_ok=True)
     PASTA_DELLAVOLPE.mkdir(parents=True, exist_ok=True)
@@ -107,28 +111,40 @@ def main() -> int:
     casos += [(nome, variar(req, peso, medidas, valor))
               for nome, peso, medidas, valor in VARIACOES]
 
-    print(f"\n--- Jadlog ({len(casos)} cotacoes) ---")
-    jadlog = JadlogSimuladorAdapter(workdir=str(PASTA_JADLOG))
-    por_jadlog = [cotar(jadlog, r, nome) for nome, r in casos]
+    por_jadlog = []
+    if so_dv:
+        print("\n--- Jadlog: PULADA (--so-dellavolpe) ---")
+    else:
+        print(f"\n--- Jadlog ({len(casos)} cotacoes, modalidade {modalidade}) ---")
+        jadlog = JadlogSimuladorAdapter(workdir=str(PASTA_JADLOG),
+                                        modalidade=modalidade)
+        por_jadlog = [cotar(jadlog, r, nome) for nome, r in casos]
 
-    por_dv = []
+    # Sem autorização a Della Volpe roda em DRY-RUN: preenche o formulário
+    # inteiro, printa e para antes do submit. Prova que a ficha virou os campos
+    # certos, sem gerar cotação na fila de ninguém.
+    dv = DellavolpeAdapter(workdir=str(PASTA_DELLAVOLPE))
     if enviar_dv:
         print(f"\n--- Della Volpe: {len(casos)} ENVIOS REAIS "
               f"({PAUSA_ENTRE_ENVIOS_S}s entre eles) ---")
-        dv = DellavolpeAdapter(workdir=str(PASTA_DELLAVOLPE))
+        por_dv = []
         for i, (nome, r) in enumerate(casos):
             if i:
                 time.sleep(PAUSA_ENTRE_ENVIOS_S)
             por_dv.append(cotar(dv, r, nome, confirmar_envio=True))
     else:
-        print("\n--- Della Volpe: PULADA (nenhum envio real) ---")
+        print("\n--- Della Volpe: DRY-RUN, nada e enviado ---")
+        por_dv = [cotar(dv, req, "ficha original")]
 
-    cotadas = sum(r.status is StatusCotacao.COTADO for r in por_jadlog)
-    print(f"\nJadlog: {cotadas}/{len(casos)} com valor")
-    if por_dv:
-        ok = sum(r.status is not StatusCotacao.ERRO for r in por_dv)
+    if por_jadlog:
+        cotadas = sum(r.status is StatusCotacao.COTADO for r in por_jadlog)
+        print(f"\nJadlog: {cotadas}/{len(casos)} com valor")
+    ok = sum(r.status is not StatusCotacao.ERRO for r in por_dv)
+    if enviar_dv:
         print(f"Della Volpe: {ok}/{len(por_dv)} enviadas sem erro — "
               f"confira a caixa de {req.solicitante.email}, inclusive o spam")
+    else:
+        print(f"Della Volpe: {ok}/{len(por_dv)} preenchidas (dry-run)")
     print(f"\nEvidencias em {RAIZ.resolve()}")
     return 0
 
