@@ -10,6 +10,7 @@ automação viva quando eles mexerem no layout.
 
 from __future__ import annotations
 
+import re
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
@@ -233,19 +234,55 @@ def separar_anexos(campos: dict[str, Any]) -> tuple[dict[str, Any], dict[str, An
 
 
 # ---------------------------------------------------------------- resposta
+# Texto de dentro da div de resposta do CF7 — é lá que a confirmação aparece.
+RE_RESPOSTA_CF7 = re.compile(
+    r'<div[^>]*wpcf7-response-output[^>]*>(.*?)</div>', re.DOTALL)
+
+FRASES_DE_CONFIRMACAO = (
+    "agradecemos a sua mensagem",   # texto exato deste site
+    "agradecemos sua mensagem",
+    "retornaremos seu contato",
+    "obrigado",
+    "recebemos",
+)
+
+
 def normalizar_resposta(raw: Any) -> ResultadoCotacao:
     """O POST da DV não devolve preço — devolve confirmação de envio.
     O valor chega depois, pelo ingestor de e-mail."""
     texto = (str(raw) or "").lower()
 
-    # Sinal do Contact Form 7, não palavra solta no HTML. Medido em produção
-    # 13/08/2026: a página já traz "sucesso" ANTES de qualquer submissão (tem
-    # uma seção "Casos de sucesso"), então procurar essas palavras dava
-    # "enviado" para toda página, inclusive as em que o envio falhou — cinco
-    # cotações reais voltaram com status que não provava nada.
-    # wpcf7-mail-sent-ok / -ng só entram no DOM depois da resposta do CF7.
-    falhou = "wpcf7-mail-sent-ng" in texto
-    sucesso = "wpcf7-mail-sent-ok" in texto and not falhou
+    # O que prova envio é o TEXTO DENTRO da div de resposta do Contact Form 7.
+    # Duas versões erradas antes desta:
+    #   1. procurar "sucesso" no HTML inteiro — a página tem uma seção "Casos
+    #      de sucesso", então toda página parecia enviada;
+    #   2. exigir a classe wpcf7-mail-sent-ok — este site NÃO a usa. A div
+    #      continua `wpcf7-response-output aria-hidden="true"` e só o texto de
+    #      dentro muda. Exigir a classe recusaria toda confirmação real.
+    # Confirmação real, medida em 13/08/2026:
+    #   <div class="wpcf7-response-output" aria-hidden="true">Olá Enzo Zon.
+    #    Agradecemos a sua mensagem. Em breve retornaremos seu contato.</div>
+    dentro = " ".join(RE_RESPOSTA_CF7.findall(texto)).strip()
+
+    # Bloqueio antispam do CF7 (Akismet/reCAPTCHA v3). Medido em 13/08/2026:
+    # "A submissão mencionou-se como spam. Clique em 'Pedir orçamento'
+    # novamente". Não é falha nossa nem recusa comercial: é o site julgando o
+    # remetente. Precisa de status próprio, senão vira "erro" genérico e
+    # ninguém entende por que o e-mail nunca chega.
+    if "spam" in dentro or "wpcf7-spam-blocked" in texto:
+        return ResultadoCotacao(
+            transportadora=SLUG,
+            status=StatusCotacao.INTERVENCAO_NECESSARIA,
+            valor_frete=None,
+            raw_response=raw,
+            motivo_recusa="Envio barrado como spam pelo formulário. "
+                          "Nenhum e-mail foi gerado.",
+        )
+
+    falhou = ("wpcf7-mail-sent-ng" in texto
+              or any(t in dentro for t in ("erro", "falha", "não foi possível")))
+    sucesso = (not falhou
+               and any(t in dentro for t in FRASES_DE_CONFIRMACAO))
     return ResultadoCotacao(
         transportadora=SLUG,
         status=StatusCotacao.AGUARDANDO_RETORNO if sucesso else StatusCotacao.ERRO,

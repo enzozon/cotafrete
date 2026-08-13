@@ -123,26 +123,57 @@ def test_a_palavra_sucesso_sozinha_nao_prova_envio():
     assert "não identificada" in res.erro
 
 
-def test_classe_do_contact_form_7_prova_envio():
-    """wpcf7-mail-sent-ok só entra no DOM depois que o CF7 confirma o envio."""
-    html_enviado = """<html><body>
-        <div class="wpcf7-response-output wpcf7-mail-sent-ok">
-            Obrigado pela sua mensagem. Ela foi enviada.</div>
-    </body></html>"""
+def test_confirmacao_real_do_site_e_reconhecida():
+    """HTML exato do site, mandado pelo Enzo em 13/08/2026.
 
-    res = dv.normalizar_resposta(html_enviado)
+    Repare no que NÃO tem: a classe wpcf7-mail-sent-ok. Este site mantém a div
+    como wpcf7-response-output aria-hidden="true" e só troca o TEXTO de dentro.
+    A correção anterior, que exigia a classe, teria recusado toda confirmação
+    verdadeira — trocar um falso positivo por um falso negativo."""
+    html = ('<div class="wpcf7-response-output" aria-hidden="true">Olá Enzo '
+            'Zon. Agradecemos a sua mensagem. Em breve retornaremos seu '
+            'contato.</div>')
+
+    res = dv.normalizar_resposta(html)
     assert res.status is StatusCotacao.AGUARDANDO_RETORNO
     assert res.valor_frete is None      # o preço só chega por e-mail
     assert res.erro is None
 
 
-def test_erro_declarado_pelo_contact_form_7_nao_vira_sucesso():
-    """wpcf7-mail-sent-ng é o CF7 dizendo que o envio falhou."""
-    html_falhou = """<html><body>
-        <div class="wpcf7-response-output wpcf7-mail-sent-ng">
-            Ocorreu um erro ao tentar enviar sua mensagem.</div>
-    </body></html>"""
+def test_bloqueio_antispam_tem_status_proprio():
+    """Resposta real do site em 13/08/2026, com o envio já funcionando.
 
+    O CF7 barrou a submissão como spam — nenhum e-mail foi gerado. Cair no
+    ERRO genérico esconderia a causa: o operador ficaria procurando bug no
+    preenchimento enquanto o problema é reputação do remetente."""
+    html = ('<div class="wpcf7-response-output" aria-hidden="true">'
+            'A submissão mencionou-se como spam. Clique em "Pedir orçamento" '
+            'novamente</div>')
+
+    res = dv.normalizar_resposta(html)
+    assert res.status is StatusCotacao.INTERVENCAO_NECESSARIA
+    assert "spam" in res.motivo_recusa.lower()
+    assert res.valor_frete is None
+
+
+def test_div_de_resposta_vazia_nao_e_envio():
+    """Antes do submit a div existe e está VAZIA. É esse o estado que voltou
+    nas cinco cotações que não geraram e-mail nenhum."""
+    html = '<div class="wpcf7-response-output" aria-hidden="true"></div>'
+    assert dv.normalizar_resposta(html).status is StatusCotacao.ERRO
+
+
+def test_secao_casos_de_sucesso_da_pagina_nao_conta():
+    """O texto que interessa é o de DENTRO da div de resposta, não o da
+    página. Foi a seção "Casos de sucesso" que enganou o detector antigo."""
+    html = ('<div class="case-sucesso">Casos de sucesso</div>'
+            '<div class="wpcf7-response-output" aria-hidden="true"></div>')
+    assert dv.normalizar_resposta(html).status is StatusCotacao.ERRO
+
+
+def test_erro_declarado_pelo_contact_form_7_nao_vira_sucesso():
+    html_falhou = ('<div class="wpcf7-response-output wpcf7-mail-sent-ng">'
+                   'Ocorreu um erro ao tentar enviar sua mensagem.</div>')
     assert dv.normalizar_resposta(html_falhou).status is StatusCotacao.ERRO
 
 
@@ -279,7 +310,7 @@ def test_envio_confirmado_vira_aguardando_retorno_sem_preco():
     deixou passar o falso positivo: a página da Della Volpe tem uma seção
     "Casos de sucesso", então qualquer HTML dela batia no critério."""
     res = dv.normalizar_resposta(
-        '<div class="wpcf7-response-output wpcf7-mail-sent-ok">'
+        '<div class="wpcf7-response-output" aria-hidden="true">'
         'Obrigado! Sua mensagem foi enviada com sucesso.</div>')
     assert res.status is StatusCotacao.AGUARDANDO_RETORNO
     assert res.valor_frete is None   # não inventar preço

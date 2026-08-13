@@ -160,6 +160,13 @@ JS_CAIXA_DO_FORMULARIO = """() => {
                      && x.type !== 'hidden'
                      // banner de cookies não faz parte da cotação
                      && !x.closest('#onetrust-consent-sdk, [id*=onetrust i]'));
+
+    // A confirmação ("Agradecemos a sua mensagem...") fica ABAIXO do botão,
+    // fora da área dos campos. Sem incluí-la, o print do envio não mostra
+    // justamente a prova de que o envio deu certo.
+    partes.push(...[...document.querySelectorAll('.wpcf7-response-output')]
+        .filter(e => e.innerText.trim().length > 5));
+
     if (!partes.length) return null;
 
     let x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity;
@@ -270,7 +277,15 @@ class DellavolpeAdapter:
                 viewport={"width": 1280, "height": 2600}).new_page()
             page.set_default_timeout(self.timeout_ms)
             try:
-                page.goto(self.base_url, wait_until="networkidle")
+                # networkidle nunca chega nesta pagina: os rastreadores (analytics,
+                # chat, pixel) mantem conexao aberta e o goto estourava 45s sem
+                # que a pagina tivesse problema nenhum. Espera-se o formulario.
+                page.goto(self.base_url, wait_until="domcontentloaded")
+                # state=attached: os <form> deste site tem altura zero, entao o
+                # padrao (visible) nunca e satisfeito
+                page.wait_for_selector("form", state="attached",
+                                       timeout=self.timeout_ms)
+                page.wait_for_timeout(2000)
                 self._abrir_accordion(page)
 
                 if self._tem_captcha(page):
@@ -303,14 +318,15 @@ class DellavolpeAdapter:
                         evidencias=evid_preenchido,
                     )
 
-                page.get_by_role("button", name="Pedir orçamento").click()
-                page.wait_for_load_state("networkidle")
+                self._enviar(page)
 
                 res = self.normalizar_resposta(page.content())
                 res.enviado_em = datetime.now()
                 res.evidencias = [
                     *evid_preenchido,
-                    *print_seguro(page, run / "resposta.png"),
+                    # mesmo recorte do formulário: mostra a confirmação do
+                    # site, que é a prova de que a cotação entrou
+                    *self._print_formulario(page, run / "resposta.png"),
                 ]
                 return res
 
@@ -432,6 +448,36 @@ class DellavolpeAdapter:
                     loc.select_option(value=valor)
             else:
                 loc.fill(valor)
+
+    def _enviar(self, page) -> None:
+        """Clica em "Pedir orçamento" e ESPERA a confirmação aparecer.
+
+        O botão é `input.wpcf7-submit[value="Pedir orçamento"]` e existe uma
+        cópia em CADA formulário do site — os outros ficam ocultos no mesmo
+        DOM. `get_by_role(...).click()` pegava o primeiro da lista, que podia
+        ser um oculto: o clique "funcionava", o Playwright não reclamava, e
+        nada era enviado. Foi assim que 5 cotações saíram sem gerar e-mail.
+
+        Depois do clique, esperar `networkidle` também não bastava: o CF7
+        responde por AJAX e só então escreve o texto na div de resposta. Sem
+        esperar por ESSE texto, o HTML era lido antes da confirmação existir.
+        """
+        botao = page.locator(
+            'input.wpcf7-submit[type="submit"]:visible').first
+        if not botao.count():
+            botao = page.get_by_role("button", name="Pedir orçamento").first
+        botao.scroll_into_view_if_needed(timeout=10_000)
+        botao.click(timeout=15_000)
+
+        # a div de resposta existe desde o começo, vazia; o que muda é o texto
+        try:
+            page.wait_for_function(
+                """() => [...document.querySelectorAll('.wpcf7-response-output')]
+                       .some(e => e.innerText.trim().length > 5)""",
+                timeout=self.timeout_ms)
+        except Exception:
+            pass          # normalizar_resposta decide; aqui não se inventa nada
+        page.wait_for_timeout(1200)      # deixa o texto pintar antes do print
 
     def _print_formulario(self, page, destino: Path) -> list[str]:
         """Print do FORMULÁRIO, não do site inteiro.
