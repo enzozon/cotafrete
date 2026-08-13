@@ -26,7 +26,10 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
-from carriers.base import CampoSpec, ErroValidacao, Modo, ResultadoCotacao
+from carriers.base import (
+    CampoSpec, ErroValidacao, Modo, ResultadoCotacao, esperar_estabilidade,
+    print_seguro,
+)
 from carriers.jadlog import mapping as m
 from core.models import CotacaoRequest, StatusCotacao, limpa_doc
 
@@ -36,6 +39,11 @@ FRETE_A_PAGAR_SIM = "S"
 FRETE_A_PAGAR_NAO = "N"
 
 RE_VALOR = re.compile(r"R\$\s*([\d.]+,\d{2}|[\d,]+\.\d{2}|\d+[.,]\d{2})")
+
+# "CEP nao atendido" (sem acento, como o site escreve), "CEP não atendido",
+# "Localidade não atendida". Resposta comercial legítima — a Jadlog não roda
+# aquela rota nessa modalidade. Nunca vira R$.
+RE_SEM_COBERTURA = re.compile(r"n[ãa]o\s+atendid", re.IGNORECASE)
 
 
 def _num_br_para_decimal(txt: str) -> Decimal | None:
@@ -49,6 +57,14 @@ def _num_br_para_decimal(txt: str) -> Decimal | None:
         return Decimal(t)
     except Exception:
         return None
+
+
+def _linha_da_recusa(texto: str) -> str:
+    """A linha que explica a recusa, sem o disclaimer de rodapé junto."""
+    for linha in texto.splitlines():
+        if RE_SEM_COBERTURA.search(linha):
+            return linha.strip()
+    return texto.strip()[:120]
 
 
 class JadlogSimuladorAdapter:
@@ -94,19 +110,37 @@ class JadlogSimuladorAdapter:
         texto = str(raw or "")
         achado = RE_VALOR.search(texto)
         valor = _num_br_para_decimal(achado.group(1)) if achado else None
-        if valor is None:
+        if valor is not None:
             return ResultadoCotacao(
-                self.slug, StatusCotacao.ERRO, raw_response=texto[:500],
-                erro="Simulador não devolveu valor reconhecível.")
+                transportadora=self.slug,
+                status=StatusCotacao.COTADO,
+                valor_frete=valor,
+                prazo_dias=None,      # o simulador não informa prazo
+                raw_response=texto[:500],
+            )
+
+        # Sem valor: separar "a Jadlog disse não" de "algo quebrou". Os dois
+        # chegavam aqui como ERRO, e o operador ia caçar bug numa rota que a
+        # transportadora simplesmente não atende.
+        if RE_SEM_COBERTURA.search(texto):
+            return ResultadoCotacao(
+                transportadora=self.slug,
+                status=StatusCotacao.RECUSADO,
+                motivo_recusa=_linha_da_recusa(texto),
+                raw_response=texto[:500],
+            )
+
         return ResultadoCotacao(
-            transportadora=self.slug,
-            status=StatusCotacao.COTADO,
-            valor_frete=valor,
-            prazo_dias=None,          # o simulador não informa prazo
-            raw_response=texto[:500],
-        )
+            self.slug, StatusCotacao.ERRO, raw_response=texto[:500],
+            erro="Simulador não devolveu valor reconhecível.")
 
     # ------------------------------------------------------------- mecânica
+    @staticmethod
+    def _texto_painel(page) -> str:
+        """Texto do painel de resultado, '' se ainda não existe/está oculto."""
+        painel = page.locator("#panel_resultado")
+        return painel.inner_text().strip() if painel.count() else ""
+
     def _preencher_conferindo(self, page, form, campos: dict[str, str],
                               tentativas: int = 3) -> None:
         """Preenche e CONFERE, porque o JSF apaga campo em partial update.
@@ -172,39 +206,51 @@ class JadlogSimuladorAdapter:
                 page.wait_for_timeout(400)
 
                 self._preencher_conferindo(page, form, campos)
+                antes = self._texto_painel(page)
                 page.locator('input[value="Simular"]').first.click()
 
-                # O painel só ganha valor depois do POST JSF — e o JSF SUBSTITUI
-                # o elemento no partial update. Por isso a espera re-consulta o
-                # DOM a cada poll: um element_handle capturado antes do clique
-                # aponta para um nó desanexado, que nunca muda.
+                # Espera o painel MUDAR, não o "R$" aparecer. "CEP nao atendido"
+                # é resposta válida e nunca vira R$: esperar por valor gastava os
+                # 45s de timeout e devolvia TimeoutError, escondendo o motivo.
+                # O JSF SUBSTITUI o elemento no partial update, então a espera
+                # re-consulta o DOM a cada poll — um element_handle capturado
+                # antes do clique aponta para um nó desanexado, que nunca muda.
                 page.wait_for_function(
-                    "() => { const el = document.getElementById('panel_resultado');"
-                    " return el && /R\\$\\s*[\\d.,]+/.test(el.innerText); }",
-                    timeout=self.timeout_ms)
+                    "antes => { const el = document.getElementById('panel_resultado');"
+                    " if (!el) return false;"
+                    " const t = el.innerText.trim();"
+                    " return t.length > 0 && t !== antes; }",
+                    arg=antes, timeout=self.timeout_ms)
 
                 painel = page.locator("#panel_resultado")
+                painel.scroll_into_view_if_needed()
+
+                # O JSF acabou de trocar o painel e o PrimeFaces ainda anima a
+                # entrada dele. Fotografar aqui sai com o valor deslocado ou o
+                # painel em branco. Ler o texto também tem que ser DEPOIS: no
+                # meio da animação ele vem incompleto.
+                estavel = esperar_estabilidade(page, "#panel_resultado")
                 texto = painel.inner_text()
 
-                # o painel acabou de ser trocado pelo JSF: sem rolar até ele e
-                # dar um respiro, o print sai cinza, antes da pintura
-                painel.scroll_into_view_if_needed()
-                page.wait_for_timeout(700)
-                painel.screenshot(path=str(run / "jadlog_resultado.png"))
-                page.screenshot(path=str(run / "jadlog_tela.png"), full_page=True)
-
                 res = self.normalizar_resposta(texto)
+                if not estavel:
+                    res.erro = ("Painel não parou de mudar antes do print — "
+                                "confira a evidência antes de usar este valor.")
                 res.enviado_em = enviado
                 res.respondido_em = datetime.now()
-                res.evidencias = [str(run / "jadlog_resultado.png"),
-                                  str(run / "jadlog_tela.png")]
+                # Print da TELA INTEIRA, não recorte do painel. Recortar por
+                # coordenada saía cortado de forma intermitente (o "R$" do valor
+                # sumia): a página se mexe entre medir a caixa e capturar, e a
+                # deriva medida variou de 17 a 85px entre rodadas. A tela cheia
+                # não tem coordenada para errar, e ainda mostra o formulário
+                # preenchido junto — dá para conferir a rota que gerou o preço.
+                res.evidencias = print_seguro(page, run / "jadlog_tela.png")
                 return res
 
             except Exception as exc:
-                page.screenshot(path=str(run / "jadlog_erro.png"), full_page=True)
                 return ResultadoCotacao(
                     self.slug, StatusCotacao.ERRO, enviado_em=enviado,
                     erro=f"{type(exc).__name__}: {exc}",
-                    evidencias=[str(run / "jadlog_erro.png")])
+                    evidencias=print_seguro(page, run / "jadlog_erro.png"))
             finally:
                 browser.close()

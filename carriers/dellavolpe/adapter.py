@@ -17,7 +17,9 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
-from carriers.base import CampoSpec, ErroValidacao, Modo, ResultadoCotacao
+from carriers.base import (
+    CampoSpec, ErroValidacao, Modo, ResultadoCotacao, print_seguro,
+)
 from carriers.dellavolpe import mapping as m
 from carriers.dellavolpe.planilha import gerar_planilha_volumes
 from core.models import CotacaoRequest, StatusCotacao
@@ -185,10 +187,9 @@ class DellavolpeAdapter:
                 return res
 
             except Exception as exc:
-                page.screenshot(path=str(run / "erro.png"), full_page=True)
                 return ResultadoCotacao(
                     self.slug, StatusCotacao.ERRO, erro=f"{type(exc).__name__}: {exc}",
-                    evidencias=[str(run / "erro.png")],
+                    evidencias=print_seguro(page, run / "erro.png"),
                 )
             finally:
                 browser.close()

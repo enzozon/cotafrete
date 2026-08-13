@@ -68,6 +68,25 @@ def test_painel_sem_valor_vira_erro(adapter):
     assert "não devolveu valor" in res.erro
 
 
+@pytest.mark.parametrize("texto", [
+    "Resultado\nCEP nao atendido\nDica",
+    "Resultado\nCEP não atendido\nDica",
+    "Resultado\nCEP NAO ATENDIDO",
+    "Resultado\nLocalidade não atendida",
+])
+def test_cep_fora_de_cobertura_e_recusa_nao_erro(adapter, texto):
+    """Visto em produção 13/08/2026: Vitória/ES -> Cachoeiro/ES no Expresso.
+
+    'CEP não atendido' é a Jadlog dizendo que não roda aquela rota — é
+    RECUSADO, igual a um vendedor dizendo não. Tratar como ERRO faz o operador
+    caçar bug de código onde não tem bug, e some com o motivo real."""
+    res = adapter.normalizar_resposta(texto)
+    assert res.status is StatusCotacao.RECUSADO
+    assert res.valor_frete is None
+    assert res.erro is None
+    assert "atendid" in (res.motivo_recusa or "").lower()
+
+
 def test_simulador_nao_informa_prazo(adapter):
     """Regressão: o simulador só dá valor. Inventar prazo aqui seria mentira."""
     assert adapter.normalizar_resposta("R$ 99,90").prazo_dias is None

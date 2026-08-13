@@ -166,6 +166,10 @@ def _img(caminho: str | None) -> str:
 def _cartao(titulo: str, res: ResultadoCotacao, nota: str, print_idx: int) -> str:
     if res.status is StatusCotacao.COTADO and res.valor_frete is not None:
         corpo = f'<div class="valor">R$ {res.valor_frete}</div>'
+    elif res.motivo_recusa:
+        # recusa da transportadora, não falha nossa: sem vermelho de erro
+        corpo = (f'<p><b>Não atende esta rota:</b> {res.motivo_recusa}</p>'
+                 f'<p class="status">Tente outra modalidade.</p>')
     elif res.erro:
         corpo = f'<p class="erro"><b>Erro:</b> {res.erro}</p>'
     else:
