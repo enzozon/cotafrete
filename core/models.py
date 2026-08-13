@@ -120,6 +120,16 @@ class Solicitante(BaseModel):
     @property
     def whatsapp_formatado(self) -> str:
         n = limpa_doc(self.whatsapp)
+
+        # Tira o +55. Os campos de telefone dos sites têm máscara brasileira,
+        # de 10 ou 11 dígitos: mandar '+55 (27) 3063-1564' fez o formulário da
+        # Della Volpe exibir '(55) 2730-631' — o código do país virou DDD e o
+        # número escorregou inteiro. Medido em 13/08/2026.
+        # Só corta quando sobra um número brasileiro válido, para não estragar
+        # o DDD 55 (Santa Maria/RS), que tem 10 ou 11 dígitos no total.
+        if len(n) in (12, 13) and n.startswith("55"):
+            n = n[2:]
+
         if len(n) == 11:
             return f"({n[:2]}) {n[2:7]}-{n[7:]}"
         if len(n) == 10:

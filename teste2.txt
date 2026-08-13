@@ -1,0 +1,15 @@
+Nome Completo: Enzo Zon
+CNPJ Remetente: 60.042.686/0001-05
+CNPJ Destinatario: 05.954.058/0001-98
+CNPJ Pagador: 05.954.058/0001-98
+Peso Total (kg): 1
+Quantidade de Volumes: 1
+Comprimento (cm): 30
+Largura (cm): 30
+Altura (cm): 30
+Valor Total Nota Fiscal: 568.77
+Material: LUVA DE BOMBEIRO
+Tipo de Serviço: Fracionado -LTL
+email: vendas2@venturainformatica.com.br
+CEP ORIGEM: 09895-003
+CEP DESTINO: 29105-770 

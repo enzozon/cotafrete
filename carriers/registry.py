@@ -7,6 +7,7 @@ a Jadlog usa HTTP. Ele só chama `cotar()`. Falha de uma não derruba as outras.
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from decimal import Decimal
 
 from carriers.base import ResultadoCotacao
 from core.models import CotacaoRequest, StatusCotacao
@@ -49,9 +50,14 @@ def cotar_em_todas(
                     erro=f"{type(exc).__name__}: {exc}",
                 ))
 
+    # `r.valor_frete or inf` mandava frete ZERO para o fim da fila, porque
+    # Decimal(0) é falsy — escondia justamente a cotação mais barata. Só a
+    # ausência de preço (None) vai para o fim.
     ordem = {StatusCotacao.COTADO: 0, StatusCotacao.AGUARDANDO_RETORNO: 1}
-    resultados.sort(key=lambda r: (ordem.get(r.status, 9),
-                                   r.valor_frete or float("inf")))
+    resultados.sort(key=lambda r: (
+        ordem.get(r.status, 9),
+        Decimal("Infinity") if r.valor_frete is None else r.valor_frete,
+    ))
     return resultados
 
 

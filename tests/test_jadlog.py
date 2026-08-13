@@ -10,6 +10,7 @@ from decimal import Decimal
 
 import pytest
 
+from carriers.base import Severidade
 from carriers.jadlog import mapping as j
 from carriers.jadlog.adapter import JadlogAdapter, TokenAusente
 from core.models import (
@@ -87,6 +88,31 @@ def test_carga_pesada_demais_para_jadlog():
     assert any(e.campo == "peso" for e in erros)
 
 
+def test_modalidades_batem_com_o_select_da_jadlog():
+    """Códigos medidos no simulador público (simulacao.jad) em 12/08/2026.
+
+    Os presumidos erravam 3 de 7: 6 é Doc (não 'corporate'), 12 é Cargo (não
+    'standard'), 9 (.Com) faltava, e 14/'pickup' não existe — retirada em ponto
+    é tpentrega='R', não uma modalidade."""
+    assert j.MODALIDADES == {
+        "expresso": 0, "package": 3, "rodoviario": 4,
+        "economico": 5, "doc": 6, "com": 9, "cargo": 12,
+    }
+
+
+def test_limite_de_ponto_de_postagem_usa_tpentrega_nao_modalidade():
+    """O aviso de peso PUDO dependia de modalidade=='pickup', que não existe.
+    Quem define retirada em ponto é tpentrega."""
+    req = montar(volumes=[Volume(qtd=1, comprimento_cm=Decimal(30),
+                                 largura_cm=Decimal(30), altura_cm=Decimal(30),
+                                 peso_kg=Decimal(50))])
+    avisos = j.validar(req, tpentrega=j.TP_ENTREGA_REDE)
+    assert any(e.campo == "peso" and e.severidade is Severidade.AVISO
+               for e in avisos)
+    assert not any(e.campo == "peso" and e.severidade is Severidade.AVISO
+                   for e in j.validar(req, tpentrega=j.TP_ENTREGA_DOMICILIO))
+
+
 def test_modalidade_invalida():
     assert any(e.campo == "modalidade"
                for e in j.bloqueantes(j.validar(montar(), modalidade="foguete")))
@@ -100,6 +126,21 @@ def test_payload_usa_cnpj_do_pagador_como_tomador():
     assert p["cepdes"] == "01310100"
     assert p["vldeclarado"] == 1500.0
     assert p["tpentrega"] == "D"
+
+
+def test_peso_e_valor_vao_quantizados_para_a_api():
+    """FATOR_CUBAGEM fracionário (1000/6 = 166,666..., usado por parte do
+    mercado) gera Decimal de 28 dígitos. Sem quantização explícita o float()
+    manda para a API um número cuja última casa sai do binário, não da regra
+    comercial — e é sobre esse número que a franquia fatura."""
+    req = montar(volumes=[Volume(qtd=1, comprimento_cm=Decimal(33),
+                                 largura_cm=Decimal(33), altura_cm=Decimal(33),
+                                 peso_kg=Decimal(1))],
+                 nota_fiscal=NotaFiscal(valor_total=Decimal("1234.565")))
+    p = j.preparar_payload(req, fator=Decimal(1000) / Decimal(6))["frete"][0]
+
+    assert p["peso"] == 5.99      # 0,035937 m³ x 166,666... = 5,9895 -> 5,990
+    assert p["vldeclarado"] == 1234.57   # dinheiro: 2 casas, ROUND_HALF_UP
 
 
 def test_payload_omite_conta_e_contrato_quando_nao_informados():
@@ -125,6 +166,29 @@ def test_resposta_com_erro_vira_recusado():
 
 def test_resposta_vazia_vira_erro():
     assert j.normalizar_resposta({"frete": []}).status is StatusCotacao.ERRO
+
+
+def test_frete_zero_e_resposta_legitima_nao_erro():
+    """_num() trata 0 como ausente. Frete grátis (promoção, rota bonificada,
+    contrato com franquia de valor) vira 'Resposta sem valor de frete' e a
+    cotação some do comparativo — o cliente perde a opção mais barata."""
+    res = j.normalizar_resposta({"frete": [{"vltotal": 0, "vlfrete": 0, "prazo": 3}]})
+    assert res.status is StatusCotacao.COTADO
+    assert res.valor_frete == Decimal(0)
+    assert res.prazo_dias == 3
+
+
+def test_vltotal_zero_nao_cai_para_vlfrete():
+    """O encadeamento `_num(vltotal) or _num(vlfrete)` também erra: com vltotal
+    legítimo igual a 0, o `or` escorrega para vlfrete e reporta outro número."""
+    res = j.normalizar_resposta({"frete": [{"vltotal": 0, "vlfrete": 71.4}]})
+    assert res.valor_frete == Decimal(0)
+
+
+def test_prazo_zero_e_mesmo_dia_nao_ausente():
+    """prazo=0 é entrega no mesmo dia, não 'sem prazo'."""
+    res = j.normalizar_resposta({"frete": [{"vltotal": 50.0, "prazo": 0}]})
+    assert res.prazo_dias == 0
 
 
 def test_sem_token_levanta_erro_claro():

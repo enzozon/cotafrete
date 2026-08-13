@@ -84,6 +84,27 @@ def test_cubagem_soma_volumes_heterogeneos():
     assert r.tem_medidas_distintas is True
 
 
+@pytest.mark.parametrize("comp, larg, alt, cubado_na_proposta", [
+    (40, 30, 20, Decimal("7.20")),      # proposta 13320/26
+    (50, 40, 30, Decimal("18.00")),     # proposta 13322/26
+    (60, 40, 40, Decimal("28.80")),     # proposta 13324/26
+    (80, 60, 50, Decimal("72.00")),     # proposta 13326/26
+])
+def test_fator_300_confere_com_as_propostas_reais(comp, larg, alt,
+                                                  cubado_na_proposta):
+    """Fator CONFIRMADO em 13/08/2026, não mais presumido.
+
+    Quatro propostas da Della Volpe declararam o peso cubado que elas mesmas
+    calcularam, para cargas que nós enviamos. Dividindo pelo volume em m³ dá
+    300 nas quatro. Era a última suposição grande que restava no projeto.
+    """
+    req = montar(volumes=[Volume(qtd=1, comprimento_cm=Decimal(comp),
+                                 largura_cm=Decimal(larg),
+                                 altura_cm=Decimal(alt), peso_kg=Decimal(1))])
+
+    assert req.peso_cubado_kg(dv.FATOR_CUBAGEM) == cubado_na_proposta
+
+
 def test_peso_cubado_usa_fator_da_transportadora():
     r = montar()
     assert r.peso_cubado_kg(dv.FATOR_CUBAGEM) == Decimal("120.0")  # 0,4 x 300
@@ -105,6 +126,91 @@ def test_peso_sem_separador_de_milhar():
     assert dv.peso_br(Decimal("1500.5")) == "1500,5"
 
 
+def test_a_palavra_sucesso_sozinha_nao_prova_envio():
+    """Medido em 13/08/2026: a página da Della Volpe já contém "sucesso" no
+    HTML ANTES de qualquer submissão.
+
+    O detector antigo procurava obrigado/sucesso/enviad/recebemos no HTML
+    inteiro, então dava "aguardando_retorno" para qualquer página — inclusive
+    uma em que o envio falhou. Cinco cotações voltaram com esse status sem
+    que ninguém pudesse afirmar que saíram."""
+    html_sem_envio = """<html><body>
+        <div class="case-sucesso">Casos de sucesso</div>
+        <div class="wpcf7-response-output" aria-hidden="true"></div>
+    </body></html>"""
+
+    res = dv.normalizar_resposta(html_sem_envio)
+    assert res.status is StatusCotacao.ERRO
+    assert "não identificada" in res.erro
+
+
+def test_confirmacao_real_do_site_e_reconhecida():
+    """HTML exato do site, mandado pelo Enzo em 13/08/2026.
+
+    Repare no que NÃO tem: a classe wpcf7-mail-sent-ok. Este site mantém a div
+    como wpcf7-response-output aria-hidden="true" e só troca o TEXTO de dentro.
+    A correção anterior, que exigia a classe, teria recusado toda confirmação
+    verdadeira — trocar um falso positivo por um falso negativo."""
+    html = ('<div class="wpcf7-response-output" aria-hidden="true">Olá Enzo '
+            'Zon. Agradecemos a sua mensagem. Em breve retornaremos seu '
+            'contato.</div>')
+
+    res = dv.normalizar_resposta(html)
+    assert res.status is StatusCotacao.AGUARDANDO_RETORNO
+    assert res.valor_frete is None      # o preço só chega por e-mail
+    assert res.erro is None
+
+
+def test_bloqueio_antispam_tem_status_proprio():
+    """Resposta real do site em 13/08/2026, com o envio já funcionando.
+
+    O CF7 barrou a submissão como spam — nenhum e-mail foi gerado. Cair no
+    ERRO genérico esconderia a causa: o operador ficaria procurando bug no
+    preenchimento enquanto o problema é reputação do remetente."""
+    html = ('<div class="wpcf7-response-output" aria-hidden="true">'
+            'A submissão mencionou-se como spam. Clique em "Pedir orçamento" '
+            'novamente</div>')
+
+    res = dv.normalizar_resposta(html)
+    assert res.status is StatusCotacao.INTERVENCAO_NECESSARIA
+    assert "spam" in res.motivo_recusa.lower()
+    assert res.valor_frete is None
+
+
+def test_div_de_resposta_vazia_nao_e_envio():
+    """Antes do submit a div existe e está VAZIA. É esse o estado que voltou
+    nas cinco cotações que não geraram e-mail nenhum."""
+    html = '<div class="wpcf7-response-output" aria-hidden="true"></div>'
+    assert dv.normalizar_resposta(html).status is StatusCotacao.ERRO
+
+
+def test_secao_casos_de_sucesso_da_pagina_nao_conta():
+    """O texto que interessa é o de DENTRO da div de resposta, não o da
+    página. Foi a seção "Casos de sucesso" que enganou o detector antigo."""
+    html = ('<div class="case-sucesso">Casos de sucesso</div>'
+            '<div class="wpcf7-response-output" aria-hidden="true"></div>')
+    assert dv.normalizar_resposta(html).status is StatusCotacao.ERRO
+
+
+def test_erro_declarado_pelo_contact_form_7_nao_vira_sucesso():
+    html_falhou = ('<div class="wpcf7-response-output wpcf7-mail-sent-ng">'
+                   'Ocorreu um erro ao tentar enviar sua mensagem.</div>')
+    assert dv.normalizar_resposta(html_falhou).status is StatusCotacao.ERRO
+
+
+def test_medidas_usam_uma_casa_decimal_por_causa_da_mascara():
+    """Medido no site em produção: o campo de medida tem máscara que reserva
+    UMA casa decimal. Digitar '100' vira '10,0' — a carga seria cotada 10x
+    menor, em silêncio. O próprio placeholder declara o formato esperado:
+    'Comprimento (ex. 12,5m = 1.250,0cm)'.
+
+    peso_br() é formatador de PESO e não serve aqui: ele corta a casa decimal."""
+    assert dv.medida_br(Decimal(100)) == "100,0"
+    assert dv.medida_br(Decimal(40)) == "40,0"
+    assert dv.medida_br(Decimal(1250)) == "1.250,0"
+    assert dv.medida_br(Decimal("12.5")) == "12,5"
+
+
 # ----------------------------------------------------------------- payload
 def test_payload_mapeia_todos_os_campos_obrigatorios():
     campos = dv.campos_do_formulario(dv.preparar_payload(montar()))
@@ -123,9 +229,9 @@ def test_payload_valores_exatos():
     assert p["Selecione o estado de origem"] == "ES"
     assert p["Peso total"] == "20"
     assert p["Quantidade de Volumes"] == "2"
-    assert p["Comprimento"] == "100"
-    assert p["Largura"] == "50"
-    assert p["Altura"] == "40"
+    assert p["Comprimento"] == "100,0"    # máscara de 1 casa; ver medida_br()
+    assert p["Largura"] == "50,0"
+    assert p["Altura"] == "40,0"
     assert p["Valor total da nota fiscal"] == "25.000,00"
 
 
@@ -153,7 +259,7 @@ def test_medidas_distintas_usam_o_maior_volume():
                altura_cm=Decimal(40), peso_kg=Decimal(10)),
     ])
     p = dv.preparar_payload(r)
-    assert (p["Comprimento"], p["Largura"], p["Altura"]) == ("100", "50", "40")
+    assert (p["Comprimento"], p["Largura"], p["Altura"]) == ("100,0", "50,0", "40,0")
     assert p["Anexar Planilha"] == ["__PLANILHA_VOLUMES__"]
 
 
@@ -218,7 +324,15 @@ def test_medidas_distintas_e_aviso_nao_bloqueio():
 
 # ----------------------------------------------------------------- resposta
 def test_envio_confirmado_vira_aguardando_retorno_sem_preco():
-    res = dv.normalizar_resposta("Obrigado! Sua mensagem foi enviada com sucesso.")
+    """A frase de confirmação vem DENTRO do bloco do CF7 — e é o bloco que
+    prova o envio, não a frase.
+
+    Este teste aceitava a frase solta. Era o contrato antigo, e foi ele que
+    deixou passar o falso positivo: a página da Della Volpe tem uma seção
+    "Casos de sucesso", então qualquer HTML dela batia no critério."""
+    res = dv.normalizar_resposta(
+        '<div class="wpcf7-response-output" aria-hidden="true">'
+        'Obrigado! Sua mensagem foi enviada com sucesso.</div>')
     assert res.status is StatusCotacao.AGUARDANDO_RETORNO
     assert res.valor_frete is None   # não inventar preço
 

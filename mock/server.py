@@ -18,8 +18,12 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from fastapi import FastAPI, Form, Request, UploadFile
+from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse
+# UploadFile do starlette, NÃO do fastapi: o parser de formulário instancia a
+# classe do starlette, e a do fastapi é subclasse dela — isinstance contra a
+# subclasse dá False e o arquivo vaza para o dict de campos de texto.
+from starlette.datastructures import UploadFile
 
 app = FastAPI(title="Mock Della Volpe")
 
@@ -42,7 +46,14 @@ VEICULOS = ["Bug 20", "Bug 40", "Carreta LS (até 30.000 kg)",
             "Carreta Vanderleia (até 34.000 kg)"]
 
 
+# Campos marcados required= no HTML. Um <select> escondido por CSS continua
+# sendo submetido vazio pelo browser, então "vazio" só é erro se for obrigatório.
+OBRIGATORIOS: set[str] = set()
+
+
 def _sel(name: str, label: str, opcoes: list[str], req: bool = True) -> str:
+    if req:
+        OBRIGATORIOS.add(name)
     ops = "".join(f'<option value="{o}">{o}</option>' for o in opcoes)
     return (f'<label for="{name}">{label}{"*" if req else ""}</label>'
             f'<select id="{name}" name="{name}" {"required" if req else ""}>'
@@ -50,6 +61,8 @@ def _sel(name: str, label: str, opcoes: list[str], req: bool = True) -> str:
 
 
 def _txt(name: str, label: str, tipo: str = "text", req: bool = True) -> str:
+    if req:
+        OBRIGATORIOS.add(name)
     return (f'<label for="{name}">{label}{"*" if req else ""}</label>'
             f'<input id="{name}" name="{name}" type="{tipo}" '
             f'placeholder="{label}{"*" if req else ""}" {"required" if req else ""}>')
@@ -161,7 +174,7 @@ async def pedir_orcamento(request: Request) -> str:
     print("\n=== RECEBIDO PELO MOCK ===")
     print(json.dumps(ULTIMO_ENVIO, ensure_ascii=False, indent=2))
 
-    faltando = [k for k, v in recebido.items() if not str(v).strip()]
+    faltando = sorted(k for k in OBRIGATORIOS if not str(recebido.get(k, "")).strip())
     if faltando:
         return f"<h1>Erro</h1><p>Campos vazios: {', '.join(faltando)}</p>"
     return "<h1>Obrigado!</h1><p>Sua mensagem foi enviada com sucesso.</p>"
