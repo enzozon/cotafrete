@@ -254,6 +254,15 @@ class DellavolpeAdapter:
 
         if confirmar_envio and not self.is_mock:
             self._exigir_confirmacao_explicita()
+            # O reCAPTCHA v3 do site pontua Chromium headless como robo e o
+            # Contact Form 7 barra a submissao como spam — medido em
+            # 13/08/2026: cinco envios headless viraram "A submissao
+            # mencionou-se como spam" e NENHUM e-mail foi gerado. Com janela
+            # de verdade o mesmo envio passa. Nao e preferencia: headless
+            # simplesmente nao envia.
+            headless_efetivo = False
+        else:
+            headless_efetivo = self.headless
 
         payload = self.preparar_payload(req)
         campos = m.campos_do_formulario(payload)
@@ -267,7 +276,7 @@ class DellavolpeAdapter:
             campos.pop("Anexar Planilha", None)
 
         with sync_playwright() as p:
-            browser = p.chromium.launch(headless=self.headless)
+            browser = p.chromium.launch(headless=headless_efetivo)
             # Janela ALTA de proposito: o modal de cotacao rola por dentro,
             # e o que fica fora da area visivel dele nao entra em screenshot
             # nenhum. Com 2600px de altura o formulario inteiro cabe sem

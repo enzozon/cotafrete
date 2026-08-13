@@ -26,7 +26,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from carriers.dellavolpe.adapter import DellavolpeAdapter
-from carriers.jadlog.simulador import JadlogSimuladorAdapter
+from carriers.jadlog.painel import JadlogPainelAdapter
 from core import cep
 from core.ficha import ler_ficha, ler_modalidade
 from core.models import CotacaoRequest, NotaFiscal, StatusCotacao, Volume
@@ -99,6 +99,9 @@ def main() -> int:
     so_dv = "--so-dellavolpe" in sys.argv
     # cidade e UF saem do CEP: é o CEP que a transportadora usa para calcular
     req = ler_ficha(ficha, buscar_cep=cep.buscar)
+    # Lida para validar o que veio na ficha, mas a calculadora do painel NÃO
+    # tem seletor de modalidade: ela devolve todas (Express, Standard...) na
+    # tela de resultado. Vira filtro de leitura, não campo de preenchimento.
     modalidade = ler_modalidade(ficha)
 
     PASTA_JADLOG.mkdir(parents=True, exist_ok=True)
@@ -115,7 +118,7 @@ def main() -> int:
               "ser pulada.\n  Defina no terminal antes de rodar com --dellavolpe.")
         enviar_dv = False
 
-    casos = [("ficha original", req)]
+    casos = [] if "--sem-original" in sys.argv else [("ficha original", req)]
     casos += [(nome, variar(req, peso, medidas, valor))
               for nome, peso, medidas, valor in VARIACOES]
 
@@ -123,10 +126,22 @@ def main() -> int:
     if so_dv:
         print("\n--- Jadlog: PULADA (--so-dellavolpe) ---")
     else:
-        print(f"\n--- Jadlog ({len(casos)} cotacoes, modalidade {modalidade}) ---")
-        jadlog = JadlogSimuladorAdapter(workdir=str(PASTA_JADLOG),
-                                        modalidade=modalidade)
-        por_jadlog = [cotar(jadlog, r, nome) for nome, r in casos]
+        # UM cálculo por volume: a calculadora do painel cota um pacote de
+        # cada vez. Somar os N no fim dá o frete da carga inteira.
+        jadlog = JadlogPainelAdapter(workdir=str(PASTA_JADLOG))
+        volumes = req.quantidade_volumes
+        print(f"\n--- Jadlog painel ({len(casos)} cargas x {volumes} volume(s) "
+              f"= {len(casos) * volumes} calculos) ---")
+        for nome, r in casos:
+            do_lote = []
+            for i in range(r.quantidade_volumes):
+                do_lote.append(cotar(jadlog, r,
+                                     f"{nome} vol {i + 1}/{r.quantidade_volumes}"))
+            por_jadlog += do_lote
+            valores = [x.valor_frete for x in do_lote if x.valor_frete]
+            if len(do_lote) > 1 and valores:
+                print(f"  {'-> total da carga':<22} {'':>5}   "
+                      f"R$ {sum(valores)}")
 
     # Sem autorização a Della Volpe roda em DRY-RUN: preenche o formulário
     # inteiro, printa e para antes do submit. Prova que a ficha virou os campos
