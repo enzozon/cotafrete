@@ -237,7 +237,15 @@ def normalizar_resposta(raw: Any) -> ResultadoCotacao:
     """O POST da DV não devolve preço — devolve confirmação de envio.
     O valor chega depois, pelo ingestor de e-mail."""
     texto = (str(raw) or "").lower()
-    sucesso = any(t in texto for t in ("obrigado", "sucesso", "enviad", "recebemos"))
+
+    # Sinal do Contact Form 7, não palavra solta no HTML. Medido em produção
+    # 13/08/2026: a página já traz "sucesso" ANTES de qualquer submissão (tem
+    # uma seção "Casos de sucesso"), então procurar essas palavras dava
+    # "enviado" para toda página, inclusive as em que o envio falhou — cinco
+    # cotações reais voltaram com status que não provava nada.
+    # wpcf7-mail-sent-ok / -ng só entram no DOM depois da resposta do CF7.
+    falhou = "wpcf7-mail-sent-ng" in texto
+    sucesso = "wpcf7-mail-sent-ok" in texto and not falhou
     return ResultadoCotacao(
         transportadora=SLUG,
         status=StatusCotacao.AGUARDANDO_RETORNO if sucesso else StatusCotacao.ERRO,

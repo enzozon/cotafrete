@@ -105,6 +105,47 @@ def test_peso_sem_separador_de_milhar():
     assert dv.peso_br(Decimal("1500.5")) == "1500,5"
 
 
+def test_a_palavra_sucesso_sozinha_nao_prova_envio():
+    """Medido em 13/08/2026: a página da Della Volpe já contém "sucesso" no
+    HTML ANTES de qualquer submissão.
+
+    O detector antigo procurava obrigado/sucesso/enviad/recebemos no HTML
+    inteiro, então dava "aguardando_retorno" para qualquer página — inclusive
+    uma em que o envio falhou. Cinco cotações voltaram com esse status sem
+    que ninguém pudesse afirmar que saíram."""
+    html_sem_envio = """<html><body>
+        <div class="case-sucesso">Casos de sucesso</div>
+        <div class="wpcf7-response-output" aria-hidden="true"></div>
+    </body></html>"""
+
+    res = dv.normalizar_resposta(html_sem_envio)
+    assert res.status is StatusCotacao.ERRO
+    assert "não identificada" in res.erro
+
+
+def test_classe_do_contact_form_7_prova_envio():
+    """wpcf7-mail-sent-ok só entra no DOM depois que o CF7 confirma o envio."""
+    html_enviado = """<html><body>
+        <div class="wpcf7-response-output wpcf7-mail-sent-ok">
+            Obrigado pela sua mensagem. Ela foi enviada.</div>
+    </body></html>"""
+
+    res = dv.normalizar_resposta(html_enviado)
+    assert res.status is StatusCotacao.AGUARDANDO_RETORNO
+    assert res.valor_frete is None      # o preço só chega por e-mail
+    assert res.erro is None
+
+
+def test_erro_declarado_pelo_contact_form_7_nao_vira_sucesso():
+    """wpcf7-mail-sent-ng é o CF7 dizendo que o envio falhou."""
+    html_falhou = """<html><body>
+        <div class="wpcf7-response-output wpcf7-mail-sent-ng">
+            Ocorreu um erro ao tentar enviar sua mensagem.</div>
+    </body></html>"""
+
+    assert dv.normalizar_resposta(html_falhou).status is StatusCotacao.ERRO
+
+
 def test_medidas_usam_uma_casa_decimal_por_causa_da_mascara():
     """Medido no site em produção: o campo de medida tem máscara que reserva
     UMA casa decimal. Digitar '100' vira '10,0' — a carga seria cotada 10x
@@ -231,7 +272,15 @@ def test_medidas_distintas_e_aviso_nao_bloqueio():
 
 # ----------------------------------------------------------------- resposta
 def test_envio_confirmado_vira_aguardando_retorno_sem_preco():
-    res = dv.normalizar_resposta("Obrigado! Sua mensagem foi enviada com sucesso.")
+    """A frase de confirmação vem DENTRO do bloco do CF7 — e é o bloco que
+    prova o envio, não a frase.
+
+    Este teste aceitava a frase solta. Era o contrato antigo, e foi ele que
+    deixou passar o falso positivo: a página da Della Volpe tem uma seção
+    "Casos de sucesso", então qualquer HTML dela batia no critério."""
+    res = dv.normalizar_resposta(
+        '<div class="wpcf7-response-output wpcf7-mail-sent-ok">'
+        'Obrigado! Sua mensagem foi enviada com sucesso.</div>')
     assert res.status is StatusCotacao.AGUARDANDO_RETORNO
     assert res.valor_frete is None   # não inventar preço
 
