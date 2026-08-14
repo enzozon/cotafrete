@@ -35,7 +35,13 @@ CREATE TABLE IF NOT EXISTS cotacao (
     largura_cm      INTEGER NOT NULL,
     altura_cm       INTEGER NOT NULL,
     valor_nf        TEXT NOT NULL,
-    material        TEXT
+    material        TEXT,
+    cnpj_remetente     TEXT,
+    cnpj_destinatario  TEXT,
+    cnpj_pagador       TEXT,
+    nome_remetente     TEXT,
+    nome_destinatario  TEXT,
+    nome_pagador       TEXT
 );
 
 CREATE TABLE IF NOT EXISTS resultado (
@@ -58,6 +64,8 @@ CAMPOS_CARGA = (
     "cep_origem", "cep_destino", "cidade_origem", "uf_origem",
     "cidade_destino", "uf_destino", "peso_kg", "quantidade",
     "comprimento_cm", "largura_cm", "altura_cm", "valor_nf", "material",
+    "cnpj_remetente", "cnpj_destinatario", "cnpj_pagador",
+    "nome_remetente", "nome_destinatario", "nome_pagador",
 )
 
 

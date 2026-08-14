@@ -221,6 +221,54 @@ class CamiloAdapter:
                 problemas.append(f"{nome}: mandei {valor!r}, campo tem {obtido!r}")
         return problemas
 
+    @staticmethod
+    def _fechar_aviso(page) -> None:
+        """Fecha o "Operação realizada com sucesso".
+
+        O aviso cobre a coluna do meio da tabela de custos — Frete Valor,
+        Despacho, TDE, Pedágio ficam escondidos atrás dele. Sem fechar, o
+        print sai com um buraco justo na composição do preço."""
+        for seletor in ('a:has-text("OK")', 'text=/^\\s*\\d+\\.\\s*OK\\s*$/'):
+            try:
+                alvo = page.locator(seletor).first
+                if alvo.count() and alvo.is_visible(timeout=1_500):
+                    alvo.click()
+                    page.wait_for_timeout(900)
+                    return
+            except Exception:
+                continue
+
+    def _print_resultado(self, page, destino: Path) -> list[str]:
+        """Recorta a área útil: do topo até o valor do frete.
+
+        A tela tem 1000px de branco embaixo. O funcionário e o cliente
+        recebem esse print — sobra em branco só rouba a atenção do número."""
+        try:
+            caixa = page.evaluate("""() => {
+                const folhas = [...document.querySelectorAll('*')]
+                    .filter(e => e.children.length === 0);
+                const fim = folhas.reverse().find(
+                    e => /Valor do frete/i.test(e.textContent || ''));
+                if (!fim) return null;
+                const r = fim.getBoundingClientRect();
+                // largura: até o campo mais à direita da tabela de custos
+                let direita = 0;
+                for (const e of folhas) {
+                    const b = e.getBoundingClientRect();
+                    if (b.width && b.top < r.bottom + 40)
+                        direita = Math.max(direita, b.right);
+                }
+                return {x: 0, y: 0,
+                        width: Math.min(direita + 24, window.innerWidth),
+                        height: r.bottom + 24};
+            }""")
+            if caixa and caixa["height"] > 100:
+                page.screenshot(path=str(destino), clip=caixa, timeout=10_000)
+                return [str(destino)]
+        except Exception:
+            pass
+        return print_seguro(page, destino)
+
     def cotar(self, req: CotacaoRequest,
               *, confirmar_envio: bool = False) -> ResultadoCotacao:
         """confirmar_envio=False faz DRY-RUN: preenche tudo, printa e PARA
@@ -280,7 +328,8 @@ class CamiloAdapter:
 
                 page.locator('a[id="lnk_simula"]').first.click()
                 page.wait_for_timeout(6_000)
-                evidencias += print_seguro(page, run / "resultado.png")
+                self._fechar_aviso(page)
+                evidencias += self._print_resultado(page, run / "resultado.png")
 
                 lidos = {
                     n: page.locator(f'input[name="{n}"]').first.input_value()

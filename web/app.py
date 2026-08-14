@@ -26,9 +26,11 @@ fora da rede local sem virar autenticação de verdade.
 
 from __future__ import annotations
 
+import base64
 import html
 from concurrent.futures import ThreadPoolExecutor
 from decimal import Decimal, InvalidOperation
+from datetime import datetime
 from pathlib import Path
 from urllib.parse import quote
 
@@ -41,6 +43,7 @@ load_dotenv(override=False)
 from carriers.camilo.adapter import CamiloAdapter
 from carriers.jadlog.painel import JadlogPainelAdapter
 from core import cep as buscador_cep
+from core import cnpj as buscador_cnpj
 from core.banco import Banco
 from core.models import (
     CotacaoRequest, Local, Mercadoria, NotaFiscal, Parte, Servico,
@@ -117,10 +120,39 @@ th{text-align:left;font-size:11px;color:var(--fraco);text-transform:uppercase;
 letter-spacing:.5px;padding:6px 8px;border-bottom:1px solid var(--borda)}
 td{padding:8px;border-bottom:1px solid #f0f1f4}
 tr:hover td{background:#fafbfc}
+.aviso{background:#fffae6;border:1px solid #ffe380;border-radius:6px;
+padding:10px 12px;font-size:13px;margin-bottom:14px}
+.print{width:100%;margin-top:10px;border:1px solid var(--borda);
+border-radius:6px;cursor:zoom-in}
+.print.zoom{position:fixed;inset:16px;width:auto;height:auto;z-index:9;
+object-fit:contain;background:#fff;box-shadow:0 8px 40px rgba(0,0,0,.4);
+cursor:zoom-out}
+.botao2{display:inline-block;background:#fff;color:var(--marca);
+border:1px solid var(--marca);border-radius:6px;padding:9px 16px;
+font-size:14px;font-weight:600;text-decoration:none}
 .login{max-width:380px;margin:70px auto;text-align:center}
 .login img{height:64px;margin-bottom:18px}
 .menu a{margin-right:14px;font-size:13px;text-decoration:none}
 """
+
+
+def saudacao() -> str:
+    """Bom dia ate 11h59, boa tarde ate 17h59, boa noite depois."""
+    h = datetime.now().hour
+    return "Bom dia" if h < 12 else ("Boa tarde" if h < 18 else "Boa noite")
+
+
+def _img(caminho: str | None) -> str:
+    """Embute o print na pagina.
+
+    Base64 em vez de servir o arquivo: teste_real/ tem CNPJ e valor de nota
+    fiscal, e abrir a pasta como estatica exporia todas as cotacoes de todo
+    mundo. Provisorio — a ideia e passar a so guardar em pasta."""
+    if not caminho or not Path(caminho).exists():
+        return ""
+    dados = base64.b64encode(Path(caminho).read_bytes()).decode()
+    return (f'<img class="print" src="data:image/png;base64,{dados}" '
+            f'alt="comprovante da cotacao">')
 
 
 def e(v) -> str:
@@ -199,48 +231,76 @@ PADRAO = {
 }
 
 
-def campo(nome: str, rotulo: str) -> str:
+def campo(nome: str, rotulo: str, v: dict) -> str:
     return (f'<div><label for="{nome}">{rotulo}</label>'
-            f'<input id="{nome}" name="{nome}" value="{e(PADRAO[nome])}"'
+            f'<input id="{nome}" name="{nome}" value="{e(v.get(nome, ""))}"'
             f' required></div>')
 
 
+def _valores_de(c: dict) -> dict:
+    """Cotação salva -> campos do formulário, para repetir sem redigitar."""
+    return {**PADRAO,
+            "cep_origem": c["cep_origem"], "cep_destino": c["cep_destino"],
+            "cnpj_remetente": c.get("cnpj_remetente") or PADRAO["cnpj_remetente"],
+            "cnpj_destinatario": (c.get("cnpj_destinatario")
+                                  or PADRAO["cnpj_destinatario"]),
+            "cnpj_pagador": c.get("cnpj_pagador") or PADRAO["cnpj_pagador"],
+            "peso": str(c["peso_kg"]), "quantidade": str(c["quantidade"]),
+            "comprimento": str(c["comprimento_cm"]),
+            "largura": str(c["largura_cm"]), "altura": str(c["altura_cm"]),
+            "valor_nf": str(c["valor_nf"]).replace(".", ","),
+            "material": c["material"] or ""}
+
+
 @app.get("/", response_class=HTMLResponse)
-def formulario(usuario: str | None = Cookie(None, alias=COOKIE)):
+def formulario(usuario: str | None = Cookie(None, alias=COOKIE),
+               repetir: int | None = None):
     if not usuario:
         return RedirectResponse("/login", status_code=303)
+    v = dict(PADRAO)
+    aviso = ""
+    if repetir:
+        # Repetir cotação: o Enzo cota a mesma peça para clientes diferentes.
+        # Vir preenchido economiza mais tempo que qualquer outra coisa aqui.
+        anterior = banco.buscar_cotacao(repetir, usuario)
+        if anterior:
+            v = _valores_de(anterior)
+            aviso = (f'<div class="aviso">Campos preenchidos a partir da '
+                     f'cotação #{repetir}. Ajuste o que mudou e cote de novo.'
+                     f'</div>')
     return HTMLResponse(pagina("Nova cotação", f"""
+{aviso}
 <h1>Nova cotação</h1>
 <p class="sub">Preencha uma vez. Cotamos na Camilo e na Jadlog, e preparamos
 a mensagem para as três que atendem por WhatsApp.</p>
 <form method="post" action="/cotar" class="cartao">
   <fieldset><legend>Rota</legend><div class="grid">
-    {campo("cep_origem", "CEP de origem")}
-    {campo("cep_destino", "CEP de destino")}
+    {campo("cep_origem", "CEP de origem", v)}
+    {campo("cep_destino", "CEP de destino", v)}
   </div>
   <p class="sub" style="margin:8px 0 0">Cidade e estado saem do CEP — não
   precisa digitar.</p></fieldset>
 
   <fieldset><legend>Documentos</legend><div class="grid">
-    {campo("cnpj_remetente", "CNPJ do remetente")}
-    {campo("cnpj_destinatario", "CNPJ do destinatário")}
-    {campo("cnpj_pagador", "CNPJ de quem paga")}
+    {campo("cnpj_remetente", "CNPJ do remetente", v)}
+    {campo("cnpj_destinatario", "CNPJ do destinatário", v)}
+    {campo("cnpj_pagador", "CNPJ de quem paga", v)}
   </div></fieldset>
 
   <fieldset><legend>Carga</legend><div class="grid">
-    {campo("peso", "Peso de UM volume (kg)")}
-    {campo("quantidade", "Quantidade de volumes")}
-    {campo("comprimento", "Comprimento (cm)")}
-    {campo("largura", "Largura (cm)")}
-    {campo("altura", "Altura (cm)")}
-    {campo("valor_nf", "Valor da nota fiscal (R$)")}
-    {campo("material", "Material")}
+    {campo("peso", "Peso de UM volume (kg)", v)}
+    {campo("quantidade", "Quantidade de volumes", v)}
+    {campo("comprimento", "Comprimento (cm)", v)}
+    {campo("largura", "Largura (cm)", v)}
+    {campo("altura", "Altura (cm)", v)}
+    {campo("valor_nf", "Valor da nota fiscal (R$)", v)}
+    {campo("material", "Material", v)}
   </div></fieldset>
 
   <fieldset><legend>Contato</legend><div class="grid">
-    {campo("nome", "Nome")}
-    {campo("email", "E-mail")}
-    {campo("whatsapp", "WhatsApp")}
+    {campo("nome", "Nome", v)}
+    {campo("email", "E-mail", v)}
+    {campo("whatsapp", "WhatsApp", v)}
   </div></fieldset>
 
   <button type="submit">Cotar fretes</button>
@@ -319,6 +379,12 @@ def cotar(usuario: str | None = Cookie(None, alias=COOKIE),
         "largura_cm": int(v.largura_cm), "altura_cm": int(v.altura_cm),
         "valor_nf": req.nota_fiscal.valor_total,
         "material": req.mercadoria.tipo_material,
+        "cnpj_remetente": req.remetente.cnpj_formatado,
+        "cnpj_destinatario": req.destinatario.cnpj_formatado,
+        "cnpj_pagador": req.pagador_frete.cnpj_formatado,
+        "nome_remetente": buscador_cnpj.buscar(req.remetente.cnpj),
+        "nome_destinatario": buscador_cnpj.buscar(req.destinatario.cnpj),
+        "nome_pagador": buscador_cnpj.buscar(req.pagador_frete.cnpj),
     })
 
     # As duas em paralelo: ~25s no total, em vez de ~40s em série.
@@ -348,13 +414,29 @@ def cotar(usuario: str | None = Cookie(None, alias=COOKIE),
 
 
 # ------------------------------------------------------------- ver cotação
+def _quem(nome: str | None, cnpj: str | None) -> str:
+    """Nome da empresa quando a busca por CNPJ funcionou; senão só o CNPJ."""
+    return f"{nome}\nCNPJ: {cnpj}" if nome else f"CNPJ: {cnpj}"
+
+
 def mensagem_whatsapp(c: dict) -> str:
-    """Mesmo texto para as três — decisão do Enzo em 14/08/2026."""
+    """Mesmo texto para as três — decisão do Enzo em 14/08/2026.
+
+    Os CNPJs e a razão social entram porque a transportadora precisa saber
+    QUEM envia, QUEM recebe e QUEM paga para conseguir cotar. Sem isso a
+    pessoa do outro lado responde pedindo os dados, e a cotação atrasa um
+    dia inteiro."""
     return "\n".join([
-        "Boa tarde! Tudo bem?", "", "Pode orçar pra mim, por favor?", "",
-        f"ORIGEM: {c['cidade_origem']}/{c['uf_origem']} — CEP {c['cep_origem']}",
-        f"DESTINO: {c['cidade_destino']}/{c['uf_destino']} — CEP {c['cep_destino']}",
+        f"{saudacao()}! Tudo bem?", "", "Pode orçar pra mim, por favor?", "",
+        f"REMETENTE: {_quem(c.get('nome_remetente'), c.get('cnpj_remetente'))}",
+        f"CEP: {c['cep_origem']} — {c['cidade_origem']}/{c['uf_origem']}",
         "",
+        f"DESTINATARIO: "
+        f"{_quem(c.get('nome_destinatario'), c.get('cnpj_destinatario'))}",
+        f"CEP: {c['cep_destino']} — {c['cidade_destino']}/{c['uf_destino']}",
+        "",
+        f"PAGADOR DO FRETE: (X) "
+        f"{c.get('nome_pagador') or c.get('cnpj_pagador')}",
         f"TD DE VOLUMES: {c['quantidade']}",
         f"MEDIDAS: {c['comprimento_cm']} cm x {c['largura_cm']} cm x "
         f"{c['altura_cm']} cm",
@@ -391,6 +473,7 @@ def ver_cotacao(cotacao_id: int,
             if r["protocolo"]:
                 corpo += (f'<div class="nota">Cotação nº '
                           f'{e(r["protocolo"])}</div>')
+            corpo += _img(r["evidencia"])
         else:
             destaque, selo = "", ""
             # Sempre dizer POR QUE não veio preço. "Não retornou preço" sozinho
@@ -428,7 +511,15 @@ def ver_cotacao(cotacao_id: int,
   {zaps}
 </div>
 
-<p><a href="/">← nova cotação</a> &nbsp;·&nbsp; <a href="/historico">histórico</a></p>
+<p><a class="botao2" href="/?repetir={cotacao_id}">Repetir esta cotação</a>
+&nbsp;&nbsp; <a href="/">nova cotação</a> &nbsp;·&nbsp;
+<a href="/historico">histórico</a></p>
+<script>
+// clique amplia o print: na tela ele fica pequeno, e o funcionario precisa
+// conseguir ler a composicao do frete para explicar ao cliente
+document.querySelectorAll(".print").forEach(i =>
+  i.onclick = () => i.classList.toggle("zoom"));
+</script>
 """, usuario))
 
 
