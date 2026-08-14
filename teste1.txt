@@ -7,7 +7,7 @@ Quantidade de Volumes: 1
 Comprimento (cm): 30
 Largura (cm): 30
 Altura (cm): 30
-Valor Total Nota Fiscal: 568.77
+Valor Total Nota Fiscal: 568,77
 Material: LUVA DE BOMBEIRO
 Tipo de Serviço: Fracionado -LTL
 email: vendas2@venturainformatica.com.br

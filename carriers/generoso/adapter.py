@@ -166,6 +166,12 @@ class GenerosoAdapter:
             "comprimento": _inteiro(v.comprimento_cm),
             "peso": _duas_casas(v.peso_kg),      # unitário; o site soma
             "quantidade": str(v.qtd),
+            "embalagem": self.embalagem,
+            # O QUE é a carga. O formulário não tem seletor de tipo de
+            # mercadoria (o site manda 1 fixo), e sem isto o "LUVA DE
+            # BOMBEIRO" da ficha não chegava ao Generoso de jeito nenhum —
+            # o vendedor receberia uma cotação sem saber o que transportar.
+            "observacao": req.mercadoria.tipo_material,
         }
 
     # --------------------------------------------------------- mecânica
@@ -423,6 +429,8 @@ class GenerosoAdapter:
                     'input[name="cubageValues.0.length"]': c["comprimento"],
                     'input[name="totalMerchandiseValue"]': c["valor_nf"]})
                 self._escolher_embalagem(page, run)
+                self._digitar(page, 'input[name="observation"]',
+                              c["observacao"])
 
                 evidencias += print_seguro(page, run / "etapa5_carga.png")
                 self._avancar(page)
