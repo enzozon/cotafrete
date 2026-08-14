@@ -51,7 +51,7 @@ if defined OCUPADA (
     )
     taskkill /F /PID %OCUPADA% >nul 2>&1
     echo  Processo encerrado. Continuando...
-    %SystemRoot%\System32	imeout.exe /t 2 /nobreak >nul
+    timeout /t 2 /nobreak >nul
 )
 
 echo.
@@ -62,7 +62,9 @@ echo  Para desligar: feche esta janela.
 echo.
 
 REM Abre o navegador alguns segundos depois, para o servidor ja estar de pe.
-start "" /b cmd /c "timeout /t 4 /nobreak >nul & start http://localhost:8000"
+REM ping em vez de timeout: se houver Git Bash ou WSL no PATH, o timeout
+REM deles ganha do timeout.exe do Windows e o navegador nunca abre.
+start "" /b cmd /c "ping -n 5 127.0.0.1 >nul & start http://localhost:8000"
 
 REM O uvicorn roda em PRIMEIRO PLANO, preso a esta janela: fechar a janela
 REM mata o processo junto. Se rodasse em segundo plano, sobreviveria.
