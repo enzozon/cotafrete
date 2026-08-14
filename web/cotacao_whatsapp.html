@@ -1,0 +1,441 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Cotação por WhatsApp — Movvi e Translovato</title>
+<style>
+:root{
+  --tinta:#16181d; --fraco:#6b7280; --borda:#dfe1e6; --fundo:#f4f5f7;
+  --papel:#fff; --acao:#0052cc; --zap:#25d366; --aviso:#fffae6;
+}
+*{box-sizing:border-box}
+body{margin:0;padding:24px;background:var(--fundo);color:var(--tinta);
+  font-family:system-ui,-apple-system,"Segoe UI",sans-serif;line-height:1.45}
+.wrap{max-width:1080px;margin:auto;display:grid;gap:20px;
+  grid-template-columns:minmax(320px,1fr) minmax(320px,420px)}
+@media(max-width:880px){.wrap{grid-template-columns:1fr}}
+h1{font-size:21px;margin:0 0 2px}
+.sub{color:var(--fraco);font-size:13px;margin:0 0 18px}
+.topo{grid-column:1/-1}
+.cartao{background:var(--papel);border:1px solid var(--borda);border-radius:10px;
+  padding:18px}
+fieldset{border:1px solid #e6e8eb;border-radius:8px;margin:0 0 14px;padding:12px 14px}
+legend{font-size:11px;font-weight:700;color:var(--fraco);padding:0 6px;
+  text-transform:uppercase;letter-spacing:.6px}
+.grid{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
+label{display:block;font-size:11px;color:var(--fraco);margin-bottom:3px}
+input,select,textarea{width:100%;padding:7px 9px;border:1px solid var(--borda);
+  border-radius:6px;font-size:14px;font-family:inherit;background:#fff;color:inherit}
+textarea{min-height:340px;font-family:ui-monospace,"Cascadia Code",Consolas,monospace;
+  font-size:12.5px;line-height:1.5}
+.linha-volume{display:grid;gap:8px;align-items:end;margin-bottom:8px;
+  grid-template-columns:repeat(4,1fr) auto}
+button{font:inherit;cursor:pointer;border-radius:6px;border:1px solid var(--borda);
+  background:#fff;padding:7px 12px}
+button.principal{background:var(--acao);color:#fff;border:0;padding:12px 20px;
+  font-size:15px;font-weight:600;width:100%}
+button.principal:hover{background:#0043a6}
+.remover{border:0;background:none;color:#bf2600;font-size:18px;padding:0 6px}
+.aviso{background:var(--aviso);border:1px solid #ffe380;border-radius:6px;
+  padding:9px 11px;font-size:12.5px;margin-bottom:14px}
+.erro{background:#ffebe6;border:1px solid #ffbdad;border-radius:6px;
+  padding:9px 11px;font-size:12.5px;margin-bottom:12px;color:#bf2600}
+.transportadoras{display:grid;gap:12px;margin-top:14px}
+.zapcard{display:flex;align-items:center;gap:12px;border:1px solid var(--borda);
+  border-radius:10px;padding:12px;background:#fff;text-decoration:none;color:inherit}
+.zapcard:hover{border-color:var(--zap);box-shadow:0 1px 6px rgba(37,211,102,.25)}
+.zapcard img{width:52px;height:52px;object-fit:contain;border-radius:6px;
+  background:#fff;flex:none}
+.zapcard .nome{font-weight:700;font-size:14px}
+.zapcard .tel{font-size:12px;color:var(--fraco)}
+.zapcard .ir{margin-left:auto;background:var(--zap);color:#fff;border-radius:6px;
+  padding:8px 14px;font-size:13px;font-weight:600;white-space:nowrap}
+.rodape{grid-column:1/-1;color:var(--fraco);font-size:12px}
+.oculto{display:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<div class="topo">
+  <h1>Cotação por WhatsApp</h1>
+  <p class="sub">Movvi e Translovato não têm formulário de cotação — o pedido
+  vai por mensagem. Preencha uma vez e dispare para as duas.</p>
+</div>
+
+<!-- ------------------------------------------------------------ formulário -->
+<form class="cartao" id="form" autocomplete="off">
+  <fieldset>
+    <legend>Remetente — quem envia</legend>
+    <div class="grid">
+      <div><label for="rem_nome">Nome</label>
+        <input id="rem_nome" value="HERCULES EQUIPAMENTOS LTDA"></div>
+      <div><label for="rem_cnpj">CNPJ</label>
+        <input id="rem_cnpj" value="60.042.686/0001-05"></div>
+      <div><label for="rem_cep">CEP</label>
+        <input id="rem_cep" value="09895-003"></div>
+    </div>
+    <div style="margin-top:10px">
+      <label for="rem_end">Endereço (opcional)</label>
+      <input id="rem_end" value="SAO BERNARDO DO CAMPO/SP">
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Destinatário — quem recebe</legend>
+    <div class="grid">
+      <div><label for="dest_nome">Nome</label>
+        <input id="dest_nome" value="ALIANÇA"></div>
+      <div><label for="dest_cnpj">CNPJ</label>
+        <input id="dest_cnpj" value="05.954.058/0001-98"></div>
+      <div><label for="dest_cep">CEP</label>
+        <input id="dest_cep" value="29.105-770"></div>
+    </div>
+    <div style="margin-top:10px">
+      <label for="dest_end">Endereço (opcional)</label>
+      <input id="dest_end" value="R. Sete – Cocal, Vila Velha - ES">
+    </div>
+    <div style="margin-top:10px">
+      <label style="display:flex;gap:7px;align-items:center;font-size:13px;color:inherit">
+        <input type="checkbox" id="cep_diferente" style="width:auto">
+        A entrega é num endereço diferente do CNPJ
+      </label>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Frete</legend>
+    <div class="grid">
+      <div>
+        <label for="modalidade">Quem paga o frete</label>
+        <select id="modalidade">
+          <option value="FOB" selected>FOB — quem paga é o destinatário</option>
+          <option value="CIF">CIF — quem paga é o remetente</option>
+        </select>
+      </div>
+      <div><label for="valor_nf">Valor da nota fiscal (R$)</label>
+        <input id="valor_nf" value="568,77"></div>
+      <div><label for="peso">Peso total (kg)</label>
+        <input id="peso" value="0.5"></div>
+    </div>
+    <div style="margin-top:10px">
+      <label for="item">Item — o que é a carga</label>
+      <input id="item" value="Luvas para bombeiro">
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Volumes e medidas</legend>
+    <div id="volumes"></div>
+    <button type="button" id="add_volume">+ Adicionar outra medida</button>
+    <div style="margin-top:12px">
+      <label for="obs">Observação de embalagem (opcional)</label>
+      <input id="obs" placeholder="ex.: embalados um a um em caixas de papelão e filme strech">
+    </div>
+  </fieldset>
+
+  <button type="button" class="principal" id="cotar">Cotar fretes</button>
+</form>
+
+<!-- ------------------------------------------------------------- resultado -->
+<div class="cartao">
+  <div class="aviso">
+    A saudação muda sozinha com o horário. Você pode editar o texto abaixo
+    antes de enviar — o que estiver aqui é o que vai.
+  </div>
+  <div id="erros" class="erro oculto"></div>
+
+  <label for="mensagem">Mensagem</label>
+  <textarea id="mensagem" spellcheck="false"></textarea>
+
+  <div class="transportadoras oculto" id="transportadoras">
+    <a class="zapcard" id="link_movvi" target="_blank" rel="noopener">
+      <img src="data:image/jpeg;base64,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" alt="Movvi Logística">
+      <div>
+        <div class="nome">Movvi Logística</div>
+        <div class="tel">(31) 9491-0111</div>
+      </div>
+      <span class="ir">Enviar no WhatsApp</span>
+    </a>
+    <a class="zapcard" id="link_translovato" target="_blank" rel="noopener">
+      <img src="data:image/jpeg;base64,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" alt="Translovato">
+      <div>
+        <div class="nome">Translovato</div>
+        <div class="tel">(81) 8199-0635</div>
+      </div>
+      <span class="ir">Enviar no WhatsApp</span>
+    </a>
+  </div>
+</div>
+
+<p class="rodape">
+  O envio abre o WhatsApp com o texto pronto — a mensagem só sai quando você
+  apertar enviar lá. Nenhum sistema confirma a cotação automaticamente: quem
+  responde é a pessoa do outro lado.
+</p>
+
+</div>
+
+<script>
+"use strict";
+
+/* Telefones. Ficam aqui em cima porque é o que mais muda — número de
+   WhatsApp de transportadora troca mais que layout de site. */
+const TRANSPORTADORAS = {
+  movvi:       { nome: "Movvi Logística", telefone: "31 9491-0111" },
+  translovato: { nome: "Translovato",     telefone: "81 8199-0635" },
+};
+
+/* ------------------------------------------------------------- saudação */
+function saudacao(hora) {
+  // Antes do meio-dia bom dia; até as 18h boa tarde; depois boa noite.
+  if (hora < 12) return "Bom dia";
+  if (hora < 18) return "Boa tarde";
+  return "Boa noite";
+}
+
+/* --------------------------------------------------------------- pagador
+   FOB: a mercadoria é entregue "livre a bordo" e o COMPRADOR paga o frete.
+   CIF: o preço já inclui o frete, então quem paga é o VENDEDOR.
+   Errar isto manda a conta para a empresa errada. */
+function quemPaga(modalidade, remetente, destinatario) {
+  return modalidade === "CIF" ? remetente : destinatario;
+}
+
+/* --------------------------------------------------------------- medidas
+   Uma linha só vira "MEDIDAS: 30 cm x 30 cm x 30 cm".
+   Duas ou mais viram "MEDIDAS 1: ... (40 CXS)", numeradas, como nos pedidos
+   que o Enzo já manda à mão. */
+function linhasDeMedidas(volumes) {
+  const validos = volumes.filter(v => v.comp && v.larg && v.alt);
+  if (!validos.length) return [];
+  if (validos.length === 1) {
+    const v = validos[0];
+    return [`MEDIDAS: ${v.comp} cm x ${v.larg} cm x ${v.alt} cm`];
+  }
+  return validos.map((v, i) =>
+    `MEDIDAS ${i + 1}: ${v.comp} x ${v.larg} x ${v.alt} CM` +
+    (v.qtd ? ` (${v.qtd} CXS)` : ""));
+}
+
+function totalVolumes(volumes) {
+  return volumes.reduce((soma, v) => soma + (parseInt(v.qtd, 10) || 0), 0);
+}
+
+/* -------------------------------------------------------------- mensagem */
+function montarMensagem(d, hora) {
+  const pagador = quemPaga(d.modalidade, d.remNome, d.destNome);
+  const total = totalVolumes(d.volumes);
+  const varias = d.volumes.filter(v => v.comp && v.larg && v.alt).length > 1;
+
+  const linhas = [
+    `${saudacao(hora)}! Tudo bem?`,
+    "",
+    "Pode orçar pra mim, por favor?",
+    "",
+    `REMETENTE: ${d.remNome}`,
+    `CNPJ: ${d.remCnpj}`,
+    `CEP: ${d.remCep}`,
+  ];
+  if (d.remEnd) linhas.push(`ENDEREÇO: ${d.remEnd}`);
+
+  linhas.push("");
+  linhas.push(`DESTINATARIO: ${d.destNome}` +
+              (d.cepDiferente ? " (ENTREGA EM CEP DIFERENTE)" : ""));
+  linhas.push(`CNPJ: ${d.destCnpj}`);
+  linhas.push(`CEP: ${d.destCep}`);
+  if (d.destEnd) linhas.push(`ENDEREÇO: ${d.destEnd}`);
+
+  linhas.push("");
+  linhas.push(`PAGADOR DO FRETE: (X) ${pagador}`);
+
+  // Com uma medida só, o total de volumes vem antes; com várias, depois —
+  // é a ordem que faz a mensagem ler bem nos dois casos.
+  if (!varias) linhas.push(`TD DE VOLUMES: ${total}`);
+  linhas.push(...linhasDeMedidas(d.volumes));
+  if (varias) {
+    linhas.push(`TOTAL VOLUMES: ${total} volumes` +
+                (d.obs ? ` – ${d.obs}` : ""));
+  } else if (d.obs) {
+    linhas.push(d.obs);
+  }
+
+  linhas.push(`Peso: ${d.peso} kg`);
+  linhas.push(`Valor NF: R$ ${d.valorNf}`);
+  linhas.push(`ITEM: ${d.item}`);
+
+  return linhas.join("\n");
+}
+
+/* ------------------------------------------------------------ link do zap */
+function linkWhatsapp(telefone, mensagem) {
+  // wa.me quer só dígitos, com o código do país na frente e sem o +.
+  const digitos = String(telefone).replace(/\D/g, "");
+  const numero = digitos.startsWith("55") ? digitos : "55" + digitos;
+  return `https://wa.me/${numero}?text=${encodeURIComponent(mensagem)}`;
+}
+
+/* ------------------------------------------------------------- validação */
+function faltando(d) {
+  const obrigatorios = {
+    "Nome do remetente": d.remNome, "CNPJ do remetente": d.remCnpj,
+    "CEP do remetente": d.remCep, "Nome do destinatário": d.destNome,
+    "CNPJ do destinatário": d.destCnpj, "CEP do destinatário": d.destCep,
+    "Peso": d.peso, "Valor da NF": d.valorNf, "Item": d.item,
+  };
+  const vazios = Object.entries(obrigatorios)
+    .filter(([, v]) => !String(v || "").trim()).map(([k]) => k);
+  if (!linhasDeMedidas(d.volumes).length) vazios.push("Medidas");
+  if (!totalVolumes(d.volumes)) vazios.push("Quantidade de volumes");
+  return vazios;
+}
+
+/* ================================================================== tela */
+const $ = (id) => document.getElementById(id);
+
+function novaLinhaVolume(valores = {}) {
+  const div = document.createElement("div");
+  div.className = "linha-volume";
+  div.innerHTML = `
+    <div><label>Qtd.</label><input class="v-qtd" value="${valores.qtd || 1}"></div>
+    <div><label>Comp. (cm)</label><input class="v-comp" value="${valores.comp || ""}"></div>
+    <div><label>Larg. (cm)</label><input class="v-larg" value="${valores.larg || ""}"></div>
+    <div><label>Alt. (cm)</label><input class="v-alt" value="${valores.alt || ""}"></div>
+    <button type="button" class="remover" title="remover">&times;</button>`;
+  div.querySelector(".remover").onclick = () => {
+    if ($("volumes").children.length > 1) { div.remove(); atualizar(); }
+  };
+  div.querySelectorAll("input").forEach(i => i.oninput = atualizar);
+  return div;
+}
+
+function lerFormulario() {
+  return {
+    remNome: $("rem_nome").value.trim(), remCnpj: $("rem_cnpj").value.trim(),
+    remCep: $("rem_cep").value.trim(), remEnd: $("rem_end").value.trim(),
+    destNome: $("dest_nome").value.trim(), destCnpj: $("dest_cnpj").value.trim(),
+    destCep: $("dest_cep").value.trim(), destEnd: $("dest_end").value.trim(),
+    cepDiferente: $("cep_diferente").checked,
+    modalidade: $("modalidade").value,
+    peso: $("peso").value.trim(), valorNf: $("valor_nf").value.trim(),
+    item: $("item").value.trim(), obs: $("obs").value.trim(),
+    volumes: [...document.querySelectorAll(".linha-volume")].map(l => ({
+      qtd: l.querySelector(".v-qtd").value.trim(),
+      comp: l.querySelector(".v-comp").value.trim(),
+      larg: l.querySelector(".v-larg").value.trim(),
+      alt: l.querySelector(".v-alt").value.trim(),
+    })),
+  };
+}
+
+function atualizar() {
+  const d = lerFormulario();
+  $("mensagem").value = montarMensagem(d, new Date().getHours());
+
+  const vazios = faltando(d);
+  const caixa = $("erros");
+  if (vazios.length) {
+    caixa.textContent = "Falta preencher: " + vazios.join(", ");
+    caixa.classList.remove("oculto");
+  } else {
+    caixa.classList.add("oculto");
+  }
+  atualizarLinks();
+}
+
+function atualizarLinks() {
+  const texto = $("mensagem").value;
+  $("link_movvi").href = linkWhatsapp(TRANSPORTADORAS.movvi.telefone, texto);
+  $("link_translovato").href =
+    linkWhatsapp(TRANSPORTADORAS.translovato.telefone, texto);
+}
+
+/* ------------------------------------------------------------- autoteste
+   Roda no carregamento e escreve no console. É a checagem mínima das duas
+   regras que dariam prejuízo silencioso: a saudação pelo horário e o
+   pagador por FOB/CIF. */
+function autoteste() {
+  const casos = [];
+  const ok = (nome, cond) => casos.push([nome, !!cond]);
+
+  ok("00h vira bom dia", saudacao(0) === "Bom dia");
+  ok("11h ainda é bom dia", saudacao(11) === "Bom dia");
+  ok("12h vira boa tarde", saudacao(12) === "Boa tarde");
+  ok("17h ainda é boa tarde", saudacao(17) === "Boa tarde");
+  ok("18h vira boa noite", saudacao(18) === "Boa noite");
+  ok("23h é boa noite", saudacao(23) === "Boa noite");
+
+  ok("FOB: paga o destinatário", quemPaga("FOB", "REM", "DEST") === "DEST");
+  ok("CIF: paga o remetente", quemPaga("CIF", "REM", "DEST") === "REM");
+
+  const umVolume = {
+    remNome: "HERCULES", remCnpj: "60.042.686/0001-05", remCep: "09895-003",
+    remEnd: "", destNome: "ALIANÇA", destCnpj: "05.954.058/0001-98",
+    destCep: "29.105-770", destEnd: "", cepDiferente: false,
+    modalidade: "FOB", peso: "0.5", valorNf: "568,77",
+    item: "Luvas para bombeiro", obs: "",
+    volumes: [{ qtd: "1", comp: "30", larg: "30", alt: "30" }],
+  };
+  const m1 = montarMensagem(umVolume, 14);
+  ok("saudação entra na mensagem", m1.startsWith("Boa tarde! Tudo bem?"));
+  ok("uma medida usa MEDIDAS:", m1.includes("MEDIDAS: 30 cm x 30 cm x 30 cm"));
+  ok("uma medida usa TD DE VOLUMES", m1.includes("TD DE VOLUMES: 1"));
+  ok("FOB aponta o destinatário", m1.includes("PAGADOR DO FRETE: (X) ALIANÇA"));
+  ok("sem endereço não sobra linha vazia", !m1.includes("ENDEREÇO: \n"));
+
+  const varios = Object.assign({}, umVolume, {
+    volumes: [{ qtd: "40", comp: "104", larg: "44", alt: "19" },
+              { qtd: "40", comp: "210", larg: "10", alt: "10" }],
+    obs: "embalados um a um em caixas de papelão e filme strech",
+  });
+  const m2 = montarMensagem(varios, 9);
+  ok("duas medidas numeram", m2.includes("MEDIDAS 1: 104 x 44 x 19 CM (40 CXS)"));
+  ok("segunda medida numerada", m2.includes("MEDIDAS 2: 210 x 10 x 10 CM (40 CXS)"));
+  ok("soma os volumes", m2.includes("TOTAL VOLUMES: 80 volumes"));
+  ok("observação entra junto do total", m2.includes("filme strech"));
+  ok("manhã vira bom dia", m2.startsWith("Bom dia!"));
+
+  const cif = montarMensagem(Object.assign({}, umVolume, { modalidade: "CIF" }), 14);
+  ok("CIF aponta o remetente", cif.includes("PAGADOR DO FRETE: (X) HERCULES"));
+
+  const link = linkWhatsapp("31 9491-0111", "oi tudo bem?");
+  ok("link leva o país e só dígitos",
+     link.startsWith("https://wa.me/553194910111?text="));
+  ok("texto vai codificado", link.includes("oi%20tudo%20bem%3F"));
+
+  const falhas = casos.filter(([, passou]) => !passou);
+  if (falhas.length) {
+    console.error("AUTOTESTE FALHOU:", falhas.map(([n]) => n));
+  } else {
+    console.log(`autoteste: ${casos.length}/${casos.length} ok`);
+  }
+  return { total: casos.length, falhas: falhas.map(([n]) => n) };
+}
+window.autoteste = autoteste;
+window.montarMensagem = montarMensagem;
+window.linkWhatsapp = linkWhatsapp;
+
+/* --------------------------------------------------------------- arranque */
+$("volumes").appendChild(novaLinhaVolume({ qtd: 1, comp: 30, larg: 30, alt: 30 }));
+$("add_volume").onclick = () => {
+  $("volumes").appendChild(novaLinhaVolume());
+  atualizar();
+};
+document.querySelectorAll("#form input, #form select").forEach(
+  el => { el.oninput = atualizar; el.onchange = atualizar; });
+$("mensagem").oninput = atualizarLinks;
+
+$("cotar").onclick = () => {
+  atualizar();
+  const vazios = faltando(lerFormulario());
+  if (vazios.length) { $("erros").scrollIntoView({ behavior: "smooth" }); return; }
+  $("transportadoras").classList.remove("oculto");
+  $("transportadoras").scrollIntoView({ behavior: "smooth", block: "center" });
+};
+
+atualizar();
+autoteste();
+</script>
+</body>
+</html>
