@@ -25,6 +25,35 @@ if not exist ".venv\Scripts\python.exe" (
     exit /b 1
 )
 
+REM ---------------------------------------------------------------------
+REM  Porta ocupada e o erro mais provavel no dia a dia: uma janela anterior
+REM  foi fechada de um jeito que deixou o python vivo, ou o servidor ja esta
+REM  aberto em outra janela. Sem esta checagem o uvicorn morre com
+REM  "[Errno 10048] ... apenas uma utilizacao de cada endereco de soquete",
+REM  que nao diz a ninguem o que fazer.
+REM ---------------------------------------------------------------------
+set OCUPADA=
+for /f "tokens=5" %%p in ('netstat -ano ^| findstr /r /c:"TCP.*:8000 .*LISTENING"') do set OCUPADA=%%p
+
+if defined OCUPADA (
+    echo.
+    echo  A porta 8000 ja esta em uso pelo processo %OCUPADA%.
+    echo  Provavelmente o Cotafrete ja esta aberto em outra janela.
+    echo.
+    choice /c SN /n /m "  Encerrar o processo %OCUPADA% e continuar? (S/N): "
+    if errorlevel 2 (
+        echo.
+        echo  Cancelado. Se o sistema ja estiver aberto, use aquela janela:
+        echo      http://localhost:8000
+        echo.
+        pause
+        exit /b 0
+    )
+    taskkill /F /PID %OCUPADA% >nul 2>&1
+    echo  Processo encerrado. Continuando...
+    %SystemRoot%\System32	imeout.exe /t 2 /nobreak >nul
+)
+
 echo.
 echo  Iniciando o Cotafrete...
 echo  Endereco: http://localhost:8000
