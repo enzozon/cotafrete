@@ -1,4 +1,4 @@
-"""Camada pura da Translovato (SSW).
+"""Camada pura da Camilo dos Santos (SSW).
 
 O erro caro deste site é a unidade: a cubagem é em METROS. Uma caixa de 30 cm
 vai como 0,300. Mandar 30 cotaria uma caixa de 30 metros — e ao contrário das
@@ -12,8 +12,8 @@ from decimal import Decimal
 
 import pytest
 
-from carriers.translovato.adapter import (
-    FRETE_CIF, FRETE_FOB, TranslovatoAdapter, ler_resultado,
+from carriers.camilo.adapter import (
+    FRETE_CIF, FRETE_FOB, CamiloAdapter, ler_resultado,
 )
 from core.models import StatusCotacao, Volume
 from tests.test_jadlog import montar
@@ -21,7 +21,7 @@ from tests.test_jadlog import montar
 
 @pytest.fixture
 def adapter():
-    return TranslovatoAdapter()
+    return CamiloAdapter()
 
 
 # ------------------------------------------------------- metros, não cm
@@ -85,7 +85,7 @@ def test_cep_so_digitos_e_cnpj_sem_mascara(adapter):
 def test_frete_fob_e_o_padrao(adapter):
     """FOB = 2 no SSW. Trocar por CIF muda quem paga e o valor."""
     assert adapter.preparar_payload(montar())["tp_frete"] == FRETE_FOB
-    assert TranslovatoAdapter(tipo_frete=FRETE_CIF)\
+    assert CamiloAdapter(tipo_frete=FRETE_CIF)\
         .preparar_payload(montar())["tp_frete"] == FRETE_CIF
 
 

@@ -159,7 +159,7 @@ button.principal:hover{background:#0043a6}
   </div>
   <div id="erros" class="erro oculto"></div>
 
-  <div class="abas" id="abas"></div>
+  <label for="mensagem">Mensagem</label>
   <textarea id="mensagem" spellcheck="false"
             aria-label="Mensagem que será enviada"></textarea>
 
@@ -205,16 +205,13 @@ button.principal:hover{background:#0043a6}
 /* Telefones e formato de cada uma. Ficam aqui em cima porque é o que mais
    muda — número de WhatsApp de transportadora troca mais que layout de site.
 
-   `formato` aponta para o modelo de mensagem: cada transportadora aceita o
-   pedido do jeito que já está acostumada a ler. Forçar todas no mesmo texto
-   economizaria código e custaria clareza justo na ponta que importa. */
+   Uma mensagem só para todas: os modelos eram quase iguais e manter dois
+   dobrava o que revisar antes de enviar, sem ganho para quem lê do outro
+   lado. Decisão do Enzo em 14/08/2026. */
 const TRANSPORTADORAS = {
-  movvi:       { nome: "Movvi Logística", telefone: "31 9491-0111",
-                 formato: "padrao" },
-  translovato: { nome: "Translovato",     telefone: "81 8199-0635",
-                 formato: "padrao" },
-  continental: { nome: "Continental",     telefone: "27 98892-8840",
-                 formato: "continental" },
+  movvi:       { nome: "Movvi Logística", telefone: "31 9491-0111" },
+  translovato: { nome: "Translovato",     telefone: "81 8199-0635" },
+  continental: { nome: "Continental",     telefone: "27 98892-8840" },
 };
 
 /* ------------------------------------------------------------- saudação */
@@ -303,43 +300,6 @@ function montarMensagem(d, hora) {
   return linhas.join("\n");
 }
 
-/* ------------------------------------------------ mensagem da Continental
-   Outro modelo, não outro conteúdo: "Entrega:" no lugar de "DESTINATARIO:",
-   "(pagante)" grudado em quem paga em vez da linha "PAGADOR DO FRETE", e
-   "Dimensões"/"PESO TOTAL" no lugar de "MEDIDAS"/"Peso". É como a Continental
-   já recebe os pedidos. */
-function montarMensagemContinental(d, hora) {
-  const pagaDestino = d.modalidade !== "CIF";
-  const marca = " (pagante)";
-
-  const linhas = [
-    `${saudacao(hora)}!! pode cotar pra mim, por gentileza?`,
-    "",
-    `Remetente: ${d.remNome}${pagaDestino ? "" : marca}`,
-    `CNPJ: ${d.remCnpj}`,
-    `CEP: ${d.remCep}`,
-    "",
-    `Entrega: ${d.destNome}${pagaDestino ? marca : ""}` +
-      (d.cepDiferente ? " (ENTREGA EM CEP DIFERENTE)" : ""),
-    `CNPJ: ${d.destCnpj}`,
-    `CEP: ${d.destCep}`,
-    "",
-    "",
-    `TD DE VOLUMES: ${totalVolumes(d.volumes)}`,
-    ...linhasDeMedidas(d.volumes, d.unidade, "Dimensões"),
-    `PESO TOTAL: ${d.peso} kg`,
-    `VALOR NF: R$ ${d.valorNf}`,
-    `ITEM: ${d.item}`,
-  ];
-  if (d.obs) linhas.push(d.obs);
-  return linhas.join("\n");
-}
-
-const FORMATOS = {
-  padrao: { titulo: "Movvi e Translovato", montar: montarMensagem },
-  continental: { titulo: "Continental", montar: montarMensagemContinental },
-};
-
 /* ------------------------------------------------------------ link do zap */
 function linkWhatsapp(telefone, mensagem) {
   // wa.me quer só dígitos, com o código do país na frente e sem o +.
@@ -402,34 +362,9 @@ function lerFormulario() {
   };
 }
 
-/* Um texto por FORMATO, não por transportadora: Movvi e Translovato dividem
-   o mesmo. Editar na aba da Continental não mexe no texto das outras duas. */
-const textos = { padrao: "", continental: "" };
-let abaAtiva = "padrao";
-
-function montarAbas() {
-  $("abas").innerHTML = "";
-  for (const [chave, f] of Object.entries(FORMATOS)) {
-    const b = document.createElement("button");
-    b.type = "button";
-    b.className = "aba" + (chave === abaAtiva ? " ativa" : "");
-    b.textContent = f.titulo;
-    b.onclick = () => { abaAtiva = chave; montarAbas(); mostrarAba(); };
-    $("abas").appendChild(b);
-  }
-}
-
-function mostrarAba() {
-  $("mensagem").value = textos[abaAtiva];
-}
-
 function atualizar() {
   const d = lerFormulario();
-  const hora = new Date().getHours();
-  for (const [chave, f] of Object.entries(FORMATOS)) {
-    textos[chave] = f.montar(d, hora);
-  }
-  mostrarAba();
+  $("mensagem").value = montarMensagem(d, new Date().getHours());
 
   const vazios = faltando(d);
   const caixa = $("erros");
@@ -443,11 +378,11 @@ function atualizar() {
 }
 
 function atualizarLinks() {
-  // cada cartão leva o texto do SEU formato, não o que está na tela — senão
-  // abrir a aba da Continental mandaria o modelo dela para a Movvi
+  // todas levam o MESMO texto: o que está na caixa é o que vai
+  const texto = $("mensagem").value;
   for (const [slug, t] of Object.entries(TRANSPORTADORAS)) {
     const a = $("link_" + slug);
-    if (a) a.href = linkWhatsapp(t.telefone, textos[t.formato]);
+    if (a) a.href = linkWhatsapp(t.telefone, texto);
   }
 }
 
@@ -499,32 +434,15 @@ function autoteste() {
   const cif = montarMensagem(Object.assign({}, umVolume, { modalidade: "CIF" }), 14);
   ok("CIF aponta o remetente", cif.includes("PAGADOR DO FRETE: (X) HERCULES"));
 
-  /* ---- Continental: outro modelo, mesmo conteúdo ---- */
-  const c1 = montarMensagemContinental(umVolume, 14);
-  ok("continental abre com dois pontos de exclamação",
-     c1.startsWith("Boa tarde!! pode cotar pra mim, por gentileza?"));
-  ok("continental usa Remetente:", c1.includes("Remetente: HERCULES"));
-  ok("continental usa Entrega:", c1.includes("Entrega: ALIANÇA (pagante)"));
-  ok("continental usa Dimensões compactas",
-     c1.includes("Dimensões: 30 × 30 × 30 cm"));
-  ok("continental usa PESO TOTAL", c1.includes("PESO TOTAL: 0.5 kg"));
-  ok("continental não usa PAGADOR DO FRETE", !c1.includes("PAGADOR DO FRETE"));
-
-  const c2 = montarMensagemContinental(
-    Object.assign({}, umVolume, { modalidade: "CIF" }), 9);
-  ok("CIF marca o remetente como pagante",
-     c2.includes("Remetente: HERCULES (pagante)"));
-  ok("CIF não marca a entrega", !c2.includes("Entrega: ALIANÇA (pagante)"));
-
-  const mm = montarMensagemContinental(
-    Object.assign({}, umVolume, { unidade: "mm",
-      volumes: [{ qtd: "2", comp: "80", larg: "25", alt: "38" }] }), 14);
-  ok("unidade em milímetros aparece",
-     mm.includes("Dimensões: 80 × 25 × 38 mm"));
+  /* ---- unidade ---- */
+  const mm = montarMensagem(Object.assign({}, umVolume, { unidade: "mm",
+    volumes: [{ qtd: "2", comp: "80", larg: "25", alt: "38" }] }), 14);
+  ok("milímetros aparecem na medida",
+     mm.includes("MEDIDAS: 80 mm x 25 mm x 38 mm"));
   ok("total de volumes soma a quantidade", mm.includes("TD DE VOLUMES: 2"));
 
-  ok("cada transportadora aponta para um formato existente",
-     Object.values(TRANSPORTADORAS).every(t => t.formato in FORMATOS));
+  ok("as três transportadoras usam o mesmo texto",
+     Object.keys(TRANSPORTADORAS).length === 3);
 
   const link = linkWhatsapp("31 9491-0111", "oi tudo bem?");
   ok("link leva o país e só dígitos",
@@ -551,11 +469,7 @@ $("add_volume").onclick = () => {
 };
 document.querySelectorAll("#form input, #form select").forEach(
   el => { el.oninput = atualizar; el.onchange = atualizar; });
-$("mensagem").oninput = () => {
-  textos[abaAtiva] = $("mensagem").value;   // a edição fica na aba certa
-  atualizarLinks();
-};
-montarAbas();
+$("mensagem").oninput = atualizarLinks;
 
 $("cotar").onclick = () => {
   atualizar();

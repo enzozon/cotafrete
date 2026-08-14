@@ -1,9 +1,9 @@
-"""Translovato — cotação pelo SSW, com login.
+"""Camilo dos Santos — cotação pelo SSW, com login.
 
     https://sistema.ssw.inf.br/bin/ssw0422   login
     https://sistema.ssw.inf.br/bin/ssw1608   110 - Cotação de Fretes pelo Cliente
 
-O SSW é plataforma compartilhada; o domínio da Translovato é RCS. Credenciais
+O SSW é plataforma compartilhada; o domínio da Camilo dos Santos é RCS. Credenciais
 no .env (SSW_DOMINIO / SSW_CPF / SSW_USUARIO / SSW_SENHA), nunca impressas.
 
 Esta é a única das quatro que devolve o preço NA HORA com a composição inteira
@@ -69,16 +69,16 @@ def ler_resultado(campos: dict[str, str]) -> tuple[Decimal | None, str]:
             (campos.get("nro_cotacao") or "").strip())
 
 
-class TranslovatoAdapter:
-    slug = "translovato"
-    nome = "Translovato (SSW)"
+class CamiloAdapter:
+    slug = "camilo"
+    nome = "Camilo dos Santos (SSW)"
     modo: Modo = Modo.SINCRONO          # devolve preço na hora
     ativo = True
     fator_cubagem: Decimal = Decimal(300)   # ⚠ presumido; o site calcula sozinho
     sla_esperado_min: int | None = None
 
     def __init__(self, headless: bool = True, timeout_ms: int = 45_000,
-                 workdir: str = "teste_real/translovato",
+                 workdir: str = "teste_real/camilo",
                  tipo_frete: str = FRETE_FOB) -> None:
         self.headless = headless
         self.timeout_ms = timeout_ms
