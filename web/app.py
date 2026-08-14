@@ -35,7 +35,7 @@ from pathlib import Path
 from urllib.parse import quote
 
 from dotenv import load_dotenv
-from fastapi import Cookie, FastAPI, Form
+from fastapi import Cookie, FastAPI, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 load_dotenv(override=False)
@@ -53,6 +53,12 @@ from core.models import (
 app = FastAPI(title="Cotafrete — Ventura")
 banco = Banco()
 
+# Sobrevive à requisição de propósito: o /cotar dispara as transportadoras e
+# devolve a tela na hora; cada uma grava o próprio resultado quando termina.
+# Sem isso o usuário encara 2 minutos de tela branca para ver a Jadlog, que
+# responde em 15 segundos.
+EXECUTOR = ThreadPoolExecutor(max_workers=4, thread_name_prefix="cotacao")
+
 COOKIE = "cotafrete_usuario"
 LOGO = (Path(__file__).parent / "logo_b64.txt").read_text(encoding="utf-8").strip()
 
@@ -63,6 +69,15 @@ ZAP = [
     ("Translovato", "558181990635"),
     ("Continental", "5527988928840"),
 ]
+
+# Limites que precisam aparecer ANTES de cotar. A Della Volpe recusa abaixo
+# de 1 kg; deixar o usuario esperar 2 minutos para receber "peso invalido" e
+# desrespeitoso com o tempo dele.
+PESO_MINIMO_KG = Decimal("1")
+
+# Quem roda automaticamente. A tela usa para saber quantos resultados esperar
+# e decidir se ainda esta cotando.
+AUTOMATICAS = ("camilo", "jadlog")
 
 NOMES = {"camilo": "Camilo dos Santos", "jadlog": "Jadlog Entregas"}
 NOTAS = {
@@ -120,6 +135,14 @@ th{text-align:left;font-size:11px;color:var(--fraco);text-transform:uppercase;
 letter-spacing:.5px;padding:6px 8px;border-bottom:1px solid var(--borda)}
 td{padding:8px;border-bottom:1px solid #f0f1f4}
 tr:hover td{background:#fafbfc}
+.listaerro{margin:0 0 16px;padding-left:20px;font-size:14px}
+.listaerro li{margin-bottom:6px}
+.cotando{display:flex;align-items:center;gap:10px;color:var(--fraco);
+font-size:13px}
+.girando{width:16px;height:16px;border:2px solid var(--borda);
+border-top-color:var(--marca);border-radius:50%;
+animation:gira .8s linear infinite}
+@keyframes gira{to{transform:rotate(360deg)}}
 .aviso{background:#fffae6;border:1px solid #ffe380;border-radius:6px;
 padding:10px 12px;font-size:13px;margin-bottom:14px}
 .print{width:100%;margin-top:10px;border:1px solid var(--borda);
@@ -178,6 +201,102 @@ def pagina(titulo: str, corpo: str, usuario: str | None = None) -> str:
 <div class="topo"><img src="data:image/png;base64,{LOGO}" alt="Ventura">
 {quem}</div>
 <div class="wrap">{corpo}</div></body></html>"""
+
+
+
+# ------------------------------------------------------------- validação
+ROTULOS = {
+    "cep_origem": "CEP de origem", "cep_destino": "CEP de destino",
+    "cnpj_remetente": "CNPJ do remetente",
+    "cnpj_destinatario": "CNPJ do destinatário",
+    "cnpj_pagador": "CNPJ de quem paga", "peso": "Peso de um volume",
+    "quantidade": "Quantidade de volumes", "comprimento": "Comprimento",
+    "largura": "Largura", "altura": "Altura",
+    "valor_nf": "Valor da nota fiscal", "material": "Material",
+    "nome": "Nome", "email": "E-mail", "whatsapp": "WhatsApp",
+}
+
+
+def _digitos(v: str) -> str:
+    return "".join(c for c in str(v or "") if c.isdigit())
+
+
+def validar_formulario(d: dict) -> list[str]:
+    """Tudo que dá para saber SEM abrir navegador.
+
+    Cada item aqui é um erro que o usuário descobriria depois de 2 minutos
+    de espera, ou pior: uma cotação que sai com a carga errada."""
+    erros = []
+
+    for campo_ in ("cnpj_remetente", "cnpj_destinatario", "cnpj_pagador"):
+        n = len(_digitos(d.get(campo_, "")))
+        if n != 14:
+            erros.append(f"{ROTULOS[campo_]}: precisa de 14 dígitos, "
+                         f"veio com {n}.")
+
+    for campo_ in ("cep_origem", "cep_destino"):
+        n = len(_digitos(d.get(campo_, "")))
+        if n != 8:
+            erros.append(f"{ROTULOS[campo_]}: precisa de 8 dígitos, "
+                         f"veio com {n}.")
+
+    try:
+        peso = _num(d.get("peso", ""))
+        if peso < PESO_MINIMO_KG:
+            erros.append(
+                f"Peso de {peso} kg: a Della Volpe só cota a partir de "
+                f"{PESO_MINIMO_KG} kg, e abaixo disso a cotação volta "
+                f"recusada depois de dois minutos de espera.")
+    except ValueError:
+        erros.append("Peso: não entendi o número.")
+
+    for campo_ in ("quantidade", "comprimento", "largura", "altura",
+                   "valor_nf"):
+        try:
+            if _num(d.get(campo_, "")) <= 0:
+                erros.append(f"{ROTULOS[campo_]}: precisa ser maior que zero.")
+        except ValueError:
+            erros.append(f"{ROTULOS[campo_]}: não entendi o número.")
+
+    if "@" not in str(d.get("email", "")):
+        erros.append("E-mail: falta o @.")
+    if not str(d.get("material", "")).strip():
+        erros.append("Material: diga o que é a carga.")
+    return erros
+
+
+def traduzir_erro(exc: Exception) -> str:
+    """Exceção crua -> frase que um funcionário entende.
+
+    O Pydantic e o ViaCEP falam com o programador, não com quem usa."""
+    texto = str(exc)
+    if "CEP não existe" in texto or "CEP precisa" in texto:
+        return f"{texto} Confira o CEP digitado."
+    if "cnpj" in texto.lower():
+        return ("Um dos CNPJs não passou na validação (dígito verificador). "
+                "Confira os números.")
+    if "ViaCEP" in texto:
+        return ("Não consegui consultar o CEP agora. Verifique a internet e "
+                "tente de novo.")
+    return f"Não deu para montar a cotação: {texto}"
+
+
+def tela_erro(problemas: list[str], dados: dict, usuario: str | None) -> str:
+    """Erro COM os campos preservados: refazer tudo por causa de um dígito
+    é o jeito mais rápido de fazer alguém desistir da ferramenta."""
+    itens = "".join(f"<li>{e(p)}</li>" for p in problemas)
+    guardados = "".join(
+        f'<input type="hidden" name="_{k}" value="{e(v)}">'
+        for k, v in dados.items() if k in ROTULOS)
+    return pagina("Corrija e tente de novo", f"""
+<div class="cartao">
+  <h1 class="falhou">Falta corrigir {len(problemas)} coisa(s)</h1>
+  <p class="sub">Nada foi cotado ainda. Seus dados continuam preenchidos.</p>
+  <ul class="listaerro">{itens}</ul>
+  <form method="post" action="/voltar">{guardados}
+    <button type="submit">Voltar e corrigir</button>
+  </form>
+</div>""", usuario)
 
 
 # ------------------------------------------------------------------- login
@@ -268,7 +387,11 @@ def formulario(usuario: str | None = Cookie(None, alias=COOKIE),
             aviso = (f'<div class="aviso">Campos preenchidos a partir da '
                      f'cotação #{repetir}. Ajuste o que mudou e cote de novo.'
                      f'</div>')
-    return HTMLResponse(pagina("Nova cotação", f"""
+    return HTMLResponse(_render_formulario(v, usuario, aviso))
+
+
+def _render_formulario(v: dict, usuario: str, aviso: str) -> str:
+    return pagina("Nova cotação", f"""
 {aviso}
 <h1>Nova cotação</h1>
 <p class="sub">Preencha uma vez. Cotamos na Camilo e na Jadlog, e preparamos
@@ -304,7 +427,31 @@ a mensagem para as três que atendem por WhatsApp.</p>
   </div></fieldset>
 
   <button type="submit">Cotar fretes</button>
-</form>""", usuario))
+</form>
+<script>
+/* Mascaras enquanto digita. Sao os campos que o usuario mais erra, e um
+   digito a menos no CNPJ so aparecia depois de dois minutos de espera. */
+function mascara(el, tam, formatar) {{
+  const aplicar = () => {{
+    const d = el.value.replace(/\D/g, "").slice(0, tam);
+    el.value = formatar(d);
+    el.style.borderColor = d.length === tam || !d.length ? "" : "#bf2600";
+  }};
+  el.addEventListener("input", aplicar);
+  aplicar();
+}}
+const fmtCnpj = (d) => d
+  .replace(/^(\d{{2}})(\d)/, "$1.$2")
+  .replace(/^(\d{{2}})\.(\d{{3}})(\d)/, "$1.$2.$3")
+  .replace(/\.(\d{{3}})(\d)/, ".$1/$2")
+  .replace(/(\d{{4}})(\d)/, "$1-$2");
+const fmtCep = (d) => d.replace(/^(\d{{5}})(\d)/, "$1-$2");
+
+["cnpj_remetente","cnpj_destinatario","cnpj_pagador"].forEach(
+  id => mascara(document.getElementById(id), 14, fmtCnpj));
+["cep_origem","cep_destino"].forEach(
+  id => mascara(document.getElementById(id), 8, fmtCep));
+</script>""", usuario)
 
 
 # -------------------------------------------------------------------- cotar
@@ -345,6 +492,18 @@ def montar_request(d: dict) -> CotacaoRequest:
     )
 
 
+@app.post("/voltar", response_class=HTMLResponse)
+async def voltar(request: Request,
+                 usuario: str | None = Cookie(None, alias=COOKIE)):
+    """Volta ao formulario com o que o usuario ja tinha digitado."""
+    if not usuario:
+        return RedirectResponse("/login", status_code=303)
+    form = await request.form()
+    v = {**PADRAO, **{k[1:]: val for k, val in form.items()
+                      if k.startswith("_")}}
+    return HTMLResponse(_render_formulario(v, usuario, ""))
+
+
 @app.post("/cotar", response_class=HTMLResponse)
 def cotar(usuario: str | None = Cookie(None, alias=COOKIE),
           cep_origem: str = Form(...), cep_destino: str = Form(...),
@@ -362,12 +521,15 @@ def cotar(usuario: str | None = Cookie(None, alias=COOKIE),
         return RedirectResponse("/login", status_code=303)
 
     dados = {k: v for k, v in locals().items() if k != "usuario"}
+
+    problemas = validar_formulario(dados)
+    if problemas:
+        return HTMLResponse(tela_erro(problemas, dados, usuario))
+
     try:
         req = montar_request(dados)
     except Exception as exc:
-        return HTMLResponse(pagina("Erro", f"""
-<div class="cartao"><h1 class="falhou">Não deu para montar a cotação</h1>
-<p>{e(exc)}</p><p><a href="/">← voltar e corrigir</a></p></div>""", usuario))
+        return HTMLResponse(tela_erro([traduzir_erro(exc)], dados, usuario))
 
     v = req.volumes[0]
     cotacao_id = banco.salvar_cotacao(usuario, {
@@ -387,30 +549,37 @@ def cotar(usuario: str | None = Cookie(None, alias=COOKIE),
         "nome_pagador": buscador_cnpj.buscar(req.pagador_frete.cnpj),
     })
 
-    # As duas em paralelo: ~25s no total, em vez de ~40s em série.
-    with ThreadPoolExecutor(max_workers=2) as pool:
-        futuros = {
-            # confirmar_envio=True na Camilo só quer dizer "clique em
-            # simular": é cálculo automático, não entra em fila de vendedor.
-            # Sem isso ela para no dry-run e devolve "rascunho" sem preço.
-            "camilo": pool.submit(
-                lambda: CamiloAdapter().cotar(req, confirmar_envio=True)),
-            "jadlog": pool.submit(JadlogPainelAdapter().cotar, req),
-        }
-        for slug, f in futuros.items():
-            try:
-                res = f.result()
-                banco.salvar_resultado(
-                    cotacao_id, slug, status=res.status.value,
-                    valor=res.valor_frete, protocolo=res.protocolo,
-                    erro=res.erro,
-                    evidencia=res.evidencias[-1] if res.evidencias else None)
-            except Exception as exc:
-                # guardar a falha, não engolir: quem falhou aparece na tela
-                banco.salvar_resultado(cotacao_id, slug, status="erro",
-                                       erro=f"{type(exc).__name__}: {exc}")
+    # Dispara e NÃO espera: cada uma grava o próprio resultado ao terminar.
+    for slug, fabrica in (("camilo", _cotar_camilo), ("jadlog", _cotar_jadlog)):
+        EXECUTOR.submit(_rodar, cotacao_id, slug, fabrica, req)
 
     return RedirectResponse(f"/cotacao/{cotacao_id}", status_code=303)
+
+
+def _cotar_camilo(req):
+    # confirmar_envio=True aqui só quer dizer "clique em simular": é cálculo
+    # automático, não entra em fila de vendedor.
+    return CamiloAdapter().cotar(req, confirmar_envio=True)
+
+
+def _cotar_jadlog(req):
+    return JadlogPainelAdapter().cotar(req)
+
+
+def _rodar(cotacao_id: int, slug: str, cotar_fn, req) -> None:
+    """Roda uma transportadora e grava o resultado, aconteça o que acontecer.
+
+    Sem o try, uma exceção numa thread do executor some em silêncio e o
+    cartão fica 'cotando...' para sempre."""
+    try:
+        res = cotar_fn(req)
+        banco.salvar_resultado(
+            cotacao_id, slug, status=res.status.value, valor=res.valor_frete,
+            protocolo=res.protocolo, erro=res.erro,
+            evidencia=res.evidencias[-1] if res.evidencias else None)
+    except Exception as exc:
+        banco.salvar_resultado(cotacao_id, slug, status="erro",
+                               erro=f"{type(exc).__name__}: {exc}")
 
 
 # ------------------------------------------------------------- ver cotação
@@ -485,6 +654,26 @@ def ver_cotacao(cotacao_id: int,
         cartoes += (f'<div class="res{destaque}"><div class="nome">'
                     f'{e(NOMES.get(slug, slug))} {selo}</div>{corpo}</div>')
 
+    # Quem ainda não respondeu ganha um cartão "cotando". Sem isso a
+    # transportadora simplesmente não aparece, e o usuário não sabe se ela
+    # falhou ou se ainda está rodando.
+    respondidas = {r["transportadora"] for r in c["resultados"]}
+    faltam = [s for s in AUTOMATICAS if s not in respondidas]
+    for slug in faltam:
+        cartoes += (f'<div class="res"><div class="nome">'
+                    f'{e(NOMES.get(slug, slug))}</div>'
+                    f'<div class="cotando"><span class="girando"></span>'
+                    f'cotando…</div></div>')
+
+    # Recarrega sozinho de 3 em 3 segundos ENQUANTO faltar transportadora.
+    # Quando todas responderem, para — recarregar uma página pronta faria a
+    # imagem piscar e atrapalharia quem está lendo o resultado.
+    recarrega = ('<meta http-equiv="refresh" content="3">' if faltam else "")
+    cabecalho_espera = (
+        f'<div class="aviso">Cotando em {len(faltam)} transportadora(s). '
+        f'A página se atualiza sozinha — pode deixar aberta.</div>'
+        if faltam else "")
+
     texto = quote(mensagem_whatsapp(c))
     zaps = "".join(
         f'<a class="zap" href="https://wa.me/{tel}?text={texto}"'
@@ -493,6 +682,8 @@ def ver_cotacao(cotacao_id: int,
         for nome, tel in ZAP)
 
     return HTMLResponse(pagina(f"Cotação {cotacao_id}", f"""
+{recarrega}
+{cabecalho_espera}
 <h1>Cotação #{cotacao_id}</h1>
 <p class="sub">{e(c['cidade_origem'])}/{e(c['uf_origem'])} →
 {e(c['cidade_destino'])}/{e(c['uf_destino'])} · {e(c['quantidade'])} volume(s)
