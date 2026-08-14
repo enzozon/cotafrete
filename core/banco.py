@@ -80,6 +80,20 @@ class Banco:
             self.caminho.parent.mkdir(parents=True, exist_ok=True)
         with self._conectar() as con:
             con.executescript(ESQUEMA)
+            self._migrar(con)
+
+    @staticmethod
+    def _migrar(con: sqlite3.Connection) -> None:
+        """Acrescenta colunas que passaram a existir depois do banco.
+
+        CREATE TABLE IF NOT EXISTS não altera tabela existente: sem isto,
+        quem já tinha cotafrete.db recebia "table cotacao has no column named
+        cnpj_remetente" no primeiro INSERT. Acontece toda vez que o esquema
+        cresce, então a checagem fica permanente."""
+        existentes = {r["name"] for r in con.execute("PRAGMA table_info(cotacao)")}
+        for coluna in CAMPOS_CARGA:
+            if coluna not in existentes:
+                con.execute(f"ALTER TABLE cotacao ADD COLUMN {coluna} TEXT")
 
     def _conectar(self) -> sqlite3.Connection:
         con = sqlite3.connect(self.caminho)

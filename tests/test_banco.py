@@ -127,6 +127,42 @@ def test_cotacao_sem_resultado_nao_inventa_preco(db):
     assert db.listar_cotacoes("enzo")[0]["melhor_preco"] is None
 
 
+def test_banco_antigo_ganha_as_colunas_novas(tmp_path):
+    """Banco criado antes de uma coluna existir precisa continuar servindo.
+
+    CREATE TABLE IF NOT EXISTS não altera tabela que já existe: sem migração,
+    quem já tinha cotafrete.db recebia "table cotacao has no column named
+    cnpj_remetente" e o app parava de salvar. Aconteceu com o Enzo em
+    14/08/2026, e só não apareceu nos meus testes porque eu apagava o banco
+    entre eles."""
+    import sqlite3
+    caminho = tmp_path / "antigo.db"
+    # esquema velho: sem os campos de CNPJ e razão social
+    with sqlite3.connect(caminho) as con:
+        con.execute("""CREATE TABLE cotacao (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, usuario TEXT NOT NULL,
+            criado_em TEXT NOT NULL, cep_origem TEXT NOT NULL,
+            cep_destino TEXT NOT NULL, cidade_origem TEXT, uf_origem TEXT,
+            cidade_destino TEXT, uf_destino TEXT, peso_kg TEXT NOT NULL,
+            quantidade INTEGER NOT NULL, comprimento_cm INTEGER NOT NULL,
+            largura_cm INTEGER NOT NULL, altura_cm INTEGER NOT NULL,
+            valor_nf TEXT NOT NULL, material TEXT)""")
+        con.execute("INSERT INTO cotacao (usuario, criado_em, cep_origem,"
+                    " cep_destino, peso_kg, quantidade, comprimento_cm,"
+                    " largura_cm, altura_cm, valor_nf, material)"
+                    " VALUES ('enzo','2026-08-01T10:00','09895-003',"
+                    "'29105-770','1',1,30,30,30,'100','Antiga')")
+
+    b = banco.Banco(caminho)          # tem que migrar sozinho
+    cid = b.salvar_cotacao("enzo", _carga(cnpj_remetente="60.042.686/0001-05",
+                                          nome_remetente="HERCULES"))
+
+    achado = b.buscar_cotacao(cid, "enzo")
+    assert achado["nome_remetente"] == "HERCULES"
+    # e a cotação antiga continua lá
+    assert len(b.listar_cotacoes("enzo")) == 2
+
+
 def test_banco_e_criado_sozinho(tmp_path):
     """Primeira execução não pode exigir passo manual de instalação."""
     caminho = tmp_path / "sub" / "novo.db"
