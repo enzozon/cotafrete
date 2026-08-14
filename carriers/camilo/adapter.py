@@ -247,20 +247,32 @@ class CamiloAdapter:
             caixa = page.evaluate("""() => {
                 const folhas = [...document.querySelectorAll('*')]
                     .filter(e => e.children.length === 0);
-                const fim = folhas.reverse().find(
-                    e => /Valor do frete/i.test(e.textContent || ''));
-                if (!fim) return null;
-                const r = fim.getBoundingClientRect();
-                // largura: até o campo mais à direita da tabela de custos
+
+                // LARGURA: só elementos ESTREITOS entram na conta. A linha
+                // azul de separação e os contêineres ocupam a janela toda —
+                // incluí-los fazia o recorte pegar 500px de branco à direita.
                 let direita = 0;
                 for (const e of folhas) {
                     const b = e.getBoundingClientRect();
-                    if (b.width && b.top < r.bottom + 40)
+                    const temTexto = (e.textContent || '').trim().length > 0;
+                    if (b.width > 0 && b.width < 420 && (temTexto || e.tagName === 'INPUT'))
                         direita = Math.max(direita, b.right);
                 }
+
+                // ALTURA: até os botões ▶ ✕ do rodapé do formulário, que
+                // ficam ABAIXO do valor do frete. Parar no valor cortava eles.
+                const rodape = document.querySelector('a[id="lnk_simula"]')
+                            || document.querySelector('a[id="lnk_fec"]');
+                const fim = folhas.reverse().find(
+                    e => /Valor do frete/i.test(e.textContent || ''));
+                if (!fim && !rodape) return null;
+                const base = Math.max(
+                    rodape ? rodape.getBoundingClientRect().bottom : 0,
+                    fim ? fim.getBoundingClientRect().bottom : 0);
+
                 return {x: 0, y: 0,
-                        width: Math.min(direita + 24, window.innerWidth),
-                        height: r.bottom + 24};
+                        width: Math.min(direita + 28, window.innerWidth),
+                        height: base + 16};
             }""")
             if caixa and caixa["height"] > 100:
                 page.screenshot(path=str(destino), clip=caixa, timeout=10_000)
