@@ -59,6 +59,18 @@ banco = Banco()
 # responde em 15 segundos.
 EXECUTOR = ThreadPoolExecutor(max_workers=4, thread_name_prefix="cotacao")
 
+# Depois disto a tela para de recarregar e assume que não vem mais nada. A
+# mais lenta hoje (Camilo) leva ~25s; 4 minutos é folga de sobra para uma
+# rede ruim, sem deixar a página piscando a noite inteira.
+ESPERA_MAXIMA_S = 240
+
+# Na subida nada pode estar em andamento: o que ficou pendente morreu junto
+# com o processo anterior. Fechar aqui evita cartão girando para sempre.
+_orfas = banco.marcar_interrompidas(("camilo", "jadlog"))
+if _orfas:
+    print(f"[cotafrete] {_orfas} cotação(ões) pendente(s) marcadas como "
+          f"interrompidas — o sistema foi fechado durante elas.")
+
 COOKIE = "cotafrete_usuario"
 LOGO = (Path(__file__).parent / "logo_b64.txt").read_text(encoding="utf-8").strip()
 
@@ -660,19 +672,38 @@ def ver_cotacao(cotacao_id: int,
     respondidas = {r["transportadora"] for r in c["resultados"]}
     faltam = [s for s in AUTOMATICAS if s not in respondidas]
     for slug in faltam:
+        dentro = ('<div class="falhou">Sem retorno</div>'
+                  if desistiu else
+                  '<div class="cotando"><span class="girando"></span>'
+                  'cotando…</div>')
         cartoes += (f'<div class="res"><div class="nome">'
-                    f'{e(NOMES.get(slug, slug))}</div>'
-                    f'<div class="cotando"><span class="girando"></span>'
-                    f'cotando…</div></div>')
+                    f'{e(NOMES.get(slug, slug))}</div>{dentro}</div>')
 
     # Recarrega sozinho de 3 em 3 segundos ENQUANTO faltar transportadora.
     # Quando todas responderem, para — recarregar uma página pronta faria a
     # imagem piscar e atrapalharia quem está lendo o resultado.
-    recarrega = ('<meta http-equiv="refresh" content="3">' if faltam else "")
-    cabecalho_espera = (
-        f'<div class="aviso">Cotando em {len(faltam)} transportadora(s). '
-        f'A página se atualiza sozinha — pode deixar aberta.</div>'
-        if faltam else "")
+    # Para de recarregar depois do teto: sem isso a página fica piscando
+    # para sempre se um resultado nunca chegar.
+    try:
+        idade = (datetime.now()
+                 - datetime.fromisoformat(c["criado_em"])).total_seconds()
+    except (ValueError, TypeError):
+        idade = 0
+    desistiu = bool(faltam) and idade > ESPERA_MAXIMA_S
+    recarrega = ('<meta http-equiv="refresh" content="3">'
+                 if faltam and not desistiu else "")
+    if desistiu:
+        cabecalho_espera = (
+            f'<div class="aviso">{len(faltam)} transportadora(s) não '
+            f'responderam em {ESPERA_MAXIMA_S // 60} minutos. Pode ter sido '
+            f'queda de rede ou o sistema fechado no meio. '
+            f'<a href="/?repetir={cotacao_id}">Cotar de novo</a>.</div>')
+    elif faltam:
+        cabecalho_espera = (
+            f'<div class="aviso">Cotando em {len(faltam)} transportadora(s). '
+            f'A página se atualiza sozinha — pode deixar aberta.</div>')
+    else:
+        cabecalho_espera = ""
 
     texto = quote(mensagem_whatsapp(c))
     zaps = "".join(

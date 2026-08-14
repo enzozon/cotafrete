@@ -163,6 +163,31 @@ def test_banco_antigo_ganha_as_colunas_novas(tmp_path):
     assert len(b.listar_cotacoes("enzo")) == 2
 
 
+def test_cotacao_pendente_vira_interrompida(db):
+    """Fechar a janela mata as threads no meio: sem isto o cartao fica
+    'cotando...' para sempre, esperando quem ja morreu."""
+    cid = db.salvar_cotacao("enzo", _carga())
+    db.salvar_resultado(cid, "jadlog", status="cotado", valor=Decimal("33.35"))
+
+    assert db.marcar_interrompidas(("camilo", "jadlog")) == 1
+
+    por_nome = {r["transportadora"]: r
+                for r in db.buscar_cotacao(cid, "enzo")["resultados"]}
+    assert por_nome["camilo"]["status"] == "interrompido"
+    assert "fechado" in por_nome["camilo"]["erro"]
+    assert por_nome["jadlog"]["valor"] == Decimal("33.35")   # intacto
+
+
+def test_cotacao_completa_nao_e_mexida(db):
+    """Rodar duas vezes nao pode duplicar resultado nem apagar preco."""
+    cid = db.salvar_cotacao("enzo", _carga())
+    for slug in ("camilo", "jadlog"):
+        db.salvar_resultado(cid, slug, status="cotado", valor=Decimal("10"))
+
+    assert db.marcar_interrompidas(("camilo", "jadlog")) == 0
+    assert len(db.buscar_cotacao(cid, "enzo")["resultados"]) == 2
+
+
 def test_banco_e_criado_sozinho(tmp_path):
     """Primeira execução não pode exigir passo manual de instalação."""
     caminho = tmp_path / "sub" / "novo.db"

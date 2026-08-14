@@ -176,6 +176,30 @@ class Banco:
             ]
             return c
 
+    def marcar_interrompidas(self, esperadas: tuple[str, ...]) -> int:
+        """Fecha cotações que ficaram sem resposta porque o sistema caiu.
+
+        As transportadoras rodam em threads DENTRO do processo: fechar a
+        janela mata as threads no meio do caminho. Sem isto o cartão fica
+        "cotando..." para sempre e a página recarrega esperando um resultado
+        que ninguém mais vai gravar. Roda na subida do servidor, quando por
+        definição nada está em andamento."""
+        marcadas = 0
+        with self._conectar() as con:
+            for linha in con.execute("SELECT id FROM cotacao").fetchall():
+                jah = {r["transportadora"] for r in con.execute(
+                    "SELECT transportadora FROM resultado WHERE cotacao_id = ?",
+                    (linha["id"],))}
+                for slug in esperadas:
+                    if slug not in jah:
+                        con.execute(
+                            "INSERT INTO resultado (cotacao_id, transportadora,"
+                            " status, erro) VALUES (?, ?, 'interrompido', ?)",
+                            (linha["id"], slug,
+                             "O sistema foi fechado durante a cotação."))
+                        marcadas += 1
+        return marcadas
+
     def usuarios(self) -> list[str]:
         with self._conectar() as con:
             return [r[0] for r in con.execute(
