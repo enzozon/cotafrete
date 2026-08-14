@@ -71,6 +71,26 @@ def test_peso_e_de_um_volume_e_quantidade_vai_separada(adapter):
     assert p["quantidade"] == "3"
 
 
+def test_material_da_ficha_vai_para_a_observacao(adapter):
+    """O formulário do Generoso não tem seletor de tipo de mercadoria — o
+    site manda 1 fixo. Sem levar o material para a Observação, o vendedor
+    recebe uma cotação sem saber o que vai transportar."""
+    p = adapter.preparar_payload(montar())
+    assert p["observacao"] == "Eletrônicos"
+
+
+def test_embalagem_entra_no_payload(adapter):
+    from carriers.generoso.adapter import EMBALAGEM_PADRAO
+    assert adapter.preparar_payload(montar())["embalagem"] == EMBALAGEM_PADRAO
+
+
+def test_embalagem_inexistente_e_recusada_na_criacao():
+    """Escolher uma embalagem que não existe no site travaria a etapa da
+    Carga com 'campo obrigatório' — melhor falhar aqui, com a lista."""
+    with pytest.raises(ValueError, match="Engradado"):
+        GenerosoAdapter(embalagem="Palete")
+
+
 def test_valor_da_nota_em_formato_brasileiro(adapter):
     assert adapter.preparar_payload(montar())["valor_nf"] == "1500,00"
 

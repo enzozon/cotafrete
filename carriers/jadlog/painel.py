@@ -218,6 +218,41 @@ class JadlogPainelAdapter:
         for sufixo, chave in (("R$", "valor"), ("kg", "peso")):
             self._campo_por_rotulo(page, sufixo).fill(campos[chave])
 
+    def _print_resultado(self, page, destino: Path) -> list[str]:
+        """Recorta os dois blocos que importam: Dados do Envio e Custo de Envio.
+
+        A tela cheia traz menu lateral, saldo da conta, banner de cookies e
+        rodapé — ruído que rouba a atenção do preço. Este print vai para o
+        funcionário e para o cliente."""
+        try:
+            caixa = page.evaluate("""() => {
+                const titulos = [...document.querySelectorAll('*')]
+                    .filter(e => e.children.length === 0);
+                const achar = (re) => titulos.find(e => re.test(e.textContent || ''));
+                const topo = achar(/Dados do Envio/i);
+                const base = achar(/levar a encomenda|Voltar/i);
+                if (!topo || !base) return null;
+                const a = topo.getBoundingClientRect();
+                const b = base.getBoundingClientRect();
+                // largura: até o botão Comprar, à direita da tabela
+                let dir = a.right;
+                for (const e of titulos) {
+                    const r = e.getBoundingClientRect();
+                    if (r.width && r.top >= a.top - 30 && r.bottom <= b.bottom + 30)
+                        dir = Math.max(dir, r.right);
+                }
+                const x = Math.max(0, a.left - 20);
+                return {x, y: Math.max(0, a.top - 30),
+                        width: Math.min(dir - x + 30, window.innerWidth - x),
+                        height: b.bottom - a.top + 60};
+            }""")
+            if caixa and caixa["height"] > 100 and caixa["width"] > 100:
+                page.screenshot(path=str(destino), clip=caixa, timeout=10_000)
+                return [str(destino)]
+        except Exception:
+            pass
+        return print_seguro(page, destino)
+
     # ------------------------------------------------------------------ envio
     def cotar(self, req: CotacaoRequest) -> ResultadoCotacao:
         from playwright.sync_api import sync_playwright
@@ -261,7 +296,8 @@ class JadlogPainelAdapter:
                 res = self.normalizar_resposta(texto)
                 res.enviado_em = enviado
                 res.respondido_em = datetime.now()
-                res.evidencias = print_seguro(page, run / "jadlog_resultado.png")
+                res.evidencias = self._print_resultado(
+                    page, run / "jadlog_resultado.png")
                 return res
 
             except Exception as exc:

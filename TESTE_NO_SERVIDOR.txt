@@ -1,0 +1,162 @@
+========================================================================
+COTAFRETE - TESTE NO SERVIDOR
+Guia para rodar no terminal (cmd ou PowerShell), sem o Claude
+========================================================================
+
+LEIA ISTO PRIMEIRO
+------------------------------------------------------------------------
+O servidor e um Windows 7 de 2012. E MUITO PROVAVEL que nao funcione, e o
+motivo nao e configuracao - e incompatibilidade de binario:
+
+  - Python 3.10 e mais novos exigem Windows 8.1 ou superior.
+    O ultimo Python que roda no Windows 7 e o 3.9, de 2020.
+    Este projeto usa recursos de 3.10+ e nao roda no 3.9.
+
+  - O Chromium que o Playwright baixa exige Windows 10 ou superior.
+    O Chrome 109 (janeiro/2023) foi o ULTIMO a suportar Windows 7.
+    Nenhuma versao atual abre nesse sistema.
+
+O PASSO 1 testa isso em 30 segundos, antes de baixar 400 MB de navegador.
+Se ele acusar incompatibilidade, pare por ali e me avise - nao adianta
+insistir nos passos seguintes.
+
+
+========================================================================
+PASSO 1 - VERIFICAR SE O SERVIDOR SUPORTA (30 segundos)
+========================================================================
+
+Abra o terminal e rode:
+
+    python --version
+    ver
+
+Anote as duas saidas e compare:
+
+    Python 3.10 ou maior ......... segue
+    Python 3.9 ou menor .......... NAO VAI FUNCIONAR
+    Windows versao 10.x ou maior . segue
+    Windows versao 6.1 (Win 7) ... NAO VAI FUNCIONAR
+
+Se "python" nao for reconhecido, o Python nao esta instalado.
+Instalador: https://www.python.org/downloads/windows/
+(Marque "Add Python to PATH" na primeira tela do instalador.)
+
+
+========================================================================
+PASSO 2 - COPIAR O PROJETO
+========================================================================
+
+Opcao A - com Git instalado:
+
+    git clone https://github.com/enzozon/cotafrete.git
+    cd cotafrete
+
+Opcao B - sem Git: copie a pasta inteira por rede ou pendrive. Depois:
+
+    cd C:\caminho\onde\voce\copiou\cotafrete
+
+ATENCAO: o arquivo .env NAO vai pelo Git (contem senhas). Copie ele a
+parte, na mao, para dentro da pasta do projeto no servidor. Sem ele a
+Camilo (SSW) e a Jadlog nao logam.
+
+
+========================================================================
+PASSO 3 - INSTALAR AS DEPENDENCIAS
+========================================================================
+
+    python -m venv .venv
+    .venv\Scripts\activate
+    python -m pip install --upgrade pip
+    pip install -r requirements.txt
+    python -m playwright install chromium
+
+O ultimo comando baixa cerca de 400 MB. Num Windows 7 ele pode ate baixar,
+mas o navegador nao abre depois - e onde a incompatibilidade aparece.
+
+
+========================================================================
+PASSO 4 - CONFERIR QUE O CODIGO ESTA SAO (nao usa internet)
+========================================================================
+
+    python -m pytest tests\ -q
+
+Esperado: 185 passed
+
+Se der erro de import aqui, o problema e a instalacao (passo 3), nao o
+servidor. Se passar, o codigo esta intacto - o que resta e o navegador.
+
+
+========================================================================
+PASSO 5 - O TESTE DE VERDADE (3 cotacoes em cada transportadora)
+========================================================================
+
+    python testar_tudo.py teste1.txt
+
+Roda, em DRY-RUN, 3 cargas diferentes (1 kg, 5 kg e 25 kg) em cada uma das
+quatro transportadoras de formulario:
+
+    Camilo (SSW) ...... loga e cota    -> devolve PRECO
+    Jadlog painel ..... loga e cota    -> devolve PRECO
+    Generoso .......... preenche 5 etapas e PARA antes de enviar
+    Della Volpe ....... preenche e PARA antes de enviar
+
+DRY-RUN quer dizer: preenche tudo, tira print e para. NENHUMA cotacao
+entra na fila de um vendedor. Pode rodar quantas vezes quiser.
+
+Tempo total esperado num Windows 10 saudavel: 8 a 12 minutos.
+
+Prints salvos em:
+
+    teste_real\camilo\<data-hora>\
+    teste_real\jadlog\<data-hora>\
+    teste_real\generoso\<data-hora>\
+    teste_real\dellavolpe\<data-hora>\
+
+
+========================================================================
+PASSO 6 - PAGINA DE WHATSAPP (nao precisa de navegador robo)
+========================================================================
+
+Abra com dois cliques:
+
+    web\cotacao_whatsapp.html
+
+Preencha, clique em "Cotar fretes" e confira se os tres cartoes aparecem
+(Movvi, Translovato, Continental). Aperte F12 -> aba Console: deve
+aparecer "autoteste: 24/24 ok".
+
+Esta pagina e HTML puro e funciona ate em navegador antigo. E a unica
+parte do projeto que provavelmente roda no Windows 7.
+
+
+========================================================================
+O QUE ME MANDAR DEPOIS
+========================================================================
+
+1. A saida completa do PASSO 1 (versao do Python e do Windows)
+2. A saida completa do PASSO 5, do inicio ao fim
+3. A pasta teste_real\ inteira, compactada
+
+Com isso eu digo exatamente o que funcionou e o que nao funcionou.
+
+
+========================================================================
+SE NAO FUNCIONAR (o cenario mais provavel)
+========================================================================
+
+Voce ja levantou a alternativa certa: rodar na sua maquina e hospedar fora
+do servidor da empresa. Tres observacoes tecnicas para essa conversa, que
+valem independente de onde rodar:
+
+1. A Della Volpe SO aceita envio com janela de navegador VISIVEL. O
+   reCAPTCHA v3 dela pontua navegador headless como robo e responde
+   "A submissao mencionou-se como spam", sem gerar e-mail nenhum. Ja foi
+   medido: 5 envios headless nao geraram nada; com janela real, passaram.
+   Hospedagem gratuita normalmente nao permite janela visivel.
+
+2. As outras tres (Camilo, Jadlog, Generoso) rodam headless sem problema.
+
+3. Login de funcionarios + historico por pessoa e banco de dados, nao
+   arquivo. Muda o tamanho do projeto - vale decidir junto antes.
+
+========================================================================
