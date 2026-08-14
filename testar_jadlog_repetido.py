@@ -20,7 +20,7 @@ from pathlib import Path
 
 from carriers.jadlog.simulador import JadlogSimuladorAdapter
 from core.models import StatusCotacao
-from web.app import _montar
+from web.app import montar_request
 
 # Rotas variadas. Distâncias diferentes = valores diferentes, o que também
 # denuncia um resultado repetido vindo de tela não atualizada.
@@ -69,9 +69,8 @@ def inspecionar_png(caminho: Path) -> tuple[int, int, int]:
 
 def rodada(n: int, rota: tuple[str, ...]) -> dict:
     cep_o, uf_o, cid_o, cep_d, uf_d, cid_d = rota
-    req = _montar({**BASE, "cep_origem": cep_o, "uf_origem": uf_o,
-                   "cidade_origem": cid_o, "cep_destino": cep_d,
-                   "uf_destino": uf_d, "cidade_destino": cid_d})
+    # cidade e UF saem do CEP; ficam aqui so para o rotulo da linha
+    req = montar_request({**BASE, "cep_origem": cep_o, "cep_destino": cep_d})
 
     inicio = time.monotonic()
     res = JadlogSimuladorAdapter(modalidade="expresso").cotar(req)
