@@ -89,7 +89,11 @@ def preencher_login(page) -> None:
         if valor:
             page.locator(f'input[name="{nome}"]').first.fill(valor)
             page.wait_for_timeout(200)
-    page.keyboard.press("Enter")
+
+    # O envio é AJAX, não submit de formulário: <a id="5" onclick=
+    # "ajaxEnvia('L', 0)">. Apertar Enter preenche a tela e não acontece nada
+    # — foi o que travou a primeira tentativa.
+    page.locator("a#\\35").first.click()
 
 
 def main() -> int:
