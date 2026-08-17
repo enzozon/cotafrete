@@ -37,6 +37,7 @@ from urllib.parse import quote
 from dotenv import load_dotenv
 from fastapi import Cookie, FastAPI, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
 
 load_dotenv(override=False)
 
@@ -45,6 +46,7 @@ from carriers.jadlog.painel import JadlogPainelAdapter
 from core import cep as buscador_cep
 from core import cnpj as buscador_cnpj
 from core.banco import Banco
+from web import transportadoras
 from core.models import (
     CotacaoRequest, Local, Mercadoria, NotaFiscal, Parte, Servico,
     Solicitante, Volume,
@@ -76,11 +78,12 @@ LOGO = (Path(__file__).parent / "logo_b64.txt").read_text(encoding="utf-8").stri
 
 # Só atendem por WhatsApp. O resultado delas NUNCA é automático: o máximo que
 # o sistema sabe é que a mensagem foi aberta para envio.
-ZAP = [
-    ("Movvi Logística", "553194910111"),
-    ("Translovato", "558181990635"),
-    ("Continental", "5527988928840"),
-]
+#
+# O cadastro (nome, número, logo) mora em web/transportadoras.py: acrescentar
+# uma é UMA linha lá, e nada aqui. Quem ainda não tem número não entra na
+# lista — ver a explicação no topo daquele arquivo.
+app.mount("/logos", StaticFiles(directory=transportadoras.PASTA_LOGOS),
+          name="logos")
 
 # Limites que precisam aparecer ANTES de cotar. A Della Volpe recusa abaixo
 # de 1 kg; deixar o usuario esperar 2 minutos para receber "peso invalido" e
@@ -140,6 +143,10 @@ background:var(--ok);border-radius:99px;padding:2px 8px;letter-spacing:.4px}
 border-radius:8px;padding:10px 12px;text-decoration:none;color:inherit;
 margin-bottom:8px;background:var(--papel)}
 .zap:hover{border-color:var(--zap)}
+/* Altura fixa e contain: as logos vêm em tamanhos e proporções diferentes,
+   e sem isto a CGB (359KB, quadrada) empurra a linha inteira para baixo. */
+.zap .marca{width:44px;height:44px;object-fit:contain;flex:0 0 auto;
+  border-radius:6px;background:#fff}
 .zap .ir{margin-left:auto;background:var(--zap);color:#fff;border-radius:6px;
 padding:7px 12px;font-size:13px;font-weight:600}
 table{width:100%;border-collapse:collapse;font-size:13px}
@@ -716,10 +723,12 @@ def ver_cotacao(cotacao_id: int,
 
     texto = quote(mensagem_whatsapp(c))
     zaps = "".join(
-        f'<a class="zap" href="https://wa.me/{tel}?text={texto}"'
-        f' target="_blank" rel="noopener"><b>{e(nome)}</b>'
+        f'<a class="zap" href="https://wa.me/{reg.telefone}?text={texto}"'
+        f' target="_blank" rel="noopener">'
+        f'<img class="marca" src="/logos/{e(reg.logo)}" alt="" loading="lazy">'
+        f'<b>{e(reg.nome)}</b>'
         f'<span class="ir">Enviar no WhatsApp</span></a>'
-        for nome, tel in ZAP)
+        for reg in transportadoras.com_whatsapp())
 
     return HTMLResponse(pagina(f"Cotação {cotacao_id}", f"""
 {recarrega}
