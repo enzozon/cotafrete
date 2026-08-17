@@ -11,6 +11,7 @@ acumula erro de arredondamento, e frete é dinheiro de cliente.
 from __future__ import annotations
 
 import sqlite3
+from contextlib import closing
 from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
@@ -78,7 +79,7 @@ class Banco:
         self.caminho = Path(caminho)
         if self.caminho.parent != Path(""):
             self.caminho.parent.mkdir(parents=True, exist_ok=True)
-        with self._conectar() as con:
+        with closing(self._conectar()) as con, con:
             con.executescript(ESQUEMA)
             self._migrar(con)
 
@@ -96,6 +97,8 @@ class Banco:
                 con.execute(f"ALTER TABLE cotacao ADD COLUMN {coluna} TEXT")
 
     def _conectar(self) -> sqlite3.Connection:
+        """Sempre use com `closing(...)`: o `with` do sqlite3 faz commit e
+        rollback, mas NÃO fecha a conexão. Cada cotação abre cinco delas."""
         con = sqlite3.connect(self.caminho)
         con.row_factory = sqlite3.Row
         con.execute("PRAGMA foreign_keys = ON")
@@ -110,7 +113,7 @@ class Banco:
                     for c in CAMPOS_CARGA]
         colunas = "usuario, criado_em, " + ", ".join(CAMPOS_CARGA)
         marcas = ", ".join("?" * (len(CAMPOS_CARGA) + 2))
-        with self._conectar() as con:
+        with closing(self._conectar()) as con, con:
             cur = con.execute(
                 f"INSERT INTO cotacao ({colunas}) VALUES ({marcas})", valores)
             return int(cur.lastrowid)
@@ -121,7 +124,7 @@ class Banco:
                          prazo: str | None = None,
                          erro: str | None = None,
                          evidencia: str | None = None) -> None:
-        with self._conectar() as con:
+        with closing(self._conectar()) as con, con:
             con.execute(
                 "INSERT INTO resultado (cotacao_id, transportadora, status,"
                 " valor, protocolo, prazo, erro, evidencia)"
@@ -136,7 +139,7 @@ class Banco:
 
         O melhor preço vem na listagem para não obrigar a abrir uma por uma
         só para lembrar qual saiu mais barata."""
-        with self._conectar() as con:
+        with closing(self._conectar()) as con, con:
             linhas = con.execute(
                 "SELECT * FROM cotacao WHERE usuario = ?"
                 " ORDER BY id DESC LIMIT ?", (usuario, limite)).fetchall()
@@ -159,7 +162,7 @@ class Banco:
 
         O usuário entra na consulta de propósito: sem isso, trocar o número
         na URL daria acesso à cotação alheia."""
-        with self._conectar() as con:
+        with closing(self._conectar()) as con, con:
             linha = con.execute(
                 "SELECT * FROM cotacao WHERE id = ? AND usuario = ?",
                 (cotacao_id, usuario)).fetchone()
@@ -185,7 +188,7 @@ class Banco:
         que ninguém mais vai gravar. Roda na subida do servidor, quando por
         definição nada está em andamento."""
         marcadas = 0
-        with self._conectar() as con:
+        with closing(self._conectar()) as con, con:
             for linha in con.execute("SELECT id FROM cotacao").fetchall():
                 jah = {r["transportadora"] for r in con.execute(
                     "SELECT transportadora FROM resultado WHERE cotacao_id = ?",
@@ -201,6 +204,6 @@ class Banco:
         return marcadas
 
     def usuarios(self) -> list[str]:
-        with self._conectar() as con:
+        with closing(self._conectar()) as con, con:
             return [r[0] for r in con.execute(
                 "SELECT DISTINCT usuario FROM cotacao ORDER BY usuario")]

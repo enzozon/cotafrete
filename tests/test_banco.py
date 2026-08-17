@@ -196,3 +196,41 @@ def test_banco_e_criado_sozinho(tmp_path):
 
     assert caminho.exists()
     assert len(b.listar_cotacoes("enzo")) == 1
+
+
+def test_conexoes_sao_fechadas(tmp_path):
+    """O `with` do sqlite3 faz commit, mas NÃO fecha a conexão.
+
+    Cada cotação abre 5 conexões (uma por gravação/leitura). Sem fechar, elas
+    ficam penduradas esperando o coletor de lixo — com o servidor aberto o dia
+    inteiro isso vira arquivo aberto acumulado. Não derrubou nada até hoje, e é
+    justamente por isso que passaria despercebido até derrubar."""
+    import sqlite3
+
+    abertas = []
+    original = sqlite3.connect
+
+    def espiao(*a, **k):
+        con = original(*a, **k)
+        abertas.append(con)
+        return con
+
+    sqlite3.connect = espiao
+    try:
+        b = banco.Banco(tmp_path / "conexoes.db")
+        cid = b.salvar_cotacao("enzo", _carga())
+        b.salvar_resultado(cid, "camilo", status="cotado")
+        b.buscar_cotacao(cid, "enzo")
+        b.listar_cotacoes("enzo")
+    finally:
+        sqlite3.connect = original
+
+    penduradas = []
+    for con in abertas:
+        try:
+            con.execute("SELECT 1")
+            penduradas.append(con)
+        except sqlite3.ProgrammingError:
+            pass
+
+    assert not penduradas, f"{len(penduradas)} de {len(abertas)} ficaram abertas"
