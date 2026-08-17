@@ -48,19 +48,26 @@ WHATSAPP: tuple[Transportadora, ...] = (
     Transportadora("continental", "Continental Transportadora",
                    "5527988928840", "continental.jpg"),
 
-    # Cadastradas em 17/08/2026. As logos chegaram; os números ainda não —
-    # então elas não aparecem na tela até alguém preencher o telefone aqui.
-    Transportadora("coruja", "Coruja", "", "coruja.jpg"),
-    Transportadora("nova_uniao", "Nova União", "", "nova_uniao.jpg"),
-    Transportadora("favorita", "Favorita Transportes", "", "favorita.png"),
-    Transportadora("dea", "Robson Dea Transportes", "", "dea.jpg"),
-    Transportadora("pretti", "Pretti", "", "pretti.jpg"),
-    Transportadora("gollog", "Gollog", "", "gollog.jpg"),
-    Transportadora("cgb", "CGB Todo Brasil", "", "cgb.png"),
-    Transportadora("trd", "TRD Comercial", "", "trd.jpg"),
-    Transportadora("tjb", "TJB Transporte e Logística", "", "tjb.png"),
-    Transportadora("vitlog", "Vitlog (Grazyele)", "", "vitlog.png"),
-    Transportadora("rv", "RV Log", "", "rv.jpg"),
+    # Cadastradas em 17/08/2026, com os números que o Enzo passou.
+    Transportadora("coruja", "Coruja", "5521975489707", "coruja.jpg"),
+    Transportadora("nova_uniao", "Nova União", "5524981740082",
+                   "nova_uniao.jpg"),
+    Transportadora("favorita", "Favorita Transportes", "5527996072155",
+                   "favorita.png"),
+    Transportadora("dea", "Robson Dea Transportes", "5527999579754",
+                   "dea.jpg"),
+    # Único FIXO da lista (27 3434-5755): oito dígitos, sem o 9 do celular.
+    # Só funciona se a Pretti usar WhatsApp Business no fixo — se não usar, o
+    # link abre conversa que ninguém lê. Confirmar antes de confiar.
+    Transportadora("pretti", "Pretti", "552734345755", "pretti.jpg"),
+    Transportadora("gollog", "Gollog", "5527996885470", "gollog.jpg"),
+    Transportadora("cgb", "CGB Todo Brasil", "5565996789712", "cgb.png"),
+    Transportadora("trd", "TRD Comercial", "5527998542925", "trd.jpg"),
+    Transportadora("tjb", "TJB Transporte e Logística", "5511941441881",
+                   "tjb.png"),
+    Transportadora("vitlog", "Vitlog (Grazyele)", "5527992689163",
+                   "vitlog.png"),
+    Transportadora("rv", "RV Log", "5511986959141", "rv.jpg"),
 )
 
 
