@@ -403,7 +403,10 @@ def formulario(usuario: str | None = Cookie(None, alias=COOKIE),
 
 
 def _render_formulario(v: dict, usuario: str, aviso: str) -> str:
-    return pagina("Nova cotação", f"""
+    # String CRUA (rf): o JS aqui embaixo usa \d e \D das regex de máscara.
+    # Sem o `r`, o Python lê como escape dele, avisa "invalid escape sequence"
+    # e numa versão futura recusa o arquivo — servidor que não sobe.
+    return pagina("Nova cotação", rf"""
 {aviso}
 <h1>Nova cotação</h1>
 <p class="sub">Preencha uma vez. Cotamos na Camilo e na Jadlog, e preparamos
@@ -671,6 +674,18 @@ def ver_cotacao(cotacao_id: int,
     # falhou ou se ainda está rodando.
     respondidas = {r["transportadora"] for r in c["resultados"]}
     faltam = [s for s in AUTOMATICAS if s not in respondidas]
+
+    # Passado o teto, assume que não vem mais nada. Precisa ser decidido AQUI,
+    # antes dos cartões: eles mudam de "cotando…" para "Sem retorno" conforme
+    # esta resposta. Calcular depois do laço dava UnboundLocalError em toda
+    # cotação recém-enviada — ou seja, na primeira tela que o usuário vê.
+    try:
+        idade = (datetime.now()
+                 - datetime.fromisoformat(c["criado_em"])).total_seconds()
+    except (ValueError, TypeError):
+        idade = 0
+    desistiu = bool(faltam) and idade > ESPERA_MAXIMA_S
+
     for slug in faltam:
         dentro = ('<div class="falhou">Sem retorno</div>'
                   if desistiu else
@@ -681,15 +696,9 @@ def ver_cotacao(cotacao_id: int,
 
     # Recarrega sozinho de 3 em 3 segundos ENQUANTO faltar transportadora.
     # Quando todas responderem, para — recarregar uma página pronta faria a
-    # imagem piscar e atrapalharia quem está lendo o resultado.
-    # Para de recarregar depois do teto: sem isso a página fica piscando
-    # para sempre se um resultado nunca chegar.
-    try:
-        idade = (datetime.now()
-                 - datetime.fromisoformat(c["criado_em"])).total_seconds()
-    except (ValueError, TypeError):
-        idade = 0
-    desistiu = bool(faltam) and idade > ESPERA_MAXIMA_S
+    # imagem piscar e atrapalharia quem está lendo o resultado. Depois do teto
+    # também para: sem isso a página pisca para sempre se um resultado nunca
+    # chegar.
     recarrega = ('<meta http-equiv="refresh" content="3">'
                  if faltam and not desistiu else "")
     if desistiu:
