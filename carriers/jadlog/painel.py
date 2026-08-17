@@ -30,6 +30,8 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
+
 from carriers.base import (
     CampoSpec, ErroValidacao, Modo, ResultadoCotacao, print_seguro,
 )
@@ -38,6 +40,17 @@ from core.models import CotacaoRequest, StatusCotacao, limpa_doc
 
 URL_LOGIN = "https://jadlogentregas.com.br/login"
 URL_CALCULADORA = "https://jadlogentregas.com.br/painel/calculadora"
+
+# Login (ver _preencher_login): o site é um SPA React e pode terminar de montar
+# DEPOIS do preenchimento, apagando o que foi digitado.
+TENTATIVAS_PREENCHIMENTO = 4     # cobre a hidratação chegando atrasada
+ESPERA_HIDRATACAO_MS = 800       # tempo para o React re-renderizar por cima
+CONFIRMACOES_SEGUIDAS = 3        # 3 x 800ms = 2,4s de campo intacto
+TENTATIVAS_LOGIN = 3
+# Se não entrou em 15s, não vai entrar: os 45s antigos queimavam a cotação
+# inteira numa espera que já estava perdida, sem sobrar tempo para tentar outra
+# vez.
+TIMEOUT_LOGIN_MS = 15_000
 
 # Rótulo exato ao lado de cada campo, medido no recon de 13/08/2026.
 ROTULO_ALTURA = "Altura (cm)"
@@ -179,16 +192,72 @@ class JadlogPainelAdapter:
             except Exception:
                 continue
 
+    def _preencher_login(self, page, usuario: str, senha: str) -> None:
+        """Preenche e CONFERE que o valor ficou — o site é um SPA React.
+
+        Medido em 17/08/2026, na cotação #5: com a máquina carregada (Camilo e
+        Jadlog cotando ao mesmo tempo) o React terminava de montar depois do
+        preenchimento e re-renderizava os campos VAZIOS. O clique em "Entrar"
+        não submetia nada e o adapter esperava 45s por uma navegação que nunca
+        vinha.
+
+        Dormir mais tempo não conserta: só empurra o problema para a próxima
+        máquina lenta. Conferir o valor conserta, e sai assim que der certo."""
+        campo_email = page.locator('input[type="email"]').first
+        campo_senha = page.locator('input[type="password"]').first
+        campo_email.wait_for(state="visible")
+
+        def preenchido() -> bool:
+            return bool(campo_email.input_value().strip()
+                        and campo_senha.input_value())
+
+        for _ in range(TENTATIVAS_PREENCHIMENTO):
+            campo_email.fill(usuario)
+            campo_senha.fill(senha)
+            # Uma leitura só não serve: logo depois do fill o valor SEMPRE
+            # está lá — quem apaga é a hidratação, que chega depois. Só
+            # confirmações seguidas provam que ela já passou.
+            for confirmacao in range(1, CONFIRMACOES_SEGUIDAS + 1):
+                page.wait_for_timeout(ESPERA_HIDRATACAO_MS)
+                if not preenchido():
+                    break
+                if confirmacao == CONFIRMACOES_SEGUIDAS:
+                    return
+
+        raise RuntimeError(
+            "o formulário de login apagou o que foi digitado em "
+            f"{TENTATIVAS_PREENCHIMENTO} tentativas — a página da Jadlog não "
+            "terminou de carregar")
+
     def _entrar(self, page) -> None:
         usuario, senha = self._credenciais()
         page.goto(URL_LOGIN, wait_until="domcontentloaded")
-        page.wait_for_timeout(2500)
         self._fechar_cookies(page)
-        page.locator('input[type="email"]').first.fill(usuario)
-        page.locator('input[type="password"]').first.fill(senha)
-        page.get_by_role("button", name="Entrar").first.click()
-        page.wait_for_url(lambda u: "/login" not in u, timeout=self.timeout_ms)
-        page.wait_for_timeout(2500)
+
+        for _ in range(TENTATIVAS_LOGIN):
+            self._preencher_login(page, usuario, senha)
+            page.get_by_role("button", name="Entrar").first.click()
+            try:
+                page.wait_for_url(lambda u: "/login" not in u,
+                                  timeout=TIMEOUT_LOGIN_MS)
+                page.wait_for_timeout(2500)
+                return
+            except PlaywrightTimeoutError:
+                # Campo VAZIO significa que o formulário nem chegou a ser
+                # submetido: seguro repetir. Campo PREENCHIDO com a tela parada
+                # é o site recusando as credenciais — repetir aí só arrisca
+                # bloquear a conta do Enzo por excesso de tentativas.
+                if page.locator('input[type="email"]').first.input_value().strip():
+                    raise RuntimeError(
+                        "a Jadlog não aceitou o login. Os dados foram enviados "
+                        "e o site não deixou entrar: pode ser senha trocada, "
+                        "conta bloqueada, ou outra sessão aberta com o mesmo "
+                        "usuário. Tente entrar à mão em "
+                        f"{URL_LOGIN} para ver a mensagem do site.")
+
+        raise RuntimeError(
+            f"não foi possível entrar no painel da Jadlog em {TENTATIVAS_LOGIN} "
+            "tentativas — a página não terminou de carregar")
 
     def _campo_por_rotulo(self, page, rotulo: str):
         """Os campos não têm name nem id — só o rótulo os distingue.

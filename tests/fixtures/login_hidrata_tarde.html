@@ -1,0 +1,39 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Login que hidrata tarde</title>
+<!--
+  Reproduz offline o que a Jadlog faz sob carga.
+
+  Medido em 17/08/2026: o site e um SPA React. Se o robo preenche antes da
+  hidratacao terminar, o React monta depois, nao conhece o que foi digitado no
+  DOM e RE-RENDERIZA os campos vazios. O clique em Entrar entao submete nada,
+  a pagina fica no login e o print sai com os campos em branco -- exatamente o
+  que apareceu na cotacao #5.
+
+  Aqui a "hidratacao" chega aos 1500ms e limpa os campos uma unica vez.
+-->
+<form id="form">
+  <input type="email" placeholder="Digite seu endereço de e-mail">
+  <input type="password" placeholder="Informe sua senha">
+  <button type="button" id="entrar">Entrar</button>
+</form>
+<p id="estado">login</p>
+
+<script>
+  var hidratado = false;
+
+  // A hidratacao tardia: limpa o que estiver escrito e so entao "assume" a tela.
+  setTimeout(function () {
+    document.querySelector('input[type="email"]').value = "";
+    document.querySelector('input[type="password"]').value = "";
+    hidratado = true;
+  }, 1500);
+
+  document.getElementById("entrar").addEventListener("click", function () {
+    var email = document.querySelector('input[type="email"]').value;
+    var senha = document.querySelector('input[type="password"]').value;
+    // Sem hidratacao, ou sem valor, o formulario nao vai a lugar nenhum.
+    if (!hidratado || !email || !senha) return;
+    document.getElementById("estado").textContent = "painel";
+  });
+</script>

@@ -8,6 +8,7 @@ cálculo.
 from __future__ import annotations
 
 from decimal import Decimal
+from pathlib import Path
 
 import pytest
 
@@ -146,3 +147,46 @@ def test_tela_sem_opcao_vira_erro(adapter):
     res = adapter.normalizar_resposta("Calculadora\nNenhum resultado")
     assert res.status is StatusCotacao.ERRO
     assert "nenhuma opção" in res.erro
+
+
+# ------------------------------------------------ login contra SPA que hidrata
+# A falha da cotação #5, em 17/08/2026: sob carga (Camilo e Jadlog rodando
+# juntas) o React da Jadlog terminava de montar DEPOIS do preenchimento e
+# limpava os campos. O clique em "Entrar" não submetia nada, a tela ficava no
+# login e o adapter esperava 45s por uma navegação que nunca vinha.
+#
+# Esperar mais tempo não resolve — só empurra o problema para a próxima
+# máquina lenta. O que resolve é CONFERIR que o valor ficou no campo.
+FIXTURE_LOGIN = (
+    Path(__file__).parent / "fixtures" / "login_hidrata_tarde.html").as_uri()
+
+
+@pytest.fixture
+def navegador():
+    playwright = pytest.importorskip("playwright.sync_api")
+    with playwright.sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        yield browser
+        browser.close()
+
+
+def test_preenche_de_novo_quando_a_hidratacao_apaga_o_campo(navegador, adapter):
+    """O caso real: preencher cedo demais e o React limpar por cima."""
+    page = navegador.new_context().new_page()
+    page.goto(FIXTURE_LOGIN)
+
+    adapter._preencher_login(page, "a@b.com", "segredo")
+    page.get_by_role("button", name="Entrar").click()
+
+    assert page.inner_text("#estado") == "painel"
+
+
+def test_campo_preenchido_sobrevive_ao_fim_da_hidratacao(navegador, adapter):
+    """Não basta ter escrito: tem que continuar escrito depois que ela chega."""
+    page = navegador.new_context().new_page()
+    page.goto(FIXTURE_LOGIN)
+
+    adapter._preencher_login(page, "a@b.com", "segredo")
+    page.wait_for_timeout(1200)
+
+    assert page.locator('input[type="email"]').first.input_value() == "a@b.com"
