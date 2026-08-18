@@ -225,3 +225,19 @@ def test_tela_sem_valor_vira_erro():
 
     assert res.status is StatusCotacao.ERRO
     assert res.valor_frete is None
+
+
+# --------------------------------------------- CNPJ sem tabela na Translovato
+def test_cnpj_sem_tabela_explica_o_que_fazer():
+    """Medido em 18/08/2026: get-products devolve `null` quando o CNPJ do
+    REMETENTE não é cliente da Translovato — não é erro do robô nem carga
+    inválida, é ausência de tabela de preço.
+
+    Aconteceu com o valor que já vem preenchido no aplicativo (HERCULES, um
+    fornecedor). A mensagem tem que dizer QUAL CNPJ e o que fazer, senão o
+    vendedor lê "lista de produtos vazia" e liga para o Enzo."""
+    frase = t.recusa_sem_tabela("60.042.686/0001-05")
+
+    assert "60.042.686/0001-05" in frase
+    assert "remetente" in frase.lower()
+    assert "tabela" in frase.lower()

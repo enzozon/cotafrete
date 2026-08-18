@@ -60,6 +60,12 @@ class ForaDeArea(Exception):
     e vira RECUSADO, não ERRO, para o vendedor entender o que aconteceu."""
 
 
+class SemTabela(Exception):
+    """A Translovato não tem tabela de preço para o CNPJ do remetente.
+
+    Também é resposta da transportadora, não falha nossa: vira RECUSADO."""
+
+
 class TranslovatoAdapter:
     slug = m.SLUG
     nome = m.NOME
@@ -201,10 +207,11 @@ class TranslovatoAdapter:
                 return opt.textContent.trim();
             }""", campos["value[volume_product]"])
         if not escolhido:
-            raise RuntimeError(
-                f"a lista de produtos da Translovato não trouxe "
-                f"{campos['value[volume_product]']!r}. Sem o produto o site "
-                "calcula o peso cubado com fator 1 e o frete sai errado.")
+            # Sem tabela para este remetente. Não é falha do robô: é resposta
+            # da transportadora, e vira RECUSADO com frase que o vendedor
+            # entende — não um RuntimeError técnico no cartão.
+            raise SemTabela(
+                m.recusa_sem_tabela(campos["value[sender_cpnj]"]))
         page.wait_for_timeout(1200)
 
         for name in ("value[volume_nf]", "value[volume_weigth]",
@@ -323,6 +330,11 @@ class TranslovatoAdapter:
                     motivo_recusa="A Translovato não atende este CEP.",
                     raw_response=str(fora)[:400],
                     evidencias=print_seguro(page, run / "fora_de_area.png"))
+            except SemTabela as sem:
+                return ResultadoCotacao(
+                    self.slug, StatusCotacao.RECUSADO, enviado_em=enviado,
+                    motivo_recusa=str(sem),
+                    evidencias=print_seguro(page, run / "sem_tabela.png"))
             except Exception as exc:
                 return ResultadoCotacao(
                     self.slug, StatusCotacao.ERRO, enviado_em=enviado,

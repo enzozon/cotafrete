@@ -61,6 +61,23 @@ REDESPACHO_NAO = "0"
 AVISO_FORA_DE_AREA = "não está em nossa regi"
 
 
+def recusa_sem_tabela(cnpj_remetente: str) -> str:
+    """Mensagem para quando a Translovato não tem tabela para o remetente.
+
+    Medido em 18/08/2026: `get-products` devolve `null` quando o CNPJ do
+    REMETENTE não é cliente da Translovato. Aconteceu com o CNPJ que já vem
+    preenchido no aplicativo (um fornecedor, não a Ventura).
+
+    Não é erro do robô nem carga inválida — é ausência de tabela de preço. O
+    vendedor precisa ler QUAL CNPJ e o que fazer, e não "lista de produtos
+    vazia", que não diz nada para quem está cotando."""
+    return (
+        f"A Translovato não tem tabela de preço para o CNPJ remetente "
+        f"{cnpj_remetente}. Ela só cota quando a carga sai de um CNPJ "
+        f"cadastrado como cliente dela — confira se o remetente é mesmo o da "
+        f"empresa.")
+
+
 def campos_obrigatorios(req: CotacaoRequest) -> list[CampoSpec]:
     return [
         CampoSpec("value[sender_cpnj]", True, "cnpj-mascarado"),

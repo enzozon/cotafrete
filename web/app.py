@@ -29,6 +29,7 @@ from __future__ import annotations
 import base64
 import html
 from concurrent.futures import ThreadPoolExecutor
+import threading
 from decimal import Decimal, InvalidOperation
 from datetime import datetime
 from pathlib import Path
@@ -61,6 +62,17 @@ banco = Banco()
 # Sem isso o usuário encara 2 minutos de tela branca para ver a Jadlog, que
 # responde em 15 segundos.
 EXECUTOR = ThreadPoolExecutor(max_workers=4, thread_name_prefix="cotacao")
+
+# Cada transportadora abre um Chromium INTEIRO. Com duas dava para rodar todas
+# juntas; com a Translovato virando a terceira, em 18/08/2026 o Camilo passou a
+# estourar 45s esperando um formulário que, sozinho, carrega em 25s. Não foi o
+# site: foi a máquina sem CPU sobrando.
+#
+# O limite é físico, não de threads — por isso um semáforo próprio e não
+# max_workers: as tarefas continuam sendo aceitas na hora, só esperam vaga de
+# navegador. Vale rever este número ao mudar de máquina/servidor.
+NAVEGADORES_SIMULTANEOS = 2
+VAGA_NAVEGADOR = threading.Semaphore(NAVEGADORES_SIMULTANEOS)
 
 # Depois disto a tela para de recarregar e assume que não vem mais nada. A
 # mais lenta hoje (Camilo) leva ~25s; 4 minutos é folga de sobra para uma
@@ -605,7 +617,8 @@ def _rodar(cotacao_id: int, slug: str, cotar_fn, req) -> None:
     Sem o try, uma exceção numa thread do executor some em silêncio e o
     cartão fica 'cotando...' para sempre."""
     try:
-        res = cotar_fn(req)
+        with VAGA_NAVEGADOR:
+            res = cotar_fn(req)
         banco.salvar_resultado(
             cotacao_id, slug, status=res.status.value, valor=res.valor_frete,
             protocolo=res.protocolo, erro=res.erro,
