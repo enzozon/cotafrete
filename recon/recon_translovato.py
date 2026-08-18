@@ -54,6 +54,52 @@ METODOS_DE_ESCRITA = {"POST", "PUT", "PATCH", "DELETE"}
 # Texto do botão que NÃO pode ser clicado neste script.
 NUNCA_CLICAR = "Simular cotação"
 
+# A ÚNICA rota que cria cotação de verdade: é o action do #quotationForm.
+# Fica bloqueada SEMPRE, inclusive no dry-run — o dry-run preenche e printa,
+# não envia. Bloquear a rota exata, e não "todo POST", é o que deixa o resto
+# do formulário funcionar sem abrir a porta do envio.
+ROTA_DE_ENVIO = "/portal-do-cliente/simular-cotacao"
+
+# Consultas que o formulário faz por POST enquanto é preenchido. Sem elas o
+# site simplesmente não responde: get-cnpj é quem traz a razão social E a
+# lista de produtos a partir do CNPJ do remetente. Bloquear estas foi o que
+# deixou o dropdown de produto vazio nas tentativas de 18/08/2026 — o campo
+# não estava quebrado, era o meu próprio porteiro barrando a resposta.
+CONSULTAS_LIBERADAS = (
+    "/portal-do-cliente/get-cnpj",
+    "/portal-do-cliente/get-products",
+    "/get-cities",
+    "/solicitacao-de-cotacao/validate-cep-attend",
+)
+
+# Produto: o Enzo confirmou que TODA cotação da Translovato usa este, seja
+# qual for a mercadoria real.
+PRODUTO = "SUPR.INFORMATICA"
+
+# Carga do dry-run: os mesmos dados do print que o Enzo mandou (cotação de
+# 17/08/2026), justamente para dar para conferir o resultado contra um valor
+# já conhecido — R$ 116,36, prazo 3 dias.
+#
+# ATENÇÃO às unidades: as medidas aqui são em METROS, com vírgula. 0,3 = 30cm.
+# Mandar "30" num campo de metros vira uma carga de 30 metros de altura.
+DRY_RUN = {
+    "sender_cnpj": "05.954.058/0001-98",
+    "sender_zipcode": "29105770",
+    "receiver_cnpj": "60.042.686/0001-05",
+    "receiver_zipcode": "09895003",
+    "nf": "568,77",
+    "peso": "1",
+    "qtd_volumes": "1",
+    "altura_m": "0,3",
+    "largura_m": "0,3",
+    "profundidade_m": "0,3",
+}
+
+# O site calcula sozinho a partir das medidas. Se não bater com isto, o
+# preenchimento entrou errado em algum campo — e uma cubagem errada é o tipo
+# de erro que cota barato e passa despercebido.
+ESPERADO = {"cubagem": "0,0270", "peso_cubado": "8,10"}
+
 # Devolve um registro por controle do formulário. As opções dos <select> vêm
 # junto de propósito: PRODUTO, ESTADO e CIDADE são listas fechadas, e mandar
 # um texto que não está na lista faz o site aceitar calado e cotar errado.
@@ -143,6 +189,128 @@ def entrar(page) -> None:
     page.wait_for_timeout(1500)
 
 
+def _digitar(page, seletor: str, valor: str) -> str:
+    """Digita tecla a tecla e devolve o que ficou no campo.
+
+    fill() escreve o valor direto no DOM; as máscaras deste site rodam no
+    keyup, então fill() num campo mascarado pode deixar o valor cru (sem
+    ponto/barra) ou a máscara reformatar por cima depois. Digitar faz a
+    máscara do próprio site rodar — e a leitura de volta é o que prova que o
+    que ficou é o que a gente queria."""
+    campo = page.locator(seletor).first
+    campo.click()
+    campo.fill("")
+    campo.press_sequentially(valor, delay=40)
+    campo.blur()
+    page.wait_for_timeout(400)
+    return campo.input_value()
+
+
+def preencher_dry_run(page) -> None:
+    """Preenche o formulário inteiro e PARA. Não clica em "Simular cotação".
+
+    A ordem importa: o CNPJ do remetente é o gatilho que chama get-cnpj e
+    traz a razão social e a lista de produtos. Preencher o produto antes
+    disso não funciona — a lista ainda está vazia."""
+    conferencia: list[tuple[str, str, str]] = []
+
+    def anotar(rotulo: str, esperado: str, obtido: str) -> None:
+        conferencia.append((rotulo, esperado, obtido))
+        marca = "ok " if obtido.strip() == esperado else "DIVERGE"
+        print(f"   [{marca}] {rotulo}: esperado {esperado!r}, ficou {obtido!r}")
+
+    print("   -- 1. Remetente (o CNPJ destrava o produto) --")
+    with page.expect_response(
+            lambda r: "get-cnpj" in r.url, timeout=20_000):
+        obtido = _digitar(page, 'input[name="value[sender_cpnj]"]',
+                          DRY_RUN["sender_cnpj"])
+    anotar("CNPJ remetente", DRY_RUN["sender_cnpj"], obtido)
+    page.wait_for_timeout(2500)
+
+    razao = page.locator('input[name="value[sender_name]"]').first.input_value()
+    print(f"   razão social veio do site: {razao!r}")
+
+    anotar("CEP coleta", DRY_RUN["sender_zipcode"],
+           _digitar(page, 'input[name="value[sender_zipcode]"]',
+                    DRY_RUN["sender_zipcode"]))
+    page.wait_for_timeout(2500)
+    for campo in ("sender_state", "sender_city"):
+        valor = page.evaluate(
+            f"() => {{ const s = document.querySelector("
+            f"'select[name=\"value[{campo}]\"]'); return s ? "
+            f"(s.options[s.selectedIndex] || {{}}).text || '' : '(sem select)'; }}")
+        print(f"   {campo} preenchido pelo site: {valor!r}")
+
+    print("   -- 2. Destinatário --")
+    anotar("CNPJ destinatário", DRY_RUN["receiver_cnpj"],
+           _digitar(page, 'input[name="value[receiver_cnpj_cpf]"]',
+                    DRY_RUN["receiver_cnpj"]))
+    anotar("CEP entrega", DRY_RUN["receiver_zipcode"],
+           _digitar(page, 'input[name="value[receiver_zipcode]"]',
+                    DRY_RUN["receiver_zipcode"]))
+    page.wait_for_timeout(2500)
+    for campo in ("receiver_state", "receiver_city"):
+        valor = page.evaluate(
+            f"() => {{ const s = document.querySelector("
+            f"'select[name=\"value[{campo}]\"]'); return s ? "
+            f"(s.options[s.selectedIndex] || {{}}).text || '' : '(sem select)'; }}")
+        print(f"   {campo} preenchido pelo site: {valor!r}")
+
+    print("   -- 3. Produto --")
+    opcoes = page.evaluate(
+        "() => [...document.querySelectorAll('#product option')]"
+        ".map(o => o.textContent.trim()).filter(Boolean)")
+    print(f"   opções agora: {opcoes}")
+    escolhido = page.evaluate(
+        """(alvo) => {
+            const sel = document.querySelector('#product');
+            const opt = [...sel.options].find(
+                o => o.textContent.trim().toUpperCase() === alvo);
+            if (!opt) return null;
+            sel.value = opt.value;
+            sel.dispatchEvent(new Event('change', {bubbles: true}));
+            return opt.textContent.trim();
+        }""", PRODUTO)
+    anotar("produto", PRODUTO, escolhido or "(não encontrado)")
+    page.wait_for_timeout(1500)
+
+    print("   -- 4. Volume (medidas em METROS) --")
+    anotar("valor NF", DRY_RUN["nf"],
+           _digitar(page, 'input[name="value[volume_nf]"]', DRY_RUN["nf"]))
+    anotar("peso total", DRY_RUN["peso"],
+           _digitar(page, 'input[name="value[volume_weigth]"]',
+                    DRY_RUN["peso"]))
+    anotar("qtd volumes", DRY_RUN["qtd_volumes"],
+           _digitar(page, 'input[name="cubing_qnt[]"]',
+                    DRY_RUN["qtd_volumes"]))
+    anotar("altura (m)", DRY_RUN["altura_m"],
+           _digitar(page, 'input[name="cubing_height[]"]',
+                    DRY_RUN["altura_m"]))
+    anotar("largura (m)", DRY_RUN["largura_m"],
+           _digitar(page, 'input[name="cubing_length[]"]',
+                    DRY_RUN["largura_m"]))
+    anotar("profundidade (m)", DRY_RUN["profundidade_m"],
+           _digitar(page, 'input[name="cubing_depth[]"]',
+                    DRY_RUN["profundidade_m"]))
+    page.wait_for_timeout(1500)
+
+    print("   -- 5. Conferência do cálculo feito pelo site --")
+    cubagem = page.locator('input[name="cubing[]"]').first.input_value()
+    peso_cubado = page.locator(
+        'input[name="cubing_weigth[]"]').first.input_value()
+    anotar("cubagem (m³)", ESPERADO["cubagem"], cubagem)
+    anotar("peso cubado (kg)", ESPERADO["peso_cubado"], peso_cubado)
+
+    divergencias = [c for c in conferencia if c[2].strip() != c[1]]
+    print(f"\n   RESULTADO: {len(conferencia) - len(divergencias)} de "
+          f"{len(conferencia)} campos conferem")
+    if divergencias:
+        print("   DIVERGENTES:")
+        for rotulo, esperado, obtido in divergencias:
+            print(f"     {rotulo}: esperava {esperado!r}, ficou {obtido!r}")
+    print("\n   (o botão \"Simular cotação\" NÃO foi clicado)")
+
+
 def main() -> int:
     from playwright.sync_api import sync_playwright
 
@@ -153,11 +321,20 @@ def main() -> int:
     permitir_escrita = {"ligado": False}
 
     def porteiro(rota, req):
-        if (req.method.upper() in METODOS_DE_ESCRITA
-                and not permitir_escrita["ligado"]):
-            print(f"   [bloqueado] {req.method} {req.url[:90]}")
+        if req.method.upper() not in METODOS_DE_ESCRITA:
+            return rota.continue_()
+        # A trava que importa: a rota de envio não passa NUNCA, nem com a
+        # janela de escrita aberta. É ela que criaria a cotação de verdade.
+        if ROTA_DE_ENVIO in req.url:
+            print(f"   [BLOQUEADO — ENVIO REAL] {req.url[:90]}")
             return rota.abort()
-        return rota.continue_()
+        if permitir_escrita["ligado"]:
+            return rota.continue_()
+        if any(consulta in req.url for consulta in CONSULTAS_LIBERADAS):
+            print(f"   [consulta liberada] {req.url[:80]}")
+            return rota.continue_()
+        print(f"   [bloqueado] {req.method} {req.url[:90]}")
+        return rota.abort()
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless="--headed" not in sys.argv)
@@ -205,6 +382,14 @@ def main() -> int:
             (SAIDA / "campos.json").write_text(
                 json.dumps(campos, ensure_ascii=False, indent=2),
                 encoding="utf-8")
+
+            print("\n5. DRY-RUN: preenchendo o formulário (sem enviar)")
+            preencher_dry_run(page)
+            campos_final = despejar(page, "6. Formulário preenchido")
+            (SAIDA / "campos_preenchidos.json").write_text(
+                json.dumps(campos_final, ensure_ascii=False, indent=2),
+                encoding="utf-8")
+            page.screenshot(path=str(SAIDA / "dry_run.png"), full_page=True)
 
             captcha = page.evaluate(JS_RECAPTCHA)
             print("\n--- reCAPTCHA ---")
