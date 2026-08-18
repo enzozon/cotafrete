@@ -1,0 +1,332 @@
+"""Translovato — portal do cliente, com login. Preenche, simula e lê o preço.
+
+    https://www.translovato.com.br/portal-do-cliente/solicitacao-de-cotacao
+
+Credenciais no .env: TRANSLOVATO_CNPJ, TRANSLOVATO_USUARIO, TRANSLOVATO_SENHA
+(o login pede os três). Nunca são impressas nem gravadas nas evidências.
+
+Síncrono: o preço aparece na própria página, numa faixa laranja, em segundos.
+
+⚠ O botão "Simular cotação" CRIA uma cotação em "Minhas Cotações" no portal
+deles. Não é fila de vendedor como a Della Volpe — é auto-serviço —, mas cada
+chamada deixa registro, então não serve para teste de repetição às cegas.
+
+Duas coisas que este adapter faz e que parecem excesso, mas não são (as duas
+foram medidas contra o site real em 18/08/2026):
+
+1. CONFERE a cubagem e o peso cubado que o site calculou contra a nossa
+   conta, antes de simular. Se o produto não tiver entrado, o peso cubado sai
+   300x menor e o preço volta barato, sem nenhum erro na tela. Sem esta
+   conferência a cotação errada passaria por boa.
+2. Fecha alerta e banner de cookies ANTES DE CADA ETAPA. Os dois nascem
+   depois do carregamento e ficam por cima do formulário, engolindo cliques —
+   o mesmo modo de falha que travou o login da Jadlog.
+"""
+
+from __future__ import annotations
+
+import os
+from datetime import datetime
+from decimal import Decimal
+from pathlib import Path
+from typing import Any
+
+from carriers.base import (
+    CampoSpec, ErroValidacao, Modo, ResultadoCotacao, print_seguro,
+)
+from carriers.translovato import mapping as m
+from core.models import CotacaoRequest, StatusCotacao
+
+# Só esta rota cria cotação. Fica nomeada para o porteiro de rede dos scripts
+# de recon poder bloqueá-la sem depender de adivinhar a URL.
+ROTA_DE_ENVIO = "/portal-do-cliente/simular-cotacao"
+
+# Consultas que o formulário faz por POST enquanto é preenchido. get-cnpj traz
+# a razão social, e get-products traz a lista de produtos — sem ela o fator de
+# cubagem fica errado.
+CONSULTAS = (
+    "/portal-do-cliente/get-cnpj",
+    "/portal-do-cliente/get-products",
+    "/get-cities",
+    "/solicitacao-de-cotacao/validate-cep-attend",
+)
+
+TIMEOUT_RESULTADO_MS = 60_000
+ESPERA_AJAX_MS = 2500      # get-cnpj/get-cities/validate-cep respondem nisso
+
+
+class ForaDeArea(Exception):
+    """Praça fora da malha. Não é falha do robô — é resposta da transportadora,
+    e vira RECUSADO, não ERRO, para o vendedor entender o que aconteceu."""
+
+
+class TranslovatoAdapter:
+    slug = m.SLUG
+    nome = m.NOME
+    modo: Modo = m.MODO
+    ativo = True
+    fator_cubagem: Decimal = m.FATOR_CUBAGEM
+    sla_esperado_min: int | None = m.SLA_ESPERADO_MIN
+
+    def __init__(self, headless: bool = True, timeout_ms: int = 45_000,
+                 workdir: str = "teste_real/translovato") -> None:
+        self.headless = headless
+        self.timeout_ms = timeout_ms
+        self.workdir = Path(workdir)
+
+    # ------------------------------------------------ delegações à camada pura
+    def campos_obrigatorios(self, req: CotacaoRequest) -> list[CampoSpec]:
+        return m.campos_obrigatorios(req)
+
+    def validar(self, req: CotacaoRequest) -> list[ErroValidacao]:
+        return m.validar(req)
+
+    def preparar_payload(self, req: CotacaoRequest) -> dict[str, Any]:
+        return m.preparar_payload(req)
+
+    def normalizar_resposta(self, raw: Any) -> ResultadoCotacao:
+        return m.normalizar_resposta(raw)
+
+    # ------------------------------------------------------------- mecânica
+    def _credenciais(self) -> tuple[str, str, str]:
+        cnpj = os.getenv("TRANSLOVATO_CNPJ")
+        usuario = os.getenv("TRANSLOVATO_USUARIO")
+        senha = os.getenv("TRANSLOVATO_SENHA")
+        if not cnpj or not usuario or not senha:
+            raise RuntimeError(
+                "Faltam TRANSLOVATO_CNPJ / TRANSLOVATO_USUARIO / "
+                "TRANSLOVATO_SENHA no .env")
+        return cnpj, usuario, senha
+
+    def _limpar_tela(self, page) -> str:
+        """Fecha alerta e banner de cookies; devolve o aviso que apareceu.
+
+        Os dois ficam POR CIMA do formulário e engolem cliques. Nascem depois
+        do carregamento, então não adianta fechar uma vez no começo."""
+        aviso = ""
+        alerta = page.locator(".sweet-alert.visible")
+        try:
+            if alerta.count() and alerta.first.is_visible():
+                aviso = alerta.first.inner_text().strip().replace("\n", " ")
+                botao = alerta.first.locator("button.confirm")
+                if botao.count():
+                    botao.first.click()
+                    page.wait_for_timeout(600)
+        except Exception:
+            pass
+
+        for texto in ("Ok, entendi!", "Aceitar todos", "Aceitar"):
+            try:
+                alvo = page.get_by_role("button", name=texto,
+                                        exact=False).first
+                if alvo.count() and alvo.is_visible(timeout=800):
+                    alvo.click()
+                    page.wait_for_timeout(400)
+                    break
+            except Exception:
+                continue
+        return aviso
+
+    def _entrar(self, page) -> None:
+        cnpj, usuario, senha = self._credenciais()
+        page.goto(m.URL_LOGIN, wait_until="domcontentloaded")
+        page.wait_for_timeout(2500)
+        self._limpar_tela(page)
+
+        page.locator("#login-portal #cnpj").fill(cnpj)
+        page.locator("#login-portal #user").fill(usuario)
+        page.locator("#login-portal input[name='password']").fill(senha)
+
+        # O botão é ajax-form: o POST é assíncrono. Esperar a RESPOSTA em vez
+        # de dormir um tempo fixo evita seguir com a sessão ainda não criada.
+        with page.expect_response(
+                lambda r: "/portal-do-cliente/login" in r.url, timeout=20_000):
+            page.locator("#login-portal button.common-button").click()
+        page.wait_for_timeout(1500)
+
+    def _digitar(self, page, seletor: str, valor: str) -> str:
+        """Digita tecla a tecla e devolve o que ficou no campo.
+
+        As máscaras deste site rodam no keyup: `fill()` num campo mascarado
+        deixa o valor cru ou é reformatado por cima depois. A leitura de volta
+        é o que prova que ficou o que a gente queria."""
+        campo = page.locator(seletor).first
+        campo.click()
+        campo.fill("")
+        campo.press_sequentially(valor, delay=40)
+        campo.blur()
+        page.wait_for_timeout(400)
+        return campo.input_value()
+
+    def _preencher(self, page, campos: dict[str, str]) -> None:
+        """Preenche na ordem que o site exige.
+
+        O CNPJ do remetente vem PRIMEIRO de propósito: é ele que dispara
+        get-products e traz a lista de produtos. Escolher o produto antes
+        disso acha a lista vazia — e sem produto o fator de cubagem é 1."""
+        with page.expect_response(lambda r: "get-cnpj" in r.url,
+                                  timeout=20_000):
+            self._digitar(page, 'input[name="value[sender_cpnj]"]',
+                          campos["value[sender_cpnj]"])
+        page.wait_for_timeout(ESPERA_AJAX_MS)
+
+        self._digitar(page, 'input[name="value[sender_zipcode]"]',
+                      campos["value[sender_zipcode]"])
+        page.wait_for_timeout(ESPERA_AJAX_MS)
+        aviso = self._limpar_tela(page)
+        if m.AVISO_FORA_DE_AREA in aviso:
+            raise ForaDeArea(aviso)
+
+        self._digitar(page, 'input[name="value[receiver_cnpj_cpf]"]',
+                      campos["value[receiver_cnpj_cpf]"])
+        self._digitar(page, 'input[name="value[receiver_zipcode]"]',
+                      campos["value[receiver_zipcode]"])
+        page.wait_for_timeout(ESPERA_AJAX_MS)
+        aviso = self._limpar_tela(page)
+        if m.AVISO_FORA_DE_AREA in aviso:
+            raise ForaDeArea(aviso)
+
+        # O <select> real fica display:none atrás de um widget selectBox, e
+        # select_option exige visibilidade. Setar o value e disparar 'change'
+        # é o que o próprio widget escuta.
+        escolhido = page.evaluate(
+            """(alvo) => {
+                const sel = document.querySelector('#product');
+                if (!sel) return null;
+                const opt = [...sel.options].find(
+                    o => o.textContent.trim().toUpperCase() === alvo);
+                if (!opt) return null;
+                sel.value = opt.value;
+                sel.dispatchEvent(new Event('change', {bubbles: true}));
+                return opt.textContent.trim();
+            }""", campos["value[volume_product]"])
+        if not escolhido:
+            raise RuntimeError(
+                f"a lista de produtos da Translovato não trouxe "
+                f"{campos['value[volume_product]']!r}. Sem o produto o site "
+                "calcula o peso cubado com fator 1 e o frete sai errado.")
+        page.wait_for_timeout(1200)
+
+        for name in ("value[volume_nf]", "value[volume_weigth]",
+                     "cubing_qnt[]", "cubing_height[]", "cubing_length[]",
+                     "cubing_depth[]"):
+            self._digitar(page, f'input[name="{name}"]', campos[name])
+        page.wait_for_timeout(1500)
+
+    def _conferir_cubagem(self, page, esperado: dict[str, str]) -> None:
+        """A trava contra o erro silencioso. Ver o docstring do módulo."""
+        cubagem = page.locator('input[name="cubing[]"]').first.input_value()
+        peso = page.locator('input[name="cubing_weigth[]"]').first.input_value()
+
+        if cubagem.strip() != esperado["cubagem"]:
+            raise RuntimeError(
+                f"a cubagem que o site calculou ({cubagem!r}) não bate com a "
+                f"nossa conta ({esperado['cubagem']!r}) — alguma medida entrou "
+                "errada. Não vou cotar com isso.")
+        if peso.strip() != esperado["peso_cubado"]:
+            raise RuntimeError(
+                f"o peso cubado do site ({peso!r}) não bate com o esperado "
+                f"({esperado['peso_cubado']!r}). Normalmente é o produto que "
+                "não entrou — sem ele o fator vira 1 e o frete sai barato "
+                "demais.")
+
+    def _print_resultado(self, page, destino: Path) -> list[str]:
+        """Recorta a faixa de resultado — é o que vai para o cliente.
+
+        A tela cheia traz menu, banner de cookies e as condições gerais; o
+        preço se perde no meio."""
+        try:
+            caixa = page.evaluate("""() => {
+                const alvo = [...document.querySelectorAll('*')].find(
+                    e => e.children.length === 0
+                         && /Consulta de Valor/i.test(e.textContent || ''));
+                if (!alvo) return null;
+                // Sobe até o bloco que JÁ CONTÉM o valor. O closest('div')
+                // direto pegava só a caixinha do rótulo: saía um print da
+                // faixa laranja escrito "Consulta de Valor de Cotação" e
+                // nenhum preço — inútil para mandar ao cliente.
+                let faixa = alvo;
+                for (let i = 0; i < 6 && faixa.parentElement; i++) {
+                    faixa = faixa.parentElement;
+                    if (/R\\$\\s*[\\d.,]+/.test(faixa.innerText || '')) break;
+                }
+                if (!/R\\$\\s*[\\d.,]+/.test(faixa.innerText || '')) return null;
+                const r = faixa.getBoundingClientRect();
+                return {x: Math.max(0, r.left - 10), y: Math.max(0, r.top - 10),
+                        width: Math.min(r.width + 20, window.innerWidth),
+                        height: r.height + 20};
+            }""")
+            if caixa and caixa["height"] > 40 and caixa["width"] > 100:
+                page.screenshot(path=str(destino), clip=caixa, timeout=10_000)
+                return [str(destino)]
+        except Exception:
+            pass
+        return print_seguro(page, destino)
+
+    # ------------------------------------------------------------------ envio
+    def cotar(self, req: CotacaoRequest) -> ResultadoCotacao:
+        from playwright.sync_api import sync_playwright
+
+        erros = m.bloqueantes(self.validar(req))
+        if erros:
+            return ResultadoCotacao(
+                self.slug, StatusCotacao.ERRO,
+                erro="; ".join(f"{e.campo}: {e.mensagem}" for e in erros))
+
+        campos = self.preparar_payload(req)
+        esperado = m.cubagem_esperada(req)
+        run = self.workdir / datetime.now().strftime("%Y%m%d-%H%M%S")
+        run.mkdir(parents=True, exist_ok=True)
+        enviado = datetime.now()
+
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=self.headless)
+            page = browser.new_context(
+                locale="pt-BR",
+                viewport={"width": 1500, "height": 1100}).new_page()
+            page.set_default_timeout(self.timeout_ms)
+            try:
+                self._entrar(page)
+                page.goto(m.URL_COTACAO, wait_until="domcontentloaded")
+                page.wait_for_timeout(3000)
+                if "solicitacao-de-cotacao" not in page.url:
+                    raise RuntimeError("sessão não persistiu até o formulário")
+                self._limpar_tela(page)
+
+                self._preencher(page, campos)
+                self._conferir_cubagem(page, esperado)
+                print_seguro(page, run / "preenchido.png")
+
+                botao = page.get_by_role("button",
+                                         name="Simular cotação").first
+                botao.scroll_into_view_if_needed()
+                self._limpar_tela(page)
+                botao.click()
+
+                page.wait_for_function(
+                    """() => /Consulta de Valor/i.test(document.body.innerText)
+                             && /R\\$\\s*[\\d.,]+/.test(document.body.innerText)""",
+                    timeout=TIMEOUT_RESULTADO_MS)
+                page.wait_for_timeout(1500)
+
+                res = self.normalizar_resposta(
+                    page.locator("body").inner_text())
+                res.enviado_em = enviado
+                res.respondido_em = datetime.now()
+                res.evidencias = self._print_resultado(
+                    page, run / "resultado.png")
+                return res
+
+            except ForaDeArea as fora:
+                return ResultadoCotacao(
+                    self.slug, StatusCotacao.RECUSADO, enviado_em=enviado,
+                    motivo_recusa="A Translovato não atende este CEP.",
+                    raw_response=str(fora)[:400],
+                    evidencias=print_seguro(page, run / "fora_de_area.png"))
+            except Exception as exc:
+                return ResultadoCotacao(
+                    self.slug, StatusCotacao.ERRO, enviado_em=enviado,
+                    erro=f"{type(exc).__name__}: {exc}",
+                    evidencias=print_seguro(page, run / "erro.png"))
+            finally:
+                browser.close()

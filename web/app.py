@@ -43,6 +43,7 @@ load_dotenv(override=False)
 
 from carriers.camilo.adapter import CamiloAdapter
 from carriers.jadlog.painel import JadlogPainelAdapter
+from carriers.translovato.adapter import TranslovatoAdapter
 from core import cep as buscador_cep
 from core import cnpj as buscador_cnpj
 from core.banco import Banco
@@ -92,12 +93,14 @@ PESO_MINIMO_KG = Decimal("1")
 
 # Quem roda automaticamente. A tela usa para saber quantos resultados esperar
 # e decidir se ainda esta cotando.
-AUTOMATICAS = ("camilo", "jadlog")
+AUTOMATICAS = ("camilo", "jadlog", "translovato")
 
-NOMES = {"camilo": "Camilo dos Santos", "jadlog": "Jadlog Entregas"}
+NOMES = {"camilo": "Camilo dos Santos", "jadlog": "Jadlog Entregas",
+         "translovato": "Translovato"}
 NOTAS = {
     "camilo": "Frete fracionado, com coleta. Preço já com taxas e ICMS.",
     "jadlog": "Etiqueta pré-paga. Você leva a encomenda ao balcão.",
+    "translovato": "Frete fracionado, com coleta. Só atende parte do país — fora da malha ela avisa.",
 }
 
 CSS = """
@@ -572,7 +575,9 @@ def cotar(usuario: str | None = Cookie(None, alias=COOKIE),
     })
 
     # Dispara e NÃO espera: cada uma grava o próprio resultado ao terminar.
-    for slug, fabrica in (("camilo", _cotar_camilo), ("jadlog", _cotar_jadlog)):
+    for slug, fabrica in (("camilo", _cotar_camilo),
+                          ("jadlog", _cotar_jadlog),
+                          ("translovato", _cotar_translovato)):
         EXECUTOR.submit(_rodar, cotacao_id, slug, fabrica, req)
 
     return RedirectResponse(f"/cotacao/{cotacao_id}", status_code=303)
@@ -586,6 +591,12 @@ def _cotar_camilo(req):
 
 def _cotar_jadlog(req):
     return JadlogPainelAdapter().cotar(req)
+
+
+def _cotar_translovato(req):
+    # Cria registro em "Minhas Cotações" no portal deles — é
+    # auto-serviço, não entra em fila de vendedor.
+    return TranslovatoAdapter().cotar(req)
 
 
 def _rodar(cotacao_id: int, slug: str, cotar_fn, req) -> None:
