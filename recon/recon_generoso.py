@@ -1,6 +1,6 @@
 """Recon READ-ONLY da cotação do Generoso. Lê, não cota.
 
-    python recon_generoso.py [--headed]
+    python recon/recon_generoso.py [--headed]
 
 Formulário em ETAPAS: Solicitante -> Tipo pagador -> Origem -> Destino ->
 Carga -> Confirmar. Cada etapa só libera a seguinte depois de preenchida, e
@@ -20,6 +20,13 @@ import json
 import sys
 from pathlib import Path
 
+# Este script vive em recon/, mas faz parte do projeto: importa de carriers/ e
+# grava a evidencia em recon_out/ na RAIZ. Ancorar no __file__ deixa rodar de
+# qualquer pasta -- sem isto, rodar de dentro de recon/ quebra o import e
+# espalha print em recon/recon_out/, que ninguem procura.
+RAIZ = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(RAIZ))
+
 URL = "https://cliente.generoso.com.br/cotacao"
 
 # Dados de teste, os mesmos dos prints que o Enzo mandou.
@@ -34,7 +41,7 @@ CNPJ_DESTINATARIO = "08.310.365/0001-24"
 CEP_ORIGEM = "09895-510"
 CEP_DESTINO = "29105-770"
 
-SAIDA = Path("recon_out/generoso")
+SAIDA = RAIZ / "recon_out" / "generoso"
 
 # Texto do botão que NÃO pode ser clicado neste script.
 NUNCA_CLICAR = "Confirmar e ver resultado"

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Recon do formulário real da Della Volpe. SÓ LEITURA.
 
-    python recon_dellavolpe.py            # headless
-    python recon_dellavolpe.py --headed   # ver a página
+    python recon/recon_dellavolpe.py            # headless
+    python recon/recon_dellavolpe.py --headed   # ver a página
 
 Abre a página, expande o accordion da cotação e despeja em recon_out/campos.json
 todo campo de formulário que encontrar: tag, type, name, id, rótulo associado,
@@ -29,10 +29,17 @@ import sys
 from pathlib import Path
 from typing import Any
 
+# Este script vive em recon/, mas faz parte do projeto: importa de carriers/ e
+# grava a evidencia em recon_out/ na RAIZ. Ancorar no __file__ deixa rodar de
+# qualquer pasta -- sem isto, rodar de dentro de recon/ quebra o import e
+# espalha print em recon/recon_out/, que ninguem procura.
+RAIZ = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(RAIZ))
+
 from carriers.dellavolpe import mapping as m
 from carriers.dellavolpe.adapter import URL_PRODUCAO, DellavolpeAdapter
 
-SAIDA = Path("recon_out")
+SAIDA = RAIZ / "recon_out"
 METODOS_BLOQUEADOS = {"POST", "PUT", "PATCH", "DELETE"}
 
 # Roda no browser: devolve um registro por controle de formulário do documento.

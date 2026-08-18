@@ -37,7 +37,7 @@ SELETORES_DESAFIO_CAPTCHA = (
     'div[class*="cf-challenge" i]',
 )
 
-# Atributos name= reais, medidos por recon_dellavolpe.py contra produção.
+# Atributos name= reais, medidos por recon/recon_dellavolpe.py contra produção.
 # ÚLTIMO recurso do _localizar: só entra quando label, placeholder e texto de
 # option não resolvem. Substitui o antigo [name*="{rotulo[:14]}"], que comparava
 # texto humano contra atributo de máquina e só acertava por coincidência.

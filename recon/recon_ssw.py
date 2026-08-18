@@ -1,7 +1,7 @@
 """Recon READ-ONLY do SSW (sistema.ssw.inf.br). Lê, não cota.
 
-    python recon_ssw.py            # só a tela de login, sem credenciais
-    python recon_ssw.py --logar    # entra e mapeia a tela de cotação
+    python recon/recon_ssw.py            # só a tela de login, sem credenciais
+    python recon/recon_ssw.py --logar    # entra e mapeia a tela de cotação
 
 O SSW é uma plataforma usada por várias transportadoras; cada uma tem seu
 domínio. Telas:
@@ -27,6 +27,13 @@ import os
 import sys
 from pathlib import Path
 
+# Este script vive em recon/, mas faz parte do projeto: importa de carriers/ e
+# grava a evidencia em recon_out/ na RAIZ. Ancorar no __file__ deixa rodar de
+# qualquer pasta -- sem isto, rodar de dentro de recon/ quebra o import e
+# espalha print em recon/recon_out/, que ninguem procura.
+RAIZ = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(RAIZ))
+
 from dotenv import load_dotenv
 
 load_dotenv(override=False)
@@ -35,7 +42,7 @@ URL_LOGIN = "https://sistema.ssw.inf.br/bin/ssw0422"
 URL_MENU = "https://sistema.ssw.inf.br/bin/menu01"
 URL_COTACAO = "https://sistema.ssw.inf.br/bin/ssw1608"
 
-SAIDA = Path("recon_out/ssw")
+SAIDA = RAIZ / "recon_out" / "ssw"
 
 JS_CAMPOS = """() => {
   const rotulo = (e) => {

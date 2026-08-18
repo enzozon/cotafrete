@@ -4,7 +4,7 @@
     # terminal 1
     uvicorn mock.jadlog_server:app --port 8098
     # terminal 2
-    python testar_jadlog_local.py
+    python tests/manuais/testar_jadlog_local.py
 
 Confere as quatro coisas que precisam ser verdade numa cotação síncrona:
 status COTADO, valor > 0, prazo preenchido, e o `peso` que chegou na API igual
@@ -20,6 +20,13 @@ from __future__ import annotations
 
 import sys
 from decimal import Decimal
+from pathlib import Path
+
+# Estes scripts moram em tests/manuais/, mas importam carriers/, core/ e web/,
+# que so existem na RAIZ. `python tests/manuais/testar_x.py` poe tests/manuais
+# no sys.path -- a raiz, nao. Sem esta linha, ImportError logo no primeiro
+# import, sem chegar a rodar nada.
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 import httpx
 

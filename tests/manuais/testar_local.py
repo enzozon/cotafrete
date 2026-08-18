@@ -4,8 +4,8 @@
     # terminal 1
     uvicorn mock.server:app --port 8099
     # terminal 2
-    python testar_local.py            # headless
-    python testar_local.py --headed   # ver o browser preenchendo
+    python tests/manuais/testar_local.py            # headless
+    python tests/manuais/testar_local.py --headed   # ver o browser preenchendo
 
 Ele preenche o formulário replicado, envia, e compara campo a campo o que o
 servidor recebeu com o que o payload dizia que deveria ser enviado.
@@ -18,6 +18,13 @@ import json
 import sys
 import urllib.request
 from decimal import Decimal
+from pathlib import Path
+
+# Estes scripts moram em tests/manuais/, mas importam carriers/, core/ e web/,
+# que so existem na RAIZ. `python tests/manuais/testar_x.py` poe tests/manuais
+# no sys.path -- a raiz, nao. Sem esta linha, ImportError logo no primeiro
+# import, sem chegar a rodar nada.
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from carriers.dellavolpe import mapping as m
 from carriers.dellavolpe.adapter import DellavolpeAdapter

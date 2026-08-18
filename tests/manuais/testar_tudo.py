@@ -1,6 +1,6 @@
 """Roda 3 cotações em CADA transportadora e salva print de todas.
 
-    python testar_tudo.py teste1.txt
+    python tests/manuais/testar_tudo.py teste1.txt
 
 Serve para validar um ambiente novo (servidor, outra máquina). Cada rodada
 grava em teste_real/<transportadora>/<timestamp>/.
@@ -17,6 +17,12 @@ import time
 import traceback
 from decimal import Decimal
 from pathlib import Path
+
+# Estes scripts moram em tests/manuais/, mas importam carriers/, core/ e web/,
+# que so existem na RAIZ. `python tests/manuais/testar_x.py` poe tests/manuais
+# no sys.path -- a raiz, nao. Sem esta linha, ImportError logo no primeiro
+# import, sem chegar a rodar nada.
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 MIN_PYTHON = (3, 10)
 

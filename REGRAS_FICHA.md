@@ -113,11 +113,11 @@ core.ficha.CamposFaltando: Faltam campos na ficha: WhatsApp
 
 ```bash
 # Jadlog + Della Volpe em dry-run (preenche, printa, NÃO envia)
-python testar_teste_real.py teste1.txt
+python tests/manuais/testar_teste_real.py teste1.txt
 
 # Della Volpe com ENVIO REAL — vira cotação na fila de um vendedor
 $env:DV_ENVIO_REAL_AUTORIZADO = "sim"
-python testar_teste_real.py teste1.txt --dellavolpe
+python tests/manuais/testar_teste_real.py teste1.txt --dellavolpe
 ```
 
 Evidências ficam em `teste_real/jadlog/` e `teste_real/dellavolpe/`, uma pasta

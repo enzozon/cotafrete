@@ -1,6 +1,6 @@
 """Recon da calculadora do painel novo da Jadlog. LÊ, não cota.
 
-    python recon_jadlog_painel.py [--headed]
+    python recon/recon_jadlog_painel.py [--headed]
 
 Fluxo: /login -> /painel -> /painel/calculadora
 
@@ -21,6 +21,13 @@ import os
 import sys
 from pathlib import Path
 
+# Este script vive em recon/, mas faz parte do projeto: importa de carriers/ e
+# grava a evidencia em recon_out/ na RAIZ. Ancorar no __file__ deixa rodar de
+# qualquer pasta -- sem isto, rodar de dentro de recon/ quebra o import e
+# espalha print em recon/recon_out/, que ninguem procura.
+RAIZ = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(RAIZ))
+
 from dotenv import load_dotenv
 
 load_dotenv(override=False)
@@ -29,7 +36,7 @@ URL_LOGIN = "https://jadlogentregas.com.br/login"
 URL_PAINEL = "https://jadlogentregas.com.br/painel"
 URL_CALCULADORA = "https://jadlogentregas.com.br/painel/calculadora"
 
-SAIDA = Path("recon_out/jadlog_painel")
+SAIDA = RAIZ / "recon_out" / "jadlog_painel"
 
 # Botões que NÃO podem ser clicados neste script. Existe para documentar a
 # intenção: o recon lê, não dispara nada no sistema da transportadora.

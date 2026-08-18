@@ -174,7 +174,7 @@ Decisões de interface do site: **`REGRAS_SITE_COTACAO.md`**.
 ## Testes
 
 ```bash
-python -m pytest tests\ -q      # 198 testes, nenhum usa internet
+python -m pytest tests\ -q      # 223 testes, nenhum usa internet
 ```
 
 Cada teste tem o caso real que o gerou no docstring. Não são testes de
@@ -184,10 +184,15 @@ Scripts de verificação contra os sites reais:
 
 | script | o que faz |
 |---|---|
-| `testar_tudo.py` | 3 cargas em cada transportadora, dry-run |
-| `testar_teste_real.py` | ficha real na Jadlog e Della Volpe |
-| `testar_generoso_real.py` | 5 envios reais no Generoso |
-| `recon_*.py` | mapeamento read-only de cada site |
+| `tests/manuais/testar_tudo.py` | 3 cargas em cada transportadora, dry-run |
+| `tests/manuais/testar_teste_real.py` | ficha real na Jadlog e Della Volpe |
+| `tests/manuais/testar_generoso_real.py` | 5 envios reais no Generoso |
+| `recon/recon_*.py` | mapeamento read-only de cada site |
+
+Todos rodam **a partir da raiz do projeto**. `recon/` mapeia site novo (lê, não
+envia); `tests/manuais/` são os que se roda a mão contra os sites reais — ficam
+dentro de `tests/` mas o `pytest` não os coleta, porque `testar_*` não casa com
+o padrão `test_*` que ele procura.
 
 ---
 

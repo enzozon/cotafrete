@@ -1,6 +1,6 @@
 """Roda a cotação da Jadlog VÁRIAS vezes e confere se o print sai certo sempre.
 
-    python testar_jadlog_repetido.py [n]
+    python tests/manuais/testar_jadlog_repetido.py [n]
 
 O modo de falha que isso caça é o print cinza: o JSF SUBSTITUI #panel_resultado
 no partial update, então existe uma janela em que o elemento já tem texto mas
@@ -17,6 +17,12 @@ import sys
 import time
 import zlib
 from pathlib import Path
+
+# Estes scripts moram em tests/manuais/, mas importam carriers/, core/ e web/,
+# que so existem na RAIZ. `python tests/manuais/testar_x.py` poe tests/manuais
+# no sys.path -- a raiz, nao. Sem esta linha, ImportError logo no primeiro
+# import, sem chegar a rodar nada.
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from carriers.jadlog.simulador import JadlogSimuladorAdapter
 from core.models import StatusCotacao

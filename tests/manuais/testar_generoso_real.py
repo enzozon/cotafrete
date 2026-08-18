@@ -1,6 +1,6 @@
 """Cinco cotações REAIS no Generoso, a partir de uma ficha.
 
-    python testar_generoso_real.py teste1.txt
+    python tests/manuais/testar_generoso_real.py teste1.txt
 
 ⚠ ENVIA de verdade: cada uma vira uma cotação na fila de um vendedor. O preço
 volta por e-mail, como na Della Volpe.
@@ -15,6 +15,12 @@ import sys
 import time
 from decimal import Decimal
 from pathlib import Path
+
+# Estes scripts moram em tests/manuais/, mas importam carriers/, core/ e web/,
+# que so existem na RAIZ. `python tests/manuais/testar_x.py` poe tests/manuais
+# no sys.path -- a raiz, nao. Sem esta linha, ImportError logo no primeiro
+# import, sem chegar a rodar nada.
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from dotenv import load_dotenv
 

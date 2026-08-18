@@ -1,7 +1,7 @@
 """Cota uma ficha real na Jadlog e (com autorização) na Della Volpe.
 
-    python testar_teste_real.py C:/Users/vendas12/Desktop/teste.txt
-    python testar_teste_real.py ficha.txt --dellavolpe    # ENVIO REAL
+    python tests/manuais/testar_teste_real.py C:/Users/vendas12/Desktop/teste.txt
+    python tests/manuais/testar_teste_real.py ficha.txt --dellavolpe    # ENVIO REAL
 
 Roda a carga da ficha e mais 5 variações, para ver se o formulário da Della
 Volpe barra várias cotações em sequência.
@@ -22,6 +22,12 @@ import sys
 import time
 from decimal import Decimal
 from pathlib import Path
+
+# Estes scripts moram em tests/manuais/, mas importam carriers/, core/ e web/,
+# que so existem na RAIZ. `python tests/manuais/testar_x.py` poe tests/manuais
+# no sys.path -- a raiz, nao. Sem esta linha, ImportError logo no primeiro
+# import, sem chegar a rodar nada.
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from dotenv import load_dotenv
 

@@ -1,6 +1,6 @@
 """Testes da camada de BROWSER da Della Volpe, contra o DOM real replicado.
 
-tests/fixtures/dv_real.html reproduz as armadilhas que recon_dellavolpe.py mediu
+tests/fixtures/dv_real.html reproduz as armadilhas que recon/recon_dellavolpe.py mediu
 no site de produção: zero <label>, formulário duplicado oculto ANTES do visível,
 selects sem placeholder, anexos por data-name, e reCAPTCHA v3 invisível.
 
