@@ -236,6 +236,13 @@ class JadlogPainelAdapter:
 
         for _ in range(TENTATIVAS_LOGIN):
             self._preencher_login(page, usuario, senha)
+            # O banner de cookies pode não existir ainda quando _fechar_cookies
+            # roda lá em cima, logo após o goto — e aparecer só agora, durante
+            # o preenchimento (medido em 18/08/2026: 3 cotações seguidas
+            # ficaram presas no login com os campos preenchidos e validados e
+            # o botão com foco, mas a tela não saía do lugar). Fechar de novo
+            # bem antes do clique pega o banner tardio.
+            self._fechar_cookies(page)
             page.get_by_role("button", name="Entrar").first.click()
             try:
                 page.wait_for_url(lambda u: "/login" not in u,

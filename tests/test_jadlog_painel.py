@@ -190,3 +190,27 @@ def test_campo_preenchido_sobrevive_ao_fim_da_hidratacao(navegador, adapter):
     page.wait_for_timeout(1200)
 
     assert page.locator('input[type="email"]').first.input_value() == "a@b.com"
+
+
+# ------------------------------------------- banner de cookies tardio (18/08)
+# As 3 falhas reais de 18/08/2026 (teste_real/jadlog/20260818-143038,
+# -143539, -143903): _fechar_cookies() rodava uma vez só, logo após o goto —
+# antes de o banner (injetado por script de terceiro) sequer existir no DOM.
+# Ele aparecia DURANTE o preenchimento e ficava aberto até o clique em
+# "Entrar". Os 3 prints mostram os campos com visto verde de validado e o
+# botão com o anel de foco — o clique chegou nele —, mas a tela ficava presa
+# no login: o mesmo sintoma que este teste reproduz offline.
+FIXTURE_LOGIN_COOKIES = (
+    Path(__file__).parent / "fixtures" / "login_cookies_tardios.html").as_uri()
+
+
+def test_banner_de_cookies_tardio_nao_trava_mais_o_login(navegador, adapter):
+    page = navegador.new_context().new_page()
+    page.goto(FIXTURE_LOGIN_COOKIES)
+
+    adapter._fechar_cookies(page)              # cedo demais: banner ainda não existe
+    adapter._preencher_login(page, "a@b.com", "segredo")
+    adapter._fechar_cookies(page)              # de novo: pega o banner tardio
+    page.get_by_role("button", name="Entrar").click()
+
+    assert page.inner_text("#estado") == "painel"

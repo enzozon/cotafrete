@@ -1,0 +1,47 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Login com banner de cookies tardio</title>
+<!--
+  Reproduz offline as 3 falhas reais de 18/08/2026 (teste_real/jadlog/
+  20260818-143038, -143539, -143903): o banner de cookies NÃO está no DOM
+  quando a página termina de carregar — só aparece um pouco depois, via
+  script de terceiro. _fechar_cookies() rodava uma vez só, logo após o goto,
+  e não achava nada para fechar. O banner aparecia DURANTE o preenchimento
+  (que leva pelo menos 2,4s) e ficava aberto até o clique em "Entrar".
+
+  Os 3 prints mostram os campos com o visto verde de validado e o botão com
+  o anel de foco — o clique chegou nele —, mas a tela ficava presa no login.
+
+  Aqui o banner "chega" aos 1000ms: depois do primeiro fechar_cookies, e
+  ainda dentro da janela de preenchimento.
+-->
+<form id="form">
+  <input type="email" placeholder="Digite seu endereço de e-mail">
+  <input type="password" placeholder="Informe sua senha">
+  <button type="button" id="entrar">Entrar</button>
+</form>
+<p id="estado">login</p>
+
+<script>
+  var cookieResolvido = false;
+
+  setTimeout(function () {
+    var banner = document.createElement("div");
+    banner.id = "banner-cookies";
+    banner.innerHTML = '<button type="button" id="aceitar">Aceitar todos os cookies</button>';
+    document.body.appendChild(banner);
+    document.getElementById("aceitar").addEventListener("click", function () {
+      cookieResolvido = true;
+      banner.remove();
+    });
+  }, 1000);
+
+  document.getElementById("entrar").addEventListener("click", function () {
+    var email = document.querySelector('input[type="email"]').value;
+    var senha = document.querySelector('input[type="password"]').value;
+    // Login só avança com o consentimento resolvido — o padrão de vários
+    // sites: scripts essenciais ficam presos até a escolha de cookies.
+    if (!cookieResolvido || !email || !senha) return;
+    document.getElementById("estado").textContent = "painel";
+  });
+</script>
