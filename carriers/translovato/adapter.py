@@ -238,30 +238,74 @@ class TranslovatoAdapter:
                 "demais.")
 
     def _print_resultado(self, page, destino: Path) -> list[str]:
-        """Recorta a faixa de resultado — é o que vai para o cliente.
+        """Recorta o que vai para o cliente: a carga E o preço.
 
-        A tela cheia traz menu, banner de cookies e as condições gerais; o
-        preço se perde no meio."""
+        Vai do topo do bloco "Identificação do volume" até o fim da faixa
+        laranja. Só o preço não basta — a primeira pergunta que o cliente faz
+        de volta é "esse valor é para qual carga?", e produto, peso e cubagem
+        (calculados pelo SITE, não por nós) respondem isso no mesmo print.
+
+        A tela cheia não serve: traz menu, banner de cookies e as condições
+        gerais, e o preço se perde no meio.
+
+        Rola a página antes de medir. Sem isso o recorte só funcionava por
+        sorte, quando a faixa já estava visível — com ela abaixo da dobra as
+        coordenadas caíam fora da janela, o screenshot falhava e caía calado
+        no print da página inteira."""
         try:
-            caixa = page.evaluate("""() => {
-                const alvo = [...document.querySelectorAll('*')].find(
-                    e => e.children.length === 0
-                         && /Consulta de Valor/i.test(e.textContent || ''));
-                if (!alvo) return null;
-                // Sobe até o bloco que JÁ CONTÉM o valor. O closest('div')
-                // direto pegava só a caixinha do rótulo: saía um print da
-                // faixa laranja escrito "Consulta de Valor de Cotação" e
-                // nenhum preço — inútil para mandar ao cliente.
-                let faixa = alvo;
-                for (let i = 0; i < 6 && faixa.parentElement; i++) {
-                    faixa = faixa.parentElement;
-                    if (/R\\$\\s*[\\d.,]+/.test(faixa.innerText || '')) break;
+            caixa = page.evaluate(r"""() => {
+                const folga = 12;
+                const acha = (re) => [...document.querySelectorAll('*')].find(
+                    el => el.children.length === 0
+                          && re.test(el.textContent || ''));
+                // Sobe até o ancestral que JÁ CONTÉM o que interessa. O
+                // closest('div') direto pegava só a caixinha do rótulo.
+                const sobe = (el, re, limite) => {
+                    for (let i = 0; i < limite && el && el.parentElement; i++) {
+                        el = el.parentElement;
+                        if (re.test(el.innerText || '')) return el;
+                    }
+                    return null;
+                };
+                const recorte = (topo, base, esq, dir) => {
+                    const x = Math.max(0, esq - folga);
+                    const y = Math.max(0, topo - folga);
+                    return {x, y,
+                        width: Math.min(dir - esq + folga * 2,
+                                        window.innerWidth - x),
+                        height: Math.min(base - topo + folga * 2,
+                                         window.innerHeight - y)};
+                };
+
+                const rotuloFaixa = acha(/Consulta de Valor/i);
+                if (!rotuloFaixa) return null;
+                const faixa = sobe(rotuloFaixa, /R\$\s*[\d.,]+/, 6);
+                if (!faixa) return null;
+
+                const rotuloVol = acha(/Identifica[çc][ãa]o do volume/i);
+                const volume = rotuloVol
+                    ? sobe(rotuloVol, /PESO CUBADO/i, 8) : null;
+
+                if (volume) {
+                    window.scrollTo({top: window.scrollY
+                        + volume.getBoundingClientRect().top - folga,
+                        behavior: 'instant'});
+                    const v = volume.getBoundingClientRect();
+                    const f = faixa.getBoundingClientRect();
+                    // Os dois juntos podem não caber na janela (tela pequena,
+                    // muitas linhas de cubagem). Aí é melhor o print antigo,
+                    // que sempre coube, do que um recorte cortado ao meio.
+                    if (v.top >= -1 && f.bottom > v.top
+                            && f.bottom <= window.innerHeight + 1)
+                        return recorte(Math.min(v.top, f.top),
+                                       Math.max(v.bottom, f.bottom),
+                                       Math.min(v.left, f.left),
+                                       Math.max(v.right, f.right));
                 }
-                if (!/R\\$\\s*[\\d.,]+/.test(faixa.innerText || '')) return null;
-                const r = faixa.getBoundingClientRect();
-                return {x: Math.max(0, r.left - 10), y: Math.max(0, r.top - 10),
-                        width: Math.min(r.width + 20, window.innerWidth),
-                        height: r.height + 20};
+
+                faixa.scrollIntoView({block: 'center', behavior: 'instant'});
+                const f = faixa.getBoundingClientRect();
+                return recorte(f.top, f.bottom, f.left, f.right);
             }""")
             if caixa and caixa["height"] > 40 and caixa["width"] > 100:
                 page.screenshot(path=str(destino), clip=caixa, timeout=10_000)
