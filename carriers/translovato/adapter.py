@@ -55,9 +55,13 @@ CONSULTAS = (
 # sair do campo de CEP — achada no js do site (main.min.js, validateCepAttend)
 # em 19/08/2026. Responde `true`/`false` em ~1s, sem login.
 #
-# Protegida por CSRF do CodeIgniter: o token vem no cookie `csrf_cookie_name`
-# ao abrir a página pública, e volta no campo `csrf_test_name`. Sem ele a
-# resposta é HTTP 500.
+# Duas exigências, as duas medidas em 19/08/2026 e as duas silenciosas:
+#
+# 1. CSRF do CodeIgniter — o token vem no cookie `csrf_cookie_name` ao abrir a
+#    página pública e volta no campo `csrf_test_name`. Sem ele, HTTP 500.
+# 2. O cabeçalho X-Requested-With: XMLHttpRequest é OBRIGATÓRIO. Sem ele a
+#    rota nem existe: devolve HTTP 200 com a página "Página não encontrada",
+#    que passa por resposta válida em qualquer checagem de status.
 URL_CEP_ATENDIDO = f"{m.BASE}/solicitacao-de-cotacao/validate-cep-attend"
 URL_PAGINA_PUBLICA = f"{m.BASE}/fale-conosco/solicitacao-de-cotacao"
 COOKIE_CSRF = "csrf_cookie_name"
