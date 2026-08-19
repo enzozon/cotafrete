@@ -25,3 +25,6 @@ htmlcov/
 .DS_Store
 .cache/
 cotafrete.db
+# arquivos que o modo WAL cria ao lado do banco
+cotafrete.db-wal
+cotafrete.db-shm
