@@ -190,6 +190,8 @@ font-size:14px;font-weight:600;text-decoration:none}
 .login{max-width:380px;margin:70px auto;text-align:center}
 .login img{height:64px;margin-bottom:18px}
 .menu a{margin-right:14px;font-size:13px;text-decoration:none}
+.ficha .val{font-size:14px;font-weight:600;word-break:break-word}
+.ficha .pouco{display:block;font-size:11px;font-weight:400;color:var(--fraco)}
 """
 
 
@@ -231,8 +233,8 @@ def _kg(valor) -> str:
     nada para quem está conferindo a carga.
 
     Aceita o que vier do banco (str ou Decimal) e devolve o original se não
-    for número: uma linha com o valor cru ainda informa; uma tela que estoura
-    no meio, não."""
+    for número: uma linha da ficha com o valor cru ainda informa; uma tela
+    que estoura no meio, não."""
     try:
         redondo = Decimal(str(valor)).quantize(Decimal("0.001"),
                                                rounding=ROUND_HALF_UP)
@@ -699,6 +701,76 @@ def mensagem_whatsapp(c: dict) -> str:
     ])
 
 
+def _dado(rotulo: str, valor, detalhe: str = "") -> str:
+    """Um par rótulo/valor da ficha.
+
+    Campo vazio vira travessão em vez de sumir: uma linha que desaparece faz
+    o vendedor achar que aquele dado não existe no sistema."""
+    extra = f'<span class="pouco">{e(detalhe)}</span>' if detalhe else ""
+    return (f'<div><label>{e(rotulo)}</label>'
+            f'<div class="val">{e(valor) or "—"}{extra}</div></div>')
+
+
+def _lugar(cidade: str | None, uf: str | None) -> str:
+    return f"{cidade}/{uf}" if cidade and uf else (cidade or uf or "")
+
+
+def _parte(rotulo: str, nome: str | None, cnpj: str | None) -> str:
+    """Razão social em cima, CNPJ embaixo. Sem a razão social, o CNPJ sobe —
+    repetir o mesmo número duas vezes só ocupa espaço."""
+    return _dado(rotulo, nome or cnpj, cnpj if nome else "")
+
+
+def _quando(iso: str | None) -> str:
+    try:
+        return datetime.fromisoformat(iso).strftime("%d/%m/%Y às %H:%M")
+    except (TypeError, ValueError):
+        return iso or ""
+
+
+def ficha_da_cotacao(c: dict) -> str:
+    """Os dados que geraram esta cotação, com os rótulos do formulário.
+
+    Pedido do Enzo em 19/08/2026. Resolve o caso de dois orçamentos parecidos
+    na mesa: sem a ficha, conferir para qual CEP cada preço foi cotado exigia
+    abrir o histórico e comparar de cabeça — e o preço certo no cliente
+    errado é um prejuízo que ninguém percebe na hora."""
+    unitario = peso_por_volume(c)
+    detalhe_peso = (f"{c['quantidade']} × {_kg(unitario)} kg cada"
+                    if unitario is not None else "")
+
+    return f"""<div class="cartao ficha">
+  <h2 style="font-size:15px;margin:0 0 4px">Dados desta cotação</h2>
+  <p class="sub">Foi com estes valores que os sites cotaram e que a mensagem
+  do WhatsApp foi escrita. Cotada em {e(_quando(c.get("criado_em")))}.</p>
+
+  <fieldset><legend>Rota</legend><div class="grid">
+    {_dado("CEP de origem", c["cep_origem"],
+           _lugar(c.get("cidade_origem"), c.get("uf_origem")))}
+    {_dado("CEP de destino", c["cep_destino"],
+           _lugar(c.get("cidade_destino"), c.get("uf_destino")))}
+  </div></fieldset>
+
+  <fieldset><legend>Documentos</legend><div class="grid">
+    {_parte("Remetente (quem envia)", c.get("nome_remetente"),
+            c.get("cnpj_remetente"))}
+    {_parte("Destinatário (quem recebe)", c.get("nome_destinatario"),
+            c.get("cnpj_destinatario"))}
+    {_parte("Pagador do frete", c.get("nome_pagador"), c.get("cnpj_pagador"))}
+  </div></fieldset>
+
+  <fieldset><legend>Carga</legend><div class="grid">
+    {_dado("Quantidade de volumes", c["quantidade"])}
+    {_dado("Peso total", f"{_kg(c['peso_kg'])} kg", detalhe_peso)}
+    {_dado("Comprimento", f"{c['comprimento_cm']} cm")}
+    {_dado("Largura", f"{c['largura_cm']} cm")}
+    {_dado("Altura", f"{c['altura_cm']} cm")}
+    {_dado("Valor da nota fiscal", moeda(c["valor_nf"]))}
+    {_dado("Material", c.get("material"))}
+  </div></fieldset>
+</div>"""
+
+
 @app.get("/cotacao/{cotacao_id}", response_class=HTMLResponse)
 def ver_cotacao(cotacao_id: int,
                 usuario: str | None = Cookie(None, alias=COOKIE)):
@@ -798,7 +870,7 @@ def ver_cotacao(cotacao_id: int,
 <h1>Cotação #{cotacao_id}</h1>
 <p class="sub">{e(c['cidade_origem'])}/{e(c['uf_origem'])} →
 {e(c['cidade_destino'])}/{e(c['uf_destino'])} · {e(c['quantidade'])} volume(s)
-· {e(c['peso_kg'])} kg · {e(c['comprimento_cm'])}×{e(c['largura_cm'])}×{e(c['altura_cm'])} cm
+· {_kg(c['peso_kg'])} kg · {e(c['comprimento_cm'])}×{e(c['largura_cm'])}×{e(c['altura_cm'])} cm
 · NF {moeda(c['valor_nf'])} · {e(c['material'])}</p>
 
 <div class="cartao">
@@ -812,6 +884,8 @@ def ver_cotacao(cotacao_id: int,
   aperta enviar.</p>
   {zaps}
 </div>
+
+{ficha_da_cotacao(c)}
 
 <p><a class="botao2" href="/?repetir={cotacao_id}">Repetir esta cotação</a>
 &nbsp;&nbsp; <a href="/">nova cotação</a> &nbsp;·&nbsp;

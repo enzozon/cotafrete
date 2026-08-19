@@ -26,8 +26,11 @@ CARGA = {
     "peso_kg": "12", "quantidade": 3,
     "comprimento_cm": 80, "largura_cm": 60, "altura_cm": 50,
     "valor_nf": "1500.00", "material": "Bomba",
-    "cnpj_remetente": "12345678000190", "cnpj_destinatario": "98765432000110",
-    "cnpj_pagador": "12345678000190", "nome_remetente": "Ventura",
+    # Com máscara porque é assim que /cotar grava (cnpj_formatado). O
+    # fixture guardava 14 dígitos crus, que a tela nunca recebe na prática.
+    "cnpj_remetente": "12.345.678/0001-90",
+    "cnpj_destinatario": "98.765.432/0001-10",
+    "cnpj_pagador": "12.345.678/0001-90", "nome_remetente": "Ventura",
     "nome_destinatario": "Cliente", "nome_pagador": "Ventura",
 }
 
@@ -125,6 +128,33 @@ def test_regex_da_mascara_chega_inteira_no_browser():
     assert r"/^(\d{{2}})(\d)/" in fonte
 
 
+# --------------------------------------------------------------- ficha
+# O Enzo pediu em 19/08/2026: a tela de resultado tem que mostrar os dados
+# que geraram aquela cotação, depois dos botões de WhatsApp. Antes disso o
+# vendedor via só os preços — e para conferir de onde vieram tinha que
+# abrir o histórico e comparar de cabeça.
+def test_ficha_mostra_o_que_foi_preenchido(app_web, cliente):
+    html = cliente.get(f"/cotacao/{_criar(app_web)}").text
+
+    for esperado in ("29010-000", "01310-100", "Vitória", "São Paulo",
+                     "12.345.678/0001-90", "98.765.432/0001-10",
+                     "Ventura", "Cliente", "Bomba"):
+        assert esperado in html, f"a ficha não mostrou {esperado!r}"
+
+
+def test_ficha_separa_peso_total_do_peso_por_volume(app_web, cliente):
+    """CARGA são 3 volumes e 12 kg no TOTAL — 4 kg cada.
+
+    O campo do formulário pede o peso de UM volume; o banco guarda o total.
+    Escrever só "Peso: 12" deixa o vendedor sem saber qual dos dois é, e é
+    esse número que ele redigita ao repetir a cotação."""
+    html = cliente.get(f"/cotacao/{_criar(app_web)}").text
+
+    assert "Peso total" in html
+    assert "12" in html
+    assert "4" in html          # o unitário, para conferir com a ficha
+
+
 # ------------------------------------------- repetir sem inflar o peso (19/08)
 def test_repetir_cotacao_devolve_o_peso_de_UM_volume(app_web, cliente):
     """BUG: `/cotar` grava req.peso_total_kg e `_valores_de` devolvia esse
@@ -142,3 +172,14 @@ def test_repetir_cotacao_devolve_o_peso_de_UM_volume(app_web, cliente):
     assert 'value="4"' in campo_peso, (
         f"o campo do peso unitário veio com {campo_peso!r} — "
         "o total de 12 kg voltaria multiplicado por 3 volumes")
+
+
+def test_peso_quebrado_usa_virgula_como_o_resto_da_tela(app_web, cliente):
+    """"12.5 kg" ao lado de "R$ 568,77" na mesma tela é o tipo de detalhe que
+    faz o vendedor desconfiar do número — e desconfiar do peso é desconfiar
+    do frete inteiro."""
+    carga = {**CARGA, "peso_kg": "12.5", "quantidade": 1}
+    html = cliente.get(f"/cotacao/{app_web.banco.salvar_cotacao('enzo', carga)}").text
+
+    assert "12,5 kg" in html
+    assert "12.5 kg" not in html
