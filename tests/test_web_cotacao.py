@@ -225,3 +225,74 @@ def test_recusa_longa_nao_e_cortada_no_meio_de_um_cnpj(app_web, cliente):
 
     for cnpj in t.CNPJS_REMETENTE_ACEITOS:
         assert cnpj in html, f"{cnpj} foi cortado da mensagem"
+
+
+# --------------------------------------- Jadlog cota UM volume, nao a carga
+def test_jadlog_avisa_que_o_preco_e_de_um_volume_so(app_web, cliente):
+    """A calculadora da Jadlog cota um pacote (carriers/jadlog/painel.py).
+    Ao lado da Camilo, que cota a carga inteira, o número dela parece o mais
+    barato sem ser — e é assim que se fecha um frete pelo preço errado."""
+    cotacao_id = _criar(app_web)                    # CARGA tem 3 volumes
+    app_web.banco.salvar_resultado(cotacao_id, "jadlog",
+                                   status="cotado", valor="33.29")
+    app_web.banco.salvar_resultado(cotacao_id, "camilo",
+                                   status="cotado", valor="69.91")
+
+    html = cliente.get(f"/cotacao/{cotacao_id}").text
+
+    assert "1 volume" in html, "faltou avisar que o preço é de um volume só"
+    assert "99,87" in html, "faltou a estimativa dos 3 volumes (3 × 33,29)"
+
+
+def test_jadlog_nao_leva_o_selo_de_mais_barato_com_varios_volumes(app_web,
+                                                                  cliente):
+    """R$ 33,29 por volume não é mais barato que R$ 69,91 pela carga toda —
+    são 3 volumes, R$ 99,87. Coroar o número não comparável é o erro que a
+    mensagem sozinha não impede."""
+    cotacao_id = _criar(app_web)
+    app_web.banco.salvar_resultado(cotacao_id, "jadlog",
+                                   status="cotado", valor="33.29")
+    app_web.banco.salvar_resultado(cotacao_id, "camilo",
+                                   status="cotado", valor="69.91")
+
+    html = cliente.get(f"/cotacao/{cotacao_id}").text
+    cartao_jadlog = html.split("Jadlog")[1].split("</div></div>")[0]
+
+    assert "MAIS BARATO" not in cartao_jadlog
+    assert "MAIS BARATO" in html, "a Camilo devia ficar com o selo"
+
+
+def test_com_um_volume_so_o_preco_da_jadlog_vale_e_disputa_normal(app_web,
+                                                                  cliente):
+    """Com 1 volume o preço dela É o da carga: nada de aviso nem de exclusão.
+    Aviso que aparece sempre vira aviso que ninguém lê."""
+    cotacao_id = app_web.banco.salvar_cotacao(
+        "enzo", {**CARGA, "quantidade": 1, "peso_kg": "4"})
+    app_web.banco.salvar_resultado(cotacao_id, "jadlog",
+                                   status="cotado", valor="33.29")
+    app_web.banco.salvar_resultado(cotacao_id, "camilo",
+                                   status="cotado", valor="69.91")
+
+    html = cliente.get(f"/cotacao/{cotacao_id}").text
+    cartao_jadlog = html.split("Jadlog")[1].split("</div></div>")[0]
+
+    assert "MAIS BARATO" in cartao_jadlog
+    assert "estimativa" not in cartao_jadlog.lower()
+
+
+def test_preco_de_um_volume_perde_o_verde_de_bom_preco(app_web, cliente):
+    """O olho compara os números grandes antes de ler o aviso. Verde é a cor
+    de "mais barato" nesta tela — num preço que não é da carga toda, ela
+    contradiz o texto logo abaixo."""
+    cotacao_id = _criar(app_web)                    # 3 volumes
+    app_web.banco.salvar_resultado(cotacao_id, "jadlog",
+                                   status="cotado", valor="33.29")
+    app_web.banco.salvar_resultado(cotacao_id, "camilo",
+                                   status="cotado", valor="69.91")
+
+    html = cliente.get(f"/cotacao/{cotacao_id}").text
+    jadlog = html.split("Jadlog")[1].split("</div></div>")[0]
+    camilo = html.split("Camilo")[1].split("</div></div>")[0]
+
+    assert 'class="valor incerto"' in jadlog
+    assert 'class="valor"' in camilo, "a Camilo cota a carga toda: segue verde"

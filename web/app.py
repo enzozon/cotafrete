@@ -111,9 +111,15 @@ NOMES = {"camilo": "Camilo dos Santos", "jadlog": "Jadlog Entregas",
          "translovato": "Translovato"}
 NOTAS = {
     "camilo": "Frete fracionado, com coleta. Preço já com taxas e ICMS.",
-    "jadlog": "Etiqueta pré-paga. Você leva a encomenda ao balcão.",
+    "jadlog": "Etiqueta pré-paga, cotada por volume. Você leva ao balcão.",
     "translovato": "Frete fracionado, com coleta. Só atende parte do país — fora da malha ela avisa.",
 }
+
+# A calculadora da Jadlog cota UM pacote por vez (carriers/jadlog/painel.py).
+# Com mais de um volume o número dela não é comparável com o da Camilo e o da
+# Translovato, que cotam a carga inteira — e o menor número na tela é o que
+# fecha negócio.
+COTAM_POR_VOLUME = ("jadlog",)
 
 # Teto do texto de erro no cartão. Era 180, o bastante para partir um CNPJ no
 # meio da mensagem da Translovato — e um CNPJ pela metade é pior do que
@@ -156,6 +162,10 @@ background:var(--papel)}
 .res.melhor{border-color:var(--ok);box-shadow:0 0 0 1px var(--ok)}
 .res .nome{font-weight:700;font-size:14px}
 .res .valor{font-size:28px;font-weight:700;color:var(--ok);margin:6px 0 2px}
+/* Preço que não é da carga toda não pode usar o verde de "bom preço": o olho
+   compara os números grandes antes de ler qualquer aviso, e era exatamente
+   assim que R$ 33,29 por volume parecia mais barato que R$ 69,91 pela carga. */
+.res .valor.incerto{color:var(--fraco)}
 .res .nota{font-size:12px;color:var(--fraco)}
 .falhou{color:var(--erro);font-size:13px;font-weight:600}
 .selo{display:inline-block;font-size:10px;font-weight:700;color:#fff;
@@ -196,6 +206,10 @@ font-size:14px;font-weight:600;text-decoration:none}
 .login{max-width:380px;margin:70px auto;text-align:center}
 .login img{height:64px;margin-bottom:18px}
 .menu a{margin-right:14px;font-size:13px;text-decoration:none}
+/* Aviso DENTRO do cartão, colado no preço que ele qualifica. Numa faixa no
+   topo da página ele seria lido antes do número e esquecido depois. */
+.alerta{background:#fffae6;border:1px solid #ffe380;border-radius:6px;
+padding:8px 10px;font-size:12px;margin:6px 0 2px;line-height:1.35}
 .ficha .val{font-size:14px;font-weight:600;word-break:break-word}
 .ficha .pouco{display:block;font-size:11px;font-weight:400;color:var(--fraco)}
 """
@@ -711,6 +725,15 @@ def mensagem_whatsapp(c: dict) -> str:
     ])
 
 
+def cota_por_volume(slug: str, quantidade: int) -> bool:
+    """A transportadora cotou UM volume e a carga tem mais de um?
+
+    Só nesse caso o preço dela deixa de ser comparável. Com um volume só, o
+    preço dela É o da carga — avisar ali seria ruído, e aviso que aparece
+    sempre é aviso que ninguém lê."""
+    return slug in COTAM_POR_VOLUME and quantidade > 1
+
+
 def _dado(rotulo: str, valor, detalhe: str = "") -> str:
     """Um par rótulo/valor da ficha.
 
@@ -794,7 +817,19 @@ def ver_cotacao(cotacao_id: int,
 <p><a href="/historico">← histórico</a></p></div>""", usuario),
             status_code=404)
 
-    precos = [r["valor"] for r in c["resultados"] if r["valor"] is not None]
+    try:
+        qtd = int(c["quantidade"])
+    except (TypeError, ValueError):
+        qtd = 1
+
+    # O selo compara só quem cotou a MESMA coisa. R$ 33,29 por volume não é
+    # mais barato que R$ 69,91 pela carga toda quando são 3 volumes — e o
+    # menor número com selo verde é o que fecha negócio. Fica de fora em vez
+    # de disputar pela estimativa: a estimativa serve para o vendedor pensar,
+    # não para o sistema eleger vencedor.
+    precos = [r["valor"] for r in c["resultados"]
+              if r["valor"] is not None
+              and not cota_por_volume(r["transportadora"], qtd)]
     melhor = min(precos) if precos else None
 
     cartoes = ""
@@ -803,8 +838,16 @@ def ver_cotacao(cotacao_id: int,
         if r["valor"] is not None:
             destaque = " melhor" if r["valor"] == melhor else ""
             selo = '<span class="selo">MAIS BARATO</span>' if destaque else ""
-            corpo = (f'<div class="valor">{moeda(r["valor"])}</div>'
-                     f'<div class="nota">{e(NOTAS.get(slug, ""))}</div>')
+            incerto = " incerto" if cota_por_volume(slug, qtd) else ""
+            corpo = (f'<div class="valor{incerto}">'
+                     f'{moeda(r["valor"])}</div>')
+            if cota_por_volume(slug, qtd):
+                corpo += (
+                    f'<div class="alerta"><b>Preço de 1 volume, não da '
+                    f'carga.</b> São {qtd} volumes: por estimativa, '
+                    f'{moeda(r["valor"] * qtd)} no total. Por isso ela não '
+                    f'disputa o selo de mais barato.</div>')
+            corpo += f'<div class="nota">{e(NOTAS.get(slug, ""))}</div>'
             if r["protocolo"]:
                 corpo += (f'<div class="nota">Cotação nº '
                           f'{e(r["protocolo"])}</div>')
