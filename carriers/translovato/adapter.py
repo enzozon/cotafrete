@@ -35,7 +35,7 @@ from carriers.base import (
     CampoSpec, ErroValidacao, Modo, ResultadoCotacao, print_seguro,
 )
 from carriers.translovato import mapping as m
-from core.models import CotacaoRequest, StatusCotacao
+from core.models import CotacaoRequest, StatusCotacao, limpa_doc
 
 # Só esta rota cria cotação. Fica nomeada para o porteiro de rede dos scripts
 # de recon poder bloqueá-la sem depender de adivinhar a URL.
@@ -50,6 +50,22 @@ CONSULTAS = (
     "/get-cities",
     "/solicitacao-de-cotacao/validate-cep-attend",
 )
+
+# Consulta pública de cobertura. É a MESMA que o formulário deles dispara ao
+# sair do campo de CEP — achada no js do site (main.min.js, validateCepAttend)
+# em 19/08/2026. Responde `true`/`false` em ~1s, sem login.
+#
+# Protegida por CSRF do CodeIgniter: o token vem no cookie `csrf_cookie_name`
+# ao abrir a página pública, e volta no campo `csrf_test_name`. Sem ele a
+# resposta é HTTP 500.
+URL_CEP_ATENDIDO = f"{m.BASE}/solicitacao-de-cotacao/validate-cep-attend"
+URL_PAGINA_PUBLICA = f"{m.BASE}/fale-conosco/solicitacao-de-cotacao"
+COOKIE_CSRF = "csrf_cookie_name"
+CAMPO_CSRF = "csrf_test_name"
+# Generoso perto do medido (0,2s a 0,5s em 19/08/2026) e curto de propósito:
+# são DUAS consultas, origem e destino, e o pior caso delas entra na frente da
+# cotação. Um teto alto aqui transformaria a otimização em atraso.
+TIMEOUT_CEP_S = 5.0
 
 TIMEOUT_RESULTADO_MS = 60_000
 ESPERA_AJAX_MS = 2500      # get-cnpj/get-cities/validate-cep respondem nisso
@@ -314,6 +330,47 @@ class TranslovatoAdapter:
             pass
         return print_seguro(page, destino)
 
+    # ------------------------------------------------------- cobertura (rápido)
+    def _cep_atendido(self, cep: str) -> bool | None:
+        """A Translovato atende esta praça? `None` = não deu para saber.
+
+        Os três estados são de propósito. `False` só sai quando ELES
+        responderam que não; qualquer outra coisa — rede fora, HTTP diferente
+        de 200, corpo inesperado, endpoint mudado de nome — vira `None`, e
+        quem chama segue cotando do jeito normal.
+
+        Recusar por dúvida seria o pior erro possível aqui: o robô diria "não
+        atende" sobre uma praça que a Translovato atende, e o vendedor
+        perderia o frete achando que o sistema conferiu. Perder 40 segundos é
+        muito melhor que isso.
+
+        Medido em 19/08/2026: ES, SP, MG, RS, PR e Salvador/BA respondem
+        `true`; Rio Branco/AC, Macapá/AP e Fortaleza/CE respondem `false`."""
+        import httpx
+
+        try:
+            with httpx.Client(timeout=TIMEOUT_CEP_S, follow_redirects=True,
+                              headers={"X-Requested-With": "XMLHttpRequest",
+                                       "Referer": URL_PAGINA_PUBLICA}) as c:
+                c.get(URL_PAGINA_PUBLICA)
+                token = c.cookies.get(COOKIE_CSRF)
+                if not token:
+                    return None
+                resp = c.post(URL_CEP_ATENDIDO,
+                              data={"cep": limpa_doc(cep or ""),
+                                    CAMPO_CSRF: token})
+        except Exception:
+            return None
+
+        if resp.status_code != 200:
+            return None
+        corpo = resp.text.strip().lower()
+        if corpo == "true":
+            return True
+        if corpo == "false":
+            return False
+        return None
+
     # ------------------------------------------------------------------ envio
     def cotar(self, req: CotacaoRequest) -> ResultadoCotacao:
         from playwright.sync_api import sync_playwright
@@ -323,6 +380,19 @@ class TranslovatoAdapter:
             return ResultadoCotacao(
                 self.slug, StatusCotacao.ERRO,
                 erro="; ".join(f"{e.campo}: {e.mensagem}" for e in erros))
+
+        # Pergunta a cobertura ANTES de abrir o navegador. O caminho completo
+        # (login, formulário, preenchimento) leva ~40s para chegar na MESMA
+        # resposta, e quem espera é o vendedor na frente do cliente.
+        #
+        # `is False` de propósito: só recusa quando ELES disseram não. `None`
+        # é dúvida, e dúvida segue para a cotação de verdade.
+        for lado, local in (("origem", req.origem), ("destino", req.destino)):
+            if self._cep_atendido(local.cep or "") is False:
+                return ResultadoCotacao(
+                    self.slug, StatusCotacao.RECUSADO,
+                    motivo_recusa=m.recusa_cep_nao_atendido(local.cep or "",
+                                                            lado))
 
         campos = self.preparar_payload(req)
         esperado = m.cubagem_esperada(req)

@@ -95,6 +95,19 @@ def recusa_sem_tabela(cnpj_remetente: str) -> str:
         f"Translovato pelo WhatsApp, no botão aqui embaixo.")
 
 
+def recusa_cep_nao_atendido(cep: str, lado: str) -> str:
+    """Praça fora da malha. `lado` é "origem" ou "destino".
+
+    Dizer só "não atende esse CEP" não resolve: numa cotação existem DOIS
+    CEPs, e o vendedor não sabe qual mexer. A frase nomeia o lado, mostra o
+    número legível e diz para onde ir em seguida."""
+    return (
+        f"A Translovato não atende o CEP de {lado} {_cep_mascarado(cep)}. A "
+        f"malha dela cobre parte do país. Para esta praça, cote com outra "
+        f"transportadora, ou fale com a Translovato pelo WhatsApp, no botão "
+        f"aqui embaixo.")
+
+
 def campos_obrigatorios(req: CotacaoRequest) -> list[CampoSpec]:
     return [
         CampoSpec("value[sender_cpnj]", True, "cnpj-mascarado"),
@@ -138,6 +151,12 @@ def _enxuto(valor: Decimal, casas: Decimal) -> str:
 def _metros(cm: Decimal) -> str:
     """Centímetros da ficha -> metros do formulário. A armadilha nº 1."""
     return _enxuto(cm / CM_POR_M, CASAS_MEDIDA)
+
+
+def _cep_mascarado(cep: str) -> str:
+    """29105770 -> 29105-770. Só para LER: o campo do site quer 8 dígitos."""
+    d = limpa_doc(cep or "")
+    return f"{d[:5]}-{d[5:]}" if len(d) == 8 else (cep or "")
 
 
 def _cnpj_mascarado(doc: str) -> str:

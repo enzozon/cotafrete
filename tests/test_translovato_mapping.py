@@ -250,3 +250,13 @@ def test_o_cnpj_errado_nao_entra_na_lista_de_aceitos():
     """A frase mostra o CNPJ usado E os aceitos. Se o usado aparecesse na
     lista, o vendedor tentaria de novo com o mesmo número."""
     assert "60.042.686/0001-05" not in t.CNPJS_REMETENTE_ACEITOS
+
+
+def test_recusa_de_cep_diz_qual_cep_e_para_onde_ir():
+    """"Não atende esse CEP" sozinho não resolve nada: o vendedor precisa
+    saber QUAL dos dois CEPs, e o que fazer em seguida."""
+    frase = t.recusa_cep_nao_atendido("69900000", "destino")
+
+    assert "69900-000" in frase, "o CEP tem que aparecer legível, com traço"
+    assert "destino" in frase.lower()
+    assert "whatsapp" in frase.lower()
