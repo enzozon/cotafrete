@@ -115,6 +115,12 @@ NOTAS = {
     "translovato": "Frete fracionado, com coleta. Só atende parte do país — fora da malha ela avisa.",
 }
 
+# Teto do texto de erro no cartão. Era 180, o bastante para partir um CNPJ no
+# meio da mensagem da Translovato — e um CNPJ pela metade é pior do que
+# nenhum, porque o vendedor copia assim mesmo. Continua havendo teto: sem ele
+# um stack trace inteiro vai para a tela.
+LIMITE_MENSAGEM_ERRO = 400
+
 CSS = """
 :root{--tinta:#16181d;--fraco:#6b7280;--borda:#e2e5ea;--fundo:#f5f6f8;
 --papel:#fff;--marca:#3b4a9c;--ok:#00875a;--erro:#bf2600;--zap:#25d366}
@@ -810,7 +816,8 @@ def ver_cotacao(cotacao_id: int,
             # escondeu, neste projeto, cinco envios que nunca saíram.
             motivo = r["erro"] or f"o site respondeu: {r['status']}"
             corpo = ('<div class="falhou">Não retornou preço</div>'
-                     f'<div class="nota">{e(motivo[:180])}</div>')
+                     f'<div class="nota">'
+                     f'{e(motivo[:LIMITE_MENSAGEM_ERRO])}</div>')
         cartoes += (f'<div class="res{destaque}"><div class="nome">'
                     f'{e(NOMES.get(slug, slug))} {selo}</div>{corpo}</div>')
 

@@ -204,3 +204,24 @@ def test_recusa_da_transportadora_chega_na_tela(app_web, cliente):
 
     assert "só cota frete saindo da Ventura" in html
     assert "o site respondeu" not in html
+
+
+def test_recusa_longa_nao_e_cortada_no_meio_de_um_cnpj(app_web, cliente):
+    """A mensagem da Translovato lista três CNPJs e passa de 180 caracteres.
+    Cortar no meio de um CNPJ é pior que não mostrar: o vendedor copia um
+    número incompleto."""
+    from carriers.base import ResultadoCotacao
+    from core.models import StatusCotacao
+
+    from carriers.translovato import mapping as t
+    frase = t.recusa_sem_tabela("60.042.686/0001-05")
+
+    cotacao_id = _criar(app_web)
+    app_web._rodar(cotacao_id, "translovato",
+                   lambda _: ResultadoCotacao("translovato",
+                                              StatusCotacao.RECUSADO,
+                                              motivo_recusa=frase), None)
+    html = cliente.get(f"/cotacao/{cotacao_id}").text
+
+    for cnpj in t.CNPJS_REMETENTE_ACEITOS:
+        assert cnpj in html, f"{cnpj} foi cortado da mensagem"

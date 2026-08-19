@@ -60,22 +60,39 @@ REDESPACHO_NAO = "0"
 # Frase do site quando a praça está fora da malha. Não é erro do robô.
 AVISO_FORA_DE_AREA = "não está em nossa regi"
 
+# Os CNPJs da Ventura que a Translovato tem cadastrados como cliente. Quem
+# decide se existe tabela de preço é o REMETENTE (medido em 18/08/2026,
+# confirmado pelo Enzo em 19/08/2026) — a Translovato só cota carga SAINDO
+# daqui. Frete vindo para cá é cotado por WhatsApp.
+#
+# Servem para EXPLICAR a recusa, não para barrar antes de tentar: se a
+# Ventura cadastrar um quarto CNPJ, uma lista fechada aqui recusaria uma
+# cotação que o site aceitaria — e ninguém entenderia por quê.
+CNPJS_REMETENTE_ACEITOS = (
+    "20.837.281/0001-49",
+    "05.954.058/0001-98",
+    "08.310.365/0001-24",
+)
+
 
 def recusa_sem_tabela(cnpj_remetente: str) -> str:
     """Mensagem para quando a Translovato não tem tabela para o remetente.
 
     Medido em 18/08/2026: `get-products` devolve `null` quando o CNPJ do
-    REMETENTE não é cliente da Translovato. Aconteceu com o CNPJ que já vem
+    REMETENTE não é cliente da Translovato. Acontece com o CNPJ que já vem
     preenchido no aplicativo (um fornecedor, não a Ventura).
 
-    Não é erro do robô nem carga inválida — é ausência de tabela de preço. O
-    vendedor precisa ler QUAL CNPJ e o que fazer, e não "lista de produtos
-    vazia", que não diz nada para quem está cotando."""
+    Não é erro do robô nem carga inválida — é a regra comercial deles. A
+    frase é escrita para o vendedor RESOLVER sozinho: diz o que a Translovato
+    aceita, quais CNPJs servem, qual ele usou, e para onde ir quando o frete
+    é no sentido contrário. Sem isso ele lê "sem tabela de preço" e liga
+    para o Enzo."""
+    aceitos = ", ".join(CNPJS_REMETENTE_ACEITOS[:-1])
     return (
-        f"A Translovato não tem tabela de preço para o CNPJ remetente "
-        f"{cnpj_remetente}. Ela só cota quando a carga sai de um CNPJ "
-        f"cadastrado como cliente dela — confira se o remetente é mesmo o da "
-        f"empresa.")
+        f"A Translovato só cota frete SAINDO da Ventura. O CNPJ do remetente "
+        f"precisa ser {aceitos} ou {CNPJS_REMETENTE_ACEITOS[-1]} — e você usou "
+        f"{cnpj_remetente}. Para frete VINDO para a Ventura, fale com a "
+        f"Translovato pelo WhatsApp, no botão aqui embaixo.")
 
 
 def campos_obrigatorios(req: CotacaoRequest) -> list[CampoSpec]:
