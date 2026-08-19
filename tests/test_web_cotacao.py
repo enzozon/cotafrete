@@ -183,3 +183,24 @@ def test_peso_quebrado_usa_virgula_como_o_resto_da_tela(app_web, cliente):
 
     assert "12,5 kg" in html
     assert "12.5 kg" not in html
+
+
+# ------------------------------------------- recusa que o vendedor entende
+def test_recusa_da_transportadora_chega_na_tela(app_web, cliente):
+    """BUG: `_rodar` gravava só `res.erro`, e os caminhos de recusa da
+    Translovato preenchem `res.motivo_recusa`. A frase escrita para o
+    vendedor era jogada fora e o cartão caía no genérico "o site respondeu:
+    recusado" — exatamente o que essas mensagens existem para evitar."""
+    from carriers.base import ResultadoCotacao
+    from core.models import StatusCotacao
+
+    cotacao_id = _criar(app_web)
+    recusa = ResultadoCotacao(
+        "translovato", StatusCotacao.RECUSADO,
+        motivo_recusa="A Translovato só cota frete saindo da Ventura.")
+    app_web._rodar(cotacao_id, "translovato", lambda _: recusa, None)
+
+    html = cliente.get(f"/cotacao/{cotacao_id}").text
+
+    assert "só cota frete saindo da Ventura" in html
+    assert "o site respondeu" not in html

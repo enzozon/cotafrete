@@ -661,7 +661,11 @@ def _rodar(cotacao_id: int, slug: str, cotar_fn, req) -> None:
             res = cotar_fn(req)
         banco.salvar_resultado(
             cotacao_id, slug, status=res.status.value, valor=res.valor_frete,
-            protocolo=res.protocolo, erro=res.erro,
+            # motivo_recusa junto: "recusado" é a transportadora dizendo não,
+            # e a frase que explica o porquê é escrita justamente para o
+            # vendedor ler. Gravando só `erro`, ela era jogada fora e o cartão
+            # caía no genérico "o site respondeu: recusado".
+            protocolo=res.protocolo, erro=res.erro or res.motivo_recusa,
             evidencia=res.evidencias[-1] if res.evidencias else None)
     except Exception as exc:
         banco.salvar_resultado(cotacao_id, slug, status="erro",
