@@ -123,3 +123,22 @@ def test_regex_da_mascara_chega_inteira_no_browser():
 
     assert r"replace(/\D/g" in fonte
     assert r"/^(\d{{2}})(\d)/" in fonte
+
+
+# ------------------------------------------- repetir sem inflar o peso (19/08)
+def test_repetir_cotacao_devolve_o_peso_de_UM_volume(app_web, cliente):
+    """BUG: `/cotar` grava req.peso_total_kg e `_valores_de` devolvia esse
+    total para o campo "Peso de UM volume".
+
+    Com 3 volumes de 4 kg (total 12), repetir preenchia 12 no campo unitário
+    e a cotação seguinte saía com 36 kg — três vezes a carga real, sem aviso
+    nenhum na tela, porque 36 kg é um peso perfeitamente válido. Repetindo de
+    novo virava 108. Quanto maior a quantidade, maior o erro."""
+    cotacao_id = _criar(app_web)
+
+    html = cliente.get(f"/?repetir={cotacao_id}").text
+    campo_peso = html.split('id="peso"')[1].split(">")[0]
+
+    assert 'value="4"' in campo_peso, (
+        f"o campo do peso unitário veio com {campo_peso!r} — "
+        "o total de 12 kg voltaria multiplicado por 3 volumes")

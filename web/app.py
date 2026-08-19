@@ -30,7 +30,7 @@ import base64
 import html
 from concurrent.futures import ThreadPoolExecutor
 import threading
-from decimal import Decimal, InvalidOperation
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import quote
@@ -223,6 +223,38 @@ def moeda(v: Decimal | None) -> str:
     return f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 
+def _kg(valor) -> str:
+    """Peso do jeito que se lê aqui: vírgula, sem zeros à toa.
+
+    4,000 vira "4" e 3,333333… vira "3,333". `:f` em vez de str() porque
+    normalize() devolve Decimal('1E+2') para 100, e "1E+2 kg" não quer dizer
+    nada para quem está conferindo a carga.
+
+    Aceita o que vier do banco (str ou Decimal) e devolve o original se não
+    for número: uma linha com o valor cru ainda informa; uma tela que estoura
+    no meio, não."""
+    try:
+        redondo = Decimal(str(valor)).quantize(Decimal("0.001"),
+                                               rounding=ROUND_HALF_UP)
+    except (ArithmeticError, TypeError, ValueError):
+        return str(valor)
+    return f"{redondo.normalize():f}".replace(".", ",")
+
+
+def peso_por_volume(c: dict) -> Decimal | None:
+    """Peso de UM volume. O banco guarda o TOTAL (ver /cotar).
+
+    São grandezas diferentes com o mesmo nome, e é isso que torna o erro
+    perigoso: o formulário pede "Peso de UM volume", a coluna peso_kg guarda
+    qtd × unitário, e 36 kg é um peso tão válido quanto 12. Nada na tela
+    denuncia — a cotação sai com o triplo da carga e o preço vem junto."""
+    try:
+        qtd = int(c["quantidade"])
+        return Decimal(str(c["peso_kg"])) / qtd if qtd > 0 else None
+    except (ArithmeticError, TypeError, ValueError):
+        return None
+
+
 def pagina(titulo: str, corpo: str, usuario: str | None = None) -> str:
     quem = ""
     if usuario:
@@ -392,13 +424,19 @@ def campo(nome: str, rotulo: str, v: dict) -> str:
 
 def _valores_de(c: dict) -> dict:
     """Cotação salva -> campos do formulário, para repetir sem redigitar."""
+    # Este campo pede o peso de UM volume; o banco guarda o TOTAL. Devolver o
+    # total aqui multiplicava a carga pela quantidade a CADA repetição — e
+    # "Repetir esta cotação" é justamente o botão mais usado da tela.
+    unitario = peso_por_volume(c)
     return {**PADRAO,
             "cep_origem": c["cep_origem"], "cep_destino": c["cep_destino"],
             "cnpj_remetente": c.get("cnpj_remetente") or PADRAO["cnpj_remetente"],
             "cnpj_destinatario": (c.get("cnpj_destinatario")
                                   or PADRAO["cnpj_destinatario"]),
             "cnpj_pagador": c.get("cnpj_pagador") or PADRAO["cnpj_pagador"],
-            "peso": str(c["peso_kg"]), "quantidade": str(c["quantidade"]),
+            "peso": (_kg(unitario) if unitario is not None
+                     else str(c["peso_kg"])),
+            "quantidade": str(c["quantidade"]),
             "comprimento": str(c["comprimento_cm"]),
             "largura": str(c["largura_cm"]), "altura": str(c["altura_cm"]),
             "valor_nf": str(c["valor_nf"]).replace(".", ","),
