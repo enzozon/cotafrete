@@ -76,6 +76,16 @@ def com_whatsapp() -> tuple[Transportadora, ...]:
     return tuple(t for t in WHATSAPP if t.tem_numero)
 
 
+def por_slug(slug: str) -> Transportadora | None:
+    """Acha pelo slug, ou None. Quem chama decide o que fazer com o None.
+
+    É por aqui que o número de telefone entra na URL do WhatsApp — nunca pelo
+    que veio no pedido. Montar o link com dado de fora viraria
+    redirecionamento aberto: um link do nosso próprio site levando a qualquer
+    lugar da internet."""
+    return next((t for t in com_whatsapp() if t.slug == slug), None)
+
+
 def sem_numero() -> tuple[Transportadora, ...]:
     """As que estão esperando o telefone, para não caírem no esquecimento."""
     return tuple(t for t in WHATSAPP if not t.tem_numero)

@@ -57,6 +57,23 @@ CREATE TABLE IF NOT EXISTS resultado (
     evidencia      TEXT
 );
 
+-- Conversa de WhatsApp ABERTA. Nunca "enviada": o sistema abre a conversa
+-- com o texto pronto, mas quem aperta enviar é a pessoa, do outro lado, e
+-- disso aqui não chega notícia nenhuma. Registrar como "enviado" criaria a
+-- pior cotação possível — a que todo mundo acha que saiu e não saiu.
+--
+-- UNIQUE porque reabrir é normal (fechou sem querer, voltou para conferir) e
+-- não pode inflar a contagem. Com INSERT OR IGNORE, a hora guardada é a da
+-- PRIMEIRA vez, que é a que diz quando a transportadora foi acionada.
+CREATE TABLE IF NOT EXISTS whatsapp_aberto (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    cotacao_id     INTEGER NOT NULL REFERENCES cotacao(id) ON DELETE CASCADE,
+    transportadora TEXT NOT NULL,
+    usuario        TEXT NOT NULL,
+    aberto_em      TEXT NOT NULL,
+    UNIQUE (cotacao_id, transportadora)
+);
+
 CREATE INDEX IF NOT EXISTS idx_cotacao_usuario ON cotacao(usuario, id DESC);
 CREATE INDEX IF NOT EXISTS idx_resultado_cotacao ON resultado(cotacao_id);
 """
@@ -102,6 +119,11 @@ class Banco:
         con = sqlite3.connect(self.caminho)
         con.row_factory = sqlite3.Row
         con.execute("PRAGMA foreign_keys = ON")
+        # WAL: leitor e escritor deixam de brigar pelo arquivo. Sem isso o
+        # monitor (monitorar.py), que lê o banco enquanto as cotações gravam,
+        # leva "database is locked" na hora de maior movimento — justo quando
+        # olhar o monitor importa. Fica gravado no arquivo, basta uma vez.
+        con.execute("PRAGMA journal_mode = WAL")
         return con
 
     # ------------------------------------------------------------ escrita
@@ -132,6 +154,34 @@ class Banco:
                 (cotacao_id, transportadora, status,
                  str(valor) if valor is not None else None,
                  protocolo, prazo, erro, evidencia))
+
+    def marcar_whatsapp_aberto(self, cotacao_id: int, transportadora: str,
+                               usuario: str) -> None:
+        """Registra que a conversa foi ABERTA com o texto pronto.
+
+        OR IGNORE, não REPLACE: reabrir não pode reescrever a hora da
+        primeira vez nem duplicar a linha."""
+        with closing(self._conectar()) as con, con:
+            con.execute(
+                "INSERT OR IGNORE INTO whatsapp_aberto"
+                " (cotacao_id, transportadora, usuario, aberto_em)"
+                " VALUES (?, ?, ?, ?)",
+                (cotacao_id, transportadora, usuario,
+                 datetime.now().isoformat(timespec="seconds")))
+
+    def whatsapp_abertos(self, cotacao_id: int) -> set[str]:
+        """Só os slugs — é o que a tela precisa para marcar cada linha."""
+        with closing(self._conectar()) as con, con:
+            return {r["transportadora"] for r in con.execute(
+                "SELECT transportadora FROM whatsapp_aberto"
+                " WHERE cotacao_id = ?", (cotacao_id,))}
+
+    def whatsapp_detalhado(self, cotacao_id: int) -> list[dict]:
+        """Com hora e usuário, para o monitor e para conferir depois."""
+        with closing(self._conectar()) as con, con:
+            return [dict(r) for r in con.execute(
+                "SELECT * FROM whatsapp_aberto WHERE cotacao_id = ?"
+                " ORDER BY id", (cotacao_id,))]
 
     # ------------------------------------------------------------ leitura
     def listar_cotacoes(self, usuario: str, limite: int = 100) -> list[dict]:

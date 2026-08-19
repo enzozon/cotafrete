@@ -174,6 +174,20 @@ background:var(--ok);border-radius:99px;padding:2px 8px;letter-spacing:.4px}
 border-radius:8px;padding:10px 12px;text-decoration:none;color:inherit;
 margin-bottom:8px;background:var(--papel)}
 .zap:hover{border-color:var(--zap)}
+/* Já aberta: fica apagada para o olho cair na próxima da lista sozinho, sem
+   precisar de seta nem de "next". O visto verde diz que passou por ali. */
+.zap.aberta{background:#f7f8f9;border-color:#d6ecdc}
+.zap.aberta b{color:var(--fraco);font-weight:600}
+.zap.aberta .marca{opacity:.5}
+.zap.aberta .ir{display:none}
+.zap .jafoi{display:none}
+.zap.aberta .jafoi{display:inline-block;margin-left:auto;color:var(--ok);
+font-size:13px;font-weight:600}
+/* Visto literal, nao escape CSS: o bloco do CSS e uma string normal do
+   Python, e "¹3" ali vira escape OCTAL antes de chegar no navegador --
+   saia "¹3" na tela em vez do visto. */
+.zap.aberta .jafoi::before{content:"✓  "}
+.contador{float:right;font-size:12px;font-weight:400;color:var(--fraco)}
 /* Altura fixa e contain: as logos vêm em tamanhos e proporções diferentes,
    e sem isto a CGB (359KB, quadrada) empurra a linha inteira para baixo. */
 .zap .marca{width:44px;height:44px;object-fit:contain;flex:0 0 auto;
@@ -804,6 +818,31 @@ def ficha_da_cotacao(c: dict) -> str:
 </div>"""
 
 
+@app.get("/whatsapp/{cotacao_id}/{slug}")
+def abrir_whatsapp(cotacao_id: int, slug: str,
+                   usuario: str | None = Cookie(None, alias=COOKIE)):
+    """Registra a ABERTURA e leva para a conversa com o texto pronto.
+
+    Passar pelo nosso servidor em vez de ligar direto no wa.me é o que
+    permite contar. E o número vem SEMPRE do cadastro em transportadoras.py:
+    montar a URL com o que chega no pedido viraria redirecionamento aberto.
+
+    "Aberta" e não "enviada" de propósito. Daqui em diante quem age é a
+    pessoa, no aplicativo do WhatsApp, e disso não chega notícia nenhuma."""
+    if not usuario:
+        return RedirectResponse("/login", status_code=303)
+
+    c = banco.buscar_cotacao(cotacao_id, usuario)
+    reg = transportadoras.por_slug(slug)
+    if c is None or reg is None:
+        return HTMLResponse("Não encontrado", status_code=404)
+
+    banco.marcar_whatsapp_aberto(cotacao_id, slug, usuario)
+    texto = quote(mensagem_whatsapp(c))
+    return RedirectResponse(f"https://wa.me/{reg.telefone}?text={texto}",
+                            status_code=303)
+
+
 @app.get("/cotacao/{cotacao_id}", response_class=HTMLResponse)
 def ver_cotacao(cotacao_id: int,
                 usuario: str | None = Cookie(None, alias=COOKIE)):
@@ -909,14 +948,18 @@ def ver_cotacao(cotacao_id: int,
     else:
         cabecalho_espera = ""
 
-    texto = quote(mensagem_whatsapp(c))
+    lista_zap = transportadoras.com_whatsapp()
+    abertas = banco.whatsapp_abertos(cotacao_id)
     zaps = "".join(
-        f'<a class="zap" href="https://wa.me/{reg.telefone}?text={texto}"'
+        f'<a class="zap{" aberta" if reg.slug in abertas else ""}"'
+        f' id="zap-{e(reg.slug)}"'
+        f' href="/whatsapp/{cotacao_id}/{e(reg.slug)}"'
         f' target="_blank" rel="noopener">'
         f'<img class="marca" src="/logos/{e(reg.logo)}" alt="" loading="lazy">'
         f'<b>{e(reg.nome)}</b>'
-        f'<span class="ir">Enviar no WhatsApp</span></a>'
-        for reg in transportadoras.com_whatsapp())
+        f'<span class="ir">Abrir no WhatsApp</span>'
+        f'<span class="jafoi">Aberta</span></a>'
+        for reg in lista_zap)
 
     return HTMLResponse(pagina(f"Cotação {cotacao_id}", f"""
 {recarrega}
@@ -933,9 +976,12 @@ def ver_cotacao(cotacao_id: int,
 </div>
 
 <div class="cartao">
-  <h2 style="font-size:15px;margin:0 0 4px">Precisa de você</h2>
-  <p class="sub">Estas atendem por WhatsApp. A mensagem abre pronta — você
-  aperta enviar.</p>
+  <h2 style="font-size:15px;margin:0 0 4px">Precisa de você
+    <span class="contador"><b id="quantas">{len(abertas)}</b> de
+    {len(lista_zap)} abertas</span></h2>
+  <p class="sub">A mensagem abre pronta — <b>quem aperta enviar é você</b>,
+  no WhatsApp. Por isso a conta acima diz <b>abertas</b>, e não enviadas:
+  daqui o sistema não tem como saber se a mensagem saiu.</p>
   {zaps}
 </div>
 
@@ -945,6 +991,16 @@ def ver_cotacao(cotacao_id: int,
 &nbsp;&nbsp; <a href="/">nova cotação</a> &nbsp;·&nbsp;
 <a href="/historico">histórico</a></p>
 <script>
+// O link abre em outra aba; ESTA pagina fica parada. Sem marcar na hora, o
+// vendedor volta e ve a lista igualzinha, sem saber onde parou. O servidor ja
+// registrou de qualquer jeito -- isto aqui e so o olho acompanhando o dedo.
+document.querySelectorAll(".zap").forEach(a => a.addEventListener("click", () => {{
+  if (a.classList.contains("aberta")) return;
+  a.classList.add("aberta");
+  const q = document.getElementById("quantas");
+  q.textContent = String(Number(q.textContent) + 1);
+}}));
+
 // clique amplia o print: na tela ele fica pequeno, e o funcionario precisa
 // conseguir ler a composicao do frete para explicar ao cliente
 document.querySelectorAll(".print").forEach(i =>

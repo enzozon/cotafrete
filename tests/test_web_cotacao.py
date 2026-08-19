@@ -296,3 +296,74 @@ def test_preco_de_um_volume_perde_o_verde_de_bom_preco(app_web, cliente):
 
     assert 'class="valor incerto"' in jadlog
     assert 'class="valor"' in camilo, "a Camilo cota a carga toda: segue verde"
+
+
+# ------------------------------------------------- WhatsApp: contagem de ABERTAS
+# Decisão do Enzo em 19/08/2026. O rótulo é "abertas", nunca "enviadas": o
+# sistema abre a conversa com o texto pronto, mas quem aperta enviar é a
+# pessoa, do outro lado, e disso aqui não chega notícia nenhuma.
+def test_clicar_no_whatsapp_registra_e_leva_para_a_conversa(app_web, cliente):
+    cotacao_id = _criar(app_web)
+
+    r = cliente.get(f"/whatsapp/{cotacao_id}/movvi", follow_redirects=False)
+
+    assert r.status_code == 303
+    assert r.headers["location"].startswith("https://wa.me/553194910111?text=")
+    assert app_web.banco.whatsapp_abertos(cotacao_id) == {"movvi"}
+
+
+def _texto(html: str) -> str:
+    """Só o que o vendedor lê, sem as tags.
+
+    A contagem tem um <b> no meio (o JS atualiza ele no clique), então "3 de
+    14" nunca é contíguo no HTML. Testar o texto renderizado é testar o que
+    a pessoa vê, e não sobrevive a mim mudando a marcação."""
+    import re
+    return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", html))
+
+
+def test_a_tela_mostra_quantas_ja_foram_abertas(app_web, cliente):
+    cotacao_id = _criar(app_web)
+    for slug in ("movvi", "translovato", "coruja"):
+        cliente.get(f"/whatsapp/{cotacao_id}/{slug}", follow_redirects=False)
+
+    texto = _texto(cliente.get(f"/cotacao/{cotacao_id}").text)
+
+    assert "3 de 14 abertas" in texto
+    # A frase da tela explica a diferença e por isso usa as duas palavras.
+    # O que não pode existir é a CONTAGEM dizendo "enviadas": o sistema não
+    # sabe se foi enviado, e prometer isso é pior que não contar nada.
+    assert "de 14 enviadas" not in texto
+
+
+def test_transportadora_ja_aberta_fica_marcada_na_lista(app_web, cliente):
+    cotacao_id = _criar(app_web)
+    cliente.get(f"/whatsapp/{cotacao_id}/movvi", follow_redirects=False)
+
+    html = cliente.get(f"/cotacao/{cotacao_id}").text
+    linha_movvi = html.split("Movvi")[1].split("</a>")[0]
+
+    assert "aberta" in linha_movvi.lower()
+
+
+def test_transportadora_inventada_na_url_nao_redireciona_para_lugar_nenhum(
+        app_web, cliente):
+    """A URL de destino sai SEMPRE do nosso cadastro, nunca do pedido. Montar
+    o wa.me com o que vem na URL viraria redirecionamento aberto: bastaria
+    mandar um link do nosso próprio site para jogar alguém em qualquer
+    lugar."""
+    cotacao_id = _criar(app_web)
+
+    r = cliente.get(f"/whatsapp/{cotacao_id}/naoexiste", follow_redirects=False)
+
+    assert r.status_code == 404
+    assert app_web.banco.whatsapp_abertos(cotacao_id) == set()
+
+
+def test_nao_da_para_registrar_abertura_em_cotacao_alheia(app_web, cliente):
+    cotacao_id = app_web.banco.salvar_cotacao("maria", CARGA)
+
+    r = cliente.get(f"/whatsapp/{cotacao_id}/movvi", follow_redirects=False)
+
+    assert r.status_code == 404
+    assert app_web.banco.whatsapp_abertos(cotacao_id) == set()

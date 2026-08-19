@@ -234,3 +234,39 @@ def test_conexoes_sao_fechadas(tmp_path):
             pass
 
     assert not penduradas, f"{len(penduradas)} de {len(abertas)} ficaram abertas"
+
+
+# ------------------------------------------------- WhatsApp: o que foi ABERTO
+# Nunca "enviado". O sistema sabe que a conversa abriu; se o vendedor apertou
+# enviar do outro lado, ninguém aqui tem como saber. Prometer "enviado" criaria
+# a pior das cotações: a que todo mundo acha que saiu e não saiu.
+def test_registra_abertura_de_whatsapp(db):
+    cid = db.salvar_cotacao("enzo", _carga())
+
+    db.marcar_whatsapp_aberto(cid, "movvi", "enzo")
+
+    assert db.whatsapp_abertos(cid) == {"movvi"}
+
+
+def test_abrir_de_novo_nao_duplica_nem_reescreve_a_hora(db):
+    """Reabrir a mesma conversa é comum: o vendedor fecha sem querer, ou volta
+    para conferir. A contagem não pode inflar, e a hora que interessa é a da
+    PRIMEIRA vez — é ela que diz quando a transportadora foi acionada."""
+    cid = db.salvar_cotacao("enzo", _carga())
+
+    db.marcar_whatsapp_aberto(cid, "movvi", "enzo")
+    primeira = db.whatsapp_detalhado(cid)[0]["aberto_em"]
+    db.marcar_whatsapp_aberto(cid, "movvi", "enzo")
+
+    assert db.whatsapp_abertos(cid) == {"movvi"}
+    assert db.whatsapp_detalhado(cid)[0]["aberto_em"] == primeira
+    assert len(db.whatsapp_detalhado(cid)) == 1
+
+
+def test_aberturas_nao_vazam_de_uma_cotacao_para_outra(db):
+    uma = db.salvar_cotacao("enzo", _carga())
+    outra = db.salvar_cotacao("enzo", _carga())
+
+    db.marcar_whatsapp_aberto(uma, "movvi", "enzo")
+
+    assert db.whatsapp_abertos(outra) == set()
