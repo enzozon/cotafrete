@@ -1,7 +1,7 @@
 """Cotafrete — interface do usuário.
 
-    python -m uvicorn web.app:app --port 8000
-    # abre http://localhost:8000
+    python -m uvicorn web.app:app --port 8001
+    # abre http://localhost:8001  (a 8000 e do Servidor.bat, na rede)
 
 FASE 1 do plano: formulário único, as duas transportadoras que devolvem preço
 na hora (Camilo e Jadlog) e os três cartões de WhatsApp. Generoso e Della

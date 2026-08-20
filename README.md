@@ -7,7 +7,8 @@ sites, redigitava os mesmos dados em cada um, anotava num papel e comparava.
 Aqui se preenche uma vez e o sistema faz o resto.
 
 ```
-Cotafrete.bat        <- duplo clique, abre em http://localhost:8000
+Cotafrete.bat        <- duplo clique, abre em http://localhost:8001
+Servidor.bat         <- publica na rede da empresa, na porta 8000
 ```
 
 ---

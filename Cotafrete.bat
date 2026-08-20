@@ -4,8 +4,12 @@ REM  Cotafrete - Ventura
 REM  Duplo clique aqui para abrir o sistema.
 REM
 REM  FECHAR ESTA JANELA DESLIGA O SERVIDOR. E de proposito: sem isso o
-REM  python fica rodando escondido, segurando a porta 8000, e o proximo
+REM  python fica rodando escondido, segurando a porta 8001, e o proximo
 REM  duplo clique falha com "endereco ja em uso" sem dizer o porque.
+REM
+REM  PORTA 8001, nao 8000: a 8000 e do Servidor.bat, que atende a
+REM  empresa inteira. Separadas, as duas janelas convivem - e mexer no
+REM  desenvolvimento nunca derruba quem esta cotando.
 REM ======================================================================
 title Cotafrete - NAO FECHE (fechar desliga o sistema)
 cd /d "%~dp0"
@@ -33,18 +37,18 @@ REM  "[Errno 10048] ... apenas uma utilizacao de cada endereco de soquete",
 REM  que nao diz a ninguem o que fazer.
 REM ---------------------------------------------------------------------
 set OCUPADA=
-for /f "tokens=5" %%p in ('netstat -ano ^| findstr /r /c:"TCP.*:8000 .*LISTENING"') do set OCUPADA=%%p
+for /f "tokens=5" %%p in ('netstat -ano ^| findstr /r /c:"TCP.*:8001 .*LISTENING"') do set OCUPADA=%%p
 
 if defined OCUPADA (
     echo.
-    echo  A porta 8000 ja esta em uso pelo processo %OCUPADA%.
+    echo  A porta 8001 ja esta em uso pelo processo %OCUPADA%.
     echo  Provavelmente o Cotafrete ja esta aberto em outra janela.
     echo.
     choice /c SN /n /m "  Encerrar o processo %OCUPADA% e continuar? (S/N): "
     if errorlevel 2 (
         echo.
         echo  Cancelado. Se o sistema ja estiver aberto, use aquela janela:
-        echo      http://localhost:8000
+        echo      http://localhost:8001
         echo.
         pause
         exit /b 0
@@ -56,7 +60,7 @@ if defined OCUPADA (
 
 echo.
 echo  Iniciando o Cotafrete...
-echo  Endereco: http://localhost:8000
+echo  Endereco: http://localhost:8001
 echo.
 echo  Para desligar: feche esta janela.
 echo.
@@ -64,13 +68,13 @@ echo.
 REM Abre o navegador alguns segundos depois, para o servidor ja estar de pe.
 REM ping em vez de timeout: se houver Git Bash ou WSL no PATH, o timeout
 REM deles ganha do timeout.exe do Windows e o navegador nunca abre.
-start "" /b cmd /c "ping -n 5 127.0.0.1 >nul & start http://localhost:8000"
+start "" /b cmd /c "ping -n 5 127.0.0.1 >nul & start http://localhost:8001"
 
 REM O uvicorn roda em PRIMEIRO PLANO, preso a esta janela: fechar a janela
 REM mata o processo junto. Se rodasse em segundo plano, sobreviveria.
 set PYTHONUTF8=1
 set PYTHONIOENCODING=utf-8
-.venv\Scripts\python.exe -m uvicorn web.app:app --port 8000 --log-level warning
+.venv\Scripts\python.exe -m uvicorn web.app:app --port 8001 --log-level warning
 
 REM Se chegou aqui, o servidor caiu sozinho - mostra o motivo antes de sumir.
 echo.
