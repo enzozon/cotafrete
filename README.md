@@ -204,8 +204,14 @@ Tudo no **`.env`**, que nunca vai para o Git:
 ```
 SSW_DOMINIO / SSW_USUARIO / SSW_SENHA      Camilo dos Santos
 JADLOG_PAINEL_USUARIO / _SENHA             Jadlog Entregas
+TRANSLOVATO_CNPJ / _USUARIO / _SENHA       Translovato
+GENEROSO_USUARIO / GENEROSO_SENHA          Transporte Generoso
 DV_ENVIO_REAL_AUTORIZADO                   trava do envio real da Della Volpe
 ```
+
+**`GENEROSO_USUARIO`** é o "E-mail corporativo" da tela de login deles. Sem
+essas duas linhas a Generoso nem tenta: deslogada ela não mostra preço, só
+confirma o recebimento e responde por e-mail horas depois.
 
 Fora do Git também: `cotafrete.db`, `runs/`, `teste_real/`, `recon_out/`,
 `.cache/` — todos têm CNPJ de cliente e valor de nota fiscal.

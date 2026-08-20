@@ -5,31 +5,37 @@
 ⚠ A URL divulgada (generoso.com.br/cotacao) é 404; a página de erro é que
 aponta para a área do cliente.
 
-Cinco etapas, cada uma só libera a seguinte:
-    1. Solicitante   e-mail, CNPJ, nome, WhatsApp
-    2. Tipo pagador  select; com FOB o CNPJ do destinatário fica travado
-    3. Origem        CNPJ do remetente preenche o endereço inteiro
-    4. Destino       CNPJ travado; o endereço precisa ser destravado pelo CEP
-    5. Carga         valor da NF, medidas, peso, quantidade
+COTA LOGADO. Refeito em 20/08/2026, e o de antes não existe mais.
 
-Assíncrono como a Della Volpe: a tela final só confirma o recebimento
-("Recebemos seu pedido de cotação"), o preço vem por e-mail depois.
+Deslogado o formulário tem cinco etapas e a tela final só diz "Recebemos seu
+pedido de cotação" — o preço viria por e-mail, horas depois. Logado, a etapa
+do solicitante some (é a conta) e o preço aparece na própria tela.
 
-TRÊS REGRAS MEDIDAS NO SITE em 13/08/2026 — sem elas a cotação sai errada e
-sem nenhum aviso na tela:
+QUATRO ETAPAS, logado:
+    1. Tipo pagador  select: Remetente (CIF) / Destinatario (FOB) / Terceiro
+    2. Origem        JÁ VEM PRONTA E TRAVADA no CNPJ da conta
+    3. Destino       CNPJ em branco; digitá-lo traz o endereço inteiro
+    4. Carga         valor da NF, medidas, peso, quantidade, embalagem
 
-1. Na ORIGEM, não digitar o CEP. O CNPJ do remetente traz CEP, cidade,
-   bairro, rua, número e complemento do cadastro da empresa. Digitar o CEP
-   por cima troca tudo pelo endereço genérico daquele CEP — para o CNPJ
-   60.042.686/0001-05 o cadastro é Santo André/Vila Metalúrgica e o CEP
-   resolve para São Bernardo do Campo/Planalto. Cidade diferente, frete
-   diferente.
+REGRAS MEDIDAS NO SITE — sem elas a cotação sai errada e sem aviso na tela:
 
-2. No DESTINO é o oposto. O CNPJ vem travado e traz só o CEP; cidade,
-   estado, bairro e rua ficam vazios. Redisparar o CEP preenche — e aqui
-   pode, porque não há endereço bom para perder.
+1. O tipo de pagador decide QUEM é a Ventura. Logado, o solicitante é a
+   conta: com CIF ela é a remetente (frete saindo), com FOB é a
+   destinatária (frete vindo). Escolher FOB para um frete de saída trava o
+   destino no CNPJ da própria conta, e o site recusa com "CEP de coleta não
+   pode ser o mesmo de destino" — mensagem que NÃO aparece na tela, só no
+   aria-invalid do campo. O Cotafrete cota frete saindo daqui: CIF.
 
-3. O campo de peso tem máscara de 2 casas, da direita para a esquerda:
+2. Não digitar CEP em lugar nenhum. Cada ponta é preenchida pelo CNPJ, e
+   redigitar o CEP por cima estraga o endereço: no destino, redigitar
+   "09.220-570" fez a máscara comer o zero à esquerda e o resumo saiu com
+   "92.205-70". CEP errado é cotação para o lugar errado, calada.
+
+3. Na ORIGEM não há nada a preencher: CNPJ, cidade e estado vêm travados.
+   Se o remetente da ficha não for o CNPJ da conta, a cotação sairia de
+   outra praça sem ninguém perceber — por isso aqui ela é recusada.
+
+4. O campo de peso tem máscara de 2 casas, da direita para a esquerda:
    "1" vira 0.01 e "100" vira 1.00. Sempre 2 casas.
 
 E a busca do site só acorda com digitação: `fill()` instantâneo não dispara.
@@ -37,6 +43,7 @@ E a busca do site só acorda com digitação: `fill()` instantâneo não dispara
 
 from __future__ import annotations
 
+import os
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
@@ -46,12 +53,29 @@ from datetime import datetime
 from carriers.base import (
     CampoSpec, ErroValidacao, Modo, ResultadoCotacao, Severidade, print_seguro,
 )
-from core.models import CotacaoRequest, StatusCotacao
+from core.models import CotacaoRequest, StatusCotacao, limpa_doc
 
 URL = "https://cliente.generoso.com.br/cotacao"
+URL_LOGIN = "https://cliente.generoso.com.br/login"
+ESPERA_LOGIN_MS = 30_000
 
+# O CNPJ que da para digitar. Na origem o site trava o da conta
+# (input desabilitado); no destino ele vem vazio e editavel.
+SELETOR_CNPJ_LIVRE = 'input[name="document"]:not([disabled])'
+
+# As três opções do select, escritas como o site escreve.
+#
+# LOGADO, quem é o solicitante é a conta — a Ventura. Então:
+#   CIF       a Ventura é a REMETENTE  -> frete saindo daqui (o caso do Cotafrete)
+#   FOB       a Ventura é a DESTINATÁRIA -> frete vindo para cá
+#   Terceiro  paga um CNPJ que não é nenhuma das duas pontas
+#
+# Escolher FOB para um frete de saída faz o site travar o destino no CNPJ da
+# conta e recusar com "CEP de coleta não pode ser o mesmo de destino" — sem
+# nenhuma mensagem visível na tela. Medido em 20/08/2026.
 TIPO_PAGADOR_DESTINATARIO = "Destinatario (FOB)"
 TIPO_PAGADOR_REMETENTE = "Remetente (CIF)"
+TIPO_PAGADOR_TERCEIRO = "Terceiro"
 
 BOTAO_PROXIMO = "Próximo"
 BOTAO_CONFIRMAR = "Confirmar e ver resultado"
@@ -80,6 +104,17 @@ def ler_resultado(texto: str) -> bool:
     return any(f in t for f in FRASES_CONFIRMACAO)
 
 
+def recusa_remetente_diferente(cnpj_ficha: str, cnpj_conta: str) -> str:
+    """Frase para o vendedor quando a ficha pede uma origem que o site não
+    aceita. Dizer só "recusado" faria ele repetir a cotação igual."""
+    return (
+        f"A Generoso cota logada na conta da Ventura, e essa conta é o CNPJ "
+        f"{cnpj_conta}. O site trava a origem nele e não deixa trocar. Esta "
+        f"cotação pede remetente {cnpj_ficha}, então o frete sairia de outro "
+        f"endereço sem ninguém perceber. Refaça com {cnpj_conta} como "
+        f"remetente, ou fale com a Generoso pelo WhatsApp.")
+
+
 def _inteiro(v: Decimal) -> str:
     """Medida em cm, sem casa decimal — o campo não tem máscara."""
     return str(int(v))
@@ -100,8 +135,16 @@ class GenerosoAdapter:
 
     def __init__(self, headless: bool = True, timeout_ms: int = 45_000,
                  workdir: str = "teste_real/generoso",
-                 tipo_pagador: str = TIPO_PAGADOR_DESTINATARIO,
-                 embalagem: str = EMBALAGEM_PADRAO) -> None:
+                 tipo_pagador: str = TIPO_PAGADOR_REMETENTE,
+                 embalagem: str = EMBALAGEM_PADRAO,
+                 usuario: str | None = None,
+                 senha: str | None = None) -> None:
+        # Do .env por padrão, como as outras. Passar por parâmetro existe
+        # para o teste, não para o dia a dia.
+        self.usuario = usuario if usuario is not None else os.getenv(
+            "GENEROSO_USUARIO")
+        self.senha = senha if senha is not None else os.getenv(
+            "GENEROSO_SENHA")
         self.headless = headless
         self.timeout_ms = timeout_ms
         self.workdir = Path(workdir)
@@ -159,6 +202,9 @@ class GenerosoAdapter:
             "tipo_pagador": self.tipo_pagador,
             # etapa 3 — o endereço inteiro sai deste CNPJ
             "cnpj_remetente": req.remetente.cnpj_formatado,
+            # etapa 4 — e o do destino sai deste. Logado, o campo vem VAZIO:
+            # o site não deduz mais o destinatário do tipo de pagador.
+            "cnpj_destinatario": req.destinatario.cnpj_formatado,
             # etapa 5
             "valor_nf": _duas_casas(req.nota_fiscal.valor_total),
             "altura": _inteiro(v.altura_cm),
@@ -277,6 +323,34 @@ class GenerosoAdapter:
                 return t ? t.outerHTML : document.body.innerHTML.slice(0, 4000);
             }"""), encoding="utf-8")
 
+    def _entrar(self, page) -> None:
+        """Login. Sem ele o site não mostra preço, só confirma o recebimento.
+
+        Espera a URL virar /dashboard em vez de um sleep fixo: credencial
+        errada deixa a página parada em /login, e seguir dali preencheria o
+        formulário público inteiro para no fim descobrir que não estava
+        logado — 45s jogados fora e um resultado sem preço, que ninguém
+        saberia explicar."""
+        page.goto(URL_LOGIN, wait_until="domcontentloaded")
+        page.wait_for_selector('input[name="email"]')
+        page.wait_for_timeout(1_200)
+        page.fill('input[name="email"]', self.usuario)
+        page.fill('input[name="password"]', self.senha)
+        page.get_by_role("button", name="Entrar").click()
+        try:
+            page.wait_for_url("**/dashboard", timeout=ESPERA_LOGIN_MS)
+        except Exception:
+            raise RuntimeError(
+                "o login na Generoso não passou (a tela não saiu de /login). "
+                "Confira GENEROSO_USUARIO e GENEROSO_SENHA no .env")
+
+    @staticmethod
+    def _cnpj_travado_da_origem(page) -> str:
+        """O CNPJ que o site fixou na origem. Logado, ele é o da conta e não
+        dá para trocar — então é ele que decide de onde o frete sai."""
+        campo = page.locator('input[name="document"]:visible')
+        return campo.last.input_value() if campo.count() else ""
+
     def _avancar(self, page) -> None:
         page.get_by_role("button", name=BOTAO_PROXIMO).last.click()
         page.wait_for_timeout(2_500)
@@ -312,19 +386,29 @@ class GenerosoAdapter:
     # ------------------------------------------------------------- envio
     def cotar(self, req: CotacaoRequest, *,
               confirmar_envio: bool = False) -> ResultadoCotacao:
-        """confirmar_envio=False faz DRY-RUN: preenche as 5 etapas, printa
-        cada uma e PARA antes de "Confirmar e ver resultado".
+        """confirmar_envio=False faz DRY-RUN: loga, preenche as 4 etapas,
+        printa cada uma e PARA antes de "Confirmar e ver resultado".
 
-        Cada envio real vira uma cotação na fila de um vendedor do Generoso,
-        igual à Della Volpe — por isso o default é dry-run."""
-        from playwright.sync_api import sync_playwright
-
+        Cada envio real vira uma cotação na conta da Ventura no portal deles.
+        O default continua sendo dry-run: um clique a mais aqui tem custo do
+        lado de fora."""
         erros = [e for e in self.validar(req)
                  if e.severidade is Severidade.ERRO]
         if erros:
             return ResultadoCotacao(
                 self.slug, StatusCotacao.ERRO,
                 erro="; ".join(f"{e.campo}: {e.mensagem}" for e in erros))
+
+        # Antes de qualquer navegador: sem login a Generoso não devolve preço,
+        # e descobrir isso depois custaria 45s de uma vaga de navegador que as
+        # outras transportadoras estão esperando.
+        if not (self.usuario and self.senha):
+            return ResultadoCotacao(
+                self.slug, StatusCotacao.ERRO,
+                erro="Faltam GENEROSO_USUARIO e GENEROSO_SENHA no .env. "
+                     "Sem login, a Generoso não mostra o preço na tela.")
+
+        from playwright.sync_api import sync_playwright
 
         c = self.preparar_payload(req)
         run = self.workdir / datetime.now().strftime("%Y%m%d-%H%M%S")
@@ -340,75 +424,59 @@ class GenerosoAdapter:
                 viewport={"width": 1400, "height": 1400}).new_page()
             page.set_default_timeout(self.timeout_ms)
             try:
+                self._entrar(page)
                 page.goto(URL, wait_until="domcontentloaded")
-                page.wait_for_selector('input[name="email"]')
-                page.wait_for_timeout(1_500)
+                page.wait_for_selector("select")
+                page.wait_for_timeout(3_000)
 
-                # ------------------------------------------- 1. Solicitante
-                for seletor, valor in (
-                        ('input[name="email"]', c["email"]),
-                        ('input[name="document"]', c["cnpj_solicitante"]),
-                        ('input[name="name"]', c["nome"]),
-                        ('input[name="whatsapp"]', c["whatsapp"])):
-                    self._digitar(page, seletor, valor)
-                avisos += self._conferir(page, {
-                    'input[name="document"]': c["cnpj_solicitante"],
-                    'input[name="whatsapp"]': c["whatsapp"]})
-                evidencias += print_seguro(page, run / "etapa1_solicitante.png")
-                self._avancar(page)
-
-                # ------------------------------------------ 2. Tipo pagador
+                # -------------------------------------------- 1. Tipo pagador
                 page.locator("select:visible").last.select_option(
                     label=c["tipo_pagador"])
-                page.wait_for_timeout(1_200)
-                evidencias += print_seguro(page, run / "etapa2_pagador.png")
+                page.wait_for_timeout(1_500)
+                evidencias += print_seguro(page, run / "etapa1_pagador.png")
                 self._avancar(page)
 
-                # ----------------------------------------------- 3. Origem
-                # O CNPJ preenche o endereço inteiro. NÃO tocar no CEP: medido
-                # que digitá-lo troca o endereço da empresa pelo genérico do
-                # CEP, em outra cidade.
-                seletor_cnpj = 'input[name="document"]:not([disabled])'
-                self._digitar(page, seletor_cnpj, c["cnpj_remetente"])
-                self._campo(page, seletor_cnpj).blur()
-                page.wait_for_timeout(ESPERA_BUSCA_MS)
+                # ------------------------------------------------- 2. Origem
+                # Nada a preencher: o site já travou tudo no CNPJ da conta. O
+                # que há a fazer é CONFERIR que é o remetente certo — se não
+                # for, o frete sairia de outra praça e ninguém veria.
+                conta = self._cnpj_travado_da_origem(page)
+                if conta and limpa_doc(conta) != limpa_doc(c["cnpj_remetente"]):
+                    return ResultadoCotacao(
+                        self.slug, StatusCotacao.RECUSADO,
+                        motivo_recusa=recusa_remetente_diferente(
+                            c["cnpj_remetente"], conta),
+                        enviado_em=enviado, evidencias=evidencias)
+
                 origem = self._esperar_endereco(page)
                 if not origem["city"]:
                     raise RuntimeError(
-                        f"o CNPJ {c['cnpj_remetente']} não trouxe endereço de "
-                        f"origem; sem isso a cotação sairia de lugar nenhum")
-                evidencias += print_seguro(page, run / "etapa3_origem.png")
+                        "a conta não trouxe o endereço de origem; sem isso a "
+                        "cotação sairia de lugar nenhum")
+                evidencias += print_seguro(page, run / "etapa2_origem.png")
                 self._avancar(page)
 
-                # ---------------------------------------------- 4. Destino
-                # Aqui o CNPJ vem travado e traz só o CEP. Redisparar o CEP é
-                # o que preenche cidade, bairro e rua.
-                cep_destino = self._campo(page,
-                                          'input[name="cep"]').input_value()
-                self._digitar(page, 'input[name="cep"]', cep_destino)
-                self._campo(page, 'input[name="cep"]').blur()
+                # ------------------------------------------------ 3. Destino
+                # Logado, este campo vem VAZIO e é dele que sai o endereço
+                # inteiro. Não tocar no CEP: redigitá-lo comeu o zero à
+                # esquerda de 09.220-570 e o resumo saiu "92.205-70".
+                self._digitar(page, SELETOR_CNPJ_LIVRE, c["cnpj_destinatario"])
+                self._campo(page, SELETOR_CNPJ_LIVRE).blur()
                 page.wait_for_timeout(ESPERA_BUSCA_MS)
                 destino = self._esperar_endereco(page)
                 if not destino["city"]:
                     raise RuntimeError(
-                        f"o CEP {cep_destino} não trouxe cidade de destino")
-
-                evidencias += print_seguro(page, run / "etapa4_destino.png")
+                        f"o CNPJ {c['cnpj_destinatario']} não trouxe endereço "
+                        f"de destino")
+                evidencias += print_seguro(page, run / "etapa3_destino.png")
                 self._avancar(page)
 
-                # "Número" costuma ficar vazio (o CEP não traz numeração) e
-                # ainda assim a etapa avança — foi o que o Enzo fez à mão.
-                # Só se NÃO avançar é que marcamos "Sem número", clicando no
-                # RÓTULO: o input real é escondido por CSS e não reage nem a
-                # check(force=True).
                 if not self._chegou_na_carga(page):
-                    page.get_by_text("Sem número", exact=False).last.click()
-                    page.wait_for_timeout(800)
-                    evidencias += print_seguro(
-                        page, run / "etapa4_sem_numero.png")
-                    self._avancar(page)
+                    raise RuntimeError(
+                        "a etapa do destino não avançou. O site diz: "
+                        + self._erros_da_tela(page))
 
-                # ------------------------------------------------ 5. Carga
+                # -------------------------------------------------- 4. Carga
                 for seletor, valor in (
                         ('input[name="totalMerchandiseValue"]', c["valor_nf"]),
                         ('input[name="cubageValues.0.height"]', c["altura"]),
@@ -421,7 +489,7 @@ class GenerosoAdapter:
                     self._digitar(page, seletor, valor)
                 page.wait_for_timeout(1_200)
 
-                # conferência que importa: peso e medidas passam por máscara
+                # A conferência que importa: peso e dinheiro passam por máscara
                 avisos += self._conferir(page, {
                     'input[name="cubageValues.0.weight"]': c["peso"],
                     'input[name="cubageValues.0.height"]': c["altura"],
@@ -431,32 +499,26 @@ class GenerosoAdapter:
                 self._escolher_embalagem(page, run)
                 self._digitar(page, 'input[name="observation"]',
                               c["observacao"])
-
-                evidencias += print_seguro(page, run / "etapa5_carga.png")
+                evidencias += print_seguro(page, run / "etapa4_carga.png")
                 self._avancar(page)
 
-                # -------------------------------------------- 6. Conferência
-                # Conferir que a etapa REALMENTE passou. Sem isto o dry-run
-                # dava "rascunho" com a Carga ainda na tela reclamando de
-                # campo obrigatório — e o print chamado "resumo" não era
-                # resumo nenhum.
+                # --------------------------------------------- 5. Conferência
                 if not self._chegou_no_resumo(page):
                     raise RuntimeError(
                         "a etapa da Carga não avançou. O site diz: "
                         + self._erros_da_tela(page))
-
                 evidencias += print_seguro(page, run / "resumo.png")
 
                 if not confirmar_envio:
                     return ResultadoCotacao(
                         self.slug, StatusCotacao.RASCUNHO, enviado_em=enviado,
-                        raw_response="DRY-RUN: 5 etapas preenchidas, "
+                        raw_response="DRY-RUN: 4 etapas preenchidas, "
                                      "nada enviado.",
                         erro="; ".join(avisos) if avisos else None,
                         evidencias=evidencias)
 
                 page.get_by_role("button", name=BOTAO_CONFIRMAR).last.click()
-                page.wait_for_timeout(6_000)
+                page.wait_for_timeout(8_000)
                 evidencias += print_seguro(page, run / "resultado.png")
 
                 res = self.normalizar_resposta(
@@ -464,6 +526,8 @@ class GenerosoAdapter:
                 res.enviado_em = enviado
                 res.respondido_em = datetime.now()
                 res.evidencias = evidencias
+                if avisos and not res.erro:
+                    res.erro = "; ".join(avisos)
                 return res
 
             except Exception as exc:

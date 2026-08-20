@@ -12,7 +12,7 @@ from decimal import Decimal
 import pytest
 
 from carriers.generoso.adapter import (
-    TIPO_PAGADOR_DESTINATARIO, GenerosoAdapter, ler_resultado,
+    TIPO_PAGADOR_REMETENTE, GenerosoAdapter, ler_resultado,
 )
 from core.models import StatusCotacao, Volume
 from tests.test_jadlog import montar
@@ -102,7 +102,29 @@ def test_documentos_vao_para_os_papeis_certos(adapter):
 
     assert p["cnpj_remetente"] == "11.222.333/0001-81"
     assert p["cnpj_solicitante"] == "61.139.432/0001-72"   # o pagador
-    assert p["tipo_pagador"] == TIPO_PAGADOR_DESTINATARIO
+
+
+def test_cnpj_do_destinatario_entra_no_payload(adapter):
+    """Logado, o site NAO deduz mais o destinatario: a etapa do destino vem
+    com o CNPJ em branco e e dele que sai o endereco inteiro. Sem este campo
+    a cotacao nao tem para onde ir.
+
+    Medido em 20/08/2026: com CIF, digitar 60.042.686/0001-05 no destino
+    trouxe Santo Andre/SP, Avenida dos Estados, CEP 09.220-570."""
+    req = montar()
+    p = adapter.preparar_payload(req)
+
+    assert p["cnpj_destinatario"] == req.destinatario.cnpj_formatado
+
+
+def test_o_padrao_e_CIF_porque_o_frete_sai_da_ventura(adapter):
+    """Logado como Ventura, FOB quer dizer Ventura RECEBENDO: o site trava o
+    destino no CNPJ da conta, e como a origem tambem e a Ventura ele recusa
+    com "CEP de coleta nao pode ser o mesmo de destino".
+
+    O Cotafrete cota frete SAINDO da Ventura. Isso e CIF."""
+    assert adapter.preparar_payload(montar())["tipo_pagador"] == (
+        TIPO_PAGADOR_REMETENTE)
 
 
 # ------------------------------------------------------ leitura do resultado
@@ -134,3 +156,23 @@ def test_tela_sem_confirmacao_vira_erro(adapter):
 ])
 def test_frases_de_confirmacao(texto, esperado):
     assert ler_resultado(texto) is esperado
+
+
+# ------------------------------------------------------------------ login
+def test_sem_credenciais_recusa_sem_abrir_navegador(monkeypatch):
+    """Logado, a Generoso mostra o preco na tela; deslogado ela so confirma o
+    recebimento. Sem usuario e senha nao ha o que tentar — e abrir um Chromium
+    inteiro para descobrir isso gastaria 45s de uma vaga de navegador que as
+    outras transportadoras estao esperando."""
+    monkeypatch.delenv("GENEROSO_USUARIO", raising=False)
+    monkeypatch.delenv("GENEROSO_SENHA", raising=False)
+
+    def estourar(*_a, **_k):
+        raise AssertionError("abriu o navegador sem ter credenciais")
+
+    monkeypatch.setattr("playwright.sync_api.sync_playwright", estourar)
+
+    res = GenerosoAdapter().cotar(montar())
+
+    assert res.status is StatusCotacao.ERRO
+    assert "GENEROSO_USUARIO" in (res.erro or "")
