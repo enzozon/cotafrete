@@ -30,7 +30,8 @@ BANCO = RAIZ / "cotafrete.db"
 
 # As que o robô cota sozinho, na ordem em que aparecem na tela do vendedor.
 AUTOMATICAS = ("camilo", "jadlog", "translovato")
-TITULOS = {"camilo": "CAMILO", "jadlog": "JADLOG", "translovato": "TRANSLOVATO"}
+TITULOS = {"camilo": "CAMILO", "jadlog": "JADLOG",
+           "translovato": "TRANSLOVATO"}
 
 PAUSA_S = 5
 LARGURA = 116
@@ -69,15 +70,19 @@ def _moeda(valor: str | None) -> str:
 def _celula(resultado: dict | None) -> str:
     """O que mostrar na coluna da transportadora.
 
-    "..." é ainda cotando — diferente de "recusou" e diferente de "ERRO".
-    Misturar os três esconderia justamente o que o monitor existe para
-    mostrar: se o problema é demora, regra de negócio, ou defeito."""
+    "..." é ainda cotando — diferente de "recusou", de "e-mail" e de "ERRO".
+    Misturar esses estados esconderia justamente o que o monitor existe para
+    mostrar: se o problema é demora, regra de negócio, ou defeito.
+
+    "e-mail" é a Generoso: ela confirma o recebimento e manda o preço por
+    e-mail depois. Sem preço e sem falha — mostrar ERRO aqui mandaria o Enzo
+    caçar um defeito que não existe."""
     if resultado is None:
         return "..."
     if resultado["valor"]:
         return _moeda(resultado["valor"])
-    return {"recusado": "recusou", "erro": "ERRO"}.get(
-        resultado["status"], resultado["status"])
+    return {"recusado": "recusou", "aguardando_retorno": "e-mail",
+            "erro": "ERRO"}.get(resultado["status"], resultado["status"])
 
 
 def coletar(con: sqlite3.Connection, dias: int) -> dict:
@@ -109,7 +114,8 @@ def coletar(con: sqlite3.Connection, dias: int) -> dict:
 
 
 def contar(cotacoes: list[dict], resultados: dict) -> dict[str, int]:
-    contas = {"preco": 0, "recusadas": 0, "erros": 0, "andamento": 0}
+    contas = {"preco": 0, "recusadas": 0, "por_email": 0, "erros": 0,
+              "andamento": 0}
     for c in cotacoes:
         por_slug = resultados.get(c["id"], {})
         for slug in AUTOMATICAS:
@@ -120,6 +126,8 @@ def contar(cotacoes: list[dict], resultados: dict) -> dict[str, int]:
                 contas["preco"] += 1
             elif r["status"] == "recusado":
                 contas["recusadas"] += 1
+            elif r["status"] == "aguardando_retorno":
+                contas["por_email"] += 1
             else:
                 contas["erros"] += 1
     return contas
@@ -135,7 +143,8 @@ def desenhar(dados: dict, dias: int) -> None:
     print("=" * LARGURA)
     print(f" {len(cotacoes)} cotações em {dias} dia(s)  ·  "
           f"{contas['preco']} com preço  ·  {contas['recusadas']} recusadas  ·  "
-          f"{contas['erros']} com erro  ·  {contas['andamento']} em andamento"
+          f"{contas['por_email']} por e-mail  ·  {contas['erros']} com erro"
+          f"  ·  {contas['andamento']} em andamento"
           f"  ·  {sum(dados['zaps'].values())} WhatsApp abertos")
     print("-" * LARGURA)
 
@@ -166,7 +175,8 @@ def desenhar(dados: dict, dias: int) -> None:
               for c in cotacoes
               for slug in AUTOMATICAS
               if slug in resultados.get(c["id"], {})
-              and not resultados[c["id"]][slug]["valor"]]
+              and not resultados[c["id"]][slug]["valor"]
+              and resultados[c["id"]][slug]["status"] != "aguardando_retorno"]
     if falhas:
         print("-" * LARGURA)
         print(" O QUE NÃO VOLTOU COM PREÇO (mais recentes)")
