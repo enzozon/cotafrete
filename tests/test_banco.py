@@ -163,6 +163,15 @@ def test_banco_antigo_ganha_as_colunas_novas(tmp_path):
     assert len(b.listar_cotacoes("enzo")) == 2
 
 
+def test_email_do_solicitante_e_guardado(db):
+    """A Generoso não devolve preço na tela: responde por e-mail. Sem guardar
+    o endereço, a tela final não tem como dizer qual caixa conferir — e o
+    vendedor fica esperando uma resposta que já chegou em outro lugar."""
+    cid = db.salvar_cotacao("enzo", _carga(email="joao@ventura.com.br"))
+
+    assert db.buscar_cotacao(cid, "enzo")["email"] == "joao@ventura.com.br"
+
+
 def test_cotacao_pendente_vira_interrompida(db):
     """Fechar a janela mata as threads no meio: sem isto o cartao fica
     'cotando...' para sempre, esperando quem ja morreu."""

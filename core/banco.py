@@ -42,7 +42,11 @@ CREATE TABLE IF NOT EXISTS cotacao (
     cnpj_pagador       TEXT,
     nome_remetente     TEXT,
     nome_destinatario  TEXT,
-    nome_pagador       TEXT
+    nome_pagador       TEXT,
+    -- Onde a resposta da Generoso vai cair. Ela confirma o recebimento na
+    -- tela e manda o preço por e-mail depois; sem guardar o endereço, a tela
+    -- final não teria como dizer qual caixa o vendedor precisa abrir.
+    email              TEXT
 );
 
 CREATE TABLE IF NOT EXISTS resultado (
@@ -83,7 +87,7 @@ CAMPOS_CARGA = (
     "cidade_destino", "uf_destino", "peso_kg", "quantidade",
     "comprimento_cm", "largura_cm", "altura_cm", "valor_nf", "material",
     "cnpj_remetente", "cnpj_destinatario", "cnpj_pagador",
-    "nome_remetente", "nome_destinatario", "nome_pagador",
+    "nome_remetente", "nome_destinatario", "nome_pagador", "email",
 )
 
 
