@@ -43,6 +43,7 @@ from fastapi.staticfiles import StaticFiles
 load_dotenv(override=False)
 
 from carriers.camilo.adapter import CamiloAdapter
+from carriers.generoso.adapter import CNPJ_CONTA as CNPJ_CONTA_GENEROSO
 from carriers.generoso.adapter import GenerosoAdapter
 from carriers.jadlog.painel import JadlogPainelAdapter
 from carriers.translovato.adapter import TranslovatoAdapter
@@ -52,7 +53,7 @@ from core.banco import Banco
 from web import transportadoras
 from core.models import (
     CotacaoRequest, Local, Mercadoria, NotaFiscal, Parte, Servico,
-    Solicitante, StatusCotacao, Volume,
+    Solicitante, StatusCotacao, TipoFrete, Volume, limpa_doc,
 )
 
 app = FastAPI(title="Cotafrete — Ventura")
@@ -119,7 +120,8 @@ NOTAS = {
     "camilo": "Frete fracionado, com coleta. Preço já com taxas e ICMS.",
     "jadlog": "Etiqueta pré-paga, cotada por volume. Você leva ao balcão.",
     "translovato": "Frete fracionado, com coleta. Só atende parte do país — fora da malha ela avisa.",
-    "generoso": "Frete fracionado, com coleta. Cotada logada na conta da Ventura — só sai daqui.",
+    "generoso": (f"Frete fracionado, com coleta. Cotada logada na conta "
+                 f"da Ventura, CNPJ {CNPJ_CONTA_GENEROSO}."),
 }
 
 # A calculadora da Jadlog cota UM pacote por vez (carriers/jadlog/painel.py).
@@ -240,6 +242,17 @@ padding:8px 10px;font-size:12px;margin:6px 0 2px;line-height:1.35}
    instrucao de onde olhar. Azul separa os dois recados. */
 .alerta.email{background:#eef2ff;border-color:#c7d2fe}
 .alerta .caixa{font-size:14px;word-break:break-all}
+/* Tipo de frete: as duas opcoes lado a lado, sempre visiveis. Escondida
+   atras de um clique, a diferenca entre cobrar de quem envia e de quem
+   recebe passa despercebida - e e ela que decide quem paga a conta. */
+.opcoes{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:4px}
+.opcao{display:flex;align-items:center;gap:8px;border:1px solid var(--borda);
+border-radius:8px;padding:10px 12px;cursor:pointer;background:var(--papel)}
+.opcao:has(input:checked){border-color:var(--marca);
+box-shadow:0 0 0 1px var(--marca)}
+.opcao input{width:auto;margin:0}
+.opcao b{font-size:14px}
+.opcao span{font-size:11px;color:var(--fraco)}
 .ficha .val{font-size:14px;font-weight:600;word-break:break-word}
 .ficha .pouco{display:block;font-size:11px;font-weight:400;color:var(--fraco)}
 """
@@ -327,7 +340,7 @@ ROTULOS = {
     "cep_origem": "CEP de origem", "cep_destino": "CEP de destino",
     "cnpj_remetente": "CNPJ do remetente",
     "cnpj_destinatario": "CNPJ do destinatário",
-    "cnpj_pagador": "CNPJ de quem paga", "peso": "Peso de um volume",
+    "peso": "Peso de um volume",
     "quantidade": "Quantidade de volumes", "comprimento": "Comprimento",
     "largura": "Largura", "altura": "Altura",
     "valor_nf": "Valor da nota fiscal", "material": "Material",
@@ -346,7 +359,7 @@ def validar_formulario(d: dict) -> list[str]:
     de espera, ou pior: uma cotação que sai com a carga errada."""
     erros = []
 
-    for campo_ in ("cnpj_remetente", "cnpj_destinatario", "cnpj_pagador"):
+    for campo_ in ("cnpj_remetente", "cnpj_destinatario"):
         n = len(_digitos(d.get(campo_, "")))
         if n != 14:
             erros.append(f"{ROTULOS[campo_]}: precisa de 14 dígitos, "
@@ -459,7 +472,8 @@ PADRAO = {
     "cep_origem": "09895-003", "cep_destino": "29105-770",
     "cnpj_remetente": "60.042.686/0001-05",
     "cnpj_destinatario": "05.954.058/0001-98",
-    "cnpj_pagador": "05.954.058/0001-98",
+    # cif = paga o remetente. Padrao porque a carga sai daqui.
+    "tipo_frete": "cif",
     "peso": "1", "quantidade": "1",
     "comprimento": "30", "largura": "30", "altura": "30",
     "valor_nf": "568,77", "material": "LUVA DE BOMBEIRO",
@@ -474,6 +488,33 @@ def campo(nome: str, rotulo: str, v: dict) -> str:
             f' required></div>')
 
 
+TIPOS_DE_FRETE = (
+    ("cif", "CIF", "Remetente que paga"),
+    ("fob", "FOB", "Destinatário que paga"),
+)
+
+
+def escolha_tipo_frete(v: dict) -> str:
+    """Substituiu o campo "CNPJ de quem paga".
+
+    Digitado à parte, aquele CNPJ podia discordar do tipo de frete que cada
+    transportadora recebia — e discordava: a Camilo levava tp_frete=2 (FOB)
+    enquanto o formulário mandava um CNPJ da Ventura, que é CIF. Escolhendo o
+    tipo, o CNPJ passa a ser consequência, e a contradição some.
+
+    Rádio, e não select: as duas opções precisam estar visíveis ao mesmo
+    tempo. Escondida atrás de um clique, a diferença entre cobrar de quem
+    envia e de quem recebe passa despercebida."""
+    escolhido = v.get("tipo_frete", "cif")
+    opcoes = "".join(
+        f'<label class="opcao"><input type="radio" name="tipo_frete"'
+        f' value="{sigla}"{" checked" if sigla == escolhido else ""}>'
+        f'<b>{titulo}</b><span>{quem}</span></label>'
+        for sigla, titulo, quem in TIPOS_DE_FRETE)
+    return (f'<label style="margin-top:10px">Tipo de frete</label>'
+            f'<div class="opcoes">{opcoes}</div>')
+
+
 def _valores_de(c: dict) -> dict:
     """Cotação salva -> campos do formulário, para repetir sem redigitar."""
     # Este campo pede o peso de UM volume; o banco guarda o TOTAL. Devolver o
@@ -485,7 +526,7 @@ def _valores_de(c: dict) -> dict:
             "cnpj_remetente": c.get("cnpj_remetente") or PADRAO["cnpj_remetente"],
             "cnpj_destinatario": (c.get("cnpj_destinatario")
                                   or PADRAO["cnpj_destinatario"]),
-            "cnpj_pagador": c.get("cnpj_pagador") or PADRAO["cnpj_pagador"],
+            "tipo_frete": c.get("tipo_frete") or PADRAO["tipo_frete"],
             "peso": (_kg(unitario) if unitario is not None
                      else str(c["peso_kg"])),
             "quantidade": str(c["quantidade"]),
@@ -534,8 +575,8 @@ a mensagem para as três que atendem por WhatsApp.</p>
   <fieldset><legend>Documentos</legend><div class="grid">
     {campo("cnpj_remetente", "CNPJ do remetente", v)}
     {campo("cnpj_destinatario", "CNPJ do destinatário", v)}
-    {campo("cnpj_pagador", "CNPJ de quem paga", v)}
-  </div></fieldset>
+  </div>
+  {escolha_tipo_frete(v)}</fieldset>
 
   <fieldset><legend>Carga</legend><div class="grid">
     {campo("peso", "Peso de UM volume (kg)", v)}
@@ -574,7 +615,7 @@ const fmtCnpj = (d) => d
   .replace(/(\d{{4}})(\d)/, "$1-$2");
 const fmtCep = (d) => d.replace(/^(\d{{5}})(\d)/, "$1-$2");
 
-["cnpj_remetente","cnpj_destinatario","cnpj_pagador"].forEach(
+["cnpj_remetente","cnpj_destinatario"].forEach(
   id => mascara(document.getElementById(id), 14, fmtCnpj));
 ["cep_origem","cep_destino"].forEach(
   id => mascara(document.getElementById(id), 8, fmtCep));
@@ -608,7 +649,7 @@ def montar_request(d: dict) -> CotacaoRequest:
                       codigo_ibge=destino[2]),
         remetente=Parte(cnpj=d["cnpj_remetente"]),
         destinatario=Parte(cnpj=d["cnpj_destinatario"]),
-        pagador_frete=Parte(cnpj=d["cnpj_pagador"]),
+        tipo_frete=TipoFrete(d.get("tipo_frete", "cif")),
         volumes=[Volume(qtd=int(_num(d["quantidade"])),
                         comprimento_cm=_num(d["comprimento"]),
                         largura_cm=_num(d["largura"]),
@@ -635,7 +676,7 @@ async def voltar(request: Request,
 def cotar(usuario: str | None = Cookie(None, alias=COOKIE),
           cep_origem: str = Form(...), cep_destino: str = Form(...),
           cnpj_remetente: str = Form(...), cnpj_destinatario: str = Form(...),
-          cnpj_pagador: str = Form(...), peso: str = Form(...),
+          tipo_frete: str = Form("cif"), peso: str = Form(...),
           quantidade: str = Form(...), comprimento: str = Form(...),
           largura: str = Form(...), altura: str = Form(...),
           valor_nf: str = Form(...), material: str = Form(...),
@@ -670,7 +711,11 @@ def cotar(usuario: str | None = Cookie(None, alias=COOKIE),
         "material": req.mercadoria.tipo_material,
         "cnpj_remetente": req.remetente.cnpj_formatado,
         "cnpj_destinatario": req.destinatario.cnpj_formatado,
+        # Derivado, nunca digitado: e o remetente no CIF e o destinatario
+        # no FOB. Guardado junto porque a mensagem do WhatsApp precisa dizer
+        # QUEM paga, nao so a sigla.
         "cnpj_pagador": req.pagador_frete.cnpj_formatado,
+        "tipo_frete": req.tipo_frete.value,
         "nome_remetente": buscador_cnpj.buscar(req.remetente.cnpj),
         "nome_destinatario": buscador_cnpj.buscar(req.destinatario.cnpj),
         "nome_pagador": buscador_cnpj.buscar(req.pagador_frete.cnpj),
@@ -742,6 +787,20 @@ def _quem(nome: str | None, cnpj: str | None) -> str:
     return f"{nome}\nCNPJ: {cnpj}" if nome else f"CNPJ: {cnpj}"
 
 
+def pagador_da_cotacao(c: dict) -> tuple[str, str, str]:
+    """Sigla, lado e quem é — tudo derivado do tipo de frete.
+
+    A salvaguarda no fim existe para as cotações anteriores a 20/08/2026, que
+    não têm `tipo_frete` guardado: elas caem em CIF, que é como o formulário
+    vinha preenchido, e o CNPJ sai da ponta certa em vez de virar "None"."""
+    fob = (c.get("tipo_frete") or "cif") == "fob"
+    sigla, lado = ("FOB", "DESTINATÁRIO") if fob else ("CIF", "REMETENTE")
+    ponta = "destinatario" if fob else "remetente"
+    nome = c.get("nome_pagador") or c.get(f"nome_{ponta}")
+    cnpj = c.get("cnpj_pagador") or c.get(f"cnpj_{ponta}")
+    return sigla, lado, _quem(nome, cnpj)
+
+
 def mensagem_whatsapp(c: dict) -> str:
     """Mesmo texto para as três — decisão do Enzo em 14/08/2026.
 
@@ -749,6 +808,7 @@ def mensagem_whatsapp(c: dict) -> str:
     QUEM envia, QUEM recebe e QUEM paga para conseguir cotar. Sem isso a
     pessoa do outro lado responde pedindo os dados, e a cotação atrasa um
     dia inteiro."""
+    sigla, lado, quem_paga = pagador_da_cotacao(c)
     return "\n".join([
         f"{saudacao()}! Tudo bem?", "", "Pode orçar pra mim, por favor?", "",
         f"REMETENTE: {_quem(c.get('nome_remetente'), c.get('cnpj_remetente'))}",
@@ -758,8 +818,13 @@ def mensagem_whatsapp(c: dict) -> str:
         f"{_quem(c.get('nome_destinatario'), c.get('cnpj_destinatario'))}",
         f"CEP: {c['cep_destino']} — {c['cidade_destino']}/{c['uf_destino']}",
         "",
-        f"PAGADOR DO FRETE: (X) "
-        f"{c.get('nome_pagador') or c.get('cnpj_pagador')}",
+        # Antes esta linha era "PAGADOR DO FRETE: (X) <nome>", com o CNPJ
+        # digitado a parte no formulario. Agora ela DIZ a regra: a
+        # transportadora precisa saber se cobra de quem envia ou de quem
+        # recebe, e o nome sozinho nao responde isso.
+        f"TIPO DE FRETE: {sigla} — quem paga é o {lado}",
+        f"PAGADOR DO FRETE: {quem_paga}",
+        "",
         f"TD DE VOLUMES: {c['quantidade']}",
         f"MEDIDAS: {c['comprimento_cm']} cm x {c['largura_cm']} cm x "
         f"{c['altura_cm']} cm",
@@ -767,6 +832,26 @@ def mensagem_whatsapp(c: dict) -> str:
         f"Valor NF: {moeda(c['valor_nf'])}",
         f"ITEM: {c['material']}",
     ])
+
+
+def aviso_cnpj_generoso(c: dict) -> str:
+    """A Generoso cota LOGADA, e o site trava no CNPJ da conta a ponta
+    que a Ventura ocupa: a origem no CIF, o destino no FOB.
+
+    Se o vendedor digitou outro CNPJ, o preço que voltou é o da conta —
+    e sem este aviso ele passa esse número para um cliente de outra
+    empresa, achando que cotou pela empresa que digitou. A Ventura tem
+    três CNPJs, e só um deles é a conta da Generoso."""
+    fob = (c.get("tipo_frete") or "cif") == "fob"
+    ponta = "destinatário" if fob else "remetente"
+    digitado = c.get("cnpj_destinatario" if fob else "cnpj_remetente") or ""
+    if limpa_doc(digitado) == limpa_doc(CNPJ_CONTA_GENEROSO):
+        return ""
+    return (f'<div class="alerta"><b>Cotada com o CNPJ '
+            f'{e(CNPJ_CONTA_GENEROSO)}.</b> A Generoso cota logada na '
+            f'conta da Ventura e trava o {ponta} nesse CNPJ — não dá '
+            f'para trocar. Você digitou {e(digitado)}, então o preço '
+            f'acima é o da conta, não o desse CNPJ.</div>')
 
 
 def cota_por_volume(slug: str, quantidade: int) -> bool:
@@ -805,6 +890,13 @@ def _quando(iso: str | None) -> str:
         return iso or ""
 
 
+def _frete_por_extenso(c: dict) -> str:
+    """"CIF — paga o remetente". A sigla sozinha nao diz nada para quem esta
+    conferindo dois orcamentos parecidos na mesa."""
+    sigla, lado, _ = pagador_da_cotacao(c)
+    return f"{sigla} — paga o {lado.lower()}"
+
+
 def ficha_da_cotacao(c: dict) -> str:
     """Os dados que geraram esta cotação, com os rótulos do formulário.
 
@@ -833,7 +925,9 @@ def ficha_da_cotacao(c: dict) -> str:
             c.get("cnpj_remetente"))}
     {_parte("Destinatário (quem recebe)", c.get("nome_destinatario"),
             c.get("cnpj_destinatario"))}
-    {_parte("Pagador do frete", c.get("nome_pagador"), c.get("cnpj_pagador"))}
+    {_dado("Tipo de frete", _frete_por_extenso(c))}
+    {_parte("Quem paga o frete", c.get("nome_pagador"),
+            c.get("cnpj_pagador"))}
   </div></fieldset>
 
   <fieldset><legend>Carga</legend><div class="grid">
@@ -939,6 +1033,8 @@ def ver_cotacao(cotacao_id: int,
                     f'carga.</b> São {qtd} volumes: por estimativa, '
                     f'{moeda(r["valor"] * qtd)} no total. Por isso ela não '
                     f'disputa o selo de mais barato.</div>')
+            if slug == "generoso":
+                corpo += aviso_cnpj_generoso(c)
             corpo += f'<div class="nota">{e(NOTAS.get(slug, ""))}</div>'
             if r["protocolo"]:
                 corpo += (f'<div class="nota">Cotação nº '

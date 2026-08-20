@@ -46,7 +46,10 @@ CREATE TABLE IF NOT EXISTS cotacao (
     -- Onde a resposta da Generoso vai cair. Ela confirma o recebimento na
     -- tela e manda o preço por e-mail depois; sem guardar o endereço, a tela
     -- final não teria como dizer qual caixa o vendedor precisa abrir.
-    email              TEXT
+    email              TEXT,
+    -- cif = paga o remetente, fob = paga o destinatario. Guardado para
+    -- a mensagem do WhatsApp e para repetir a cotacao do mesmo jeito.
+    tipo_frete         TEXT
 );
 
 CREATE TABLE IF NOT EXISTS resultado (
@@ -88,6 +91,7 @@ CAMPOS_CARGA = (
     "comprimento_cm", "largura_cm", "altura_cm", "valor_nf", "material",
     "cnpj_remetente", "cnpj_destinatario", "cnpj_pagador",
     "nome_remetente", "nome_destinatario", "nome_pagador", "email",
+    "tipo_frete",
 )
 
 
