@@ -44,7 +44,8 @@ E a busca do site só acorda com digitação: `fill()` instantâneo não dispara
 from __future__ import annotations
 
 import os
-from decimal import Decimal
+import re
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
 
@@ -96,6 +97,45 @@ FRASES_CONFIRMACAO = (
 # Digitação humana: a busca de CNPJ/CEP do site não dispara com fill().
 DELAY_DIGITACAO_MS = 60
 ESPERA_BUSCA_MS = 4_500
+
+
+# A tela de resultado, LOGADO. Medida no envio real de 20/08/2026:
+#
+#     Cotação: 2651152
+#     Frete                 R$ 421,94
+#     Previsão de entrega   25/08/26
+#     Cotado em             20/08/26
+#     Cotação válida até    30/08/26
+#
+# Rótulo numa linha, valor na seguinte — daí o \s* entre eles. O R$ vem com
+# espaço NÃO separável, por isso o texto é normalizado antes de casar.
+RE_PROTOCOLO = re.compile(r"cota[çc][ãa]o:\s*(\d+)", re.IGNORECASE)
+RE_FRETE = re.compile(r"\bfrete\s*R\$\s*([\d.]*\d,\d{2})", re.IGNORECASE)
+RE_PREVISAO = re.compile(r"previs[ãa]o de entrega\D*?(\d{2}/\d{2}/\d{2})",
+                         re.IGNORECASE)
+RE_COTADO_EM = re.compile(r"cotado em\D*?(\d{2}/\d{2}/\d{2})", re.IGNORECASE)
+
+
+def _dinheiro(bruto: str) -> Decimal | None:
+    """'1.421,94' -> Decimal('1421.94').
+
+    Ponto é milhar e vírgula é decimal. Lido do jeito errado, 1.421,94 vira
+    1,42 — cem vezes menos, e o número vai calado para a mesa do cliente."""
+    try:
+        return Decimal(bruto.replace(".", "").replace(",", "."))
+    except InvalidOperation:
+        return None
+
+
+def _dias_entre(cotado: str, previsto: str) -> int | None:
+    """A tela dá datas (dd/mm/aa); o resto do sistema compara prazo em dias."""
+    try:
+        inicio = datetime.strptime(cotado, "%d/%m/%y")
+        fim = datetime.strptime(previsto, "%d/%m/%y")
+    except ValueError:
+        return None
+    dias = (fim - inicio).days
+    return dias if dias >= 0 else None
 
 
 def ler_resultado(texto: str) -> bool:
@@ -371,17 +411,47 @@ class GenerosoAdapter:
         return achado
 
     def normalizar_resposta(self, raw: Any) -> ResultadoCotacao:
-        texto = str(raw or "")
-        if not ler_resultado(texto):
+        """Três telas possíveis, nesta ordem de preferência.
+
+        1. LOGADO deu certo: tem preço, protocolo e as duas datas.
+        2. A sessão caiu no meio: o site volta ao formulário público, que só
+           confirma o recebimento. Não é preço, mas também não é falha — a
+           cotação foi enviada e a resposta vem por e-mail.
+        3. Qualquer outra coisa é erro, e o texto vai junto para dar o que
+           investigar."""
+        #   e o espaco NAO separavel que o site usa depois do R$.
+        # Escrito como escape de proposito: o caractere de verdade e
+        # invisivel no editor, e regex que nao casa por causa de um
+        # espaco que ninguem ve e das piores coisas de depurar.
+        texto = str(raw or "").replace(" ", " ")
+
+        frete = RE_FRETE.search(texto)
+        if frete:
+            protocolo = RE_PROTOCOLO.search(texto)
+            previsao = RE_PREVISAO.search(texto)
+            cotado = RE_COTADO_EM.search(texto)
             return ResultadoCotacao(
-                self.slug, StatusCotacao.ERRO, raw_response=texto[:800],
-                erro="Confirmação de recebimento não apareceu na tela.")
+                transportadora=self.slug,
+                status=StatusCotacao.COTADO,
+                protocolo=protocolo.group(1) if protocolo else None,
+                valor_frete=_dinheiro(frete.group(1)),
+                prazo_dias=(_dias_entre(cotado.group(1), previsao.group(1))
+                            if cotado and previsao else None),
+                raw_response=texto[:800],
+            )
+
+        if ler_resultado(texto):
+            return ResultadoCotacao(
+                transportadora=self.slug,
+                status=StatusCotacao.AGUARDANDO_RETORNO,
+                valor_frete=None,    # correto: sem login o preço vem por e-mail
+                raw_response=texto[:800],
+            )
+
         return ResultadoCotacao(
-            transportadora=self.slug,
-            status=StatusCotacao.AGUARDANDO_RETORNO,
-            valor_frete=None,        # correto: o preço vem por e-mail
-            raw_response=texto[:800],
-        )
+            self.slug, StatusCotacao.ERRO, raw_response=texto[:800],
+            erro="A tela de resultado não trouxe preço nem confirmação de "
+                 "recebimento.")
 
     # ------------------------------------------------------------- envio
     def cotar(self, req: CotacaoRequest, *,

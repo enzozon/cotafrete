@@ -176,3 +176,70 @@ def test_sem_credenciais_recusa_sem_abrir_navegador(monkeypatch):
 
     assert res.status is StatusCotacao.ERRO
     assert "GENEROSO_USUARIO" in (res.erro or "")
+
+
+# ------------------------------------------- tela de resultado, LOGADO
+# Medida no envio real de 20/08/2026 (cotação 2651152). Rótulo numa linha,
+# valor na seguinte — é assim que o inner_text sai desta página, e o R$ vem
+# com espaço NÃO separável ( ), não com espaço comum.
+TELA_COM_PRECO = """Resultado da cotação
+
+Cotação: 2651152
+
+Frete
+R$ 421,94
+Previsão de entrega
+25/08/26
+Cotado em
+20/08/26
+Cotação válida até
+30/08/26
+
+O valor de R$ 421,94 é válido para contratação até dia 30/08/26,
+considerando os dados iguais ao da NFe
+
+Detalhes desta cotação
+Solicitante:
+CNPJ
+08.310.365/0001-24
+"""
+
+
+def test_le_o_valor_do_frete_da_tela_logada(adapter):
+    """Logada, a Generoso deixa de ser assíncrona: o preço está na tela.
+    Ler errado aqui é pior que não ler — vira número na mesa do cliente."""
+    res = adapter.normalizar_resposta(TELA_COM_PRECO)
+
+    assert res.status is StatusCotacao.COTADO
+    assert res.valor_frete == Decimal("421.94")
+
+
+def test_le_o_numero_da_cotacao_como_protocolo(adapter):
+    """É por esse número que se fala com a Generoso sobre esta cotação."""
+    assert adapter.normalizar_resposta(TELA_COM_PRECO).protocolo == "2651152"
+
+
+def test_prazo_sai_da_diferenca_entre_as_duas_datas(adapter):
+    """A tela dá datas, não dias: cotado em 20/08, entrega 25/08 = 5 dias.
+    O resto do sistema compara prazo em dias."""
+    assert adapter.normalizar_resposta(TELA_COM_PRECO).prazo_dias == 5
+
+
+def test_valor_com_milhar_nao_vira_numero_menor(adapter):
+    """R$ 1.421,94 tem ponto de milhar e vírgula decimal. Lido como float
+    ingênuo viraria 1,42 — cem vezes menos, e ninguém veria."""
+    res = adapter.normalizar_resposta(
+        TELA_COM_PRECO.replace("421,94", "1.421,94"))
+
+    assert res.valor_frete == Decimal("1421.94")
+
+
+def test_tela_deslogada_ainda_e_reconhecida_como_recebida(adapter):
+    """Se a sessão cair no meio, o site cai no formulário público e mostra
+    "Recebemos seu pedido". Não é preço, mas também não é falha: a cotação
+    foi enviada e a resposta vem por e-mail."""
+    res = adapter.normalizar_resposta(
+        "Recebemos seu pedido de cotação. Entraremos em contato.")
+
+    assert res.status is StatusCotacao.AGUARDANDO_RETORNO
+    assert res.valor_frete is None
