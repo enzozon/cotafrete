@@ -79,13 +79,6 @@ VAGA_NAVEGADOR = threading.Semaphore(NAVEGADORES_SIMULTANEOS)
 # rede ruim, sem deixar a página piscando a noite inteira.
 ESPERA_MAXIMA_S = 240
 
-# Na subida nada pode estar em andamento: o que ficou pendente morreu junto
-# com o processo anterior. Fechar aqui evita cartão girando para sempre.
-_orfas = banco.marcar_interrompidas(("camilo", "jadlog"))
-if _orfas:
-    print(f"[cotafrete] {_orfas} cotação(ões) pendente(s) marcadas como "
-          f"interrompidas — o sistema foi fechado durante elas.")
-
 COOKIE = "cotafrete_usuario"
 LOGO = (Path(__file__).parent / "logo_b64.txt").read_text(encoding="utf-8").strip()
 
@@ -106,6 +99,19 @@ PESO_MINIMO_KG = Decimal("1")
 # Quem roda automaticamente. A tela usa para saber quantos resultados esperar
 # e decidir se ainda esta cotando.
 AUTOMATICAS = ("camilo", "jadlog", "translovato")
+
+# Na subida nada pode estar em andamento: o que ficou pendente morreu junto
+# com o processo anterior. Fechar aqui evita cartão girando para sempre.
+#
+# Vem de AUTOMATICAS, e não de uma lista à parte: a lista à parte parou em
+# ("camilo", "jadlog") quando a Translovato entrou, e desde então cotação
+# interrompida dela ficava "cotando…" para sempre, esperando uma thread que
+# morreu junto com o processo. Amarrado aqui, toda transportadora nova entra
+# nesta limpeza sem ninguém precisar lembrar.
+_orfas = banco.marcar_interrompidas(AUTOMATICAS)
+if _orfas:
+    print(f"[cotafrete] {_orfas} cotação(ões) pendente(s) marcadas como "
+          f"interrompidas — o sistema foi fechado durante elas.")
 
 NOMES = {"camilo": "Camilo dos Santos", "jadlog": "Jadlog Entregas",
          "translovato": "Translovato"}
