@@ -32,3 +32,10 @@ def test_resposta_por_email_conta_separada_dos_erros():
     assert contas["por_email"] == 1
     assert contas["erros"] == 0
     assert contas["recusadas"] == 0
+
+
+def test_a_generoso_e_acompanhada_como_as_outras():
+    """Ligada em web/app.py mas fora do monitor, ela sumiria da tabela: o
+    Enzo nao veria nem que ela rodou."""
+    assert "generoso" in monitorar.AUTOMATICAS
+    assert "generoso" in monitorar.TITULOS

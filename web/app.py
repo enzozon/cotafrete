@@ -43,6 +43,7 @@ from fastapi.staticfiles import StaticFiles
 load_dotenv(override=False)
 
 from carriers.camilo.adapter import CamiloAdapter
+from carriers.generoso.adapter import GenerosoAdapter
 from carriers.jadlog.painel import JadlogPainelAdapter
 from carriers.translovato.adapter import TranslovatoAdapter
 from core import cep as buscador_cep
@@ -98,7 +99,7 @@ PESO_MINIMO_KG = Decimal("1")
 
 # Quem roda automaticamente. A tela usa para saber quantos resultados esperar
 # e decidir se ainda esta cotando.
-AUTOMATICAS = ("camilo", "jadlog", "translovato")
+AUTOMATICAS = ("camilo", "jadlog", "translovato", "generoso")
 
 # Na subida nada pode estar em andamento: o que ficou pendente morreu junto
 # com o processo anterior. Fechar aqui evita cartão girando para sempre.
@@ -118,6 +119,7 @@ NOTAS = {
     "camilo": "Frete fracionado, com coleta. Preço já com taxas e ICMS.",
     "jadlog": "Etiqueta pré-paga, cotada por volume. Você leva ao balcão.",
     "translovato": "Frete fracionado, com coleta. Só atende parte do país — fora da malha ela avisa.",
+    "generoso": "Frete fracionado, com coleta. Cotada logada na conta da Ventura — só sai daqui.",
 }
 
 # A calculadora da Jadlog cota UM pacote por vez (carriers/jadlog/painel.py).
@@ -680,7 +682,8 @@ def cotar(usuario: str | None = Cookie(None, alias=COOKIE),
     # Dispara e NÃO espera: cada uma grava o próprio resultado ao terminar.
     for slug, fabrica in (("camilo", _cotar_camilo),
                           ("jadlog", _cotar_jadlog),
-                          ("translovato", _cotar_translovato)):
+                          ("translovato", _cotar_translovato),
+                          ("generoso", _cotar_generoso)):
         EXECUTOR.submit(_rodar, cotacao_id, slug, fabrica, req)
 
     return RedirectResponse(f"/cotacao/{cotacao_id}", status_code=303)
@@ -700,6 +703,16 @@ def _cotar_translovato(req):
     # Cria registro em "Minhas Cotações" no portal deles — é
     # auto-serviço, não entra em fila de vendedor.
     return TranslovatoAdapter().cotar(req)
+
+
+def _cotar_generoso(req):
+    """Cria uma cotação na conta da Ventura no portal deles — auto-serviço,
+    como a Translovato, e não fila de vendedor como a Della Volpe.
+
+    Logada, a tela final devolve preço, protocolo e prazo na hora. É por isso
+    que o envio é confirmado aqui: sem confirmar não existe preço, só um
+    rascunho que ninguém vê."""
+    return GenerosoAdapter().cotar(req, confirmar_envio=True)
 
 
 def _rodar(cotacao_id: int, slug: str, cotar_fn, req) -> None:

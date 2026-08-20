@@ -389,6 +389,17 @@ def _aguardando(app_web, cotacao_id: int) -> None:
                    None)
 
 
+def test_generoso_entra_na_lista_de_cotadas_automaticamente(app_web, cliente):
+    """Ela tinha adapter pronto mas nao era disparada: a tela nem mencionava
+    a Generoso, e o vendedor nao tinha como saber que ela ficou de fora."""
+    cotacao_id = _criar(app_web)
+
+    texto = _texto(cliente.get(f"/cotacao/{cotacao_id}").text)
+
+    assert "Generoso" in texto
+    assert "cotando" in texto
+
+
 def test_generoso_manda_conferir_o_email_em_vez_de_dizer_que_falhou(
         app_web, cliente):
     """AGUARDANDO_RETORNO nao e falha. Cair no cartao de erro faria o vendedor

@@ -29,9 +29,9 @@ RAIZ = Path(__file__).resolve().parent
 BANCO = RAIZ / "cotafrete.db"
 
 # As que o robô cota sozinho, na ordem em que aparecem na tela do vendedor.
-AUTOMATICAS = ("camilo", "jadlog", "translovato")
+AUTOMATICAS = ("camilo", "jadlog", "translovato", "generoso")
 TITULOS = {"camilo": "CAMILO", "jadlog": "JADLOG",
-           "translovato": "TRANSLOVATO"}
+           "translovato": "TRANSLOVATO", "generoso": "GENEROSO"}
 
 PAUSA_S = 5
 LARGURA = 116
