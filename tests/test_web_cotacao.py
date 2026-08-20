@@ -32,6 +32,9 @@ CARGA = {
     "cnpj_destinatario": "98.765.432/0001-10",
     "cnpj_pagador": "12.345.678/0001-90", "nome_remetente": "Ventura",
     "nome_destinatario": "Cliente", "nome_pagador": "Ventura",
+    # A Generoso responde por e-mail. Sem guardar o endereco, a tela final
+    # nao tem como dizer ONDE o vendedor deve olhar.
+    "email": "vendas@ventura.com.br",
 }
 
 
@@ -50,8 +53,10 @@ def cliente(app_web):
     return c
 
 
-def _criar(app_web, *, criado_em: str | None = None) -> int:
-    cotacao_id = app_web.banco.salvar_cotacao("enzo", CARGA)
+def _criar(app_web, *, criado_em: str | None = None,
+           email: str | None = None) -> int:
+    carga = {**CARGA, "email": email} if email else CARGA
+    cotacao_id = app_web.banco.salvar_cotacao("enzo", carga)
     if criado_em:
         with app_web.banco._conectar() as con:
             con.execute("UPDATE cotacao SET criado_em = ? WHERE id = ?",
@@ -367,3 +372,104 @@ def test_nao_da_para_registrar_abertura_em_cotacao_alheia(app_web, cliente):
 
     assert r.status_code == 404
     assert app_web.banco.whatsapp_abertos(cotacao_id) == set()
+
+
+# ----------------------------------- Generoso responde por e-mail, nao aqui
+def _aguardando(app_web, cotacao_id: int) -> None:
+    """Grava o resultado real da Generoso: recebido, sem preco.
+
+    Passa pelo _rodar de proposito — foi ali que a mensagem da Translovato se
+    perdia antes, e o mesmo caminho carrega este status."""
+    from carriers.base import ResultadoCotacao
+    from core.models import StatusCotacao
+
+    app_web._rodar(cotacao_id, "generoso",
+                   lambda _: ResultadoCotacao("generoso",
+                                              StatusCotacao.AGUARDANDO_RETORNO),
+                   None)
+
+
+def test_generoso_manda_conferir_o_email_em_vez_de_dizer_que_falhou(
+        app_web, cliente):
+    """AGUARDANDO_RETORNO nao e falha. Cair no cartao de erro faria o vendedor
+    desistir de uma cotacao que FOI enviada e esta a caminho."""
+    cotacao_id = _criar(app_web)
+    _aguardando(app_web, cotacao_id)
+
+    texto = _texto(cliente.get(f"/cotacao/{cotacao_id}").text)
+
+    assert "vendas@ventura.com.br" in texto
+    assert "Nao retornou preco" not in texto
+    assert "Não retornou preço" not in texto
+    assert "o site respondeu" not in texto
+
+
+def test_o_email_da_tela_e_o_que_o_vendedor_digitou(app_web, cliente):
+    """Guarda contra endereco chumbado no codigo: mandar o vendedor olhar a
+    caixa de outra pessoa e pior do que nao dizer nada."""
+    cotacao_id = _criar(app_web, email="joao@ventura.com.br")
+    _aguardando(app_web, cotacao_id)
+
+    texto = _texto(cliente.get(f"/cotacao/{cotacao_id}").text)
+
+    assert "joao@ventura.com.br" in texto
+    assert "vendas@ventura.com.br" not in texto
+
+
+def test_cotacao_antiga_sem_email_nao_quebra_a_tela(app_web, cliente):
+    """Todo o historico anterior a esta mudanca tem email NULL. A tela precisa
+    continuar abrindo, so sem conseguir dizer qual caixa conferir."""
+    carga = {k: v for k, v in CARGA.items() if k != "email"}
+    cotacao_id = app_web.banco.salvar_cotacao("enzo", carga)
+    _aguardando(app_web, cotacao_id)
+
+    resposta = cliente.get(f"/cotacao/{cotacao_id}")
+
+    assert resposta.status_code == 200
+    assert "None" not in _texto(resposta.text)
+
+
+def test_generoso_nao_disputa_o_selo_de_mais_barato(app_web, cliente):
+    """Sem preco nao ha o que comparar. O selo tem que continuar na Camilo."""
+    from carriers.base import ResultadoCotacao
+    from core.models import StatusCotacao
+    from decimal import Decimal
+
+    cotacao_id = _criar(app_web)
+    _aguardando(app_web, cotacao_id)
+    app_web._rodar(cotacao_id, "camilo",
+                   lambda _: ResultadoCotacao("camilo", StatusCotacao.COTADO,
+                                              valor_frete=Decimal("99.90")),
+                   None)
+
+    html = cliente.get(f"/cotacao/{cotacao_id}").text
+
+    assert html.count("MAIS BARATO") == 1
+    posicao_selo = html.index("MAIS BARATO")
+    assert "Camilo" in html[:posicao_selo][-400:]
+
+
+def test_o_print_da_confirmacao_aparece_no_cartao_enviada(app_web, cliente,
+                                                          tmp_path):
+    """A tela final do Generoso diz "Recebemos seu pedido de cotação". E a
+    prova de que o envio saiu — sem ela o vendedor só tem a nossa palavra de
+    que a cotação entrou na fila de alguém."""
+    from carriers.base import ResultadoCotacao
+    from core.models import StatusCotacao
+
+    # PNG 1x1 de verdade: _img só embute arquivo que existe.
+    print_falso = tmp_path / "resultado.png"
+    print_falso.write_bytes(bytes.fromhex(
+        "89504e470d0a1a0a0000000d494844520000000100000001080600000"
+        "01f15c4890000000a49444154789c6300010000050001od"[:-2]
+        + "0a2db40000000049454e44ae426082"))
+
+    cotacao_id = _criar(app_web)
+    app_web._rodar(cotacao_id, "generoso",
+                   lambda _: ResultadoCotacao(
+                       "generoso", StatusCotacao.AGUARDANDO_RETORNO,
+                       evidencias=[str(print_falso)]), None)
+
+    html = cliente.get(f"/cotacao/{cotacao_id}").text
+
+    assert 'class="print"' in html

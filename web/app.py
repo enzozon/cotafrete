@@ -51,7 +51,7 @@ from core.banco import Banco
 from web import transportadoras
 from core.models import (
     CotacaoRequest, Local, Mercadoria, NotaFiscal, Parte, Servico,
-    Solicitante, Volume,
+    Solicitante, StatusCotacao, Volume,
 )
 
 app = FastAPI(title="Cotafrete — Ventura")
@@ -104,17 +104,16 @@ AUTOMATICAS = ("camilo", "jadlog", "translovato")
 # com o processo anterior. Fechar aqui evita cartão girando para sempre.
 #
 # Vem de AUTOMATICAS, e não de uma lista à parte: a lista à parte parou em
-# ("camilo", "jadlog") quando a Translovato entrou, e desde então cotação
-# interrompida dela ficava "cotando…" para sempre, esperando uma thread que
-# morreu junto com o processo. Amarrado aqui, toda transportadora nova entra
-# nesta limpeza sem ninguém precisar lembrar.
+# ("camilo", "jadlog") quando a Translovato entrou, e cotação interrompida
+# dela ficava girando para sempre. A Generoso é a mais lenta de todas — a
+# mais provável de estar no meio do caminho quando alguém fecha a janela.
 _orfas = banco.marcar_interrompidas(AUTOMATICAS)
 if _orfas:
     print(f"[cotafrete] {_orfas} cotação(ões) pendente(s) marcadas como "
           f"interrompidas — o sistema foi fechado durante elas.")
 
 NOMES = {"camilo": "Camilo dos Santos", "jadlog": "Jadlog Entregas",
-         "translovato": "Translovato"}
+         "translovato": "Translovato", "generoso": "Transporte Generoso"}
 NOTAS = {
     "camilo": "Frete fracionado, com coleta. Preço já com taxas e ICMS.",
     "jadlog": "Etiqueta pré-paga, cotada por volume. Você leva ao balcão.",
@@ -174,6 +173,11 @@ background:var(--papel)}
 .res .valor.incerto{color:var(--fraco)}
 .res .nota{font-size:12px;color:var(--fraco)}
 .falhou{color:var(--erro);font-size:13px;font-weight:600}
+/* "Enviada" NAO pode usar o vermelho de falha nem o verde de preco: nao deu
+   errado e nao ha numero para comparar. Fica na cor da marca, no tamanho que
+   ocupa o lugar do preco - o olho passa pelos cartoes procurando o numero
+   grande, e precisa parar aqui em vez de saltar. */
+.enviada{color:var(--marca);font-size:19px;font-weight:700;margin:6px 0 2px}
 .selo{display:inline-block;font-size:10px;font-weight:700;color:#fff;
 background:var(--ok);border-radius:99px;padding:2px 8px;letter-spacing:.4px}
 .zap{display:flex;align-items:center;gap:10px;border:1px solid var(--borda);
@@ -230,6 +234,10 @@ font-size:14px;font-weight:600;text-decoration:none}
    topo da página ele seria lido antes do número e esquecido depois. */
 .alerta{background:#fffae6;border:1px solid #ffe380;border-radius:6px;
 padding:8px 10px;font-size:12px;margin:6px 0 2px;line-height:1.35}
+/* Amarelo e para "cuidado, esse numero engana". Aqui nao ha erro nenhum: e
+   instrucao de onde olhar. Azul separa os dois recados. */
+.alerta.email{background:#eef2ff;border-color:#c7d2fe}
+.alerta .caixa{font-size:14px;word-break:break-all}
 .ficha .val{font-size:14px;font-weight:600;word-break:break-word}
 .ficha .pouco{display:block;font-size:11px;font-weight:400;color:var(--fraco)}
 """
@@ -664,6 +672,9 @@ def cotar(usuario: str | None = Cookie(None, alias=COOKIE),
         "nome_remetente": buscador_cnpj.buscar(req.remetente.cnpj),
         "nome_destinatario": buscador_cnpj.buscar(req.destinatario.cnpj),
         "nome_pagador": buscador_cnpj.buscar(req.pagador_frete.cnpj),
+        # É por aqui que a resposta da Generoso chega. Guardado na cotação, e
+        # não só no formulário, porque a tela precisa dele em toda visita.
+        "email": req.solicitante.email,
     })
 
     # Dispara e NÃO espera: cada uma grava o próprio resultado ao terminar.
@@ -824,6 +835,29 @@ def ficha_da_cotacao(c: dict) -> str:
 </div>"""
 
 
+def cartao_resposta_por_email(email: str | None) -> str:
+    """Cartão de quem recebeu o pedido mas responde FORA do sistema.
+
+    A Generoso não devolve preço na tela: confirma o recebimento e um vendedor
+    responde por e-mail, horas depois. Sem este cartão ela caía no "Não
+    retornou preço" — o mesmo texto de quem falhou — e o vendedor abandonaria
+    uma cotação que está a caminho.
+
+    A frase diz três coisas, nesta ordem, porque é a ordem em que a dúvida
+    aparece: deu certo, onde a resposta chega, e que não adianta ficar
+    olhando esta tela.
+
+    Sem e-mail guardado (cotação anterior a 20/08/2026) o texto continua
+    fazendo sentido, só não nomeia a caixa."""
+    onde = (f'no e-mail <b class="caixa">{e(email)}</b> — o mesmo que você '
+            f'digitou nesta cotação'
+            if email else 'no e-mail que você digitou nesta cotação')
+    return ('<div class="enviada">Cotação enviada</div>'
+            f'<div class="alerta email"><b>O preço não vem nesta tela.</b> '
+            f'A resposta chega {onde}. Confira a caixa de entrada e o spam — '
+            f'esta tela não muda quando ela chegar.</div>')
+
+
 @app.get("/whatsapp/{cotacao_id}/{slug}")
 def abrir_whatsapp(cotacao_id: int, slug: str,
                    usuario: str | None = Cookie(None, alias=COOKIE)):
@@ -897,6 +931,14 @@ def ver_cotacao(cotacao_id: int,
                 corpo += (f'<div class="nota">Cotação nº '
                           f'{e(r["protocolo"])}</div>')
             corpo += _img(r["evidencia"])
+        elif r["status"] == StatusCotacao.AGUARDANDO_RETORNO.value:
+            # Recebido, sem preço e sem falha. Precisa vir ANTES do ramo de
+            # erro: lá embaixo tudo que não tem valor é tratado como problema.
+            destaque, selo = "", ""
+            # O print da tela "Recebemos seu pedido" é a prova de que o envio
+            # saiu. Sem ele o vendedor só tem a nossa palavra.
+            corpo = (cartao_resposta_por_email(c.get("email"))
+                     + _img(r["evidencia"]))
         else:
             destaque, selo = "", ""
             # Sempre dizer POR QUE não veio preço. "Não retornou preço" sozinho
