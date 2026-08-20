@@ -29,6 +29,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from carriers.dellavolpe import mapping as m
 from carriers.dellavolpe.adapter import DellavolpeAdapter
 from core.models import (
+    TipoFrete,
     CotacaoRequest, Local, Mercadoria, NotaFiscal, Parte, Servico,
     Solicitante, Volume,
 )
@@ -68,7 +69,7 @@ def carga_exemplo() -> CotacaoRequest:
         destino=Local(uf="SP", cidade="São Paulo"),
         remetente=Parte(cnpj="11.222.333/0001-81"),
         destinatario=Parte(cnpj="45.723.174/0001-10"),
-        pagador_frete=Parte(cnpj="61.139.432/0001-72"),
+        tipo_frete=TipoFrete.CIF,
         volumes=[
             Volume(qtd=3, comprimento_cm=Decimal(100), largura_cm=Decimal(50),
                    altura_cm=Decimal(40), peso_kg=Decimal(10), descricao="Caixas"),

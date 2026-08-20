@@ -34,7 +34,7 @@ from typing import Any
 from carriers.base import (
     CampoSpec, ErroValidacao, Modo, ResultadoCotacao, print_seguro,
 )
-from core.models import CotacaoRequest, StatusCotacao, limpa_doc
+from core.models import CotacaoRequest, TipoFrete, StatusCotacao, limpa_doc
 
 URL_LOGIN = "https://sistema.ssw.inf.br/bin/ssw0422"
 URL_COTACAO = "https://sistema.ssw.inf.br/bin/ssw1608"
@@ -78,12 +78,14 @@ class CamiloAdapter:
     sla_esperado_min: int | None = None
 
     def __init__(self, headless: bool = True, timeout_ms: int = 45_000,
-                 workdir: str = "teste_real/camilo",
-                 tipo_frete: str = FRETE_FOB) -> None:
+                 workdir: str = "teste_real/camilo") -> None:
+        # tipo_frete SAIU daqui de proposito. Era fixo em FRETE_FOB enquanto o
+        # formulario mandava um CNPJ da Ventura como pagador, ou seja CIF: os
+        # dois se contradiziam e o SSW recebia a combinacao errada, calada.
+        # Agora vem do pedido, junto com o CNPJ de quem paga.
         self.headless = headless
         self.timeout_ms = timeout_ms
         self.workdir = Path(workdir)
-        self.tipo_frete = tipo_frete
 
     # ------------------------------------------------------- camada pura
     def campos_obrigatorios(self, req: CotacaoRequest) -> list[CampoSpec]:
@@ -126,7 +128,8 @@ class CamiloAdapter:
             "cgc_pag": limpa_doc(req.pagador_frete.cnpj),
             "cep_origem": limpa_doc(req.origem.cep or ""),
             "cep_destino": limpa_doc(req.destino.cep or ""),
-            "tp_frete": self.tipo_frete,
+            "tp_frete": (FRETE_CIF if req.tipo_frete is TipoFrete.CIF
+                         else FRETE_FOB),
             "vlr_merc": f"{req.nota_fiscal.valor_total:.2f}".replace(".", ","),
             "peso": f"{req.peso_total_kg:.3f}".replace(".", ","),
             "qtde_vol": str(req.quantidade_volumes),

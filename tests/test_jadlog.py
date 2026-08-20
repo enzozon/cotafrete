@@ -14,6 +14,7 @@ from carriers.base import Severidade
 from carriers.jadlog import mapping as j
 from carriers.jadlog.adapter import JadlogAdapter, TokenAusente
 from core.models import (
+    TipoFrete,
     CotacaoRequest, Local, Mercadoria, NotaFiscal, Parte, Servico,
     Solicitante, StatusCotacao, Volume,
 )
@@ -31,7 +32,7 @@ def montar(*, cep_ori="29010000", cep_des="01310100", volumes=None, **over):
         destino=Local(uf="SP", cidade="São Paulo", cep=cep_des),
         remetente=Parte(cnpj=CNPJ_A),
         destinatario=Parte(cnpj=CNPJ_B),
-        pagador_frete=Parte(cnpj=CNPJ_C),
+        tipo_frete=TipoFrete.CIF,
         volumes=volumes or [Volume(qtd=1, comprimento_cm=Decimal(40),
                                    largura_cm=Decimal(30), altura_cm=Decimal(20),
                                    peso_kg=Decimal(5))],
@@ -121,7 +122,8 @@ def test_modalidade_invalida():
 # -------------------------------------------------------------------- payload
 def test_payload_usa_cnpj_do_pagador_como_tomador():
     p = j.preparar_payload(montar())["frete"][0]
-    assert p["cnpj"] == "61139432000172"     # pagador, não remetente
+    # O tomador e quem paga. Com CIF isso e o remetente.
+    assert p["cnpj"] == "11222333000181"
     assert p["cepori"] == "29010000"
     assert p["cepdes"] == "01310100"
     assert p["vldeclarado"] == 1500.0

@@ -13,6 +13,7 @@ from carriers.base import Severidade
 from carriers.dellavolpe import mapping as dv
 from carriers.dellavolpe.planilha import gerar_planilha_volumes
 from core.models import (
+    TipoFrete,
     CotacaoRequest, Local, Mercadoria, NotaFiscal, Parte, Servico,
     Solicitante, StatusCotacao, Volume, cnpj_valido,
 )
@@ -31,7 +32,7 @@ def montar(**over) -> CotacaoRequest:
         destino=Local(uf="SP", cidade="São Paulo"),
         remetente=Parte(cnpj=CNPJ_A),
         destinatario=Parte(cnpj=CNPJ_B),
-        pagador_frete=Parte(cnpj=CNPJ_C),
+        tipo_frete=TipoFrete.CIF,
         volumes=[Volume(qtd=2, comprimento_cm=Decimal(100), largura_cm=Decimal(50),
                         altura_cm=Decimal(40), peso_kg=Decimal(10))],
         mercadoria=Mercadoria(tipo_material="Peças metálicas"),
@@ -225,7 +226,8 @@ def test_payload_valores_exatos():
     assert p["Qual o serviço que você procura?"] == "Fracionado -LTL"
     assert p["CNPJ - Remetente"] == "11.222.333/0001-81"
     assert p["CNPJ - Destinatário"] == "45.723.174/0001-10"
-    assert p["CNPJ da empresa que pagará o frete"] == "61.139.432/0001-72"
+    # CIF: quem paga e o remetente (ver core.models.TipoFrete)
+    assert p["CNPJ da empresa que pagará o frete"] == "11.222.333/0001-81"
     assert p["Selecione o estado de origem"] == "ES"
     assert p["Peso total"] == "20"
     assert p["Quantidade de Volumes"] == "2"
@@ -235,12 +237,21 @@ def test_payload_valores_exatos():
     assert p["Valor total da nota fiscal"] == "25.000,00"
 
 
-def test_cnpjs_nao_se_misturam():
-    """Regressão: os três CNPJs são campos diferentes e não podem trocar."""
-    p = dv.preparar_payload(montar())
-    tres = {p["CNPJ - Remetente"], p["CNPJ - Destinatário"],
-            p["CNPJ da empresa que pagará o frete"]}
-    assert len(tres) == 3
+def test_cnpj_do_pagador_segue_o_tipo_de_frete():
+    """Regressão: remetente e destinatário são campos diferentes e não podem
+    trocar. O terceiro campo, "quem pagará o frete", deixou de ser digitado —
+    agora ele É um dos dois, escolhido pelo CIF/FOB. Trocar os dois de lugar
+    mandaria a conta para a empresa errada."""
+    from core.models import TipoFrete
+
+    cif = dv.preparar_payload(montar(tipo_frete=TipoFrete.CIF))
+    fob = dv.preparar_payload(montar(tipo_frete=TipoFrete.FOB))
+
+    assert cif["CNPJ - Remetente"] != cif["CNPJ - Destinatário"]
+    assert (cif["CNPJ da empresa que pagará o frete"]
+            == cif["CNPJ - Remetente"])
+    assert (fob["CNPJ da empresa que pagará o frete"]
+            == fob["CNPJ - Destinatário"])
 
 
 def test_cubagem_nao_vai_para_o_formulario():

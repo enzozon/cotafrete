@@ -79,14 +79,25 @@ def test_cep_so_digitos_e_cnpj_sem_mascara(adapter):
     p = adapter.preparar_payload(montar(cep_ori="29.010-000"))
     assert p["cep_origem"] == "29010000"
     assert p["cep_destino"] == "01310100"
-    assert p["cgc_pag"] == "61139432000172"      # o pagador, sem pontuação
+    # CIF: quem paga e o remetente. O CNPJ do pagador deixou de ser
+    # digitado a parte — ver core.models.TipoFrete.
+    assert p["cgc_pag"] == "11222333000181"      # o pagador, sem pontuação
 
 
-def test_frete_fob_e_o_padrao(adapter):
-    """FOB = 2 no SSW. Trocar por CIF muda quem paga e o valor."""
-    assert adapter.preparar_payload(montar())["tp_frete"] == FRETE_FOB
-    assert CamiloAdapter(tipo_frete=FRETE_CIF)\
-        .preparar_payload(montar())["tp_frete"] == FRETE_CIF
+def test_tipo_de_frete_vem_do_pedido_e_nao_do_adapter(adapter):
+    """Era fixo em FOB no construtor, enquanto o formulario mandava um CNPJ da
+    Ventura como pagador — que e CIF. Os dois se contradiziam e o SSW recebia
+    a combinacao errada, sem ninguem ver.
+
+    Agora tp_frete e cgc_pag saem da MESMA escolha, entao nao tem como
+    discordarem. A prova completa esta em tests/test_tipo_frete.py."""
+    from core.models import TipoFrete
+
+    cif = adapter.preparar_payload(montar(tipo_frete=TipoFrete.CIF))
+    fob = adapter.preparar_payload(montar(tipo_frete=TipoFrete.FOB))
+
+    assert (cif["tp_frete"], fob["tp_frete"]) == (FRETE_CIF, FRETE_FOB)
+    assert cif["cgc_pag"] != fob["cgc_pag"]
 
 
 def test_padroes_confirmados_pelo_enzo(adapter):

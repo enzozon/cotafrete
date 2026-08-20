@@ -113,7 +113,7 @@ def test_sem_a_faixa_de_valor_cai_no_print_da_tela(navegador, tmp_path):
 # `true`; Rio Branco/AC, Macapá/AP e Fortaleza/CE respondem `false`.
 import pytest as _pytest
 
-from core.models import StatusCotacao
+from core.models import StatusCotacao, TipoFrete
 
 
 def _carga():
@@ -130,7 +130,7 @@ def _carga():
         destino=Local(uf="AC", cidade="Rio Branco", cep="69900000"),
         remetente=Parte(cnpj="05.954.058/0001-98"),
         destinatario=Parte(cnpj="60.042.686/0001-05"),
-        pagador_frete=Parte(cnpj="05.954.058/0001-98"),
+        tipo_frete=TipoFrete.CIF,
         volumes=[Volume(qtd=1, comprimento_cm=Decimal(30),
                         largura_cm=Decimal(30), altura_cm=Decimal(30),
                         peso_kg=Decimal(1))],

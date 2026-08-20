@@ -195,6 +195,7 @@ def _carga_referencia():
     from decimal import Decimal
 
     from core.models import (
+    TipoFrete,
         CotacaoRequest, Local, Mercadoria, NotaFiscal, Parte, Servico,
         Solicitante, Volume,
     )
@@ -207,7 +208,7 @@ def _carga_referencia():
         destino=Local(uf="SP", cidade="São Paulo"),
         remetente=Parte(cnpj="11.222.333/0001-81"),
         destinatario=Parte(cnpj="45.723.174/0001-10"),
-        pagador_frete=Parte(cnpj="61.139.432/0001-72"),
+        tipo_frete=TipoFrete.CIF,
         volumes=[
             Volume(qtd=1, comprimento_cm=Decimal(100), largura_cm=Decimal(50),
                    altura_cm=Decimal(40), peso_kg=Decimal(10)),

@@ -34,7 +34,7 @@ from typing import Any
 from carriers.base import (
     CampoSpec, ErroValidacao, Modo, ResultadoCotacao, Severidade,
 )
-from core.models import CotacaoRequest, StatusCotacao, limpa_doc
+from core.models import CotacaoRequest, StatusCotacao, limpa_doc, TipoFrete
 
 SLUG = "translovato"
 NOME = "Translovato"
@@ -54,7 +54,10 @@ CM_POR_M = Decimal(100)
 CASAS_MEDIDA = Decimal("0.001")   # milímetro; o campo tem maxlength 6
 CASAS_DINHEIRO = Decimal("0.01")
 
-PAGADOR_REMETENTE = "1"           # value[payer_type]; o CNPJ vem sozinho
+# value[payer_type] — radios medidos no recon; o CNPJ do pagador o site
+# preenche sozinho a partir do lado escolhido.
+PAGADOR_REMETENTE = "1"           # rotulo REMETENTE  -> CIF
+PAGADOR_DESTINATARIO = "2"        # rotulo DESTINATARIO -> FOB
 REDESPACHO_NAO = "0"
 
 # Frase do site quando a praça está fora da malha. Não é erro do robô.
@@ -218,7 +221,9 @@ def preparar_payload(req: CotacaoRequest) -> dict[str, Any]:
         "value[receiver_cnpj_cpf]": _cnpj_mascarado(req.destinatario.cnpj),
         "value[receiver_zipcode]": limpa_doc(req.destino.cep or ""),
         # 3. pagador — o CNPJ é preenchido pelo próprio site
-        "value[payer_type]": PAGADOR_REMETENTE,
+        "value[payer_type]": (PAGADOR_REMETENTE
+                              if req.tipo_frete is TipoFrete.CIF
+                              else PAGADOR_DESTINATARIO),
         # 4. volume
         "value[volume_product]": PRODUTO,
         "value[volume_nf]": _br(req.nota_fiscal.valor_total, CASAS_DINHEIRO),

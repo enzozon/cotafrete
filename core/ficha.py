@@ -22,7 +22,7 @@ from typing import Callable
 
 from core.models import (
     CotacaoRequest, Local, Mercadoria, NotaFiscal, Parte, Servico,
-    Solicitante, Volume, limpa_doc,
+    Solicitante, TipoFrete, Volume, limpa_doc,
 )
 
 # CEP só com dígitos -> (cidade, uf, código IBGE). Injetado para este módulo
@@ -164,6 +164,23 @@ def _local(c: dict[str, str], sufixo_cep: str, sufixo_cidade: str,
     return Local(uf=uf.upper(), cidade=cidade, cep=cep, codigo_ibge=ibge)
 
 
+def _tipo_de_frete(c: dict) -> TipoFrete:
+    """A ficha de papel traz "CNPJ Pagador"; o sistema trabalha com CIF/FOB.
+
+    Deduz comparando com as duas pontas. Um pagador que não é nenhuma delas
+    não tem mais representação — e inventar CIF ali faria a Camilo receber
+    tp_frete=1 para um frete que ninguém pediu assim. Melhor parar e dizer."""
+    pagador = limpa_doc(c.get("CNPJ Pagador") or "")
+    if pagador == limpa_doc(c.get("CNPJ Remetente") or ""):
+        return TipoFrete.CIF
+    if pagador == limpa_doc(c.get("CNPJ Destinatario") or ""):
+        return TipoFrete.FOB
+    raise ValueError(
+        f"O CNPJ Pagador da ficha ({c.get('CNPJ Pagador')}) não é nem o "
+        f"remetente nem o destinatário. O frete só pode ser CIF (paga o "
+        f"remetente) ou FOB (paga o destinatário).")
+
+
 def ler_ficha(texto: str, buscar_cep: BuscaCEP | None = None) -> CotacaoRequest:
     """Ficha em texto -> CotacaoRequest. Levanta CamposFaltando se faltar algo.
 
@@ -200,7 +217,7 @@ def ler_ficha(texto: str, buscar_cep: BuscaCEP | None = None) -> CotacaoRequest:
         destino=_local(c, "DESTINO", "Destino", buscar_cep),
         remetente=Parte(cnpj=c["CNPJ Remetente"]),
         destinatario=Parte(cnpj=c["CNPJ Destinatario"]),
-        pagador_frete=Parte(cnpj=c["CNPJ Pagador"]),
+        tipo_frete=_tipo_de_frete(c),
         volumes=[Volume(
             qtd=qtd,
             comprimento_cm=num(c["Comprimento (cm)"]),

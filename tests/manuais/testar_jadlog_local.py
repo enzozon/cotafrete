@@ -33,6 +33,7 @@ import httpx
 from carriers.jadlog import mapping as j
 from carriers.jadlog.adapter import JadlogAdapter
 from core.models import (
+    TipoFrete,
     CotacaoRequest, Local, Mercadoria, NotaFiscal, Parte, Servico,
     Solicitante, StatusCotacao, Volume,
 )
@@ -51,7 +52,7 @@ def montar(volumes: list[Volume]) -> CotacaoRequest:
         destino=Local(uf="SP", cidade="São Paulo", cep="01310-100"),
         remetente=Parte(cnpj="11.222.333/0001-81"),
         destinatario=Parte(cnpj="45.723.174/0001-10"),
-        pagador_frete=Parte(cnpj="61.139.432/0001-72"),
+        tipo_frete=TipoFrete.CIF,
         volumes=volumes,
         mercadoria=Mercadoria(tipo_material="Eletrônicos"),
         nota_fiscal=NotaFiscal(valor_total=Decimal(1_500)),

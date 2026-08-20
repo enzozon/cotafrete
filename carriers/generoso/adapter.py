@@ -31,9 +31,10 @@ REGRAS MEDIDAS NO SITE — sem elas a cotação sai errada e sem aviso na tela:
    "09.220-570" fez a máscara comer o zero à esquerda e o resumo saiu com
    "92.205-70". CEP errado é cotação para o lugar errado, calada.
 
-3. Na ORIGEM não há nada a preencher: CNPJ, cidade e estado vêm travados.
-   Se o remetente da ficha não for o CNPJ da conta, a cotação sairia de
-   outra praça sem ninguém perceber — por isso aqui ela é recusada.
+3. A ponta que a Ventura ocupa vem TRAVADA no CNPJ da conta
+   (08.310.365/0001-24) e não dá para trocar: no CIF é a origem, no FOB é o
+   destino. A Ventura tem três CNPJs — cotação feita com outro sai com o da
+   conta, e quem avisa disso é a tela final.
 
 4. O campo de peso tem máscara de 2 casas, da direita para a esquerda:
    "1" vira 0.01 e "100" vira 1.00. Sempre 2 casas.
@@ -54,10 +55,15 @@ from datetime import datetime
 from carriers.base import (
     CampoSpec, ErroValidacao, Modo, ResultadoCotacao, Severidade, print_seguro,
 )
-from core.models import CotacaoRequest, StatusCotacao, limpa_doc
+from core.models import CotacaoRequest, StatusCotacao, TipoFrete, limpa_doc
 
 URL = "https://cliente.generoso.com.br/cotacao"
 URL_LOGIN = "https://cliente.generoso.com.br/login"
+
+# O CNPJ da conta. O site TRAVA nele a ponta que a Ventura ocupa e nao
+# deixa trocar — no CIF a origem, no FOB o destino. A Ventura tem tres
+# CNPJs; cotacao feita com outro sai com este, e a tela avisa disso.
+CNPJ_CONTA = "08.310.365/0001-24"
 ESPERA_LOGIN_MS = 30_000
 
 # O CNPJ que da para digitar. Na origem o site trava o da conta
@@ -144,15 +150,15 @@ def ler_resultado(texto: str) -> bool:
     return any(f in t for f in FRASES_CONFIRMACAO)
 
 
-def recusa_remetente_diferente(cnpj_ficha: str, cnpj_conta: str) -> str:
-    """Frase para o vendedor quando a ficha pede uma origem que o site não
-    aceita. Dizer só "recusado" faria ele repetir a cotação igual."""
-    return (
-        f"A Generoso cota logada na conta da Ventura, e essa conta é o CNPJ "
-        f"{cnpj_conta}. O site trava a origem nele e não deixa trocar. Esta "
-        f"cotação pede remetente {cnpj_ficha}, então o frete sairia de outro "
-        f"endereço sem ninguém perceber. Refaça com {cnpj_conta} como "
-        f"remetente, ou fale com a Generoso pelo WhatsApp.")
+def pontas_a_digitar(req: CotacaoRequest) -> tuple[str | None, str | None]:
+    """(origem, destino). None = essa ponta é a conta e já vem travada.
+
+    FUNÇÃO PURA, e é aqui que mora o erro caro: digitar na ponta travada não
+    adianta, e deixar a livre em branco faz a cotação não ter de onde nem
+    para onde ir. Medido nos dois modos em 20/08/2026."""
+    if req.tipo_frete is TipoFrete.CIF:
+        return None, req.destinatario.cnpj_formatado
+    return req.remetente.cnpj_formatado, None
 
 
 def _inteiro(v: Decimal) -> str:
@@ -239,7 +245,9 @@ class GenerosoAdapter:
             "nome": req.solicitante.nome,
             "whatsapp": req.solicitante.whatsapp_formatado,
             # etapa 2
-            "tipo_pagador": self.tipo_pagador,
+            "tipo_pagador": (TIPO_PAGADOR_REMETENTE
+                             if req.tipo_frete is TipoFrete.CIF
+                             else TIPO_PAGADOR_DESTINATARIO),
             # etapa 3 — o endereço inteiro sai deste CNPJ
             "cnpj_remetente": req.remetente.cnpj_formatado,
             # etapa 4 — e o do destino sai deste. Logado, o campo vem VAZIO:
@@ -384,23 +392,55 @@ class GenerosoAdapter:
                 "o login na Generoso não passou (a tela não saiu de /login). "
                 "Confira GENEROSO_USUARIO e GENEROSO_SENHA no .env")
 
-    @staticmethod
-    def _cnpj_travado_da_origem(page) -> str:
-        """O CNPJ que o site fixou na origem. Logado, ele é o da conta e não
-        dá para trocar — então é ele que decide de onde o frete sai."""
-        campo = page.locator('input[name="document"]:visible')
-        return campo.last.input_value() if campo.count() else ""
+    def _reativar_cep(self, page) -> None:
+        """Acorda a busca de endereço SEM apagar o CEP.
+
+        Apaga o último dígito e redigita só ele. Redigitar o CEP inteiro
+        resolveria igual — e foi exatamente o que comeu o zero à esquerda de
+        09.220-570, que chegou no resumo como "92.205-70". Um dígito dispara
+        o mesmo evento e não encosta no resto do número."""
+        campo = self._campo(page, 'input[name="cep"]')
+        valor = campo.input_value()
+        if not valor:
+            return
+        campo.click()
+        campo.press("End")
+        campo.press("Backspace")
+        page.wait_for_timeout(200)
+        campo.type(valor[-1], delay=DELAY_DIGITACAO_MS)
+        campo.blur()
+        page.wait_for_timeout(ESPERA_BUSCA_MS)
+
+    def _preencher_ponta(self, page, cnpj: str | None) -> dict:
+        """Preenche uma ponta e devolve o endereço que o site achou.
+
+        cnpj=None quer dizer "esta ponta é a conta": vem travada. Nunca
+        digitar o CEP — cada ponta é preenchida pelo CNPJ."""
+        if cnpj is not None:
+            self._digitar(page, SELETOR_CNPJ_LIVRE, cnpj)
+            self._campo(page, SELETOR_CNPJ_LIVRE).blur()
+            page.wait_for_timeout(ESPERA_BUSCA_MS)
+            return self._esperar_endereco(page)
+
+        # Ponta travada. No CIF (origem) ela vem completa. No FOB (destino) o
+        # CNPJ traz SÓ o CEP: cidade e rua ficam vazias e o "Próximo" não
+        # avança — sem mensagem nenhuma na tela. Medido em 20/08/2026.
+        achado = self._esperar_endereco(page, tentativas=3)
+        if not achado["city"]:
+            self._reativar_cep(page)
+            achado = self._esperar_endereco(page)
+        return achado
 
     def _avancar(self, page) -> None:
         page.get_by_role("button", name=BOTAO_PROXIMO).last.click()
         page.wait_for_timeout(2_500)
 
-    def _esperar_endereco(self, page) -> dict[str, str]:
+    def _esperar_endereco(self, page, tentativas: int = 12) -> dict[str, str]:
         """Espera cidade e rua chegarem, e devolve o endereço que o site achou.
 
         Sem essa espera o "Próximo" é clicado com o endereço em branco e a
         etapa nem avança — ou pior, avança com endereço incompleto."""
-        for _ in range(12):
+        for _ in range(tentativas):
             achado = {
                 campo: self._campo(page, f'input[name="{campo}"]').input_value()
                 for campo in ("cep", "city", "state", "neighborhood", "address")
@@ -506,40 +546,24 @@ class GenerosoAdapter:
                 evidencias += print_seguro(page, run / "etapa1_pagador.png")
                 self._avancar(page)
 
-                # ------------------------------------------------- 2. Origem
-                # Nada a preencher: o site já travou tudo no CNPJ da conta. O
-                # que há a fazer é CONFERIR que é o remetente certo — se não
-                # for, o frete sairia de outra praça e ninguém veria.
-                conta = self._cnpj_travado_da_origem(page)
-                if conta and limpa_doc(conta) != limpa_doc(c["cnpj_remetente"]):
-                    return ResultadoCotacao(
-                        self.slug, StatusCotacao.RECUSADO,
-                        motivo_recusa=recusa_remetente_diferente(
-                            c["cnpj_remetente"], conta),
-                        enviado_em=enviado, evidencias=evidencias)
-
-                origem = self._esperar_endereco(page)
-                if not origem["city"]:
-                    raise RuntimeError(
-                        "a conta não trouxe o endereço de origem; sem isso a "
-                        "cotação sairia de lugar nenhum")
-                evidencias += print_seguro(page, run / "etapa2_origem.png")
-                self._avancar(page)
-
-                # ------------------------------------------------ 3. Destino
-                # Logado, este campo vem VAZIO e é dele que sai o endereço
-                # inteiro. Não tocar no CEP: redigitá-lo comeu o zero à
-                # esquerda de 09.220-570 e o resumo saiu "92.205-70".
-                self._digitar(page, SELETOR_CNPJ_LIVRE, c["cnpj_destinatario"])
-                self._campo(page, SELETOR_CNPJ_LIVRE).blur()
-                page.wait_for_timeout(ESPERA_BUSCA_MS)
-                destino = self._esperar_endereco(page)
-                if not destino["city"]:
-                    raise RuntimeError(
-                        f"o CNPJ {c['cnpj_destinatario']} não trouxe endereço "
-                        f"de destino")
-                evidencias += print_seguro(page, run / "etapa3_destino.png")
-                self._avancar(page)
+                # ------------------------------- 2. Origem e 3. Destino
+                # A ponta que a Ventura ocupa vem TRAVADA no CNPJ da conta; a
+                # outra e digitada. Qual e qual depende do CIF/FOB — ver
+                # pontas_a_digitar. Digitar na travada nao adianta, e deixar a
+                # livre em branco faz a cotacao nao ter para onde ir.
+                for numero, (lado, cnpj) in enumerate(
+                        zip(("origem", "destino"), pontas_a_digitar(req)), 2):
+                    achado = self._preencher_ponta(page, cnpj)
+                    if not achado["city"]:
+                        de_onde = (f"o CNPJ {cnpj}" if cnpj
+                                   else "a conta da Generoso")
+                        raise RuntimeError(
+                            f"{de_onde} nao trouxe o endereco de {lado}; sem "
+                            f"isso a cotacao sairia de lugar nenhum. O site "
+                            f"diz: {self._erros_da_tela(page)}")
+                    evidencias += print_seguro(
+                        page, run / f"etapa{numero}_{lado}.png")
+                    self._avancar(page)
 
                 if not self._chegou_na_carga(page):
                     raise RuntimeError(

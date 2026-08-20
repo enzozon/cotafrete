@@ -15,6 +15,7 @@ from decimal import Decimal
 
 from carriers.translovato import mapping as t
 from core.models import (
+    TipoFrete,
     CotacaoRequest, Local, Mercadoria, NotaFiscal, Parte, Servico, Solicitante,
     StatusCotacao, Volume,
 )
@@ -32,7 +33,7 @@ def montar(*, cep_ori="29105770", cep_des="09895003", volumes=None, **over):
         destino=Local(uf="SP", cidade="São Bernardo do Campo", cep=cep_des),
         remetente=Parte(cnpj=CNPJ_B),
         destinatario=Parte(cnpj=CNPJ_A),
-        pagador_frete=Parte(cnpj=CNPJ_B),
+        tipo_frete=TipoFrete.CIF,
         volumes=volumes or [Volume(qtd=1, comprimento_cm=Decimal(30),
                                    largura_cm=Decimal(30),
                                    altura_cm=Decimal(30),

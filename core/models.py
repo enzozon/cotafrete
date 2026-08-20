@@ -6,7 +6,8 @@ from decimal import Decimal
 from enum import Enum
 from typing import Annotated
 
-from pydantic import BaseModel, Field, computed_field, field_validator
+from pydantic import (BaseModel, ConfigDict, Field, computed_field,
+                      field_validator)
 
 CM3_POR_M3 = 1_000_000
 
@@ -40,6 +41,21 @@ def formata_cnpj(cnpj: str) -> str:
 class Servico(str, Enum):
     FRACIONADO_LTL = "fracionado_ltl"
     LOTACAO_FTL = "lotacao_ftl"
+
+
+class TipoFrete(str, Enum):
+    """Quem paga o frete. Uma escolha, duas consequências.
+
+    CIF  o REMETENTE paga     — a carga sai daqui e a Ventura banca
+    FOB  o DESTINATÁRIO paga  — quem recebe é quem acerta com a transportadora
+
+    Substituiu o campo "CNPJ de quem paga", digitado à parte. Os dois podiam
+    discordar, e discordavam: o formulário mandava um CNPJ da Ventura como
+    pagador (CIF) enquanto a Camilo recebia tp_frete=2 (FOB), fixo no código.
+    Derivando o pagador da escolha, a contradição deixa de ser possível."""
+
+    CIF = "cif"
+    FOB = "fob"
 
 
 class StatusCotacao(str, Enum):
@@ -150,13 +166,18 @@ class NotaFiscal(BaseModel):
 
 # ----------------------------------------------------------------- request
 class CotacaoRequest(BaseModel):
+    # extra="forbid" de propósito: `pagador_frete` era um campo e virou
+    # propriedade. Sem isto, quem continuasse passando pagador_frete=... teria
+    # o valor silenciosamente ignorado e cotaria com outro pagador sem saber.
+    model_config = ConfigDict(extra="forbid")
+
     solicitante: Solicitante
     servico: Servico
     origem: Local
     destino: Local
     remetente: Parte
     destinatario: Parte
-    pagador_frete: Parte
+    tipo_frete: TipoFrete = TipoFrete.CIF
     volumes: Annotated[list[Volume], Field(min_length=1)]
     mercadoria: Mercadoria
     nota_fiscal: NotaFiscal
@@ -183,6 +204,12 @@ class CotacaoRequest(BaseModel):
     @property
     def tem_medidas_distintas(self) -> bool:
         return len({v.dimensoes for v in self.volumes}) > 1
+
+    @property
+    def pagador_frete(self) -> Parte:
+        """DERIVADO do tipo de frete, nunca digitado. Ver TipoFrete."""
+        return (self.remetente if self.tipo_frete is TipoFrete.CIF
+                else self.destinatario)
 
     @property
     def maior_volume(self) -> Volume:

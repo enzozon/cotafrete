@@ -101,7 +101,8 @@ def test_documentos_vao_para_os_papeis_certos(adapter):
     p = adapter.preparar_payload(montar())
 
     assert p["cnpj_remetente"] == "11.222.333/0001-81"
-    assert p["cnpj_solicitante"] == "61.139.432/0001-72"   # o pagador
+    # CIF: o pagador e o remetente (ver core.models.TipoFrete)
+    assert p["cnpj_solicitante"] == "11.222.333/0001-81"
 
 
 def test_cnpj_do_destinatario_entra_no_payload(adapter):
