@@ -1,0 +1,29 @@
+{
+  // POR QUE ESTE ARQUIVO EXISTE
+  //
+  // Para ativar o .venv, o VS Code manda uma linha pronta para o PowerShell,
+  // com um (Set-ExecutionPolicy ...) na frente. As vezes o terminal ainda nao
+  // esta pronto quando o texto chega, o primeiro caractere se perde, e o
+  // PowerShell morre com:
+  //     Token ')' inesperado na expressao ou instrucao.
+  // O venv esta inteiro. Quem errou foi o envio, nao o ambiente.
+  //
+  // Aqui aquela linha nao serve para nada: o ExecutionPolicy do usuario ja
+  // esta em RemoteSigned, e tudo que importa (os .bat e o Test Explorer)
+  // chama o python do venv pelo caminho inteiro.
+  //
+  // Para ativar na mao, quando quiser: .venv/Scripts/Activate.ps1
+  "python.terminal.activateEnvironment": false,
+
+  // Com o envio desligado, E ESTA LINHA que mantem o Python certo no
+  // "Run Python File", no debug e nos testes. Sem ela o VS Code cai no
+  // Python global e as importacoes do projeto somem.
+  // Barra normal de proposito: no JSON a barra invertida precisa ser
+  // escapada, e o VS Code entende as duas no Windows.
+  "python.defaultInterpreterPath": "${workspaceFolder}/.venv/Scripts/python.exe",
+
+  // Testes pelo painel do VS Code, no mesmo interpretador acima.
+  "python.testing.pytestEnabled": true,
+  "python.testing.pytestArgs": ["tests"],
+  "python.testing.unittestEnabled": false
+}
