@@ -21,6 +21,11 @@ venv/
 .coverage
 htmlcov/
 
+# backup do banco: mesmo conteudo do cotafrete.db, ou seja CNPJ de
+# cliente e valor de nota fiscal. Commitar um seria vazar o historico
+# inteiro de uma vez.
+backup/
+
 # so
 .DS_Store
 .cache/
