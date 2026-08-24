@@ -12,10 +12,12 @@ from __future__ import annotations
 
 import sqlite3
 from contextlib import closing
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
+
+from core.retentativa import ESPERA_MAXIMA_S
 
 CAMINHO_PADRAO = Path("cotafrete.db")
 
@@ -121,6 +123,22 @@ class Banco:
             if coluna not in existentes:
                 con.execute(f"ALTER TABLE cotacao ADD COLUMN {coluna} TEXT")
 
+        # UMA linha por transportadora por cotação. Sem esta regra o banco
+        # aceitava duas, e a tela desenhava as duas: foi assim que a #50
+        # (24/08/2026) mostrou "O sistema foi fechado durante a cotação" ao
+        # lado do resultado real da mesma Translovato, que tinha cotado
+        # R$ 338,40. O mesmo já tinha acontecido na #17.
+        #
+        # Fica no _migrar e não no ESQUEMA porque o índice não nasce num
+        # banco que já tem duplicata: primeiro apaga, depois cria. Mantém o
+        # MAIOR id de cada par — quem escreveu por último sabia mais.
+        con.execute(
+            "DELETE FROM resultado WHERE id NOT IN ("
+            " SELECT MAX(id) FROM resultado GROUP BY cotacao_id, transportadora)")
+        con.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS resultado_unico"
+            " ON resultado (cotacao_id, transportadora)")
+
     def _conectar(self) -> sqlite3.Connection:
         """Sempre use com `closing(...)`: o `with` do sqlite3 faz commit e
         rollback, mas NÃO fecha a conexão. Cada cotação abre cinco delas."""
@@ -154,11 +172,18 @@ class Banco:
                          prazo: str | None = None,
                          erro: str | None = None,
                          evidencia: str | None = None) -> None:
+        # Sobrescreve em vez de acrescentar: a transportadora que responde
+        # depois de ter sido dada como interrompida precisa APAGAR o aviso,
+        # não conviver com ele. Ver o índice resultado_unico em _migrar.
         with closing(self._conectar()) as con, con:
             con.execute(
                 "INSERT INTO resultado (cotacao_id, transportadora, status,"
                 " valor, protocolo, prazo, erro, evidencia)"
-                " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+                " ON CONFLICT (cotacao_id, transportadora) DO UPDATE SET"
+                " status = excluded.status, valor = excluded.valor,"
+                " protocolo = excluded.protocolo, prazo = excluded.prazo,"
+                " erro = excluded.erro, evidencia = excluded.evidencia",
                 (cotacao_id, transportadora, status,
                  str(valor) if valor is not None else None,
                  protocolo, prazo, erro, evidencia))
@@ -243,11 +268,24 @@ class Banco:
         As transportadoras rodam em threads DENTRO do processo: fechar a
         janela mata as threads no meio do caminho. Sem isto o cartão fica
         "cotando..." para sempre e a página recarrega esperando um resultado
-        que ninguém mais vai gravar. Roda na subida do servidor, quando por
-        definição nada está em andamento."""
+        que ninguém mais vai gravar.
+
+        SÓ mexe no que já passou do teto de espera. A versão anterior mexia
+        em tudo, apoiada na ideia de que "roda na subida do servidor, quando
+        por definição nada está em andamento" — e essa premissa é falsa:
+        `web/app.py` executa isto no IMPORT, então qualquer segundo processo
+        na mesma pasta (pytest, um script solto, um segundo servidor) mata as
+        cotações vivas do primeiro. Foi o que matou a #50 em 24/08/2026.
+
+        Passado o teto, a cotação está morta de qualquer jeito — a tela já
+        parou de esperar por ela — e aí a linha só explica o porquê."""
+        limite = (datetime.now() - timedelta(seconds=ESPERA_MAXIMA_S)
+                  ).isoformat(timespec="seconds")
         marcadas = 0
         with closing(self._conectar()) as con, con:
-            for linha in con.execute("SELECT id FROM cotacao").fetchall():
+            for linha in con.execute(
+                    "SELECT id FROM cotacao WHERE criado_em < ?",
+                    (limite,)).fetchall():
                 jah = {r["transportadora"] for r in con.execute(
                     "SELECT transportadora FROM resultado WHERE cotacao_id = ?",
                     (linha["id"],))}

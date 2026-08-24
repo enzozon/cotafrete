@@ -172,11 +172,29 @@ def test_email_do_solicitante_e_guardado(db):
     assert db.buscar_cotacao(cid, "enzo")["email"] == "joao@ventura.com.br"
 
 
+def _envelhecer(db, cotacao_id: int) -> None:
+    """Joga a cotação para antes do teto de espera.
+
+    Desde 24/08/2026 `marcar_interrompidas` só mexe no que já passou do
+    prazo — antes disso a cotação pode estar viva em outro processo. Quem
+    quer testar a marcação precisa, portanto, de uma cotação velha."""
+    from datetime import datetime, timedelta
+
+    from core.retentativa import ESPERA_MAXIMA_S
+
+    velha = (datetime.now() - timedelta(seconds=ESPERA_MAXIMA_S + 60)
+             ).isoformat(timespec="seconds")
+    with db._conectar() as con:
+        con.execute("UPDATE cotacao SET criado_em = ? WHERE id = ?",
+                    (velha, cotacao_id))
+
+
 def test_cotacao_pendente_vira_interrompida(db):
     """Fechar a janela mata as threads no meio: sem isto o cartao fica
     'cotando...' para sempre, esperando quem ja morreu."""
     cid = db.salvar_cotacao("enzo", _carga())
     db.salvar_resultado(cid, "jadlog", status="cotado", valor=Decimal("33.35"))
+    _envelhecer(db, cid)
 
     assert db.marcar_interrompidas(("camilo", "jadlog")) == 1
 
@@ -279,3 +297,65 @@ def test_aberturas_nao_vazam_de_uma_cotacao_para_outra(db):
     db.marcar_whatsapp_aberto(uma, "movvi", "enzo")
 
     assert db.whatsapp_abertos(outra) == set()
+
+
+# ------------------------------- uma linha por transportadora, sempre a última
+def test_resultado_que_chega_depois_substitui_o_anterior(db):
+    """A #50 (24/08/2026) mostrou "O sistema foi fechado durante a cotação"
+    para uma Translovato que tinha cotado R$ 338,40.
+
+    As duas linhas existiam: `interrompido` gravada primeiro, `cotado`
+    gravada depois, e a tela desenhava as duas — a errada primeiro. Uma
+    transportadora tem UM resultado por cotação, e o mais recente é o que
+    vale: quem escreve depois sabe mais."""
+    cotacao_id = db.salvar_cotacao("enzo", _carga())
+
+    db.salvar_resultado(cotacao_id, "translovato", status="interrompido",
+                        erro="O sistema foi fechado durante a cotação.")
+    db.salvar_resultado(cotacao_id, "translovato", status="cotado",
+                        valor=Decimal("338.40"))
+
+    resultados = db.buscar_cotacao(cotacao_id, "enzo")["resultados"]
+    assert len(resultados) == 1
+    assert resultados[0]["status"] == "cotado"
+    assert resultados[0]["valor"] == Decimal("338.40")
+
+
+def test_transportadoras_diferentes_nao_disputam_a_mesma_linha(db):
+    cotacao_id = db.salvar_cotacao("enzo", _carga())
+
+    db.salvar_resultado(cotacao_id, "camilo", status="cotado",
+                        valor=Decimal("10"))
+    db.salvar_resultado(cotacao_id, "generoso", status="cotado",
+                        valor=Decimal("20"))
+
+    resultados = db.buscar_cotacao(cotacao_id, "enzo")["resultados"]
+    assert {r["transportadora"] for r in resultados} == {"camilo", "generoso"}
+
+
+# --------------------------------- marcar interrompidas sem matar quem vive
+def test_nao_marca_cotacao_recente_que_ainda_pode_estar_rodando(db):
+    """`marcar_interrompidas` roda no import de `web/app.py`, e o comentário
+    dela dizia "na subida do servidor, quando por definição nada está em
+    andamento". A premissa é falsa: QUALQUER segundo processo que importe o
+    módulo — pytest, um script solto, um segundo servidor — executa isso e
+    mata as cotações vivas do primeiro.
+
+    Foi assim que a #50 do Enzo morreu: uma rodada de testes minha, na mesma
+    pasta, enquanto as transportadoras dele ainda estavam no ar.
+    """
+    cotacao_id = db.salvar_cotacao("enzo", _carga())   # criada agora
+
+    assert db.marcar_interrompidas(("camilo", "generoso")) == 0
+    assert db.buscar_cotacao(cotacao_id, "enzo")["resultados"] == []
+
+
+def test_marca_cotacao_velha_que_ja_passou_do_prazo(db):
+    """Passado o teto de espera, nada mais vai chegar: aí a linha explica ao
+    vendedor por que o cartão parou, em vez de girar para sempre."""
+    cotacao_id = db.salvar_cotacao("enzo", _carga())
+    _envelhecer(db, cotacao_id)
+
+    assert db.marcar_interrompidas(("camilo", "generoso")) == 2
+    resultados = db.buscar_cotacao(cotacao_id, "enzo")["resultados"]
+    assert {r["status"] for r in resultados} == {"interrompido"}
