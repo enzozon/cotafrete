@@ -467,17 +467,26 @@ def sair():
 
 
 # ---------------------------------------------------------------- formulário
+# Formulário em BRANCO. Até 24/08/2026 ele vinha preenchido com uma carga de
+# desenvolvimento — CNPJ real, "LUVA DE BOMBEIRO", nome e e-mail do Enzo.
+# Servia para testar sem redigitar; com a equipe inteira usando, virou risco:
+# quem esquecesse de trocar um campo cotava com o dado de outra pessoa, e a
+# cotação sai igualzinha a uma certa.
+#
+# Todo <input> tem `required` (ver campo()), então campo vazio não passa —
+# o navegador barra antes de enviar.
+#
+# tipo_frete continua com valor: é um par de opções, não um campo digitado, e
+# sem um marcado o vendedor não teria nenhum selecionado. CIF porque a carga
+# sai daqui — quem paga é o remetente.
 PADRAO = {
-    "cep_origem": "09895-003", "cep_destino": "29105-770",
-    "cnpj_remetente": "60.042.686/0001-05",
-    "cnpj_destinatario": "05.954.058/0001-98",
-    # cif = paga o remetente. Padrao porque a carga sai daqui.
+    "cep_origem": "", "cep_destino": "",
+    "cnpj_remetente": "", "cnpj_destinatario": "",
     "tipo_frete": "cif",
-    "peso": "1", "quantidade": "1",
-    "comprimento": "30", "largura": "30", "altura": "30",
-    "valor_nf": "568,77", "material": "LUVA DE BOMBEIRO",
-    "nome": "Enzo Zon", "email": "vendas2@venturainformatica.com.br",
-    "whatsapp": "(27) 3339-1891",
+    "peso": "", "quantidade": "",
+    "comprimento": "", "largura": "", "altura": "",
+    "valor_nf": "", "material": "",
+    "nome": "", "email": "", "whatsapp": "",
 }
 
 
