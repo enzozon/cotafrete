@@ -19,6 +19,16 @@ def test_cotacao_que_responde_por_email_nao_e_erro_na_coluna():
     assert "ERRO" not in celula
 
 
+def test_senha_recusada_tem_palavra_propria_no_monitor():
+    """"ERRO" mandaria o Enzo caçar defeito; "intervencao_necessaria" cru não
+    cabe na coluna. O que ele precisa ler é que alguém tem que mexer no
+    .env — é a única falha aqui que não passa sozinha."""
+    celula = monitorar._celula({"valor": None,
+                                "status": "intervencao_necessaria"})
+
+    assert celula == "SENHA"
+
+
 def test_resposta_por_email_conta_separada_dos_erros():
     """A regra e do STATUS, nao da transportadora: qualquer uma que confirme
     o recebimento sem preco conta aqui. Por isso o slug vem de AUTOMATICAS —

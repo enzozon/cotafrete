@@ -29,7 +29,6 @@ from __future__ import annotations
 import base64
 import html
 from concurrent.futures import ThreadPoolExecutor
-import threading
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from datetime import datetime
 from pathlib import Path
@@ -50,6 +49,9 @@ from carriers.translovato.adapter import TranslovatoAdapter
 from core import cep as buscador_cep
 from core import cnpj as buscador_cnpj
 from core.banco import Banco
+from core.retentativa import (
+    ESPERA_MAXIMA_S, TENTATIVAS_MAXIMAS, cotar_com_retentativa,
+)
 from web import transportadoras
 from core.models import (
     CotacaoRequest, Local, Mercadoria, NotaFiscal, Parte, Servico,
@@ -65,21 +67,18 @@ banco = Banco()
 # responde em 15 segundos.
 EXECUTOR = ThreadPoolExecutor(max_workers=4, thread_name_prefix="cotacao")
 
-# Cada transportadora abre um Chromium INTEIRO. Com duas dava para rodar todas
-# juntas; com a Translovato virando a terceira, em 18/08/2026 o Camilo passou a
-# estourar 45s esperando um formulário que, sozinho, carrega em 25s. Não foi o
-# site: foi a máquina sem CPU sobrando.
-#
-# O limite é físico, não de threads — por isso um semáforo próprio e não
-# max_workers: as tarefas continuam sendo aceitas na hora, só esperam vaga de
-# navegador. Vale rever este número ao mudar de máquina/servidor.
-NAVEGADORES_SIMULTANEOS = 2
-VAGA_NAVEGADOR = threading.Semaphore(NAVEGADORES_SIMULTANEOS)
+# Quantas transportadoras rodam juntas, quantas vezes se tenta de novo e por
+# quanto tempo: tudo em core/retentativa.py, porque as três decisões dependem
+# umas das outras. ESPERA_MAXIMA_S é usado aqui embaixo pela TELA — e é de
+# propósito que seja o MESMO número que a retentativa respeita: se a tela
+# desistisse antes, a última tentativa terminaria falando sozinha.
 
-# Depois disto a tela para de recarregar e assume que não vem mais nada. A
-# mais lenta hoje (Camilo) leva ~25s; 4 minutos é folga de sobra para uma
-# rede ruim, sem deixar a página piscando a noite inteira.
-ESPERA_MAXIMA_S = 240
+# Qual tentativa cada transportadora está fazendo agora, por cotação.
+#
+# Vive na memória e não no banco porque só serve para a tela: se o processo
+# reiniciar, a tentativa morreu junto e o número não quer dizer mais nada.
+# Uma coluna guardaria para sempre um estado que dura 40 segundos.
+TENTATIVAS_EM_CURSO: dict[tuple[int, str], int] = {}
 
 COOKIE = "cotafrete_usuario"
 LOGO = (Path(__file__).parent / "logo_b64.txt").read_text(encoding="utf-8").strip()
@@ -764,10 +763,18 @@ def _rodar(cotacao_id: int, slug: str, cotar_fn, req) -> None:
     """Roda uma transportadora e grava o resultado, aconteça o que acontecer.
 
     Sem o try, uma exceção numa thread do executor some em silêncio e o
-    cartão fica 'cotando...' para sempre."""
+    cartão fica 'cotando...' para sempre.
+
+    A repetição de quem falhou mora em `core/retentativa.py`: aqui só se
+    grava o resultado FINAL. Gravar as tentativas intermediárias encheria o
+    histórico de linhas vermelhas de cotações que no fim deram certo."""
+    chave = (cotacao_id, slug)
+
+    def anotar(tentativa: int) -> None:
+        TENTATIVAS_EM_CURSO[chave] = tentativa
+
     try:
-        with VAGA_NAVEGADOR:
-            res = cotar_fn(req)
+        res = cotar_com_retentativa(cotar_fn, req, ao_tentar=anotar)
         banco.salvar_resultado(
             cotacao_id, slug, status=res.status.value, valor=res.valor_frete,
             # motivo_recusa junto: "recusado" é a transportadora dizendo não,
@@ -779,6 +786,10 @@ def _rodar(cotacao_id: int, slug: str, cotar_fn, req) -> None:
     except Exception as exc:
         banco.salvar_resultado(cotacao_id, slug, status="erro",
                                erro=f"{type(exc).__name__}: {exc}")
+    finally:
+        # Sem isto o dicionário cresce para sempre — uma entrada por
+        # transportadora por cotação, num processo que fica semanas de pé.
+        TENTATIVAS_EM_CURSO.pop(chave, None)
 
 
 # ------------------------------------------------------------- ver cotação
@@ -1040,6 +1051,20 @@ def ver_cotacao(cotacao_id: int,
                 corpo += (f'<div class="nota">Cotação nº '
                           f'{e(r["protocolo"])}</div>')
             corpo += _img(r["evidencia"])
+        elif r["status"] == StatusCotacao.INTERVENCAO_NECESSARIA.value:
+            # Senha recusada. Diferente de um erro qualquer porque o vendedor
+            # NÃO consegue resolver — e se ele repetir a cotação, cada
+            # repetição é mais um login errado empurrando a conta da Ventura
+            # para o bloqueio. O cartão precisa dizer isso com todas as
+            # letras, senão repetir é exatamente o que ele vai fazer.
+            destaque, selo = "", ""
+            corpo = ('<div class="falhou">Precisa de alguém</div>'
+                     f'<div class="alerta email"><b>Repetir a cotação não '
+                     f'resolve.</b> A senha desta transportadora precisa ser '
+                     f'conferida no sistema. Avise quem cuida do Cotafrete e '
+                     f'siga pelo WhatsApp aqui embaixo.</div>'
+                     f'<div class="nota">'
+                     f'{e((r["erro"] or "")[:LIMITE_MENSAGEM_ERRO])}</div>')
         elif r["status"] == StatusCotacao.AGUARDANDO_RETORNO.value:
             # Recebido, sem preço e sem falha. Precisa vir ANTES do ramo de
             # erro: lá embaixo tudo que não tem valor é tratado como problema.
@@ -1078,10 +1103,16 @@ def ver_cotacao(cotacao_id: int,
     desistiu = bool(faltam) and idade > ESPERA_MAXIMA_S
 
     for slug in faltam:
+        # A tentativa aparece na tela porque "cotando…" parado por três
+        # minutos faz o vendedor achar que travou — e aí ele recarrega no
+        # meio, ou desiste e liga para a transportadora à toa.
+        tentativa = TENTATIVAS_EM_CURSO.get((cotacao_id, slug), 1)
+        andamento = ('cotando…' if tentativa <= 1 else
+                     f'tentando de novo ({tentativa} de {TENTATIVAS_MAXIMAS})')
         dentro = ('<div class="falhou">Sem retorno</div>'
                   if desistiu else
-                  '<div class="cotando"><span class="girando"></span>'
-                  'cotando…</div>')
+                  f'<div class="cotando"><span class="girando"></span>'
+                  f'{andamento}</div>')
         cartoes += (f'<div class="res"><div class="nome">'
                     f'{e(NOMES.get(slug, slug))}</div>{dentro}</div>')
 

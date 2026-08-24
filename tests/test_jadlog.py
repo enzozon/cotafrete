@@ -89,6 +89,33 @@ def test_carga_pesada_demais_para_jadlog():
     assert any(e.campo == "peso" for e in erros)
 
 
+def test_caixa_acima_de_30kg_e_reprovada_antes_de_abrir_o_navegador():
+    """Regressão da cotação #46 (24/08/2026).
+
+    80 kg em 2 volumes PASSA no limite de franquia (120 kg) e a calculadora
+    recusa assim mesmo: ela cota UM pacote por vez, recebe 40 kg, e o site
+    bloqueia o botão com "Para caixas, o peso máximo permitido é 30kg".
+
+    Sem esta validação a cotação abre o Chromium, preenche, clica num botão
+    desabilitado e gasta os 45s inteiros do timeout para devolver
+    `TimeoutError` — que ainda por cima tem cara de erro passageiro e seria
+    repetido três vezes, com o mesmo resultado.
+    """
+    def com_peso(kg):
+        return montar(volumes=[Volume(qtd=2, comprimento_cm=Decimal(40),
+                                      largura_cm=Decimal(40),
+                                      altura_cm=Decimal(80),
+                                      peso_kg=Decimal(kg))])
+
+    req = com_peso(40)
+    assert req.peso_total_kg == Decimal(80)   # passa nos 120 kg da franquia
+    assert any(e.campo == "peso" and "30" in e.mensagem
+               for e in j.bloqueantes(j.validar(req)))
+
+    # 30 kg cravados é o limite do site, não o primeiro valor recusado.
+    assert j.bloqueantes(j.validar(com_peso(30))) == []
+
+
 def test_modalidades_batem_com_o_select_da_jadlog():
     """Códigos medidos no simulador público (simulacao.jad) em 12/08/2026.
 

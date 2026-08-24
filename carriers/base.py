@@ -127,6 +127,52 @@ class ResultadoCotacao:
     respondido_em: datetime | None = None
 
 
+class CredencialRecusada(RuntimeError):
+    """O site recebeu usuário e senha e disse não.
+
+    Separada das outras falhas porque é a única que NÃO pode ser repetida:
+    três tentativas por cotação, com a equipe cotando o dia inteiro, travam
+    a conta da Ventura — e aí não é mais uma transportadora que falha, são
+    todas. Quem conserta isso é uma pessoa, no .env.
+
+    Só para credencial REJEITADA. Login que não chegou a ser enviado (campo
+    vazio, página que não carregou) é erro comum e deve repetir.
+    """
+
+
+def erro_do_adapter(slug: str, exc: BaseException,
+                    **extras) -> ResultadoCotacao:
+    """Falha do adapter virada em resultado, já classificada para a
+    retentativa saber o que fazer com ela.
+
+    `ERRO` é o "não sabemos" que se repete; `INTERVENCAO_NECESSARIA` é o que
+    já se sabe que repetir não conserta. Ver `core.retentativa.vale_repetir`.
+    """
+    status = (StatusCotacao.INTERVENCAO_NECESSARIA
+              if isinstance(exc, CredencialRecusada) else StatusCotacao.ERRO)
+    return ResultadoCotacao(slug, status,
+                            erro=f"{type(exc).__name__}: {exc}", **extras)
+
+
+def recusa_por_validacao(slug: str,
+                         erros: list[ErroValidacao]) -> ResultadoCotacao:
+    """Carga que a transportadora não aceita é RECUSA, não erro.
+
+    Existe uma vez só, e não copiada em cada adapter, porque é a decisão de
+    que depende a retentativa: `core/retentativa.py` repete `ERRO` e nunca
+    repete `RECUSADO`. Um adapter novo que devolvesse `ERRO` aqui ganharia
+    três tentativas para chegar na mesma recusa — e ainda faria o cartão
+    dizer ao vendedor que o sistema quebrou, quando o site só disse não.
+
+    O texto vai em `motivo_recusa` pelo mesmo motivo: ele é escrito para o
+    vendedor ler ("divida em volumes menores"), e `erro` é para o que
+    ninguém entendeu.
+    """
+    return ResultadoCotacao(
+        slug, StatusCotacao.RECUSADO,
+        motivo_recusa="; ".join(f"{e.campo}: {e.mensagem}" for e in erros))
+
+
 @dataclass
 class CampoSpec:
     nome: str

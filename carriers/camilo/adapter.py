@@ -33,6 +33,7 @@ from typing import Any
 
 from carriers.base import (
     CampoSpec, ErroValidacao, Modo, ResultadoCotacao, print_seguro,
+    recusa_por_validacao,
 )
 from core.models import CotacaoRequest, TipoFrete, StatusCotacao, limpa_doc
 
@@ -292,9 +293,7 @@ class CamiloAdapter:
 
         erros = self.validar(req)
         if erros:
-            return ResultadoCotacao(
-                self.slug, StatusCotacao.ERRO,
-                erro="; ".join(f"{e.campo}: {e.mensagem}" for e in erros))
+            return recusa_por_validacao(self.slug, erros)
 
         campos = self.preparar_payload(req)
         run = self.workdir / datetime.now().strftime("%Y%m%d-%H%M%S")

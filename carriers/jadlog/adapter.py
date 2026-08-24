@@ -14,7 +14,10 @@ from typing import Any
 
 import httpx
 
-from carriers.base import CampoSpec, ErroValidacao, Modo, ResultadoCotacao
+from carriers.base import (
+    CampoSpec, ErroValidacao, Modo, ResultadoCotacao,
+    recusa_por_validacao,
+)
 from carriers.jadlog import mapping as m
 from core.models import CotacaoRequest, StatusCotacao
 
@@ -78,10 +81,7 @@ class JadlogAdapter:
 
         erros = m.bloqueantes(self.validar(req))
         if erros:
-            return ResultadoCotacao(
-                self.slug, StatusCotacao.ERRO,
-                erro="; ".join(f"{e.campo}: {e.mensagem}" for e in erros),
-            )
+            return recusa_por_validacao(self.slug, erros)
 
         payload = self.preparar_payload(req)
         token = self.token if self.token.lower().startswith("bearer ") \

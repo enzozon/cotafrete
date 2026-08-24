@@ -54,6 +54,7 @@ from datetime import datetime
 
 from carriers.base import (
     CampoSpec, ErroValidacao, Modo, ResultadoCotacao, Severidade, print_seguro,
+    CredencialRecusada, erro_do_adapter, recusa_por_validacao,
 )
 from core.models import CotacaoRequest, StatusCotacao, TipoFrete, limpa_doc
 
@@ -159,6 +160,45 @@ def pontas_a_digitar(req: CotacaoRequest) -> tuple[str | None, str | None]:
     if req.tipo_frete is TipoFrete.CIF:
         return None, req.destinatario.cnpj_formatado
     return req.remetente.cnpj_formatado, None
+
+
+def _falhar_login(page) -> None:
+    """Olha a tela parada, diz o que de fato aconteceu e levanta.
+
+    O TIPO da exceção decide se a cotação vai ser repetida: senha recusada é
+    `CredencialRecusada` e não repete (três logins por cotação, com a equipe
+    cotando o dia inteiro, travam a conta); formulário que não foi enviado é
+    erro comum e ganha outra chance.
+
+    A mensagem antiga mandava conferir GENEROSO_USUARIO e GENEROSO_SENHA no
+    .env em qualquer caso. Na cotação #46 (24/08/2026) isso mandou procurar
+    no lugar errado: as credenciais estavam certas — tinham funcionado duas
+    vezes minutos antes — e o print mostrava o e-mail preenchido com o campo
+    de SENHA vazio. O formulário é que não tinha ido.
+
+    A senha nunca aparece na mensagem; o que se lê dela é só se está vazia.
+    """
+    try:
+        preenchida = bool(
+            page.locator('input[name="password"]').first.input_value().strip())
+    except Exception:
+        # Página navegou ou morreu no meio: sem diagnóstico, mas sem esconder
+        # o problema original atrás de uma exceção nova.
+        raise RuntimeError("o login na Generoso não passou e não deu para "
+                           "ver a tela para dizer por quê.")
+
+    if preenchida:
+        raise CredencialRecusada(
+            "a Generoso não aceitou o login. Os dados foram enviados e o site "
+            "não deixou entrar: pode ser senha trocada, conta bloqueada ou "
+            "outra sessão aberta no mesmo usuário. Confira GENEROSO_USUARIO e "
+            f"GENEROSO_SENHA no .env, ou entre à mão em {URL_LOGIN} para ver "
+            "a mensagem do site. Não vou tentar de novo para não travar a "
+            "conta.")
+    raise RuntimeError(
+        "o login na Generoso não passou: a tela ficou em /login com o campo "
+        "de senha vazio, ou seja, o formulário nem chegou a ser enviado. "
+        "Costuma passar sozinho na tentativa seguinte.")
 
 
 def _inteiro(v: Decimal) -> str:
@@ -388,9 +428,7 @@ class GenerosoAdapter:
         try:
             page.wait_for_url("**/dashboard", timeout=ESPERA_LOGIN_MS)
         except Exception:
-            raise RuntimeError(
-                "o login na Generoso não passou (a tela não saiu de /login). "
-                "Confira GENEROSO_USUARIO e GENEROSO_SENHA no .env")
+            _falhar_login(page)
 
     def _reativar_cep(self, page) -> None:
         """Acorda a busca de endereço SEM apagar o CEP.
@@ -505,9 +543,7 @@ class GenerosoAdapter:
         erros = [e for e in self.validar(req)
                  if e.severidade is Severidade.ERRO]
         if erros:
-            return ResultadoCotacao(
-                self.slug, StatusCotacao.ERRO,
-                erro="; ".join(f"{e.campo}: {e.mensagem}" for e in erros))
+            return recusa_por_validacao(self.slug, erros)
 
         # Antes de qualquer navegador: sem login a Generoso não devolve preço,
         # e descobrir isso depois custaria 45s de uma vaga de navegador que as
@@ -625,9 +661,8 @@ class GenerosoAdapter:
                 return res
 
             except Exception as exc:
-                return ResultadoCotacao(
-                    self.slug, StatusCotacao.ERRO, enviado_em=enviado,
-                    erro=f"{type(exc).__name__}: {exc}",
+                return erro_do_adapter(
+                    self.slug, exc, enviado_em=enviado,
                     evidencias=evidencias
                     + print_seguro(page, run / "erro.png"))
             finally:

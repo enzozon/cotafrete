@@ -34,6 +34,7 @@ from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
 from carriers.base import (
     CampoSpec, ErroValidacao, Modo, ResultadoCotacao, print_seguro,
+    CredencialRecusada, erro_do_adapter, recusa_por_validacao,
 )
 from carriers.jadlog import mapping as m
 from core.models import CotacaoRequest, StatusCotacao, limpa_doc
@@ -255,7 +256,7 @@ class JadlogPainelAdapter:
                 # é o site recusando as credenciais — repetir aí só arrisca
                 # bloquear a conta do Enzo por excesso de tentativas.
                 if page.locator('input[type="email"]').first.input_value().strip():
-                    raise RuntimeError(
+                    raise CredencialRecusada(
                         "a Jadlog não aceitou o login. Os dados foram enviados "
                         "e o site não deixou entrar: pode ser senha trocada, "
                         "conta bloqueada, ou outra sessão aberta com o mesmo "
@@ -335,9 +336,7 @@ class JadlogPainelAdapter:
 
         erros = m.bloqueantes(self.validar(req))
         if erros:
-            return ResultadoCotacao(
-                self.slug, StatusCotacao.ERRO,
-                erro="; ".join(f"{e.campo}: {e.mensagem}" for e in erros))
+            return recusa_por_validacao(self.slug, erros)
 
         campos = self.preparar_payload(req)
         run = self.workdir / datetime.now().strftime("%Y%m%d-%H%M%S")
@@ -377,9 +376,8 @@ class JadlogPainelAdapter:
                 return res
 
             except Exception as exc:
-                return ResultadoCotacao(
-                    self.slug, StatusCotacao.ERRO, enviado_em=enviado,
-                    erro=f"{type(exc).__name__}: {exc}",
+                return erro_do_adapter(
+                    self.slug, exc, enviado_em=enviado,
                     evidencias=print_seguro(page, run / "jadlog_erro.png"))
             finally:
                 browser.close()

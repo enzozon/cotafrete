@@ -33,6 +33,7 @@ from typing import Any
 
 from carriers.base import (
     CampoSpec, ErroValidacao, Modo, ResultadoCotacao, print_seguro,
+    recusa_por_validacao,
 )
 from carriers.translovato import mapping as m
 from core.models import CotacaoRequest, StatusCotacao, limpa_doc
@@ -381,9 +382,7 @@ class TranslovatoAdapter:
 
         erros = m.bloqueantes(self.validar(req))
         if erros:
-            return ResultadoCotacao(
-                self.slug, StatusCotacao.ERRO,
-                erro="; ".join(f"{e.campo}: {e.mensagem}" for e in erros))
+            return recusa_por_validacao(self.slug, erros)
 
         # Pergunta a cobertura ANTES de abrir o navegador. O caminho completo
         # (login, formulário, preenchimento) leva ~40s para chegar na MESMA

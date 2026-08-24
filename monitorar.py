@@ -81,7 +81,11 @@ def _celula(resultado: dict | None) -> str:
         return "..."
     if resultado["valor"]:
         return _moeda(resultado["valor"])
+    # "SENHA" é a única falha desta lista que NÃO passa sozinha: enquanto
+    # ninguém mexer no .env, toda cotação daquela transportadora vai falhar
+    # igual. Misturada em "ERRO" ela se esconde no meio dos timeouts.
     return {"recusado": "recusou", "aguardando_retorno": "e-mail",
+            "intervencao_necessaria": "SENHA",
             "erro": "ERRO"}.get(resultado["status"], resultado["status"])
 
 

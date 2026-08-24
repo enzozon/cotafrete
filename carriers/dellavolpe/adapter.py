@@ -19,6 +19,7 @@ from typing import Any
 
 from carriers.base import (
     CampoSpec, ErroValidacao, Modo, ResultadoCotacao, print_seguro,
+    recusa_por_validacao,
 )
 from carriers.dellavolpe import mapping as m
 from carriers.dellavolpe.planilha import gerar_planilha_volumes
@@ -247,10 +248,7 @@ class DellavolpeAdapter:
 
         erros = m.bloqueantes(self.validar(req))
         if erros:
-            return ResultadoCotacao(
-                self.slug, StatusCotacao.ERRO,
-                erro="; ".join(f"{e.campo}: {e.mensagem}" for e in erros),
-            )
+            return recusa_por_validacao(self.slug, erros)
 
         if confirmar_envio and not self.is_mock:
             self._exigir_confirmacao_explicita()

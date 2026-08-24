@@ -43,6 +43,9 @@ def app_web(tmp_path, monkeypatch):
     """Banco isolado por teste: o histórico real do Enzo não entra aqui."""
     from web import app as modulo
     monkeypatch.setattr(modulo, "banco", Banco(tmp_path / "teste.db"))
+    # TENTATIVAS_EM_CURSO é global do processo: sem trocar por um dicionário
+    # novo, o que um teste escreve nele aparece no seguinte.
+    monkeypatch.setattr(modulo, "TENTATIVAS_EM_CURSO", {})
     return modulo
 
 
@@ -484,3 +487,94 @@ def test_o_print_da_confirmacao_aparece_no_cartao_enviada(app_web, cliente,
     html = cliente.get(f"/cotacao/{cotacao_id}").text
 
     assert 'class="print"' in html
+
+
+def test_cartao_de_senha_recusada_manda_avisar_em_vez_de_repetir(app_web,
+                                                                 cliente):
+    """O vendedor não conserta senha de transportadora.
+
+    Se o cartão só disser "não retornou preço", ele repete a cotação — e
+    cada repetição é mais um login errado na conta da Ventura, empurrando
+    para o bloqueio. O cartão precisa dizer que repetir não adianta."""
+    cotacao_id = _criar(app_web)
+    app_web.banco.salvar_resultado(
+        cotacao_id, "jadlog", status="intervencao_necessaria",
+        erro="CredencialRecusada: a Jadlog não aceitou o login.")
+
+    html = cliente.get(f"/cotacao/{cotacao_id}").text
+
+    assert "Repetir a cotação não resolve" in html
+    assert "não aceitou o login" in html
+
+
+# ------------------------------------------------------------- retentativa
+def test_tela_mostra_qual_tentativa_esta_em_curso(app_web, cliente):
+    """"cotando…" parado por três minutos faz o vendedor achar que travou —
+    e aí ele recarrega no meio, ou liga para a transportadora à toa."""
+    cotacao_id = _criar(app_web)
+    app_web.TENTATIVAS_EM_CURSO[(cotacao_id, "generoso")] = 2
+
+    html = cliente.get(f"/cotacao/{cotacao_id}").text
+
+    assert "tentando de novo (2 de 3)" in html
+    # A tentativa é por transportadora: as outras seguem no texto normal.
+    assert "cotando" in html
+
+
+def test_primeira_tentativa_nao_diz_de_novo(app_web, cliente):
+    """Na tentativa 1 não houve repetição nenhuma; escrever "1 de 3" ali
+    faria toda cotação normal parecer que já tinha dado problema."""
+    cotacao_id = _criar(app_web)
+    app_web.TENTATIVAS_EM_CURSO[(cotacao_id, "generoso")] = 1
+
+    html = cliente.get(f"/cotacao/{cotacao_id}").text
+
+    assert "tentando de novo" not in html
+
+
+def test_rodar_nao_deixa_tentativa_para_tras(app_web):
+    """Uma entrada por transportadora por cotação, num processo que fica
+    semanas de pé, é vazamento de memória que ninguém vê acontecer."""
+    from decimal import Decimal
+
+    from carriers.base import ResultadoCotacao
+    from core.models import StatusCotacao
+    from tests.test_jadlog import montar
+
+    cotacao_id = _criar(app_web)
+    visto_durante = []
+
+    def cotar(req):
+        # Provar que a chave EXISTIU: sem isto o teste passaria de graça num
+        # código que simplesmente nunca anotou tentativa nenhuma.
+        visto_durante.append(dict(app_web.TENTATIVAS_EM_CURSO))
+        return ResultadoCotacao("camilo", StatusCotacao.COTADO,
+                                valor_frete=Decimal("10"))
+
+    app_web._rodar(cotacao_id, "camilo", cotar, montar())
+
+    assert visto_durante == [{(cotacao_id, "camilo"): 1}]
+    assert app_web.TENTATIVAS_EM_CURSO == {}
+
+
+def test_rodar_grava_so_o_resultado_final_e_nao_o_caminho(app_web, monkeypatch):
+    """Falhou uma vez e passou na segunda: o histórico guarda o preço, e não
+    também o cartão vermelho do meio do caminho."""
+    from decimal import Decimal
+
+    from carriers.base import ResultadoCotacao
+    from core import retentativa
+    from core.models import StatusCotacao
+    from tests.test_jadlog import montar
+
+    monkeypatch.setattr(retentativa, "PAUSA_ENTRE_TENTATIVAS_S", 0)
+    cotacao_id = _criar(app_web)
+    respostas = [ResultadoCotacao("camilo", StatusCotacao.ERRO, erro="timeout"),
+                 ResultadoCotacao("camilo", StatusCotacao.COTADO,
+                                  valor_frete=Decimal("10"))]
+
+    app_web._rodar(cotacao_id, "camilo", lambda req: respostas.pop(0), montar())
+
+    gravados = app_web.banco.buscar_cotacao(cotacao_id, "enzo")["resultados"]
+    assert [r["status"] for r in gravados] == ["cotado"]
+    assert respostas == [], "as duas tentativas precisam ter acontecido"

@@ -29,6 +29,7 @@ from typing import Any
 from carriers.base import (
     CampoSpec, ErroValidacao, Modo, ResultadoCotacao, esperar_estabilidade,
     print_seguro,
+    recusa_por_validacao,
 )
 from carriers.jadlog import mapping as m
 from core.models import CotacaoRequest, StatusCotacao, limpa_doc
@@ -172,9 +173,7 @@ class JadlogSimuladorAdapter:
 
         erros = m.bloqueantes(self.validar(req))
         if erros:
-            return ResultadoCotacao(
-                self.slug, StatusCotacao.ERRO,
-                erro="; ".join(f"{e.campo}: {e.mensagem}" for e in erros))
+            return recusa_por_validacao(self.slug, erros)
 
         campos = self.preparar_payload(req)
         run = self.workdir / datetime.now().strftime("%Y%m%d-%H%M%S")

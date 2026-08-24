@@ -42,6 +42,15 @@ FATOR_CUBAGEM = Decimal(300)
 PESO_MAX_PUDO_KG = Decimal(30)       # ponto de postagem parceiro
 PESO_MAX_FRANQUIA_KG = Decimal(120)  # franquia Jadlog
 
+# Limite POR CAIXA da calculadora do painel. Medido em 24/08/2026 (cotação
+# #46): com 40 kg num volume ela pinta o campo de vermelho, escreve "Para
+# caixas, o peso máximo permitido é 30kg" e DESABILITA o botão de calcular.
+#
+# Coincide em número com PESO_MAX_PUDO_KG e é outra regra: aquele vale só
+# para retirada em ponto, este vale sempre. Separados de propósito — se um
+# dos dois mudar, o outro não vai junto por acidente.
+PESO_MAX_CAIXA_KG = Decimal(30)
+
 # VERIFICADO no simulador público da Jadlog (simulacao.jad), 12/08/2026 — são os
 # códigos que o próprio <select name="modalidade"> da transportadora expõe.
 # Os presumidos anteriores erravam 3 de 7: 6 é Doc (estava "corporate"), 12 é
@@ -113,6 +122,20 @@ def validar(req: CotacaoRequest, *, modalidade: str = "package",
             "peso",
             f"{peso} kg passa do limite de ponto de postagem "
             f"({PESO_MAX_PUDO_KG} kg).", Severidade.AVISO,
+        ))
+
+    # Por VOLUME, não pelo total: a calculadora cota UM pacote por vez e é o
+    # peso unitário que vai no campo (ver painel.py). Uma carga de 80 kg em
+    # duas caixas de 40 passa folgada no limite de franquia e é recusada aqui
+    # — que é exatamente o que a #46 descobriu gastando 45s de navegador.
+    pesada = max((v.peso_kg for v in req.volumes), default=Decimal(0))
+    if pesada > PESO_MAX_CAIXA_KG:
+        erros.append(ErroValidacao(
+            "peso",
+            f"Volume de {pesada} kg passa do limite de {PESO_MAX_CAIXA_KG} kg "
+            f"por caixa da Jadlog. A carga inteira cabe na franquia, mas cada "
+            f"caixa é pesada demais: divida em volumes menores ou cote com "
+            f"transportadora de carga fracionada pesada.",
         ))
 
     if req.mercadoria.is_perigoso:
