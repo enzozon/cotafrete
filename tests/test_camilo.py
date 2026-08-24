@@ -140,3 +140,42 @@ def test_resultado_com_valor_vira_cotado(adapter):
     assert res.status is StatusCotacao.COTADO
     assert res.valor_frete == Decimal("69.91")
     assert res.protocolo == "2799331"
+
+
+# --------------------------- quando o SSW diz nao, quem fala e o SSW
+def test_popup_do_site_vira_recusa_com_as_palavras_dele(adapter):
+    """A cotacao #10 de producao (24/08/2026), destino Sao Goncalo/RJ.
+
+    O SSW abriu um "Aviso" dizendo "Cliente nao possui tabela de frete
+    negociada. Cotacao nao permitida." — e o adapter FECHAVA o popup para
+    tirar ele da frente do print, jogando a frase fora. Sobrava
+    "A tela nao devolveu valor de frete": cara de defeito do programa, e
+    ainda repetido tres vezes pela retentativa.
+    """
+    res = adapter.normalizar_resposta(
+        {"vlr_frete": "", "nro_cotacao": "",
+         "aviso": "Cliente não possui tabela de frete negociada. "
+                  "Cotação não permitida."})
+
+    assert res.status is StatusCotacao.RECUSADO
+    assert res.erro is None
+    assert "tabela de frete negociada" in res.motivo_recusa
+
+
+def test_cep_nao_atendido_vira_recusa(adapter):
+    """O rotulo vermelho ao lado do campo de CEP. Ninguem lia essa regiao da
+    tela, entao virava o mesmo generico."""
+    res = adapter.normalizar_resposta(
+        {"vlr_frete": "", "nro_cotacao": "",
+         "aviso": "CEP INVÁLIDO/NÃO ATENDIDO"})
+
+    assert res.status is StatusCotacao.RECUSADO
+    assert "CEP" in res.motivo_recusa
+
+
+def test_sem_aviso_e_sem_preco_continua_sendo_erro(adapter):
+    """Tela muda que ninguem entendeu continua erro — e continua sendo
+    repetida, que e o certo para o que nao se sabe explicar."""
+    res = adapter.normalizar_resposta({"vlr_frete": "", "nro_cotacao": ""})
+
+    assert res.status is StatusCotacao.ERRO

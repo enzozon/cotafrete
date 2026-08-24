@@ -200,3 +200,35 @@ def test_cep_atendido_segue_para_a_cotacao(monkeypatch):
 
     with _pytest.raises(RuntimeError, match="SEGUIU-PARA-O-NAVEGADOR"):
         adapter.cotar(_carga())
+
+# ------------------------------- tolerancia na conferencia de cubagem
+def test_diferenca_de_arredondamento_nao_derruba_a_cotacao():
+    """A cotacao #13 de producao (24/08/2026) morreu por UM CENTESIMO de kg:
+    o site calculou 48,03 e a nossa conta deu 48,02.
+
+    A diferenca vem de ONDE cada lado arredonda — o site multiplica a
+    cubagem ja arredondada (0,1601 m3 x 300 = 48,03). Nao e medida errada,
+    e casa decimal."""
+    from carriers.translovato.adapter import bate_com_tolerancia
+
+    assert bate_com_tolerancia("48,03", "48,02")
+    assert bate_com_tolerancia("0,1601", "0,1601")
+
+
+def test_diferenca_de_verdade_continua_derrubando():
+    """A trava existe porque produto que nao entra faz o fator virar 1 e o
+    frete sair barato demais. Esse erro NAO e de arredondamento: ele muda o
+    numero de ordem de grandeza."""
+    from carriers.translovato.adapter import bate_com_tolerancia
+
+    assert not bate_com_tolerancia("0,16", "48,02")   # fator 1 vs 300
+    assert not bate_com_tolerancia("48,50", "48,02")  # meio quilo a mais
+
+
+def test_texto_impossivel_de_ler_nao_passa():
+    """Campo vazio ou com lixo nao pode contar como "bateu": na duvida, a
+    trava tem que travar."""
+    from carriers.translovato.adapter import bate_com_tolerancia
+
+    assert not bate_com_tolerancia("", "48,02")
+    assert not bate_com_tolerancia("--", "48,02")

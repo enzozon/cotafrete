@@ -27,7 +27,7 @@ from __future__ import annotations
 
 import os
 from datetime import datetime
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
 
@@ -85,6 +85,31 @@ class SemTabela(Exception):
     """A Translovato não tem tabela de preço para o CNPJ do remetente.
 
     Também é resposta da transportadora, não falha nossa: vira RECUSADO."""
+
+
+# Quanto os dois lados podem discordar sem ser erro. O site multiplica a
+# cubagem JA ARREDONDADA (0,1601 m3 x 300 = 48,03) e a nossa conta parte dos
+# centimetros — dai o centesimo de diferenca que matou a cotacao #13 em
+# 24/08/2026 ("48,03" contra "48,02").
+#
+# 0,1 e folgado para arredondamento e apertado para o erro que a trava
+# existe para pegar: produto que nao entra faz o fator virar 1 em vez de
+# 300, e ai o numero muda de ordem de grandeza, nao de casa decimal.
+TOLERANCIA = Decimal("0.1")
+
+
+def bate_com_tolerancia(do_site: str, nosso: str) -> bool:
+    """Os dois numeros sao o mesmo, a menos de arredondamento?
+
+    Texto que nao da para ler devolve False de proposito: na duvida, a trava
+    tem que travar. Deixar passar aqui e frete barato demais indo calado
+    para a mesa do cliente."""
+    try:
+        a = Decimal((do_site or "").strip().replace(".", "").replace(",", "."))
+        b = Decimal((nosso or "").strip().replace(".", "").replace(",", "."))
+    except (InvalidOperation, ValueError):
+        return False
+    return abs(a - b) <= TOLERANCIA
 
 
 class TranslovatoAdapter:
@@ -246,12 +271,12 @@ class TranslovatoAdapter:
         cubagem = page.locator('input[name="cubing[]"]').first.input_value()
         peso = page.locator('input[name="cubing_weigth[]"]').first.input_value()
 
-        if cubagem.strip() != esperado["cubagem"]:
+        if not bate_com_tolerancia(cubagem, esperado["cubagem"]):
             raise RuntimeError(
                 f"a cubagem que o site calculou ({cubagem!r}) não bate com a "
                 f"nossa conta ({esperado['cubagem']!r}) — alguma medida entrou "
                 "errada. Não vou cotar com isso.")
-        if peso.strip() != esperado["peso_cubado"]:
+        if not bate_com_tolerancia(peso, esperado["peso_cubado"]):
             raise RuntimeError(
                 f"o peso cubado do site ({peso!r}) não bate com o esperado "
                 f"({esperado['peso_cubado']!r}). Normalmente é o produto que "

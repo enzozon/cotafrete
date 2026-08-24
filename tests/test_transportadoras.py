@@ -23,11 +23,30 @@ def test_toda_logo_cadastrada_existe_no_disco():
 
 def test_nenhuma_logo_sobrando_na_pasta():
     """Arquivo em web/logos/ que ninguém usa é logo que alguém achou que
-    cadastrou e não cadastrou."""
+    cadastrou e não cadastrou.
+
+    São DUAS fontes desde 24/08/2026: as de WhatsApp trazem a logo no
+    cadastro daqui, e as automáticas (Camilo, Jadlog, Generoso) em
+    LOGOS_AUTOMATICAS, no app — elas não passam por este arquivo porque não
+    atendem por WhatsApp."""
+    from web.app import LOGOS_AUTOMATICAS
+
     no_disco = {a.name for a in t.PASTA_LOGOS.iterdir() if a.is_file()}
-    cadastradas = {reg.logo for reg in t.WHATSAPP}
+    cadastradas = {reg.logo for reg in t.WHATSAPP} | set(
+        LOGOS_AUTOMATICAS.values())
 
     assert no_disco == cadastradas, f"sobrando: {no_disco - cadastradas}"
+
+
+def test_logo_de_automatica_existe_no_disco():
+    """A contrapartida: cadastrar o nome do arquivo errado desenha uma
+    imagem quebrada no painel."""
+    from web.app import LOGOS_AUTOMATICAS
+
+    faltando = [slug for slug, arquivo in LOGOS_AUTOMATICAS.items()
+                if not (t.PASTA_LOGOS / arquivo).is_file()]
+
+    assert not faltando, f"logo não encontrada em web/logos/: {faltando}"
 
 
 def test_telefones_no_formato_do_wa_me():

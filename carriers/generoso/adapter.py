@@ -95,6 +95,22 @@ BOTAO_CONFIRMAR = "Confirmar e ver resultado"
 EMBALAGENS = ("Caixa", "Fardo", "Rolo", "Engradado", "Outro")
 EMBALAGEM_PADRAO = "Caixa"
 
+# A QUARTA tela, medida em 24/08/2026. Ela derrubou as cotacoes #6 a #9 de
+# producao, todas com o generico "a tela nao trouxe preco nem confirmacao".
+#
+# Nao e erro nem recusa de carga: a Generoso ATENDE aquela origem, so que
+# atraves de uma unidade parceira que cota por fora do portal. Tem
+# transporte — o vendedor so precisa falar com outra pessoa.
+#
+# Duas ancoras, e as duas precisam bater: "aguardando validacao" sozinho
+# pode aparecer noutra situacao, e "unidades parceiras" pode aparecer num
+# texto de ajuda qualquer.
+FRASES_UNIDADE_PARCEIRA = (
+    "aguardando valida",
+    "unidades parceiras",
+)
+LINK_UNIDADES = "rodonaves.com.br/cidades-atendidas"
+
 # Frases da tela final, medidas no site.
 FRASES_CONFIRMACAO = (
     "recebemos seu pedido de cota",
@@ -149,6 +165,15 @@ def ler_resultado(texto: str) -> bool:
     """True se a tela confirma o recebimento da cotação."""
     t = (texto or "").lower()
     return any(f in t for f in FRASES_CONFIRMACAO)
+
+
+def e_unidade_parceira(texto: str) -> bool:
+    """A origem sai por uma unidade parceira, que cota fora do portal.
+
+    Exige as DUAS frases: uma só delas é frágil demais para decidir que uma
+    cotação foi recusada."""
+    t = (texto or "").lower()
+    return all(f in t for f in FRASES_UNIDADE_PARCEIRA)
 
 
 def pontas_a_digitar(req: CotacaoRequest) -> tuple[str | None, str | None]:
@@ -525,6 +550,15 @@ class GenerosoAdapter:
                 valor_frete=None,    # correto: sem login o preço vem por e-mail
                 raw_response=texto[:800],
             )
+
+        if e_unidade_parceira(texto):
+            return ResultadoCotacao(
+                self.slug, StatusCotacao.RECUSADO, raw_response=texto[:800],
+                motivo_recusa=(
+                    "A Generoso atende esta origem por uma UNIDADE PARCEIRA, "
+                    "que cota por fora do portal — por isso não veio preço "
+                    "aqui. Tem transporte: fale direto com a unidade "
+                    f"responsável. Contatos em {LINK_UNIDADES}"))
 
         return ResultadoCotacao(
             self.slug, StatusCotacao.ERRO, raw_response=texto[:800],

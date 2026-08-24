@@ -94,6 +94,9 @@ CAMPOS_CARGA = (
     "cnpj_remetente", "cnpj_destinatario", "cnpj_pagador",
     "nome_remetente", "nome_destinatario", "nome_pagador", "email",
     "tipo_frete",
+    # Quem participa desta cotação. NULL = todas — ver core/selecao.py, que
+    # explica por que ausência e escolha vazia precisam ser coisas distintas.
+    "transportadoras",
 )
 
 

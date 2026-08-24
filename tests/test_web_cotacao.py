@@ -38,6 +38,23 @@ CARGA = {
 }
 
 
+# O que o /cotar recebe do formulário. CNPJs com dígito verificador certo —
+# os do CARGA acima são de fachada e servem só para preencher o banco.
+#
+# Não chega a abrir navegador nem a consultar CEP: os testes que usam isto
+# param na validação, que roda antes de qualquer coisa cara.
+FORM_VALIDO = {
+    "cep_origem": "29105-770", "cep_destino": "01310-100",
+    "cnpj_remetente": "08.310.365/0001-24",
+    "cnpj_destinatario": "60.042.686/0001-05",
+    "tipo_frete": "cif", "peso": "4", "quantidade": "3",
+    "comprimento": "40", "largura": "40", "altura": "40",
+    "valor_nf": "1500,00", "material": "DIVERSOS",
+    "nome": "Prova", "email": "prova@ventura.com.br",
+    "whatsapp": "27999887766",
+}
+
+
 @pytest.fixture
 def app_web(tmp_path, monkeypatch):
     """Banco isolado por teste: o histórico real do Enzo não entra aqui."""
@@ -57,8 +74,11 @@ def cliente(app_web):
 
 
 def _criar(app_web, *, criado_em: str | None = None,
-           email: str | None = None) -> int:
+           email: str | None = None,
+           transportadoras: str | None = None) -> int:
     carga = {**CARGA, "email": email} if email else CARGA
+    if transportadoras is not None:
+        carga = {**carga, "transportadoras": transportadoras}
     cotacao_id = app_web.banco.salvar_cotacao("enzo", carga)
     if criado_em:
         with app_web.banco._conectar() as con:
@@ -505,6 +525,127 @@ def test_cartao_de_senha_recusada_manda_avisar_em_vez_de_repetir(app_web,
 
     assert "Repetir a cotação não resolve" in html
     assert "não aceitou o login" in html
+
+
+# ------------------------------------------- filtro de transportadoras
+def test_sem_filtro_espera_todas_as_automaticas(app_web):
+    """Cotação anterior ao filtro: a coluna vem NULL e vale tudo."""
+    assert app_web.automaticas_da(None) == app_web.AUTOMATICAS
+
+
+def test_filtro_reduz_quem_vai_ser_despachada(app_web):
+    assert app_web.automaticas_da("camilo,generoso") == ("camilo", "generoso")
+
+
+def test_filtro_so_de_whatsapp_nao_tira_nenhuma_automatica(app_web):
+    """Desmarcar só transportadoras de WhatsApp não pode afetar quem cota
+    sozinha — são listas diferentes."""
+    todas_menos_uma_de_zap = ",".join(
+        [*app_web.AUTOMATICAS, "coruja", "pretti"])
+
+    assert app_web.automaticas_da(todas_menos_uma_de_zap) == app_web.AUTOMATICAS
+
+
+def test_desmarcada_nao_aparece_como_cartao(app_web, cliente):
+    """Nem com preço, nem como 'cotando…', nem como 'Sem retorno'. Ela
+    simplesmente não faz parte desta cotação."""
+    cotacao_id = _criar(app_web, transportadoras="camilo")
+
+    html = cliente.get(f"/cotacao/{cotacao_id}").text
+
+    assert "Camilo dos Santos" in html
+    assert "Transporte Generoso" not in html
+    assert "Jadlog Entregas" not in html
+
+
+def test_desmarcada_nao_vira_botao_de_whatsapp(app_web, cliente):
+    cotacao_id = _criar(app_web, transportadoras="camilo,coruja")
+
+    html = cliente.get(f"/cotacao/{cotacao_id}").text
+
+    assert "zap-coruja" in html
+    assert "zap-pretti" not in html
+
+
+def test_cotacao_sem_nenhuma_automatica_nao_fica_esperando(app_web, cliente):
+    """A armadilha do filtro: só com transportadoras de WhatsApp marcadas,
+    não existe resultado automático para chegar. Sem tratar, a tela ficaria
+    5 minutos recarregando à espera de quem nunca foi chamado."""
+    cotacao_id = _criar(app_web, transportadoras="coruja,pretti")
+
+    html = cliente.get(f"/cotacao/{cotacao_id}").text
+
+    # A classe, nao a palavra: "cotando" solto casa com a regra de CSS.
+    assert 'class="cotando"' not in html
+    assert 'http-equiv="refresh"' not in html
+    assert "zap-coruja" in html
+
+
+def test_desmarcar_todas_e_recusado_antes_de_criar_cotacao(app_web, cliente):
+    """Cotar em ninguém não é uma cotação: é um registro vazio no histórico
+    e um vendedor achando que pediu preço."""
+    antes = len(app_web.banco.listar_cotacoes("enzo"))
+
+    resposta = cliente.post("/cotar", data={**FORM_VALIDO,
+                                            "transportadora": []})
+
+    assert "nenhuma transportadora" in resposta.text.lower()
+    assert len(app_web.banco.listar_cotacoes("enzo")) == antes, "não podia ter gravado"
+
+
+def test_medida_em_metros_e_recusada_antes_de_abrir_navegador(app_web, cliente):
+    """A cotacao #14 de producao (24/08/2026) foi gravada como 0x1x0 cm.
+
+    Alguem digitou METROS no campo de centimetros: 0,46 x 0,4 x 0,87. O
+    modelo aceita (todos > 0), mas o banco guarda int() e o site da Generoso
+    recebe 0 — e recusa com "a etapa da Carga nao avancou. O site diz:
+    (nenhuma mensagem visivel)".
+
+    Nao e problema de mensagem, e erro silencioso: uma carga de 87 cm virou
+    uma de 0 cm sem nada na tela dizendo isso. Barrar no formulario custa
+    zero e evita quatro navegadores.
+
+    Testado no validador PURO e não pela rota: enquanto a validação não
+    existe, um POST desses passa direto e dispara os quatro navegadores de
+    verdade — foi o que aconteceu ao escrever este teste.
+    """
+    problemas = app_web.validar_formulario({
+        **FORM_VALIDO, "altura": "0,87", "largura": "0,4",
+        "comprimento": "0,46", "transportadora": ["camilo"]})
+
+    assert any("centímetros" in p.lower() for p in problemas)
+    assert any("0,87" in p for p in problemas)   # o que a pessoa digitou
+
+
+def test_medida_de_um_centimetro_passa(app_web, cliente):
+    """1 cm e o limite, nao o primeiro valor recusado."""
+    problemas = app_web.validar_formulario({
+        **FORM_VALIDO, "altura": "1", "largura": "1", "comprimento": "1",
+        "transportadora": ["camilo"]})
+
+    assert not [p for p in problemas if "centímetros" in p.lower()]
+
+
+def test_subtitulo_conta_as_transportadoras_de_verdade(app_web, cliente):
+    """O texto dizia "Cotamos na Camilo e na Jadlog... as três que atendem
+    por WhatsApp" — de quando eram duas e três. Ficou mentindo por semanas
+    porque era frase escrita à mão. Agora sai dos números."""
+    html = cliente.get("/").text
+
+    assert "na Camilo e na Jadlog" not in html
+    assert str(len(app_web.AUTOMATICAS)) in html
+    assert str(len(app_web.transportadoras.com_whatsapp())) in html
+
+
+def test_formulario_tem_o_painel_de_escolha(app_web, cliente):
+    """Fechado por padrão, com todas marcadas e o resumo dizendo isso."""
+    html = cliente.get("/").text
+
+    assert "Escolher" in html
+    assert "todas as 17 transportadoras" in html
+    # uma de cada grupo, para provar que os dois foram desenhados
+    assert 'value="camilo"' in html
+    assert 'value="coruja"' in html
 
 
 # ------------------------------------------------------------- retentativa

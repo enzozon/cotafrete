@@ -26,6 +26,7 @@ Medido no recon de 14/08/2026:
 from __future__ import annotations
 
 import os
+import re
 from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
@@ -68,6 +69,52 @@ def ler_resultado(campos: dict[str, str]) -> tuple[Decimal | None, str]:
     """(valor do frete, número da cotação) a partir dos campos da tela."""
     return (_num_br(campos.get("vlr_frete", "")),
             (campos.get("nro_cotacao") or "").strip())
+
+
+# O SSW recusa em dois lugares diferentes da tela, e nenhum dos dois é o
+# campo de preço: um popup "Aviso" e um rótulo vermelho ao lado do CEP.
+SELETORES_AVISO = ("#alerta", "div[role='dialog']", ".ui-dialog-content")
+SELETOR_CEP_RECUSADO = "text=/CEP\\s+INV[ÁA]LIDO|N[ÃA]O\\s+ATENDIDO/i"
+
+# Enfeite do popup que não interessa ao vendedor: o título "Aviso" e a
+# linha do botão ("7. OK"). O que importa é a frase do meio.
+_LIXO_DO_AVISO = ("aviso", "ok")
+
+
+def _texto_do_aviso(page) -> str:
+    """A frase do popup, sem o título e sem o botão. "" se não houver popup.
+
+    Nunca levanta: aviso é informação a mais, e derrubar a cotação por causa
+    da leitura dele seria trocar um resultado ruim por nenhum."""
+    for seletor in SELETORES_AVISO:
+        try:
+            caixa = page.locator(seletor).first
+            if not caixa.count() or not caixa.is_visible(timeout=800):
+                continue
+            linhas = [ln.strip() for ln in caixa.inner_text().splitlines()
+                      if ln.strip()]
+            uteis = [ln for ln in linhas
+                     if ln.lower().strip(". ") not in _LIXO_DO_AVISO
+                     and not re.fullmatch(r"\d+\.\s*OK", ln, re.IGNORECASE)]
+            if uteis:
+                return " ".join(uteis)
+        except Exception:
+            continue
+    return ""
+
+
+def _cep_recusado(page) -> str:
+    """O rótulo vermelho ao lado do campo de CEP, se estiver lá.
+
+    Fica fora do popup e fora do campo de preço — por isso ninguém o lia, e
+    "CEP INVÁLIDO/NÃO ATENDIDO" virava um erro genérico."""
+    try:
+        alvo = page.locator(SELETOR_CEP_RECUSADO).first
+        if alvo.count() and alvo.is_visible(timeout=800):
+            return alvo.inner_text().strip()
+    except Exception:
+        pass
+    return ""
 
 
 class CamiloAdapter:
@@ -159,6 +206,16 @@ class CamiloAdapter:
         campos = raw if isinstance(raw, dict) else {}
         valor, protocolo = ler_resultado(campos)
         if valor is None:
+            # Se o SSW explicou o motivo, quem fala com o vendedor é ele.
+            # Sem isto sobrava "A tela não devolveu valor de frete", que
+            # parece defeito do programa — e ainda era repetido três vezes
+            # pela retentativa para chegar na mesma recusa.
+            aviso = (campos.get("aviso") or "").strip()
+            if aviso:
+                return ResultadoCotacao(
+                    self.slug, StatusCotacao.RECUSADO,
+                    raw_response=str(raw)[:800],
+                    motivo_recusa=f"A Camilo não cotou: {aviso}")
             return ResultadoCotacao(
                 self.slug, StatusCotacao.ERRO, raw_response=str(raw)[:800],
                 erro="A tela não devolveu valor de frete.")
@@ -226,21 +283,29 @@ class CamiloAdapter:
         return problemas
 
     @staticmethod
-    def _fechar_aviso(page) -> None:
-        """Fecha o "Operação realizada com sucesso".
+    def _fechar_aviso(page) -> str:
+        """LÊ o aviso e só então fecha. Devolve o texto, ou "" se não havia.
 
         O aviso cobre a coluna do meio da tabela de custos — Frete Valor,
         Despacho, TDE, Pedágio ficam escondidos atrás dele. Sem fechar, o
-        print sai com um buraco justo na composição do preço."""
+        print sai com um buraco justo na composição do preço.
+
+        Mas fechar SEM LER jogava fora o único lugar em que o SSW diz por
+        que NÃO cotou. "Cliente não possui tabela de frete negociada" foi
+        embora assim na cotação #10 de produção (24/08/2026), e o vendedor
+        recebeu "A tela não devolveu valor de frete" — que parece defeito
+        nosso e não dá a ele nada para fazer."""
+        texto = _texto_do_aviso(page)
         for seletor in ('a:has-text("OK")', 'text=/^\\s*\\d+\\.\\s*OK\\s*$/'):
             try:
                 alvo = page.locator(seletor).first
                 if alvo.count() and alvo.is_visible(timeout=1_500):
                     alvo.click()
                     page.wait_for_timeout(900)
-                    return
+                    break
             except Exception:
                 continue
+        return texto
 
     def _print_resultado(self, page, destino: Path) -> list[str]:
         """Recorta a área útil: do topo até o valor do frete.
@@ -342,7 +407,9 @@ class CamiloAdapter:
 
                 page.locator('a[id="lnk_simula"]').first.click()
                 page.wait_for_timeout(6_000)
-                self._fechar_aviso(page)
+                # A ordem importa: ler o aviso ANTES do print, porque
+                # _fechar_aviso tira ele da frente para a foto sair inteira.
+                aviso = self._fechar_aviso(page)
                 evidencias += self._print_resultado(page, run / "resultado.png")
 
                 lidos = {
@@ -350,6 +417,10 @@ class CamiloAdapter:
                     for n in ("vlr_frete", "nro_cotacao")
                     if page.locator(f'input[name="{n}"]').count()
                 }
+                # O rótulo do CEP só é consultado se não houve popup: os dois
+                # dizem a mesma coisa quando aparecem juntos, e a frase do
+                # popup é a mais completa.
+                lidos["aviso"] = aviso or _cep_recusado(page)
                 res = self.normalizar_resposta(lidos)
                 res.enviado_em = enviado
                 res.respondido_em = datetime.now()

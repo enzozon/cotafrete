@@ -244,3 +244,54 @@ def test_tela_deslogada_ainda_e_reconhecida_como_recebida(adapter):
 
     assert res.status is StatusCotacao.AGUARDANDO_RETORNO
     assert res.valor_frete is None
+
+
+# ------------------------------- a quarta tela: origem de unidade parceira
+TELA_UNIDADE_PARCEIRA = """Resultado da cotação
+Aguardando validação: 90ca36a0-9ca0-45be-a924-62f3356b62d5
+Identificamos que o endereço de origem é atendido por uma de nossas
+unidades parceiras.
+Essa estrutura foi criada justamente para garantir mais agilidade e
+proximidade no seu transporte.
+Por isso, para obter valores e prazos personalizados, pedimos que realize
+sua cotação diretamente com a unidade responsável. Fique tranquilo:
+acompanhamos todo o padrão de qualidade de perto.
+Consulte o contato da unidade aqui:
+rodonaves.com.br/cidades-atendidas
+Detalhes desta cotação"""
+
+
+def test_origem_de_unidade_parceira_e_recusa_e_nao_erro(adapter):
+    """A quarta tela, descoberta em 24/08/2026.
+
+    Ela derrubou QUATRO cotacoes de producao seguidas (#6 a #9), todas com
+    "A tela de resultado nao trouxe preco nem confirmacao de recebimento" —
+    generico, com cara de defeito do programa, e ainda repetido tres vezes
+    pela retentativa.
+
+    Nao e falha nossa nem erro: a Generoso ATENDE aquela origem, so que por
+    uma unidade parceira que cota por fora. Como recusa, o cartao explica e
+    a retentativa nao insiste.
+    """
+    res = adapter.normalizar_resposta(TELA_UNIDADE_PARCEIRA)
+
+    assert res.status is StatusCotacao.RECUSADO
+    assert res.erro is None
+    assert res.motivo_recusa
+    assert "unidade" in res.motivo_recusa.lower()
+
+
+def test_recusa_de_unidade_parceira_leva_o_link_do_site(adapter):
+    """O vendedor precisa saber PARA ONDE ir. Sem o endereco, "fale com a
+    unidade responsavel" e um beco sem saida."""
+    res = adapter.normalizar_resposta(TELA_UNIDADE_PARCEIRA)
+
+    assert "rodonaves.com.br/cidades-atendidas" in res.motivo_recusa
+
+
+def test_tela_desconhecida_continua_sendo_erro(adapter):
+    """A regra nova nao pode engolir tela que ninguem entendeu: erro de
+    verdade continua erro, e continua sendo repetido."""
+    res = adapter.normalizar_resposta("Erro 500 Internal Server Error")
+
+    assert res.status is StatusCotacao.ERRO

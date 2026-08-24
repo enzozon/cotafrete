@@ -48,6 +48,7 @@ from carriers.jadlog.painel import JadlogPainelAdapter
 from carriers.translovato.adapter import TranslovatoAdapter
 from core import cep as buscador_cep
 from core import cnpj as buscador_cnpj
+from core import selecao
 from core.banco import Banco
 from core.retentativa import (
     ESPERA_MAXIMA_S, TENTATIVAS_MAXIMAS, cotar_com_retentativa,
@@ -97,9 +98,30 @@ app.mount("/logos", StaticFiles(directory=transportadoras.PASTA_LOGOS),
 # desrespeitoso com o tempo dele.
 PESO_MINIMO_KG = Decimal("1")
 
+# Menor medida que faz sentido num campo de CENTÍMETROS. Não existe carga de
+# meio centímetro; o que existe é gente digitando metro. Ver a explicação em
+# validar_formulario.
+MEDIDA_MINIMA_CM = Decimal("1")
+
 # Quem roda automaticamente. A tela usa para saber quantos resultados esperar
 # e decidir se ainda esta cotando.
 AUTOMATICAS = ("camilo", "jadlog", "translovato", "generoso")
+
+# As 17 DISTINTAS. A Translovato conta uma vez so: ela e automatica E tem
+# WhatsApp. dict.fromkeys em vez de set para a ordem nao mudar a cada
+# reinicio do servidor — tela que troca de ordem sozinha confunde quem usa.
+TODAS_AS_SLUGS = tuple(dict.fromkeys(
+    [*AUTOMATICAS, *(r.slug for r in transportadoras.com_whatsapp())]))
+
+
+def automaticas_da(escolhidas: str | None) -> tuple[str, ...]:
+    """Quais automáticas participam DESTA cotação.
+
+    Usada nos dois lugares que precisam concordar: quem é despachada em
+    /cotar e quem a tela espera em /cotacao/{id}. Se as duas divergissem, a
+    página ficaria esperando resultado de quem nunca foi chamado — ou pior,
+    daria a cotação por completa com uma transportadora faltando."""
+    return tuple(s for s in AUTOMATICAS if selecao.entra(s, escolhidas))
 
 # Na subida nada pode estar em andamento: o que ficou pendente morreu junto
 # com o processo anterior. Fechar aqui evita cartão girando para sempre.
@@ -112,6 +134,19 @@ _orfas = banco.marcar_interrompidas(AUTOMATICAS)
 if _orfas:
     print(f"[cotafrete] {_orfas} cotação(ões) pendente(s) marcadas como "
           f"interrompidas — o sistema foi fechado durante elas.")
+
+# Logo das automaticas. As de WhatsApp trazem a sua do cadastro
+# (web/transportadoras.py); estas quatro nao passam por la.
+#
+# Slug sem arquivo aqui desenha um espaco vazio no lugar — melhor do que uma
+# imagem quebrada. O par e conferido nos dois sentidos por
+# tests/test_transportadoras.py: nome cadastrado tem que existir no disco, e
+# arquivo no disco tem que estar cadastrado.
+LOGOS_AUTOMATICAS = {
+    "camilo": "camilo.png",
+    "jadlog": "jadlog.png",
+    "generoso": "generoso.png",
+}
 
 NOMES = {"camilo": "Camilo dos Santos", "jadlog": "Jadlog Entregas",
          "translovato": "Translovato", "generoso": "Transporte Generoso"}
@@ -240,6 +275,40 @@ padding:8px 10px;font-size:12px;margin:6px 0 2px;line-height:1.35}
 /* Amarelo e para "cuidado, esse numero engana". Aqui nao ha erro nenhum: e
    instrucao de onde olhar. Azul separa os dois recados. */
 .alerta.email{background:#eef2ff;border-color:#c7d2fe}
+/* ---- filtro de transportadoras ---- */
+.filtro{border:1px solid var(--borda);border-radius:8px;margin:0 0 14px;
+background:var(--papel)}
+.filtro>summary{cursor:pointer;padding:11px 14px;display:flex;
+align-items:center;gap:10px;font-size:13px;color:var(--fraco);
+list-style:none}
+.filtro>summary::-webkit-details-marker{display:none}
+.filtro>summary .abrir{margin-left:auto;color:var(--marca);font-weight:600}
+.filtro>summary .abrir::after{content:" ▾"}
+.filtro[open]>summary .abrir::after{content:" ▴"}
+/* o aviso fica LOGO acima do botao Cotar: e a rede que impede o filtro de
+   virar erro silencioso semanas depois */
+.filtro.parcial{border-color:#ffe380;background:#fffae6}
+.filtro.parcial>summary{color:#7a5b00;font-weight:600}
+.grupo{border-top:1px solid var(--borda);padding:12px 14px}
+.grupo-cab{display:flex;align-items:baseline;gap:8px;margin-bottom:9px;
+font-size:11px;text-transform:uppercase;letter-spacing:.6px;
+color:var(--fraco)}
+.grupo-cab span{text-transform:none;letter-spacing:0}
+.grupo-cab .atalhos{margin-left:auto;white-space:nowrap}
+.caixas{display:grid;gap:6px;
+grid-template-columns:repeat(auto-fill,minmax(210px,1fr))}
+.tr{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--tinta);
+margin:0;padding:5px 7px;border-radius:6px;cursor:pointer}
+.tr:hover{background:var(--fundo)}
+.tr input{width:auto;margin:0;flex:none}
+.tr img,.tr .sem-logo{width:26px;height:26px;object-fit:contain;flex:none}
+.tr-nome{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* desmarcada fica apagada: o estado precisa ser visivel de longe, que era
+   exatamente o que faltava na grade de logos do primeiro desenho */
+.tr:has(input:not(:checked)){opacity:.4}
+.tr:has(input:not(:checked)) .tr-nome{text-decoration:line-through}
+.selo-zap{font-size:10px;background:#e7f8ef;color:var(--ok);
+border-radius:10px;padding:1px 7px;font-weight:700;flex:none}
 .alerta .caixa{font-size:14px;word-break:break-all}
 /* Tipo de frete: as duas opcoes lado a lado, sempre visiveis. Escondida
    atras de um clique, a diferenca entre cobrar de quem envia e de quem
@@ -358,6 +427,15 @@ def validar_formulario(d: dict) -> list[str]:
     de espera, ou pior: uma cotação que sai com a carga errada."""
     erros = []
 
+    # Antes de tudo: cotar em ninguem nao e uma cotacao. Sem isto sobra um
+    # registro vazio no historico e um vendedor achando que pediu preco.
+    # A chave so existe quando o formulario tem o painel; `is not None`
+    # distingue "desmarcou tudo" de "veio de outro lugar".
+    if d.get("transportadora") is not None and not d["transportadora"]:
+        erros.append(
+            "Nenhuma transportadora escolhida. Marque ao menos uma no painel "
+            "logo acima do botao Cotar fretes.")
+
     for campo_ in ("cnpj_remetente", "cnpj_destinatario"):
         n = len(_digitos(d.get(campo_, "")))
         if n != 14:
@@ -369,6 +447,24 @@ def validar_formulario(d: dict) -> list[str]:
         if n != 8:
             erros.append(f"{ROTULOS[campo_]}: precisa de 8 dígitos, "
                          f"veio com {n}.")
+
+    # Medida abaixo de 1 cm é quase sempre METRO digitado no campo de
+    # centímetro. O modelo aceita (só exige > 0) e o estrago aparece longe
+    # daqui: o banco guarda int() e a cotação #14 virou "0x1x0 cm", enquanto
+    # a Generoso recusava com "a etapa da Carga não avançou. O site diz:
+    # (nenhuma mensagem visível)". Uma carga de 87 cm virou uma de 0 cm sem
+    # nada na tela dizendo isso.
+    for campo_ in ("comprimento", "largura", "altura"):
+        bruto = str(d.get(campo_, "")).strip()
+        try:
+            medida = _num(bruto)
+        except Exception:
+            continue                       # formato inválido já é pego adiante
+        if 0 < medida < MEDIDA_MINIMA_CM:
+            erros.append(
+                f"{ROTULOS[campo_]}: {bruto} é menos de {MEDIDA_MINIMA_CM} cm. "
+                f"O campo é em CENTÍMETROS — se a carga tem {bruto} metro(s), "
+                f"escreva {_num(bruto) * 100:.0f}.")
 
     try:
         peso = _num(d.get("peso", ""))
@@ -563,6 +659,61 @@ def formulario(usuario: str | None = Cookie(None, alias=COOKIE),
     return HTMLResponse(_render_formulario(v, usuario, aviso))
 
 
+def painel_transportadoras() -> str:
+    """O filtro, fechado por padrão e com tudo marcado.
+
+    `<details>` nativo em vez de JavaScript para abrir e fechar: funciona sem
+    script, e este projeto não tem framework nenhum — não vai ganhar um por
+    causa de um acordeão.
+
+    Os grupos são rotulados pelo que FAZEM, não pelo nome. Era o buraco do
+    desenho anterior: uma grade de logos trata igual quem devolve preço na
+    tela e quem só abre uma mensagem para você mandar à mão, e essas duas
+    coisas não têm nada a ver uma com a outra.
+
+    A Translovato aparece UMA vez, entre as automáticas, com o selo
+    "+ WhatsApp". Ela é as duas coisas, e duas caixas para a mesma empresa
+    seria exatamente a confusão que este painel veio resolver.
+    """
+    def caixa(slug: str, nome: str, logo: str | None, selo: str = "") -> str:
+        marca = (f'<img src="/logos/{e(logo)}" alt="" loading="lazy">'
+                 if logo else '<span class="sem-logo"></span>')
+        return (f'<label class="tr"><input type="checkbox"'
+                f' name="transportadora" value="{e(slug)}" checked>'
+                f'{marca}<span class="tr-nome">{e(nome)}</span>{selo}</label>')
+
+    zap = {r.slug: r for r in transportadoras.com_whatsapp()}
+
+    automaticas = "".join(
+        caixa(slug, NOMES[slug],
+              LOGOS_AUTOMATICAS.get(slug)
+              or (zap[slug].logo if slug in zap else None),
+              '<span class="selo-zap">+ WhatsApp</span>' if slug in zap else "")
+        for slug in AUTOMATICAS)
+
+    # As de WhatsApp menos as que já apareceram acima (hoje, a Translovato).
+    whatsapp = "".join(
+        caixa(r.slug, r.nome, r.logo)
+        for r in transportadoras.com_whatsapp() if r.slug not in AUTOMATICAS)
+
+    def grupo(titulo: str, explica: str, itens: str) -> str:
+        return (f'<div class="grupo"><div class="grupo-cab">'
+                f'<b>{titulo}</b><span>{explica}</span>'
+                f'<span class="atalhos"><a href="#" data-todas="1">todas</a>'
+                f' · <a href="#" data-todas="0">nenhuma</a></span></div>'
+                f'<div class="caixas">{itens}</div></div>')
+
+    return (
+        f'<details class="filtro" id="filtro">'
+        f'<summary><span id="resumo-filtro">Cotando em todas as '
+        f'{len(TODAS_AS_SLUGS)} transportadoras</span>'
+        f'<span class="abrir">Escolher</span></summary>'
+        + grupo("AUTOMÁTICAS", "devolvem preço nesta tela", automaticas)
+        + grupo("POR WHATSAPP", "abrem a mensagem pronta para você enviar",
+                whatsapp)
+        + '</details>')
+
+
 def _render_formulario(v: dict, usuario: str, aviso: str) -> str:
     # String CRUA (rf): o JS aqui embaixo usa \d e \D das regex de máscara.
     # Sem o `r`, o Python lê como escape dele, avisa "invalid escape sequence"
@@ -570,8 +721,9 @@ def _render_formulario(v: dict, usuario: str, aviso: str) -> str:
     return pagina("Nova cotação", rf"""
 {aviso}
 <h1>Nova cotação</h1>
-<p class="sub">Preencha uma vez. Cotamos na Camilo e na Jadlog, e preparamos
-a mensagem para as três que atendem por WhatsApp.</p>
+<p class="sub">Preencha uma vez. Cotamos sozinhos em {len(AUTOMATICAS)}
+transportadoras e deixamos a mensagem pronta para as
+{len(transportadoras.com_whatsapp())} que atendem por WhatsApp.</p>
 <form method="post" action="/cotar" class="cartao">
   <fieldset><legend>Rota</legend><div class="grid">
     {campo("cep_origem", "CEP de origem", v)}
@@ -602,6 +754,8 @@ a mensagem para as três que atendem por WhatsApp.</p>
     {campo("whatsapp", "WhatsApp", v)}
   </div></fieldset>
 
+  {painel_transportadoras()}
+
   <button type="submit">Cotar fretes</button>
 </form>
 <script>
@@ -627,6 +781,30 @@ const fmtCep = (d) => d.replace(/^(\d{{5}})(\d)/, "$1-$2");
   id => mascara(document.getElementById(id), 14, fmtCnpj));
 ["cep_origem","cep_destino"].forEach(
   id => mascara(document.getElementById(id), 8, fmtCep));
+
+// Contador do filtro. O <details> abre e fecha sozinho (HTML puro);
+// isto aqui so mantem o resumo dizendo a verdade, e e o que impede o
+// filtro de virar erro silencioso: a linha fica logo acima do botao.
+const filtro = document.getElementById("filtro");
+const resumo = document.getElementById("resumo-filtro");
+const caixas = () => [...filtro.querySelectorAll(
+  'input[name="transportadora"]')];
+const TOTAL = caixas().length;
+function contar() {{
+  const n = caixas().filter(c => c.checked).length;
+  filtro.classList.toggle("parcial", n !== TOTAL);
+  resumo.textContent = n === TOTAL
+    ? `Cotando em todas as ${{TOTAL}} transportadoras`
+    : `${{n}} de ${{TOTAL}} transportadoras — ${{TOTAL - n}} fora desta cotação`;
+}}
+filtro.addEventListener("change", contar);
+filtro.querySelectorAll("[data-todas]").forEach(a => a.onclick = ev => {{
+  ev.preventDefault();
+  a.closest(".grupo").querySelectorAll('input[name="transportadora"]')
+   .forEach(c => c.checked = a.dataset.todas === "1");
+  contar();
+}});
+contar();
 </script>""", usuario)
 
 
@@ -689,7 +867,11 @@ def cotar(usuario: str | None = Cookie(None, alias=COOKIE),
           largura: str = Form(...), altura: str = Form(...),
           valor_nf: str = Form(...), material: str = Form(...),
           nome: str = Form(...), email: str = Form(...),
-          whatsapp: str = Form(...)):
+          whatsapp: str = Form(...),
+          # Checkbox nao marcada nao e enviada: a lista chega so com o que
+          # o vendedor deixou ligado. Default [] para o caso de alguem
+          # postar sem o painel — que `validar_formulario` recusa embaixo.
+          transportadora: list[str] = Form(default=[])):
     """Endpoint SÍNCRONO de propósito: o FastAPI o roda numa thread do pool, e
     a API sync do Playwright não pode conviver com um event loop na mesma
     thread."""
@@ -706,6 +888,11 @@ def cotar(usuario: str | None = Cookie(None, alias=COOKIE),
         req = montar_request(dados)
     except Exception as exc:
         return HTMLResponse(tela_erro([traduzir_erro(exc)], dados, usuario))
+
+    # None quando esta tudo marcado: assim a cotacao nao "congela" a lista
+    # de hoje, e uma transportadora nova entra nas antigas tambem.
+    escolhidas = selecao.para_guardar(transportadora, TODAS_AS_SLUGS)
+    dados["transportadoras"] = escolhidas
 
     v = req.volumes[0]
     cotacao_id = banco.salvar_cotacao(usuario, {
@@ -730,14 +917,15 @@ def cotar(usuario: str | None = Cookie(None, alias=COOKIE),
         # É por aqui que a resposta da Generoso chega. Guardado na cotação, e
         # não só no formulário, porque a tela precisa dele em toda visita.
         "email": req.solicitante.email,
+        "transportadoras": escolhidas,
     })
 
     # Dispara e NÃO espera: cada uma grava o próprio resultado ao terminar.
-    for slug, fabrica in (("camilo", _cotar_camilo),
-                          ("jadlog", _cotar_jadlog),
-                          ("translovato", _cotar_translovato),
-                          ("generoso", _cotar_generoso)):
-        EXECUTOR.submit(_rodar, cotacao_id, slug, fabrica, req)
+    fabricas = {"camilo": _cotar_camilo, "jadlog": _cotar_jadlog,
+                "translovato": _cotar_translovato,
+                "generoso": _cotar_generoso}
+    for slug in automaticas_da(dados.get("transportadoras")):
+        EXECUTOR.submit(_rodar, cotacao_id, slug, fabricas[slug], req)
 
     return RedirectResponse(f"/cotacao/{cotacao_id}", status_code=303)
 
@@ -1098,7 +1286,8 @@ def ver_cotacao(cotacao_id: int,
     # transportadora simplesmente não aparece, e o usuário não sabe se ela
     # falhou ou se ainda está rodando.
     respondidas = {r["transportadora"] for r in c["resultados"]}
-    faltam = [s for s in AUTOMATICAS if s not in respondidas]
+    escolhidas = c.get("transportadoras")
+    faltam = [s for s in automaticas_da(escolhidas) if s not in respondidas]
 
     # Passado o teto, assume que não vem mais nada. Precisa ser decidido AQUI,
     # antes dos cartões: eles mudam de "cotando…" para "Sem retorno" conforme
@@ -1145,7 +1334,8 @@ def ver_cotacao(cotacao_id: int,
     else:
         cabecalho_espera = ""
 
-    lista_zap = transportadoras.com_whatsapp()
+    lista_zap = [r for r in transportadoras.com_whatsapp()
+                 if selecao.entra(r.slug, escolhidas)]
     abertas = banco.whatsapp_abertos(cotacao_id)
     zaps = "".join(
         f'<a class="zap{" aberta" if reg.slug in abertas else ""}"'
