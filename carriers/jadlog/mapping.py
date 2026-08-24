@@ -51,6 +51,18 @@ PESO_MAX_FRANQUIA_KG = Decimal(120)  # franquia Jadlog
 # dos dois mudar, o outro não vai junto por acidente.
 PESO_MAX_CAIXA_KG = Decimal(30)
 
+# Os outros dois limites do MESMO pacote, ditados pelo Enzo em 24/08/2026 a
+# partir do que o site responde. As três frases abaixo são as da própria
+# Jadlog: o vendedor lê na tela do Cotafrete exatamente o que leria lá, e
+# não uma tradução nossa que ele teria que reconciliar depois.
+MEDIDA_MAX_CM = Decimal(80)
+VALOR_MAX_COBERTURA = Decimal(30_000)
+
+RECUSA_VALOR = "Cobertura máxima de R$30.000 excedida."
+RECUSA_PESO = "Para caixas, o peso máximo permitido é 30kg"
+RECUSA_MEDIDA = ("Altura, Largura ou Comprimento excedida. Aceitamos pacotes "
+                 "com até 80cm x 80cm x 80cm.")
+
 # VERIFICADO no simulador público da Jadlog (simulacao.jad), 12/08/2026 — são os
 # códigos que o próprio <select name="modalidade"> da transportadora expõe.
 # Os presumidos anteriores erravam 3 de 7: 6 é Doc (estava "corporate"), 12 é
@@ -131,11 +143,24 @@ def validar(req: CotacaoRequest, *, modalidade: str = "package",
     pesada = max((v.peso_kg for v in req.volumes), default=Decimal(0))
     if pesada > PESO_MAX_CAIXA_KG:
         erros.append(ErroValidacao(
-            "peso",
-            f"Volume de {pesada} kg passa do limite de {PESO_MAX_CAIXA_KG} kg "
-            f"por caixa da Jadlog. A carga inteira cabe na franquia, mas cada "
-            f"caixa é pesada demais: divida em volumes menores ou cote com "
-            f"transportadora de carga fracionada pesada.",
+            "peso", f"{RECUSA_PESO} (esta tem {_kg(pesada)} kg).",
+        ))
+
+    # Também por VOLUME: o site mede a CAIXA, não a soma. Três caixas de
+    # 60 cm passam; uma de 81 não passa, mesmo sozinha.
+    maior = max((m for v in req.volumes for m in v.dimensoes),
+                default=Decimal(0))
+    if maior > MEDIDA_MAX_CM:
+        erros.append(ErroValidacao(
+            "medidas", f"{RECUSA_MEDIDA} (esta tem {maior:.0f} cm).",
+        ))
+
+    # Valor da NOTA, não do volume: a cobertura é do que está sendo enviado.
+    if req.nota_fiscal.valor_total > VALOR_MAX_COBERTURA:
+        erros.append(ErroValidacao(
+            "valor_nf",
+            f"{RECUSA_VALOR} (esta nota é de "
+            f"R$ {_kg(req.nota_fiscal.valor_total)}).",
         ))
 
     if req.mercadoria.is_perigoso:
@@ -146,6 +171,11 @@ def validar(req: CotacaoRequest, *, modalidade: str = "package",
         ))
 
     return erros
+
+
+def _kg(v: Decimal) -> str:
+    """Número com vírgula decimal, do jeito que o vendedor lê."""
+    return f"{v:.2f}".replace(".", ",")
 
 
 def bloqueantes(erros: list[ErroValidacao]) -> list[ErroValidacao]:

@@ -116,6 +116,86 @@ def test_caixa_acima_de_30kg_e_reprovada_antes_de_abrir_o_navegador():
     assert j.bloqueantes(j.validar(com_peso(30))) == []
 
 
+def _so_peso(kg, medida=Decimal(40)):
+    return montar(volumes=[Volume(qtd=1, comprimento_cm=medida,
+                                  largura_cm=medida, altura_cm=medida,
+                                  peso_kg=Decimal(kg))])
+
+
+# ------------------------- as três recusas do painel, com o texto do site
+def test_valor_acima_da_cobertura_e_recusado():
+    """Limite de cobertura da Jadlog. Acima disso ela não aceita a carga —
+    e é melhor o vendedor ler isso na hora do que esperar o navegador."""
+    caro = montar(nota_fiscal=NotaFiscal(valor_total=Decimal("30000.01")))
+
+    assert any("Cobertura máxima de R$30.000 excedida." in e.mensagem
+               for e in j.bloqueantes(j.validar(caro)))
+
+    no_limite = montar(nota_fiscal=NotaFiscal(valor_total=Decimal(30_000)))
+    assert j.bloqueantes(j.validar(no_limite)) == []
+
+
+def test_caixa_acima_de_30kg_usa_o_texto_do_site():
+    """A frase é a que a própria calculadora escreve ao lado do campo."""
+    assert any("Para caixas, o peso máximo permitido é 30kg" in e.mensagem
+               for e in j.bloqueantes(j.validar(_so_peso("30.5"))))
+
+    assert j.bloqueantes(j.validar(_so_peso(30))) == []
+
+
+def test_medida_acima_de_80cm_e_recusada():
+    """Vale para as TRÊS medidas, uma de cada vez: 81 de altura reprova
+    mesmo com largura e comprimento pequenos."""
+    frase = "Aceitamos pacotes com até 80cm x 80cm x 80cm"
+    for lado in ("comprimento_cm", "largura_cm", "altura_cm"):
+        medidas = {"comprimento_cm": Decimal(40), "largura_cm": Decimal(40),
+                   "altura_cm": Decimal(40), lado: Decimal(81)}
+        grande = montar(volumes=[Volume(qtd=1, peso_kg=Decimal(5), **medidas)])
+
+        assert any(frase in e.mensagem
+                   for e in j.bloqueantes(j.validar(grande))), lado
+
+    # 80 cravados é o limite, não o primeiro valor recusado.
+    no_limite = montar(volumes=[Volume(qtd=1, comprimento_cm=Decimal(80),
+                                       largura_cm=Decimal(40),
+                                       altura_cm=Decimal(40),
+                                       peso_kg=Decimal(5))])
+    assert j.bloqueantes(j.validar(no_limite)) == []
+
+
+@pytest.mark.xfail(reason="DECIDIDO em 24/08/2026: o limite de 120 kg fica, "
+                          "mesmo contradizendo o pacote de 80x80x80",
+                   strict=True)
+def test_caixa_de_80x80x80_deveria_passar():
+    """A contradicao conhecida, registrada de proposito.
+
+    O Enzo passou em 24/08/2026 a regra da Jadlog: "Aceitamos pacotes com
+    ate 80cm x 80cm x 80cm". Mas uma caixa assim tem 0,512 m3, que a 300 de
+    fator da 153,6 kg cubados — acima dos 120 kg de PESO_MAX_FRANQUIA_KG, e
+    a validacao recusa. As duas regras nao podem estar certas ao mesmo
+    tempo.
+
+    A hipotese e que os 120 kg sejam do frete de FRANQUIA (o adapter de
+    API, que manda a carga inteira) e nao do Jadlog Entregas (o painel, que
+    cota um pacote por vez). NAO foi confirmado com a franquia.
+
+    Decisao do Enzo no mesmo dia: manter os 120 kg valendo para os dois,
+    "assim evita confusao". O preco disso e conhecido e aceito — a Jadlog
+    recusa carga volumosa que talvez cotasse, como as tres caixas de
+    80x60x50 da cotacao #51.
+
+    Este teste fica como o registro dessa escolha. `strict=True` de
+    proposito: se alguem mexer no limite, ele passa a dar erro de "xpass" e
+    a decisao volta a ser discutida em vez de sumir sem ninguem notar.
+    """
+    caixa = montar(volumes=[Volume(qtd=1, comprimento_cm=Decimal(80),
+                                   largura_cm=Decimal(80),
+                                   altura_cm=Decimal(80),
+                                   peso_kg=Decimal(5))])
+
+    assert j.bloqueantes(j.validar(caixa)) == []
+
+
 def test_modalidades_batem_com_o_select_da_jadlog():
     """Códigos medidos no simulador público (simulacao.jad) em 12/08/2026.
 
