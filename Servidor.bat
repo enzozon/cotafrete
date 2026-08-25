@@ -22,6 +22,44 @@ set PYTHONIOENCODING=utf-8
 
 cd /d "%~dp0"
 
+REM ---------------------------------------------------------------------
+REM  SO SOBE DA PASTA DE PRODUCAO.
+REM
+REM  Em 25/08/2026 este arquivo foi aberto pela pasta de desenvolvimento.
+REM  As duas escutam na mesma porta 8000 e nada na tela dizia qual era
+REM  qual, entao a empresa passou a manha cotando contra o codigo de
+REM  desenvolvimento - e quatro cotacoes reais foram para o banco errado.
+REM
+REM  Apagar esta copia nao resolveria: o arquivo e versionado e as duas
+REM  pastas sao o MESMO repositorio, entao a exclusao chegaria em producao
+REM  no proximo `git pull`. Por isso ele fica, e se recusa a subir daqui.
+REM
+REM  Se a pasta de producao mudar de nome, mude o nome nesta linha tambem.
+REM ---------------------------------------------------------------------
+set "PASTA_DESTE_BAT=%~dp0"
+if "%PASTA_DESTE_BAT:cotafrete-producao\=%"=="%PASTA_DESTE_BAT%" (
+    echo.
+    echo  ====================================================================
+    echo   ESTA NAO E A PASTA DE PRODUCAO - o servidor da rede nao vai subir
+    echo  ====================================================================
+    echo.
+    echo   Pasta:  %PASTA_DESTE_BAT%
+    echo.
+    echo   O endereco que a empresa inteira usa sobe so de cotafrete-producao.
+    echo   Aqui e desenvolvimento: o codigo muda no meio do dia, e quem
+    echo   estivesse cotando pegaria o sistema pela metade.
+    echo.
+    REM  Sem parenteses nas linhas abaixo: dentro de um bloco `if ^(...^)` um
+    REM  `^)` solto fecha o bloco antes da hora, e o resto do arquivo passa a
+    REM  rodar sempre - inclusive em producao.
+    echo   Para testar nesta pasta:   Cotafrete.bat - porta 8001, so esta
+    echo                              maquina enxerga.
+    echo   Para subir para a empresa: Servidor.bat da pasta cotafrete-producao
+    echo.
+    pause
+    exit /b 1
+)
+
 if not exist ".venv\Scripts\python.exe" (
     echo.
     echo  [ERRO] Ambiente nao instalado nesta pasta.
