@@ -370,12 +370,24 @@ class DellavolpeAdapter:
 
                 # ANTES do submit: é este print que permite conferir o que foi
                 # enviado quando o e-mail voltar com preço estranho.
-                evid_preenchido = self._print_formulario(
-                    page, run / "preenchido.png")
-
+                # ANTES do print, e não depois. `_print_formulario` dispara
+                # `blur` em cada campo preenchido e mexe no overflow dos
+                # ancestrais para a foto sair inteira — as duas coisas mudam
+                # o que está VISÍVEL. E `_localizar` devolve o primeiro campo
+                # VISÍVEL, entre os DEZ formulários que o site mantém no
+                # mesmo DOM.
+                #
+                # Lendo depois do print, a conferência às vezes lia o select
+                # de outro formulário, vazio, e barrava um envio perfeito:
+                # "o site recusou e apagou: Qual o serviço que você procura?".
+                # Medido em 25/08/2026 — três execuções seguidas mostraram o
+                # select com o valor certo do começo ao fim do preenchimento.
                 recusados = campos_que_o_site_recusou(
                     {k: v for k, v in texto.items() if isinstance(v, str)},
                     self._ler_de_volta(page, texto))
+
+                evid_preenchido = self._print_formulario(
+                    page, run / "preenchido.png")
 
                 if not confirmar_envio:
                     return ResultadoCotacao(
@@ -535,8 +547,20 @@ class DellavolpeAdapter:
         os dois lados quebram juntos e a conferência não passa a mentir que
         está tudo certo.
 
+        VALIDA antes de ler, e é por isso que as duas coisas moram juntas.
+        O CF7 só julga o campo quando ele perde o foco; sem o `blur` o campo
+        inválido continua exibindo o que foi digitado, e a conferência passa
+        um telefone que o site vai apagar. Medido em 25/08/2026: com a
+        leitura antes do `blur`, o telefone malformado passou.
+
         Nunca levanta: campo que não deu para reler vira "" e cai na regra de
         recusado — na dúvida, parar antes de enviar."""
+        try:
+            page.evaluate(JS_REVALIDAR)
+            page.wait_for_timeout(600)
+        except Exception:
+            pass          # sem validar, a leitura ainda pega campo já vazio
+
         lido: dict[str, str] = {}
         for rotulo, valor in campos.items():
             if not isinstance(valor, str):
