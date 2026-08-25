@@ -60,3 +60,57 @@ def test_adapter_deixa_desligar_para_ver_o_que_esta_acontecendo():
 
 def test_por_padrao_a_janela_fica_escondida():
     assert DellavolpeAdapter().mostrar_janela is False
+
+
+# ---------------- campo que o site recusou e deixou vazio
+"""Medido em 25/08/2026, com um telefone malformado de proposito:
+
+    campo whatsapp -> site mostrou "Telefone invalido" e ZEROU o campo
+    adapter        -> status rascunho, erro/aviso: None
+
+Num envio real isso viraria uma cotacao chegando na Della Volpe sem
+telefone, ou um submit recusado em silencio — a mesma familia dos cinco
+envios de 13/08 que "deram certo" sem existir.
+
+A classe `wpcf7-not-valid` NAO serve de sinal: medida com telefone VALIDO,
+ela continua grudada no campo, sobra de uma validacao anterior. O que
+distingue os dois casos e o campo ter ficado VAZIO.
+"""
+
+
+def test_campo_que_ficou_vazio_e_denunciado():
+    from carriers.dellavolpe.adapter import campos_que_o_site_recusou
+
+    esperado = {"Nome completo": "Ventura", "WhatsApp": "(27) 99988-7766"}
+    lido = {"Nome completo": "Ventura", "WhatsApp": ""}
+
+    assert campos_que_o_site_recusou(esperado, lido) == ["WhatsApp"]
+
+
+def test_mascara_do_site_nao_conta_como_recusa():
+    """O site reescreve o que foi digitado — telefone ganha parenteses, CNPJ
+    ganha pontos, dinheiro ganha virgula. Nada disso e recusa, e tratar como
+    tal impediria todo envio."""
+    from carriers.dellavolpe.adapter import campos_que_o_site_recusou
+
+    esperado = {"WhatsApp": "27999887766", "Valor da NF": "1500"}
+    lido = {"WhatsApp": "(27) 99988-7766", "Valor da NF": "1.500,00"}
+
+    assert campos_que_o_site_recusou(esperado, lido) == []
+
+
+def test_campo_que_nao_tentamos_preencher_e_ignorado():
+    """`tipo-veiculo` fica marcado como invalido no formulario e nunca foi
+    nosso. Reclamar dele bloquearia todo envio por um campo de outro
+    servico."""
+    from carriers.dellavolpe.adapter import campos_que_o_site_recusou
+
+    assert campos_que_o_site_recusou({"Nome completo": "Ventura"},
+                                     {"Nome completo": "Ventura"}) == []
+
+
+def test_campo_que_ja_ia_vazio_nao_e_recusa():
+    from carriers.dellavolpe.adapter import campos_que_o_site_recusou
+
+    assert campos_que_o_site_recusou({"Mercadoria": ""},
+                                     {"Mercadoria": ""}) == []

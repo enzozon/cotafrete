@@ -52,6 +52,28 @@ def argumentos_do_navegador(headless: bool,
         return []
     return list(ARGS_FORA_DA_TELA)
 
+
+def campos_que_o_site_recusou(esperado: dict[str, str],
+                              lido: dict[str, str]) -> list[str]:
+    """Rótulos que tentamos preencher e que ficaram VAZIOS na tela.
+
+    Medido em 25/08/2026 com um telefone malformado: o site mostrou
+    "Telefone inválido" e ZEROU o campo — e o adapter seguiu reportando
+    `erro=None`. Num envio real isso vira uma cotação chegando sem telefone,
+    ou um submit recusado em silêncio. É a mesma família dos cinco envios de
+    13/08 que "deram certo" sem existir.
+
+    Por que vazio, e não a classe `wpcf7-not-valid`: medida com telefone
+    VÁLIDO, a classe continua grudada no campo — sobra de uma validação
+    anterior, que o CF7 não limpa. Ela marcaria todo envio como recusado.
+
+    Por que não comparar o conteúdo: o site REESCREVE o que foi digitado —
+    telefone ganha parênteses, CNPJ ganha pontos, dinheiro ganha vírgula.
+    Exigir igualdade impediria todo envio. Campo vazio é o único sinal que
+    não tem outra explicação."""
+    return [rotulo for rotulo, valor in esperado.items()
+            if str(valor).strip() and not str(lido.get(rotulo, "")).strip()]
+
 # Só DESAFIO conta como bloqueio. O reCAPTCHA v3 do site entrega um badge
 # VISÍVEL de 256x60 (div.grecaptcha-badge + iframe api2/anchor?...size=invisible)
 # em toda página — é selo, não interrogatório. Medido no site em produção.
@@ -351,12 +373,29 @@ class DellavolpeAdapter:
                 evid_preenchido = self._print_formulario(
                     page, run / "preenchido.png")
 
+                recusados = campos_que_o_site_recusou(
+                    {k: v for k, v in texto.items() if isinstance(v, str)},
+                    self._ler_de_volta(page, texto))
+
                 if not confirmar_envio:
                     return ResultadoCotacao(
                         self.slug, StatusCotacao.RASCUNHO,
                         raw_response="DRY-RUN: formulário preenchido, nada enviado.",
+                        erro=(f"o site não aceitou: {', '.join(recusados)}"
+                              if recusados else None),
                         evidencias=evid_preenchido,
                     )
+
+                # PARA antes de enviar. Cotação que chega sem um campo
+                # obrigatório é pior que cotação que não chega: alguém do
+                # outro lado gasta tempo com ela e depois liga perguntando.
+                if recusados:
+                    return ResultadoCotacao(
+                        self.slug, StatusCotacao.ERRO,
+                        erro="o site recusou e apagou: "
+                             + ", ".join(recusados)
+                             + ". Nada foi enviado.",
+                        evidencias=evid_preenchido)
 
                 self._enviar(page)
 
@@ -488,6 +527,25 @@ class DellavolpeAdapter:
                     loc.select_option(value=valor)
             else:
                 loc.fill(valor)
+
+    def _ler_de_volta(self, page, campos: dict[str, Any]) -> dict[str, str]:
+        """O que a tela ficou mostrando, campo a campo.
+
+        Pelo MESMO `_localizar` do preenchimento: se o rótulo mudar de nome,
+        os dois lados quebram juntos e a conferência não passa a mentir que
+        está tudo certo.
+
+        Nunca levanta: campo que não deu para reler vira "" e cai na regra de
+        recusado — na dúvida, parar antes de enviar."""
+        lido: dict[str, str] = {}
+        for rotulo, valor in campos.items():
+            if not isinstance(valor, str):
+                continue
+            try:
+                lido[rotulo] = self._localizar(page, rotulo).input_value()
+            except Exception:
+                lido[rotulo] = ""
+        return lido
 
     def _enviar(self, page) -> None:
         """Clica em "Pedir orçamento" e ESPERA a confirmação aparecer.
