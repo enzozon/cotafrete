@@ -179,3 +179,35 @@ def test_sem_aviso_e_sem_preco_continua_sendo_erro(adapter):
     res = adapter.normalizar_resposta({"vlr_frete": "", "nro_cotacao": ""})
 
     assert res.status is StatusCotacao.ERRO
+
+
+# ---------------------------------------- a cubagem da tela e um TOTAL
+def test_cubagem_da_tela_e_a_soma_dos_volumes_nao_a_de_um(adapter):
+    """Cotacao #20 de producao (25/08/2026, Arthur Carvalho).
+
+    A tela do SSW mostrou "Cubagem (m3): 0,2700" e a pergunta foi se
+    tinhamos errado por 10x, porque uma caixa de 30x30x30 da 0,0270 m3.
+
+    Nao ha erro: o campo da tela e o TOTAL, e sao DEZ caixas.
+        0,027 m3 x 10 = 0,270 m3
+    A mesma tela mostra "Peso (Kg): 10,000", que tambem e total (10 caixas
+    de 1 kg) — a tela inteira fala em totais, nao em unidades.
+
+    O que este teste realmente tranca e a UNIDADE: 30 cm tem que virar
+    "0,300". Mandar "3" daria 27 m3 por caixa e "30" daria 27.000 — e a
+    armadilha da Camilo erra para MAIS, frete absurdo em vez de barato.
+    """
+    req = montar(volumes=[Volume(qtd=10, comprimento_cm=Decimal(30),
+                                 largura_cm=Decimal(30), altura_cm=Decimal(30),
+                                 peso_kg=Decimal(1))])
+    p = adapter.preparar_payload(req)
+
+    assert (p["cub_comp_1"], p["cub_larg_1"], p["cub_alt_1"]) == \
+        ("0,300", "0,300", "0,300")
+    assert p["cub_nro_vezes_1"] == "10"
+    assert p["peso"] == "10,000"          # total, como a tela mostra
+
+    uma_caixa = Decimal("0.3") ** 3       # 0,027 m3
+    assert uma_caixa == Decimal("0.027")
+    assert uma_caixa * 10 == Decimal("0.270")   # o 0,2700 da tela
+    assert req.cubagem_m3 == Decimal("0.270")
