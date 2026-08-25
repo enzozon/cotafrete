@@ -719,3 +719,62 @@ def test_rodar_grava_so_o_resultado_final_e_nao_o_caminho(app_web, monkeypatch):
     gravados = app_web.banco.buscar_cotacao(cotacao_id, "enzo")["resultados"]
     assert [r["status"] for r in gravados] == ["cotado"]
     assert respostas == [], "as duas tentativas precisam ter acontecido"
+
+
+# ------------------------- o print da recusa, na tela do vendedor
+def _png(tmp_path, nome="recusa_do_site.png"):
+    """`_img` só embute arquivo que existe; o conteúdo não é validado."""
+    caminho = tmp_path / nome
+    caminho.write_bytes(b"\x89PNG\r\n\x1a\n")
+    return str(caminho)
+
+
+def test_recusa_do_site_mostra_o_print(app_web, cliente, tmp_path):
+    """Cotação #20 de produção (25/08/2026, Arthur Carvalho).
+
+    A Camilo recusou com "Cliente não possui tabela de frete negociada" e o
+    vendedor viu só uma frase cinza. O print existia no banco e a tela nunca
+    o mostrava: o ramo de erro era o único que não chamava `_img`. Sem a
+    imagem, não há como distinguir "o site disse não" de "o robô quebrou"."""
+    cotacao_id = _criar(app_web)
+    app_web.banco.salvar_resultado(
+        cotacao_id, "camilo", status="recusado",
+        erro="A Camilo não cotou: Cliente não possui tabela de frete "
+             "negociada.Cotação não permitida.",
+        evidencia=_png(tmp_path))
+
+    html = cliente.get(f"/cotacao/{cotacao_id}").text
+
+    assert 'class="print"' in html
+    assert "tabela de frete negociada" in html
+
+
+def test_erro_de_verdade_tambem_mostra_o_print(app_web, cliente, tmp_path):
+    """Falha nossa também merece a foto: é por ela que se descobre em que
+    passo a tela parou."""
+    cotacao_id = _criar(app_web)
+    app_web.banco.salvar_resultado(
+        cotacao_id, "generoso", status="erro",
+        erro="RuntimeError: a etapa do destino não avançou.",
+        evidencia=_png(tmp_path, "erro.png"))
+
+    html = cliente.get(f"/cotacao/{cotacao_id}").text
+
+    assert 'class="print"' in html
+
+
+def test_recusa_nao_e_apresentada_como_defeito_do_programa(app_web, cliente):
+    """"Não retornou preço" é a frase de quando NÃO se sabe o que houve.
+
+    Numa recusa se sabe: o site recebeu tudo e disse não, com estas palavras.
+    Chamar as duas coisas pelo mesmo nome faz o vendedor repetir a cotação
+    três vezes atrás de um preço que nunca vai vir."""
+    cotacao_id = _criar(app_web)
+    app_web.banco.salvar_resultado(
+        cotacao_id, "camilo", status="recusado",
+        erro="A Camilo não cotou: Cliente não possui tabela de frete negociada.")
+
+    html = cliente.get(f"/cotacao/{cotacao_id}").text
+
+    assert "Não retornou preço" not in html
+    assert "tabela de frete negociada" in html

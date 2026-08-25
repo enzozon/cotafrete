@@ -1270,15 +1270,34 @@ def ver_cotacao(cotacao_id: int,
             # saiu. Sem ele o vendedor só tem a nossa palavra.
             corpo = (cartao_resposta_por_email(c.get("email"))
                      + _img(r["evidencia"]))
+        elif r["status"] == StatusCotacao.RECUSADO.value:
+            # Recusa NÃO é defeito. O site recebeu a carga inteira, entendeu,
+            # e disse não — com estas palavras. Cotação #20 (25/08/2026): a
+            # Camilo escreveu "Cliente não possui tabela de frete negociada"
+            # e o vendedor leu "Não retornou preço", que é a frase de quando
+            # ninguém sabe o que houve. Aí ele repete a cotação três vezes
+            # atrás de um preço que nunca vai vir.
+            #
+            # O print entra junto: é a prova de que o "não" veio do site.
+            destaque, selo = "", ""
+            corpo = ('<div class="falhou">O site não cotou</div>'
+                     f'<div class="alerta">'
+                     f'{e((r["erro"] or "")[:LIMITE_MENSAGEM_ERRO])}</div>'
+                     + _img(r["evidencia"]))
         else:
             destaque, selo = "", ""
             # Sempre dizer POR QUE não veio preço. "Não retornou preço" sozinho
             # manda o operador adivinhar — e foi status sem explicação que
             # escondeu, neste projeto, cinco envios que nunca saíram.
+            #
+            # O print faltava justamente aqui, no único ramo em que a tela do
+            # site é a informação que importa: é nela que se vê em que passo
+            # a coisa parou.
             motivo = r["erro"] or f"o site respondeu: {r['status']}"
             corpo = ('<div class="falhou">Não retornou preço</div>'
                      f'<div class="nota">'
-                     f'{e(motivo[:LIMITE_MENSAGEM_ERRO])}</div>')
+                     f'{e(motivo[:LIMITE_MENSAGEM_ERRO])}</div>'
+                     + _img(r["evidencia"]))
         cartoes += (f'<div class="res{destaque}"><div class="nome">'
                     f'{e(NOMES.get(slug, slug))} {selo}</div>{corpo}</div>')
 
