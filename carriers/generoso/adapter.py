@@ -31,10 +31,15 @@ REGRAS MEDIDAS NO SITE — sem elas a cotação sai errada e sem aviso na tela:
    "09.220-570" fez a máscara comer o zero à esquerda e o resumo saiu com
    "92.205-70". CEP errado é cotação para o lugar errado, calada.
 
-3. A ponta que a Ventura ocupa vem TRAVADA no CNPJ da conta
-   (08.310.365/0001-24) e não dá para trocar: no CIF é a origem, no FOB é o
-   destino. A Ventura tem três CNPJs — cotação feita com outro sai com o da
-   conta, e quem avisa disso é a tela final.
+3. A ponta que o grupo ocupa vem TRAVADA — no CIF é a origem, no FOB é o
+   destino — e o CEP dela não se digita. O que DÁ para trocar é a empresa:
+   o cartão do Solicitante tem um "Alterar empresa" com as três do grupo.
+   Até 25/08/2026 o robô não mexia nele e toda cotação saía com a da conta;
+   hoje ele escolhe pelo CNPJ do formulário (ver `mapping.empresa_alvo`).
+
+   Daí sai também a recusa por CIF/FOB trocado: marcar CIF com uma empresa
+   do grupo no DESTINO faz as duas pontas virarem a mesma casa. Ver
+   `mapping.conflito_cif_fob`.
 
 4. O campo de peso tem máscara de 2 casas, da direita para a esquerda:
    "1" vira 0.01 e "100" vira 1.00. Sempre 2 casas.
@@ -56,20 +61,33 @@ from carriers.base import (
     CampoSpec, ErroValidacao, Modo, ResultadoCotacao, Severidade, print_seguro,
     CredencialRecusada, erro_do_adapter, recusa_por_validacao,
 )
+from carriers.generoso.mapping import (
+    conflito_cif_fob, empresa_alvo, empresa_de,
+)
 from core.models import CotacaoRequest, StatusCotacao, TipoFrete, limpa_doc
 
 URL = "https://cliente.generoso.com.br/cotacao"
 URL_LOGIN = "https://cliente.generoso.com.br/login"
 
-# O CNPJ da conta. O site TRAVA nele a ponta que a Ventura ocupa e nao
-# deixa trocar — no CIF a origem, no FOB o destino. A Ventura tem tres
-# CNPJs; cotacao feita com outro sai com este, e a tela avisa disso.
+# O CNPJ com que a conta ABRE. Continua sendo a ponta travada quando o
+# formulario nao traz nenhuma das tres empresas do grupo; quando traz, o
+# `_escolher_empresa` troca antes da etapa 1.
 CNPJ_CONTA = "08.310.365/0001-24"
 ESPERA_LOGIN_MS = 30_000
 
 # O CNPJ que da para digitar. Na origem o site trava o da conta
 # (input desabilitado); no destino ele vem vazio e editavel.
 SELETOR_CNPJ_LIVRE = 'input[name="document"]:not([disabled])'
+
+# O menu "Alterar empresa", medido em 25/08/2026 por
+# recon/recon_generoso_empresa.py. E um dropdown do Radix: o menu nao existe
+# no DOM ate o clique, e o `id` do gatilho e gerado por render
+# (radix-_R_6j9qnpfiv9fl97b_), entao nao serve de seletor.
+#
+# O menu tem QUATRO itens; o quarto e "Adicionar empresa". Por isso a escolha
+# e sempre pelo CNPJ dentro do texto do item — nunca por posicao.
+SELETOR_TROCAR_EMPRESA = 'button[data-slot="dropdown-menu-trigger"]'
+SELETOR_ITEM_EMPRESA = '[data-slot="dropdown-menu-item"]'
 
 # As três opções do select, escritas como o site escreve.
 #
@@ -282,8 +300,54 @@ class GenerosoAdapter:
             CampoSpec("Quantidade", True, "text"),
         ]
 
+    def _escolher_empresa(self, page, empresa) -> None:
+        """Deixa `empresa` selecionada no "Alterar empresa". None = não mexe.
+
+        Casa pelo CNPJ dentro do texto do item, nunca pela posição: o quarto
+        item do menu é "Adicionar empresa", que abre cadastro de empresa nova
+        no portal do cliente.
+
+        Não encontrar o CNPJ é motivo para PARAR. Seguir em silêncio cotaria
+        com a empresa errada, e cotação sai com CNPJ no papel — é o tipo de
+        erro que ninguém percebe olhando o preço."""
+        if empresa is None:
+            return
+
+        procurado = limpa_doc(empresa.cnpj)
+        page.locator(SELETOR_TROCAR_EMPRESA).first.click()
+        page.wait_for_timeout(800)
+
+        itens = page.locator(SELETOR_ITEM_EMPRESA)
+        textos = itens.all_inner_texts()
+        for i, texto in enumerate(textos):
+            if procurado not in limpa_doc(texto):
+                continue
+            # A empresa JA selecionada vem desabilitada — nao da para clicar
+            # no que ja esta ativo. Isso e sucesso, nao falha: e o caso mais
+            # comum, porque a conta abre na empresa que cotou por ultimo.
+            if not itens.nth(i).is_enabled():
+                page.keyboard.press("Escape")
+                page.wait_for_timeout(400)
+                return
+            itens.nth(i).click()
+            page.wait_for_timeout(1_200)
+            return
+
+        page.keyboard.press("Escape")       # não deixa o menu aberto por cima
+        raise RuntimeError(
+            f"a empresa {empresa.cnpj} não está no menu 'Alterar empresa' da "
+            f"Generoso. O menu oferece: "
+            + "; ".join(t.replace("\n", " ") for t in textos))
+
     def validar(self, req: CotacaoRequest) -> list[ErroValidacao]:
         erros: list[ErroValidacao] = []
+        # Vem primeiro porque é o único que torna a cotação inteira sem
+        # sentido: os outros erros são campo a campo, este é a DIREÇÃO da
+        # carga. Sem ele o site gastava 40s para travar num `aria-invalid`
+        # que ninguém lê — e a retentativa fazia isso três vezes.
+        conflito = conflito_cif_fob(req)
+        if conflito:
+            erros.append(ErroValidacao("CIF/FOB", conflito))
         if not req.solicitante.whatsapp:
             erros.append(ErroValidacao("whatsapp", "O site exige WhatsApp."))
         v = req.volumes[0]
@@ -608,6 +672,17 @@ class GenerosoAdapter:
                 page.goto(URL, wait_until="domcontentloaded")
                 page.wait_for_selector("select")
                 page.wait_for_timeout(3_000)
+
+                # ------------------------------------- 0. Empresa solicitante
+                # ANTES de qualquer etapa: é o cartão do Solicitante, no topo
+                # da tela, e é ele que decide com QUAL das três empresas do
+                # grupo a cotação sai. Até 25/08/2026 saía sempre com a da
+                # conta, e a tela final do Cotafrete tinha um aviso só para
+                # explicar isso ao vendedor.
+                alvo = empresa_alvo(req)
+                self._escolher_empresa(page, alvo)
+                if alvo is not None:
+                    evidencias += print_seguro(page, run / "etapa0_empresa.png")
 
                 # -------------------------------------------- 1. Tipo pagador
                 page.locator("select:visible").last.select_option(

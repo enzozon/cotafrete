@@ -295,3 +295,53 @@ def test_tela_desconhecida_continua_sendo_erro(adapter):
     res = adapter.normalizar_resposta("Erro 500 Internal Server Error")
 
     assert res.status is StatusCotacao.ERRO
+
+
+# ------------------- CIF/FOB trocado: recusa antes de abrir o navegador
+def test_cif_fob_trocado_vira_recusa_e_nao_abre_navegador():
+    """Cotacoes #5 e #20 de producao, #53 de desenvolvimento.
+
+    Nao e defeito nosso nem carga invalida: o vendedor marcou CIF com uma
+    empresa do grupo no destino. A Generoso trava o endereco dessa ponta no
+    CNPJ cadastrado, as duas pontas viram a mesma casa, e o site recusa por
+    um `aria-invalid` que ninguem le — 40 segundos de navegador para
+    devolver "(nenhuma mensagem visivel)", tres vezes, por causa da
+    retentativa.
+
+    `validar` devolvendo Severidade.ERRO faz `cotar` sair por
+    `recusa_por_validacao` ANTES do `sync_playwright`. RECUSADO tambem nao
+    e repetido pela retentativa, que e o certo: repetir nao muda um engano
+    de preenchimento.
+    """
+    from carriers.base import Severidade
+    from carriers.generoso.adapter import GenerosoAdapter
+    from core.models import Parte, TipoFrete
+    from tests.test_jadlog import montar
+
+    req = montar(tipo_frete=TipoFrete.CIF,
+                 remetente=Parte(cnpj="60.042.686/0001-05"),      # Hercules
+                 destinatario=Parte(cnpj="05.954.058/0001-98"))   # Alianca
+
+    graves = [e for e in GenerosoAdapter().validar(req)
+              if e.severidade is Severidade.ERRO]
+
+    assert len(graves) == 1
+    assert "FOB" in graves[0].mensagem
+    assert "CEP" in graves[0].mensagem
+
+
+def test_cotacao_com_cif_fob_coerente_continua_passando():
+    """A trava nao pode pegar quem preencheu certo."""
+    from carriers.base import Severidade
+    from carriers.generoso.adapter import GenerosoAdapter
+    from core.models import Parte, TipoFrete
+    from tests.test_jadlog import montar
+
+    req = montar(tipo_frete=TipoFrete.FOB,
+                 remetente=Parte(cnpj="60.042.686/0001-05"),
+                 destinatario=Parte(cnpj="05.954.058/0001-98"))
+
+    graves = [e for e in GenerosoAdapter().validar(req)
+              if e.severidade is Severidade.ERRO]
+
+    assert graves == []
