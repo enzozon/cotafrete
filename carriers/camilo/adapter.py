@@ -73,12 +73,23 @@ def ler_resultado(campos: dict[str, str]) -> tuple[Decimal | None, str]:
 
 # O SSW recusa em dois lugares diferentes da tela, e nenhum dos dois é o
 # campo de preço: um popup "Aviso" e um rótulo vermelho ao lado do CEP.
-SELETORES_AVISO = ("#alerta", "div[role='dialog']", ".ui-dialog-content")
+#
+# MEDIDO NO DOM, não deduzido de print (recon/recon_ssw_aviso.py, 25/08/2026).
+# A primeira versão destes seletores saiu de uma IMAGEM — `#alerta`,
+# `div[role=dialog]`, `.ui-dialog-content` — e nenhum dos três existe no SSW.
+# O botão OK casava por texto, então o código fechava o aviso sem conseguir
+# lê-lo: a cotação #20 mostrou "A tela não devolveu valor de frete" enquanto o
+# site dizia, em vermelho, "Cliente não possui tabela de frete negociada".
+#
+# `#errormsglabel` vem primeiro porque é só a frase. `#errormsg` é a caixa
+# inteira, e fica de reserva caso o label mude de nome.
+SELETORES_AVISO = ("#errormsglabel", "#errormsg")
 SELETOR_CEP_RECUSADO = "text=/CEP\\s+INV[ÁA]LIDO|N[ÃA]O\\s+ATENDIDO/i"
 
-# Enfeite do popup que não interessa ao vendedor: o título "Aviso" e a
-# linha do botão ("7. OK"). O que importa é a frase do meio.
-_LIXO_DO_AVISO = ("aviso", "ok")
+# Enfeite da caixa inteira, que só atrapalha quando caímos no `#errormsg`: o
+# título "Aviso", o "×" de fechar, a linha do botão ("7. OK") e um "undefined"
+# solto que o próprio SSW deixa no fim do HTML.
+_LIXO_DO_AVISO = ("aviso", "ok", "undefined", "×")
 
 
 def _texto_do_aviso(page) -> str:
@@ -282,20 +293,33 @@ class CamiloAdapter:
                 problemas.append(f"{nome}: mandei {valor!r}, campo tem {obtido!r}")
         return problemas
 
+    def _ler_e_fotografar(self, page, run: Path) -> tuple[str, list[str]]:
+        """(aviso, evidências) logo depois de clicar em simular.
+
+        A ORDEM é o conteúdo desta função.
+
+        Havendo recusa, a foto sai COM o popup na frente: é a única imagem
+        em que o motivo aparece, e não há preço atrás dele para desobstruir.
+        Foi o que faltou na cotação #20 (25/08/2026) — fotografávamos depois
+        de fechar e sobrava uma tela vazia, com cara de defeito nosso.
+
+        Não havendo recusa, fecha antes: aí sim o popup atrapalharia, porque
+        cobre a coluna do meio da tabela de custos (Frete Valor, Despacho,
+        TDE, Pedágio)."""
+        aviso = _texto_do_aviso(page)
+        if aviso:
+            return aviso, self._print_resultado(page, run / "recusa_do_site.png")
+        self._fechar_aviso(page)
+        return "", self._print_resultado(page, run / "resultado.png")
+
     @staticmethod
-    def _fechar_aviso(page) -> str:
-        """LÊ o aviso e só então fecha. Devolve o texto, ou "" se não havia.
+    def _fechar_aviso(page) -> None:
+        """Tira o popup da frente da foto. Quem LÊ é `_texto_do_aviso`.
 
-        O aviso cobre a coluna do meio da tabela de custos — Frete Valor,
-        Despacho, TDE, Pedágio ficam escondidos atrás dele. Sem fechar, o
-        print sai com um buraco justo na composição do preço.
-
-        Mas fechar SEM LER jogava fora o único lugar em que o SSW diz por
-        que NÃO cotou. "Cliente não possui tabela de frete negociada" foi
-        embora assim na cotação #10 de produção (24/08/2026), e o vendedor
-        recebeu "A tela não devolveu valor de frete" — que parece defeito
-        nosso e não dá a ele nada para fazer."""
-        texto = _texto_do_aviso(page)
+        As duas coisas já moraram aqui juntas, e a leitura era silenciosamente
+        descartada quando o seletor do contêiner não casava — enquanto o
+        clique no OK, que casa por texto, continuava funcionando. O resultado
+        era o pior dos dois mundos: o aviso sumia da tela E do registro."""
         for seletor in ('a:has-text("OK")', 'text=/^\\s*\\d+\\.\\s*OK\\s*$/'):
             try:
                 alvo = page.locator(seletor).first
@@ -305,7 +329,6 @@ class CamiloAdapter:
                     break
             except Exception:
                 continue
-        return texto
 
     def _print_resultado(self, page, destino: Path) -> list[str]:
         """Recorta a área útil: do topo até o valor do frete.
@@ -407,10 +430,8 @@ class CamiloAdapter:
 
                 page.locator('a[id="lnk_simula"]').first.click()
                 page.wait_for_timeout(6_000)
-                # A ordem importa: ler o aviso ANTES do print, porque
-                # _fechar_aviso tira ele da frente para a foto sair inteira.
-                aviso = self._fechar_aviso(page)
-                evidencias += self._print_resultado(page, run / "resultado.png")
+                aviso, fotos = self._ler_e_fotografar(page, run)
+                evidencias += fotos
 
                 lidos = {
                     n: page.locator(f'input[name="{n}"]').first.input_value()

@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8">
+<title>SSW 1608 - aviso de recusa (fixture)</title></head>
+<body>
+<!--
+  DOM real do SSW (sistema.ssw.inf.br/bin/ssw1608), capturado em 25/08/2026
+  por recon/recon_ssw_aviso.py reproduzindo a cotacao #20 de producao.
+
+  A casca `#errorpanel` + `#errormsg` ja vem na pagina, ESCONDIDA por
+  visibility:hidden. Quando o site recusa, o JS troca o innerHTML e liga a
+  visibilidade. `mostrarAviso()` faz exatamente isso.
+
+  O que este arquivo prova, e que um print nao provava: os seletores
+  `#alerta`, `div[role=dialog]` e `.ui-dialog-content` NAO EXISTEM aqui.
+-->
+<div id="errorpanel" style="text-align:left;overflow:visible;left:0px;top:0px;height:10px;width:10px;background:white;opacity:0.5;visibility:hidden;z-index:1147483607;">
+</div>
+<div id="errormsg" style="text-align:left;overflow:visible;left:185px;top:100px;height:120px;width:400px;
+visibility:hidden;z-index:1147483648;">
+&nbsp;
+</div>
+
+<script>
+// Reproduz o que o SSW faz ao recusar: troca o conteudo e mostra a caixa.
+function mostrarAviso() {
+  var caixa = document.getElementById('errormsg');
+  caixa.innerHTML = "<div id=\"scontentbar\" style=\"text-align: right; width: 415px;\"><label style=\"left:16px;top:6px;color:white;\" class=\"texto\">Aviso</label><a href=\"#\" onclick=\"ccx();showmsgonclick();return false;\" style=\"position:relative;font-size:18px;color:white;text-decoration:none;\" class=\"texto\">&nbsp;<b>×</b>&nbsp;</a></div><div class=\"texto\" id=\"errormsglabel\" style=\"color:red;left:16px;top:32px;text-align:left;overflow:visible\"><b>Cliente não possui tabela de frete negociada.Cotação não permitida.</b></div><a id=\"0\" onfocus=\"obj=this;\" accesskey=\"&amp;\" ak=\"7\" class=\"dialog\" onclick=\"showmsgonclick();return false;\" style=\"top:64px;left:16px;\" href=\"#\">7. OK</a>undefined";
+  caixa.style.visibility = 'visible';
+  document.getElementById('errorpanel').style.visibility = 'visible';
+}
+// Fechar pelo "7. OK" — o site chama showmsgonclick().
+function showmsgonclick() {
+  document.getElementById('errormsg').style.visibility = 'hidden';
+  document.getElementById('errorpanel').style.visibility = 'hidden';
+  return false;
+}
+function ccx() { return false; }
+</script>
+</body></html>
