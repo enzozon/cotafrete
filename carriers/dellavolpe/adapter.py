@@ -27,6 +27,31 @@ from core.models import CotacaoRequest, StatusCotacao
 
 URL_PRODUCAO = "https://dellavolpe.com.br/#cotacao"
 
+# Janela HEADED, mas longe do monitor.
+#
+# Headed é obrigatório: medido em 13/08/2026, cinco envios com Chromium
+# headless viraram "A submissão mencionou-se como spam" no Contact Form 7 e
+# NENHUM e-mail foi gerado. Com janela de verdade o mesmo envio passa.
+#
+# O que o reCAPTCHA v3 lê é a impressão digital do NAVEGADOR, não onde a
+# janela está. Comparadas quatro configurações em 25/08/2026 contra página em
+# branco, a janela fora da tela saiu IDÊNTICA à janela normal nos 14 sinais
+# — inclusive `hasFocus`, `visibilityState`, contagem de plugins, presença de
+# `window.chrome` e o renderizador WebGL real da Intel. O headless antigo
+# denuncia-se em seis, entre eles o User-Agent, que diz "HeadlessChrome".
+#
+# -3000 é maior que qualquer monitor comum, então a janela inteira fica fora.
+# Medido: `screenX` volta -3000 e o Windows NÃO puxa a janela de volta.
+ARGS_FORA_DA_TELA = ("--window-position=-3000,-3000",)
+
+
+def argumentos_do_navegador(headless: bool,
+                            mostrar_janela: bool = False) -> list[str]:
+    """Argumentos do Chromium. Esconder só faz sentido se houver janela."""
+    if headless or mostrar_janela:
+        return []
+    return list(ARGS_FORA_DA_TELA)
+
 # Só DESAFIO conta como bloqueio. O reCAPTCHA v3 do site entrega um badge
 # VISÍVEL de 256x60 (div.grecaptcha-badge + iframe api2/anchor?...size=invisible)
 # em toda página — é selo, não interrogatório. Medido no site em produção.
@@ -218,12 +243,17 @@ class DellavolpeAdapter:
     sla_esperado_min: int | None = m.SLA_ESPERADO_MIN
 
     def __init__(self, base_url: str | None = None, headless: bool = True,
-                 timeout_ms: int = 45_000, workdir: str = "runs") -> None:
+                 timeout_ms: int = 45_000, workdir: str = "runs",
+                 mostrar_janela: bool = False) -> None:
         self.base_url = base_url or os.getenv("ADAPTER_BASE_URL") or URL_PRODUCAO
         self.headless = headless
         self.timeout_ms = timeout_ms
         self.workdir = Path(workdir)
         self.is_mock = "localhost" in self.base_url or "127.0.0.1" in self.base_url
+        # Envio real exige janela de verdade (ver `cotar`), e janela de verdade
+        # aparecia no monitor de quem estava trabalhando. Ligue isto quando
+        # precisar VER o que o site está fazendo.
+        self.mostrar_janela = mostrar_janela
 
     # ------------------------------------------------ delegações à camada pura
     def campos_obrigatorios(self, req: CotacaoRequest) -> list[CampoSpec]:
@@ -274,7 +304,10 @@ class DellavolpeAdapter:
             campos.pop("Anexar Planilha", None)
 
         with sync_playwright() as p:
-            browser = p.chromium.launch(headless=headless_efetivo)
+            browser = p.chromium.launch(
+                headless=headless_efetivo,
+                args=argumentos_do_navegador(headless_efetivo,
+                                             self.mostrar_janela))
             # Janela ALTA de proposito: o modal de cotacao rola por dentro,
             # e o que fica fora da area visivel dele nao entra em screenshot
             # nenhum. Com 2600px de altura o formulario inteiro cabe sem
