@@ -97,9 +97,9 @@ def test_recusa_e_fotografada_antes_de_fechar(page, tmp_path):
     from carriers.camilo.adapter import CamiloAdapter
 
     page.evaluate("mostrarAviso()")
-    aviso, evidencias = CamiloAdapter()._ler_e_fotografar(page, tmp_path)
+    lidos, evidencias = CamiloAdapter()._ler_e_fotografar(page, tmp_path)
 
-    assert aviso == FRASE
+    assert lidos["aviso"] == FRASE
     assert [Path(x).name for x in evidencias] == ["recusa_do_site.png"]
     assert page.locator("#errormsg").is_visible(), \
         "o popup precisa continuar na tela — e a prova de que a foto o pegou"
@@ -109,7 +109,84 @@ def test_sem_recusa_a_foto_continua_sendo_a_do_resultado(page, tmp_path):
     """Cotacao que deu certo nao muda de nome de arquivo nem de comportamento."""
     from carriers.camilo.adapter import CamiloAdapter
 
-    aviso, evidencias = CamiloAdapter()._ler_e_fotografar(page, tmp_path)
+    lidos, evidencias = CamiloAdapter()._ler_e_fotografar(page, tmp_path)
 
-    assert aviso == ""
+    assert lidos["aviso"] == ""
+    assert [Path(x).name for x in evidencias] == ["resultado.png"]
+
+
+# --------------- o popup do SSW tambem diz que deu CERTO
+def test_popup_de_sucesso_nao_e_recusa():
+    """Cotacoes #27, #28 e #29 de producao (25/08/2026).
+
+    A Camilo devolveu preco 117,91 com protocolo E abriu "Operacao realizada
+    com sucesso" na mesma caixa `#errormsg` que usa para recusar. Como eu
+    decidia "e recusa" pela PRESENCA do popup, a foto saiu com ele tapando a
+    composicao do preco — Frete Valor, Despacho, TDE, Pedagio e a Cubagem
+    ficaram escondidos — e ainda foi salva como `recusa_do_site.png`.
+
+    O preco nunca se perdeu (`normalizar_resposta` so olha o aviso quando
+    valor e None), mas a evidencia que chega ao vendedor e ao cliente saia
+    inutilizada."""
+    from carriers.camilo.adapter import e_recusa
+
+    assert e_recusa("Cliente não possui tabela de frete negociada.") is True
+    assert e_recusa("Operação realizada com sucesso") is False
+    assert e_recusa("OPERAÇÃO REALIZADA COM SUCESSO") is False
+    assert e_recusa("") is False
+    assert e_recusa(None) is False
+
+
+def test_com_preco_a_foto_e_a_da_tela_limpa(page, tmp_path):
+    """Deu certo: o popup sai da frente antes da foto, e o arquivo volta a
+    se chamar resultado.png."""
+    from carriers.camilo.adapter import CamiloAdapter
+
+    page.evaluate("preencherPreco()")
+    page.evaluate("mostrarSucesso()")
+    lidos, evidencias = CamiloAdapter()._ler_e_fotografar(page, tmp_path)
+
+    assert [Path(x).name for x in evidencias] == ["resultado.png"]
+    assert lidos["vlr_frete"] == "117,91"
+    assert lidos["nro_cotacao"] == "2812827"
+    assert lidos["aviso"] == "", "sucesso nao pode virar motivo de recusa"
+
+
+def test_preco_com_popup_de_recusa_ainda_e_cotacao(page, tmp_path):
+    """A trava do meio: havendo preco, popup nenhum transforma em recusa."""
+    from carriers.camilo.adapter import CamiloAdapter
+    from core.models import StatusCotacao
+
+    page.evaluate("preencherPreco()")
+    page.evaluate("mostrarAviso()")
+    lidos, evidencias = CamiloAdapter()._ler_e_fotografar(page, tmp_path)
+
+    assert [Path(x).name for x in evidencias] == ["resultado.png"]
+    assert CamiloAdapter().normalizar_resposta(lidos).status \
+        is StatusCotacao.COTADO
+
+
+def test_sem_preco_e_com_recusa_continua_fotografando_o_popup(page, tmp_path):
+    """O caso da #20 nao pode ter regredido."""
+    from carriers.camilo.adapter import CamiloAdapter
+
+    page.evaluate("mostrarAviso()")
+    lidos, evidencias = CamiloAdapter()._ler_e_fotografar(page, tmp_path)
+
+    assert [Path(x).name for x in evidencias] == ["recusa_do_site.png"]
+    assert "tabela de frete negociada" in lidos["aviso"]
+    assert page.locator("#errormsg").is_visible()
+
+
+def test_sem_preco_e_com_popup_de_sucesso_nao_inventa_recusa(page, tmp_path):
+    """A corrida: o popup aparece antes de o campo de preco encher.
+
+    Sem esta guarda o vendedor leria "A Camilo nao cotou: Operacao realizada
+    com sucesso", que nao quer dizer nada."""
+    from carriers.camilo.adapter import CamiloAdapter
+
+    page.evaluate("mostrarSucesso()")
+    lidos, evidencias = CamiloAdapter()._ler_e_fotografar(page, tmp_path)
+
+    assert lidos["aviso"] == ""
     assert [Path(x).name for x in evidencias] == ["resultado.png"]

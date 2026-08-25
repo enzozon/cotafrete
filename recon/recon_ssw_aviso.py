@@ -130,6 +130,7 @@ def main() -> int:
     print(f'status  : {res.status.value}')
     print(f'erro    : {res.erro}')
     print(f'recusa  : {res.motivo_recusa}')
+    print(f'valor   : {res.valor_frete}')
     print()
     for sel in CANDIDATOS:
         d = capturado.get(sel, {})

@@ -13,6 +13,14 @@
   O que este arquivo prova, e que um print nao provava: os seletores
   `#alerta`, `div[role=dialog]` e `.ui-dialog-content` NAO EXISTEM aqui.
 -->
+<!--
+  Os dois campos que o adapter le depois de simular. Estao aqui porque a
+  decisao "recusa ou sucesso" depende deles: o SSW usa a MESMA caixa
+  (#errormsg) para as duas coisas, entao o popup sozinho nao decide nada.
+-->
+<label>Valor do frete <input name="vlr_frete" value=""></label>
+<label>Numero da cotacao <input name="nro_cotacao" value=""></label>
+
 <div id="errorpanel" style="text-align:left;overflow:visible;left:0px;top:0px;height:10px;width:10px;background:white;opacity:0.5;visibility:hidden;z-index:1147483607;">
 </div>
 <div id="errormsg" style="text-align:left;overflow:visible;left:185px;top:100px;height:120px;width:400px;
@@ -35,5 +43,18 @@ function showmsgonclick() {
   return false;
 }
 function ccx() { return false; }
+// O MESMO popup, com a frase de sucesso. Medido na cotacao #27 de producao
+// (25/08/2026): a Camilo devolveu preco 117,91 E abriu "Operacao realizada
+// com sucesso" por cima da composicao. So a frase muda; a caixa e a mesma,
+// porque e a mesma funcao de alerta do SSW.
+function mostrarSucesso() {
+  mostrarAviso();
+  document.getElementById('errormsglabel').innerHTML =
+      '<b>Operacao realizada com sucesso</b>';
+}
+function preencherPreco() {
+  document.querySelector('input[name="vlr_frete"]').value = '117,91';
+  document.querySelector('input[name="nro_cotacao"]').value = '2812827';
+}
 </script>
 </body></html>

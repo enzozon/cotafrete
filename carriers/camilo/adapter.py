@@ -91,6 +91,23 @@ SELETOR_CEP_RECUSADO = "text=/CEP\\s+INV[ÁA]LIDO|N[ÃA]O\\s+ATENDIDO/i"
 # solto que o próprio SSW deixa no fim do HTML.
 _LIXO_DO_AVISO = ("aviso", "ok", "undefined", "×")
 
+# O SSW usa a MESMA caixa para dizer que deu CERTO. Cotações #27, #28 e #29
+# de produção (25/08/2026) voltaram com preço 117,91 e protocolo, e com
+# "Operação realizada com sucesso" por cima da composição do preço.
+FRASES_DE_SUCESSO = ("operacao realizada com sucesso",
+                     "operação realizada com sucesso")
+
+
+def e_recusa(aviso: str | None) -> bool:
+    """O popup é recusa, ou só o site avisando que deu certo?
+
+    Existe porque a PRESENÇA do popup não decide nada: `#errormsg` é a caixa
+    de aviso genérica do SSW. Tratar toda caixa como recusa fez a foto do
+    resultado sair com o popup tapando Frete Valor, Despacho, TDE, Pedágio e
+    a Cubagem — e ainda salva com nome de recusa."""
+    t = (aviso or "").strip().lower()
+    return bool(t) and not any(f in t for f in FRASES_DE_SUCESSO)
+
 
 def _texto_do_aviso(page) -> str:
     """A frase do popup, sem o título e sem o botão. "" se não houver popup.
@@ -293,24 +310,44 @@ class CamiloAdapter:
                 problemas.append(f"{nome}: mandei {valor!r}, campo tem {obtido!r}")
         return problemas
 
-    def _ler_e_fotografar(self, page, run: Path) -> tuple[str, list[str]]:
-        """(aviso, evidências) logo depois de clicar em simular.
+    def _ler_e_fotografar(self, page, run: Path) -> tuple[dict, list[str]]:
+        """(campos lidos, evidências) logo depois de clicar em simular.
 
-        A ORDEM é o conteúdo desta função.
+        Quem manda é o PREÇO, não o popup. `#errormsg` é a caixa de aviso
+        genérica do SSW: serve tanto para "Cliente não possui tabela de frete
+        negociada" quanto para "Operação realizada com sucesso".
 
-        Havendo recusa, a foto sai COM o popup na frente: é a única imagem
-        em que o motivo aparece, e não há preço atrás dele para desobstruir.
-        Foi o que faltou na cotação #20 (25/08/2026) — fotografávamos depois
-        de fechar e sobrava uma tela vazia, com cara de defeito nosso.
+        Sem preço e com recusa  -> foto COM o popup. É a única imagem em que
+            o motivo aparece, e não há preço atrás dele para desobstruir. Foi
+            o que faltou na cotação #20: fotografávamos depois de fechar e
+            sobrava uma tela vazia, com cara de defeito nosso.
 
-        Não havendo recusa, fecha antes: aí sim o popup atrapalharia, porque
-        cobre a coluna do meio da tabela de custos (Frete Valor, Despacho,
-        TDE, Pedágio)."""
+        Nos demais casos       -> fecha e fotografa a tela limpa. O popup
+            cobre a coluna do meio da tabela de custos (Frete Valor,
+            Despacho, TDE, Pedágio) e a Cubagem — foi o que estragou as fotos
+            das cotações #27, #28 e #29, todas com preço."""
+        lidos = {
+            n: page.locator(f'input[name="{n}"]').first.input_value()
+            for n in ("vlr_frete", "nro_cotacao")
+            if page.locator(f'input[name="{n}"]').count()
+        }
         aviso = _texto_do_aviso(page)
-        if aviso:
-            return aviso, self._print_resultado(page, run / "recusa_do_site.png")
+        tem_preco = bool((lidos.get("vlr_frete") or "").strip())
+
+        if not tem_preco and e_recusa(aviso):
+            lidos["aviso"] = aviso
+            return lidos, self._print_resultado(
+                page, run / "recusa_do_site.png")
+
+        # Havendo preço não há o que explicar, e aviso de sucesso não pode
+        # virar motivo de recusa — sem isto o vendedor leria "A Camilo não
+        # cotou: Operação realizada com sucesso".
+        #
+        # Sem preço e sem popup de recusa ainda resta o rótulo vermelho ao
+        # lado do CEP, que é o outro lugar em que o SSW diz não.
+        lidos["aviso"] = "" if tem_preco else _cep_recusado(page)
         self._fechar_aviso(page)
-        return "", self._print_resultado(page, run / "resultado.png")
+        return lidos, self._print_resultado(page, run / "resultado.png")
 
     @staticmethod
     def _fechar_aviso(page) -> None:
@@ -430,18 +467,11 @@ class CamiloAdapter:
 
                 page.locator('a[id="lnk_simula"]').first.click()
                 page.wait_for_timeout(6_000)
-                aviso, fotos = self._ler_e_fotografar(page, run)
+                # Ler e fotografar moram juntos porque a foto depende do que
+                # foi lido: com preço, a tela limpa; sem preço e com recusa,
+                # a tela com o popup.
+                lidos, fotos = self._ler_e_fotografar(page, run)
                 evidencias += fotos
-
-                lidos = {
-                    n: page.locator(f'input[name="{n}"]').first.input_value()
-                    for n in ("vlr_frete", "nro_cotacao")
-                    if page.locator(f'input[name="{n}"]').count()
-                }
-                # O rótulo do CEP só é consultado se não houve popup: os dois
-                # dizem a mesma coisa quando aparecem juntos, e a frase do
-                # popup é a mais completa.
-                lidos["aviso"] = aviso or _cep_recusado(page)
                 res = self.normalizar_resposta(lidos)
                 res.enviado_em = enviado
                 res.respondido_em = datetime.now()
