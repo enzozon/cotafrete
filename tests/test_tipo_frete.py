@@ -211,31 +211,32 @@ def test_generoso_digita_o_destinatario_no_cif_e_o_remetente_no_fob():
     assert fob == ("11.222.333/0001-81", None)     # so a origem
 
 
-def test_cartao_da_generoso_avisa_quando_o_cnpj_e_outro(app_web, cliente):
-    """O preco veio para o CNPJ da conta, nao para o que o vendedor digitou.
-    Sem o aviso ele passa esse numero para um cliente de outra empresa."""
+def test_a_empresa_do_portal_sai_do_cnpj_do_formulario(app_web, cliente):
+    """Substitui o aviso que morava aqui ate 25/08/2026.
+
+    Ate aquele dia o cartao dizia "Cotada com o CNPJ 08.310.365/0001-24 — nao
+    da para trocar", porque o robo nunca mexia no "Alterar empresa" do portal
+    e toda cotacao saia com a empresa da conta. O aviso estava CERTO e era
+    necessario: sem ele o vendedor passava a um cliente de uma empresa um
+    preco cotado por outra.
+
+    Agora o robo troca a empresa, entao o aviso virou mentira — e aviso falso
+    e pior que nenhum, porque ensina a desconfiar de um numero que passou a
+    estar certo. O que sobra para provar e a escolha em si.
+    """
     from carriers.base import ResultadoCotacao
-    from core.models import StatusCotacao
+    from carriers.generoso.mapping import empresa_alvo
+    from core.models import Parte, StatusCotacao
 
-    cid = app_web.banco.salvar_cotacao("enzo", {**CARGA, "tipo_frete": "cif"})
-    app_web._rodar(cid, "generoso",
-                   lambda _: ResultadoCotacao("generoso", StatusCotacao.COTADO,
-                                              valor_frete=Decimal("421.94")),
-                   None)
-
-    texto = _sem_tags(cliente.get(f"/cotacao/{cid}").text)
-
-    assert "08.310.365/0001-24" in texto
-    assert CARGA["cnpj_remetente"] in texto
-
-
-def test_sem_aviso_quando_o_remetente_ja_e_o_cnpj_da_conta(app_web, cliente):
-    from carriers.base import ResultadoCotacao
-    from core.models import StatusCotacao
+    # CIF: quem despacha e a UNIAO, que nao e a empresa da conta.
+    req = montar(tipo_frete=TipoFrete.CIF,
+                 remetente=Parte(cnpj="20.837.281/0001-49"),
+                 destinatario=Parte(cnpj=CNPJ_B))
+    assert empresa_alvo(req).cnpj == "20.837.281/0001-49"
 
     cid = app_web.banco.salvar_cotacao("enzo", {
         **CARGA, "tipo_frete": "cif",
-        "cnpj_remetente": "08.310.365/0001-24"})
+        "cnpj_remetente": "20.837.281/0001-49"})
     app_web._rodar(cid, "generoso",
                    lambda _: ResultadoCotacao("generoso", StatusCotacao.COTADO,
                                               valor_frete=Decimal("421.94")),
@@ -243,4 +244,5 @@ def test_sem_aviso_quando_o_remetente_ja_e_o_cnpj_da_conta(app_web, cliente):
 
     texto = _sem_tags(cliente.get(f"/cotacao/{cid}").text)
 
-    assert "Você digitou" not in texto
+    assert "não dá para trocar" not in texto
+    assert "08.310.365/0001-24" not in texto

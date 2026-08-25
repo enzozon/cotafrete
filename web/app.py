@@ -42,7 +42,6 @@ from fastapi.staticfiles import StaticFiles
 load_dotenv(override=False)
 
 from carriers.camilo.adapter import CamiloAdapter
-from carriers.generoso.adapter import CNPJ_CONTA as CNPJ_CONTA_GENEROSO
 from carriers.generoso.adapter import GenerosoAdapter
 from carriers.jadlog.painel import JadlogPainelAdapter
 from carriers.translovato.adapter import TranslovatoAdapter
@@ -154,8 +153,8 @@ NOTAS = {
     "camilo": "Frete fracionado, com coleta. Preço já com taxas e ICMS.",
     "jadlog": "Etiqueta pré-paga, cotada por volume. Você leva ao balcão.",
     "translovato": "Frete fracionado, com coleta. Só atende parte do país — fora da malha ela avisa.",
-    "generoso": (f"Frete fracionado, com coleta. Cotada logada na conta "
-                 f"da Ventura, CNPJ {CNPJ_CONTA_GENEROSO}."),
+    "generoso": ("Frete fracionado, com coleta. Cotada com a empresa do "
+                 "grupo que você informou no formulário."),
 }
 
 # A calculadora da Jadlog cota UM pacote por vez (carriers/jadlog/painel.py).
@@ -1042,26 +1041,6 @@ def mensagem_whatsapp(c: dict) -> str:
     ])
 
 
-def aviso_cnpj_generoso(c: dict) -> str:
-    """A Generoso cota LOGADA, e o site trava no CNPJ da conta a ponta
-    que a Ventura ocupa: a origem no CIF, o destino no FOB.
-
-    Se o vendedor digitou outro CNPJ, o preço que voltou é o da conta —
-    e sem este aviso ele passa esse número para um cliente de outra
-    empresa, achando que cotou pela empresa que digitou. A Ventura tem
-    três CNPJs, e só um deles é a conta da Generoso."""
-    fob = (c.get("tipo_frete") or "cif") == "fob"
-    ponta = "destinatário" if fob else "remetente"
-    digitado = c.get("cnpj_destinatario" if fob else "cnpj_remetente") or ""
-    if limpa_doc(digitado) == limpa_doc(CNPJ_CONTA_GENEROSO):
-        return ""
-    return (f'<div class="alerta"><b>Cotada com o CNPJ '
-            f'{e(CNPJ_CONTA_GENEROSO)}.</b> A Generoso cota logada na '
-            f'conta da Ventura e trava o {ponta} nesse CNPJ — não dá '
-            f'para trocar. Você digitou {e(digitado)}, então o preço '
-            f'acima é o da conta, não o desse CNPJ.</div>')
-
-
 def cota_por_volume(slug: str, quantidade: int) -> bool:
     """A transportadora cotou UM volume e a carga tem mais de um?
 
@@ -1241,8 +1220,6 @@ def ver_cotacao(cotacao_id: int,
                     f'carga.</b> São {qtd} volumes: por estimativa, '
                     f'{moeda(r["valor"] * qtd)} no total. Por isso ela não '
                     f'disputa o selo de mais barato.</div>')
-            if slug == "generoso":
-                corpo += aviso_cnpj_generoso(c)
             corpo += f'<div class="nota">{e(NOTAS.get(slug, ""))}</div>'
             if r["protocolo"]:
                 corpo += (f'<div class="nota">Cotação nº '

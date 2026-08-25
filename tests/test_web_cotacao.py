@@ -778,3 +778,29 @@ def test_recusa_nao_e_apresentada_como_defeito_do_programa(app_web, cliente):
 
     assert "Não retornou preço" not in html
     assert "tabela de frete negociada" in html
+
+
+def test_a_tela_nao_promete_mais_um_cnpj_fixo_na_generoso(app_web, cliente):
+    """Ate 25/08/2026 o robo nao mexia no "Alterar empresa" e TODA cotacao
+    da Generoso saia com o CNPJ da conta. A tela avisava disso, para o
+    vendedor nao passar ao cliente um preco cotado por outra empresa.
+
+    Agora o robo troca a empresa conforme o CNPJ do formulario
+    (carriers/generoso/mapping.empresa_alvo), entao o aviso passou a ser
+    FALSO — e aviso falso e pior que nenhum: ensina a desconfiar de um
+    numero que agora esta certo.
+    """
+    from decimal import Decimal
+
+    cotacao_id = _criar(app_web)
+    with app_web.banco._conectar() as con:
+        con.execute("UPDATE cotacao SET cnpj_remetente = ?, tipo_frete = 'cif'"
+                    " WHERE id = ?", ("20.837.281/0001-49", cotacao_id))
+    app_web.banco.salvar_resultado(cotacao_id, "generoso", status="cotado",
+                                   valor=Decimal("350.66"))
+
+    html = cliente.get(f"/cotacao/{cotacao_id}").text
+
+    assert "não dá para trocar" not in html
+    assert "Cotada com o CNPJ" not in html
+    assert "08.310.365/0001-24" not in html
