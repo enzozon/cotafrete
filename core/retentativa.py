@@ -67,6 +67,23 @@ ESPERA_MAXIMA_S = 300
 # e site nenhum gosta de mais que isso.
 TENTATIVAS_MAXIMAS = 3
 
+# Quem NÃO pode ser repetida, por slug.
+#
+# A regra normal ("repete quando o status é ERRO") supõe que uma tentativa a
+# mais não custa nada além de uma vaga de navegador. Isso vale para as quatro
+# primeiras: todas são auto-serviço, e repetir só refaz uma consulta.
+#
+# A Della Volpe não. Cada submissão do formulário público dela vira uma
+# cotação na fila de um vendedor DE VERDADE — e `normalizar_resposta` devolve
+# ERRO justamente no caso em que o site ACEITOU o envio e quem falhou foi a
+# nossa leitura da confirmação. Repetir ali coloca a segunda cotação na mesa
+# de uma pessoa, por um único clique do vendedor da Ventura.
+#
+# Nominal e não uma regra geral porque a repetição já salvou cotações reais
+# (a Translovato na rodada de 24/08/2026): desligá-la por tabela custaria
+# preço de verdade.
+SEM_REPETICAO = frozenset({"dellavolpe"})
+
 # Respirar entre as tentativas. Fica FORA da vaga de navegador de propósito:
 # dormir segurando a vaga faria as outras transportadoras esperarem por nada.
 PAUSA_ENTRE_TENTATIVAS_S = 5
@@ -99,6 +116,7 @@ def cotar_com_retentativa(
     *,
     inicio: float | None = None,
     ao_tentar: Callable[[int], None] | None = None,
+    repetir: bool = True,
 ) -> ResultadoCotacao:
     """Roda a transportadora, repetindo enquanto o erro for 'não sabemos'.
 
@@ -112,10 +130,16 @@ def cotar_com_retentativa(
     A exceção da última tentativa ESCAPA de propósito: quem chama precisa
     dela para gravar o cartão vermelho. Engolir aqui deixaria o cartão
     girando para sempre.
+
+    `repetir=False` roda UMA vez e entrega o que vier — é para quem está em
+    SEM_REPETICAO, onde uma segunda tentativa custa o tempo de uma pessoa e
+    não uma vaga de navegador.
     """
     inicio = time.monotonic() if inicio is None else inicio
 
-    for tentativa in range(1, TENTATIVAS_MAXIMAS + 1):
+    maximo = TENTATIVAS_MAXIMAS if repetir else 1
+
+    for tentativa in range(1, maximo + 1):
         if ao_tentar is not None:
             ao_tentar(tentativa)
 
@@ -126,16 +150,16 @@ def cotar_com_retentativa(
             with VAGA_NAVEGADOR:
                 res = cotar_fn(req)
         except Exception:
-            if tentativa == TENTATIVAS_MAXIMAS or not _cabe_outra(
+            if tentativa == maximo or not _cabe_outra(
                     inicio, time.monotonic() - comecou):
                 raise
         else:
-            if (not vale_repetir(res) or tentativa == TENTATIVAS_MAXIMAS
+            if (not vale_repetir(res) or tentativa == maximo
                     or not _cabe_outra(inicio, time.monotonic() - comecou)):
                 return res
 
         time.sleep(PAUSA_ENTRE_TENTATIVAS_S)
 
-    # Inalcançável: na volta TENTATIVAS_MAXIMAS, `ultima` é sempre True e o
-    # laço sai por `return` ou por `raise`.
+    # Inalcançável: na volta `maximo`, `ultima` é sempre True e o laço sai
+    # por `return` ou por `raise`.
     raise AssertionError("laço de retentativa terminou sem resultado")

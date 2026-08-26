@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import base64
 import html
+import os
 from concurrent.futures import ThreadPoolExecutor
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from datetime import datetime
@@ -42,6 +43,7 @@ from fastapi.staticfiles import StaticFiles
 load_dotenv(override=False)
 
 from carriers.camilo.adapter import CamiloAdapter
+from carriers.dellavolpe.adapter import DellavolpeAdapter
 from carriers.generoso.adapter import GenerosoAdapter
 from carriers.jadlog.painel import JadlogPainelAdapter
 from carriers.translovato.adapter import TranslovatoAdapter
@@ -50,7 +52,7 @@ from core import cnpj as buscador_cnpj
 from core import selecao
 from core.banco import Banco
 from core.retentativa import (
-    ESPERA_MAXIMA_S, TENTATIVAS_MAXIMAS, cotar_com_retentativa,
+    ESPERA_MAXIMA_S, SEM_REPETICAO, TENTATIVAS_MAXIMAS, cotar_com_retentativa,
 )
 from web import transportadoras
 from core.models import (
@@ -60,12 +62,6 @@ from core.models import (
 
 app = FastAPI(title="Cotafrete — Ventura")
 banco = Banco()
-
-# Sobrevive à requisição de propósito: o /cotar dispara as transportadoras e
-# devolve a tela na hora; cada uma grava o próprio resultado quando termina.
-# Sem isso o usuário encara 2 minutos de tela branca para ver a Jadlog, que
-# responde em 15 segundos.
-EXECUTOR = ThreadPoolExecutor(max_workers=4, thread_name_prefix="cotacao")
 
 # Quantas transportadoras rodam juntas, quantas vezes se tenta de novo e por
 # quanto tempo: tudo em core/retentativa.py, porque as três decisões dependem
@@ -104,13 +100,28 @@ MEDIDA_MINIMA_CM = Decimal("1")
 
 # Quem roda automaticamente. A tela usa para saber quantos resultados esperar
 # e decidir se ainda esta cotando.
-AUTOMATICAS = ("camilo", "jadlog", "translovato", "generoso")
+AUTOMATICAS = ("camilo", "jadlog", "translovato", "generoso",
+               "dellavolpe")
 
 # As 17 DISTINTAS. A Translovato conta uma vez so: ela e automatica E tem
 # WhatsApp. dict.fromkeys em vez de set para a ordem nao mudar a cada
 # reinicio do servidor — tela que troca de ordem sozinha confunde quem usa.
 TODAS_AS_SLUGS = tuple(dict.fromkeys(
     [*AUTOMATICAS, *(r.slug for r in transportadoras.com_whatsapp())]))
+
+
+# Sobrevive à requisição de propósito: o /cotar dispara as transportadoras e
+# devolve a tela na hora; cada uma grava o próprio resultado quando termina.
+# Sem isso o usuário encara 2 minutos de tela branca para ver a Jadlog, que
+# responde em 15 segundos.
+#
+# Uma vaga por automática, derivado e não fixo. Estava em 4 quando entrou a
+# quinta: a última da lista — a Della Volpe — deixava de ser ACEITA e ficava
+# esperando thread livre em vez de esperar vaga de navegador. Quem limita o
+# peso na máquina é o semáforo NAVEGADORES_SIMULTANEOS, em core/retentativa.py;
+# o executor só precisa caber todo mundo.
+EXECUTOR = ThreadPoolExecutor(max_workers=len(AUTOMATICAS),
+                              thread_name_prefix="cotacao")
 
 
 def automaticas_da(escolhidas: str | None) -> tuple[str, ...]:
@@ -134,6 +145,21 @@ if _orfas:
     print(f"[cotafrete] {_orfas} cotação(ões) pendente(s) marcadas como "
           f"interrompidas — o sistema foi fechado durante elas.")
 
+# A Della Volpe é a única automática que envia um formulário PÚBLICO: cada
+# submissão vira uma cotação na fila de um vendedor da transportadora. Por
+# isso o adapter exige DV_ENVIO_REAL_AUTORIZADO=sim e, sem a variável, recusa
+# o envio — o que é o comportamento certo, mas em silêncio vira um cartão
+# vermelho com texto de programador em TODA cotação.
+#
+# Este aviso existe para a variável faltando ser vista aqui, na subida, e não
+# descoberta pelo vendedor no meio de uma cotação.
+if "dellavolpe" in AUTOMATICAS and os.getenv("DV_ENVIO_REAL_AUTORIZADO") != "sim":
+    print("[cotafrete] AVISO: a Della Volpe está ligada mas o envio real "
+          "está travado.")
+    print("            Nenhuma cotação vai chegar nela até a linha")
+    print("            DV_ENVIO_REAL_AUTORIZADO=sim entrar no .env "
+          "desta pasta.")
+
 # Logo das automaticas. As de WhatsApp trazem a sua do cadastro
 # (web/transportadoras.py); estas quatro nao passam por la.
 #
@@ -148,14 +174,29 @@ LOGOS_AUTOMATICAS = {
 }
 
 NOMES = {"camilo": "Camilo dos Santos", "jadlog": "Jadlog Entregas",
-         "translovato": "Translovato", "generoso": "Transporte Generoso"}
+         "translovato": "Translovato", "generoso": "Transporte Generoso",
+         "dellavolpe": "Della Volpe"}
 NOTAS = {
     "camilo": "Frete fracionado, com coleta. Preço já com taxas e ICMS.",
     "jadlog": "Etiqueta pré-paga, cotada por volume. Você leva ao balcão.",
     "translovato": "Frete fracionado, com coleta. Só atende parte do país — fora da malha ela avisa.",
     "generoso": ("Frete fracionado, com coleta. Cotada com a empresa do "
                  "grupo que você informou no formulário."),
+    # A ÚNICA automática que não devolve preço na tela. Se a nota não disser
+    # isso, o vendedor lê "Cotação enviada" e fica esperando um número que
+    # nunca vai aparecer aqui.
+    "dellavolpe": ("Frete fracionado, com coleta. O preço não sai na tela: "
+                   "a cotação chega no seu e-mail em poucos minutos."),
 }
+
+# Quanto a resposta por e-mail costuma demorar, por transportadora. MEDIDO,
+# não prometido: a Della Volpe respondeu em 2 a 5 minutos nos envios reais de
+# 25 e 26/08/2026.
+#
+# A Generoso NÃO entra aqui de propósito. Quando ela cai neste mesmo cartão,
+# quem responde é um vendedor, em horas — herdar "minutos" faria o vendedor
+# dar a cotação por perdida antes de ela chegar.
+ESPERA_DO_EMAIL = {"dellavolpe": "2 a 5 minutos"}
 
 # A calculadora da Jadlog cota UM pacote por vez (carriers/jadlog/painel.py).
 # Com mais de um volume o número dela não é comparável com o da Camilo e o da
@@ -920,11 +961,8 @@ def cotar(usuario: str | None = Cookie(None, alias=COOKIE),
     })
 
     # Dispara e NÃO espera: cada uma grava o próprio resultado ao terminar.
-    fabricas = {"camilo": _cotar_camilo, "jadlog": _cotar_jadlog,
-                "translovato": _cotar_translovato,
-                "generoso": _cotar_generoso}
     for slug in automaticas_da(dados.get("transportadoras")):
-        EXECUTOR.submit(_rodar, cotacao_id, slug, fabricas[slug], req)
+        EXECUTOR.submit(_rodar, cotacao_id, slug, FABRICAS[slug], req)
 
     return RedirectResponse(f"/cotacao/{cotacao_id}", status_code=303)
 
@@ -955,6 +993,29 @@ def _cotar_generoso(req):
     return GenerosoAdapter().cotar(req, confirmar_envio=True)
 
 
+def _cotar_dellavolpe(req):
+    """Envia o formulário público da Della Volpe DE VERDADE.
+
+    Diferente das outras quatro: aqui não existe auto-serviço. Cada envio cai
+    na fila de um vendedor da transportadora, que responde por e-mail — e é
+    por isso que o adapter exige DV_ENVIO_REAL_AUTORIZADO=sim no ambiente.
+
+    A janela é headed e fica em -3000,-3000: o reCAPTCHA v3 do site pontua
+    Chromium headless como robô e o Contact Form 7 barra como spam (medido em
+    13/08/2026, cinco envios, nenhum e-mail gerado). Fora da tela ela não
+    aparece para quem está trabalhando na máquina."""
+    return DellavolpeAdapter().cotar(req, confirmar_envio=True)
+
+
+# No módulo, e não dentro de /cotar: é o que permite a
+# tests/test_dellavolpe_automatica.py conferir que quem está em AUTOMATICAS
+# tem como ser despachada. Entrar na lista sem fábrica só estourava dentro de
+# uma thread do executor, e lá um KeyError vira cartão girando para sempre.
+FABRICAS = {"camilo": _cotar_camilo, "jadlog": _cotar_jadlog,
+            "translovato": _cotar_translovato, "generoso": _cotar_generoso,
+            "dellavolpe": _cotar_dellavolpe}
+
+
 def _rodar(cotacao_id: int, slug: str, cotar_fn, req) -> None:
     """Roda uma transportadora e grava o resultado, aconteça o que acontecer.
 
@@ -970,7 +1031,8 @@ def _rodar(cotacao_id: int, slug: str, cotar_fn, req) -> None:
         TENTATIVAS_EM_CURSO[chave] = tentativa
 
     try:
-        res = cotar_com_retentativa(cotar_fn, req, ao_tentar=anotar)
+        res = cotar_com_retentativa(cotar_fn, req, ao_tentar=anotar,
+                                    repetir=slug not in SEM_REPETICAO)
         banco.salvar_resultado(
             cotacao_id, slug, status=res.status.value, valor=res.valor_frete,
             # motivo_recusa junto: "recusado" é a transportadora dizendo não,
@@ -1129,7 +1191,7 @@ def ficha_da_cotacao(c: dict) -> str:
 </div>"""
 
 
-def cartao_resposta_por_email(email: str | None) -> str:
+def cartao_resposta_por_email(email: str | None, slug: str = "") -> str:
     """Cartão de quem recebeu o pedido mas responde FORA do sistema.
 
     A Generoso não devolve preço na tela: confirma o recebimento e um vendedor
@@ -1142,14 +1204,20 @@ def cartao_resposta_por_email(email: str | None) -> str:
     olhando esta tela.
 
     Sem e-mail guardado (cotação anterior a 20/08/2026) o texto continua
-    fazendo sentido, só não nomeia a caixa."""
-    onde = (f'no e-mail <b class="caixa">{e(email)}</b> — o mesmo que você '
-            f'digitou nesta cotação'
-            if email else 'no e-mail que você digitou nesta cotação')
+    fazendo sentido, só não nomeia a caixa.
+
+    O prazo sai de ESPERA_DO_EMAIL e é opcional de propósito: prometer um
+    número que a transportadora não cumpre é pior do que não prometer nada."""
+    onde = (f'<b class="caixa">{e(email)}</b> — o mesmo que você digitou no '
+            f'formulário'
+            if email else 'o e-mail que você digitou no formulário')
+    espera = ESPERA_DO_EMAIL.get(slug)
+    prazo = f' A resposta costuma chegar em {e(espera)}.' if espera else ''
     return ('<div class="enviada">Cotação enviada</div>'
             f'<div class="alerta email"><b>O preço não vem nesta tela.</b> '
-            f'A resposta chega {onde}. Confira a caixa de entrada e o spam — '
-            f'esta tela não muda quando ela chegar.</div>')
+            f'A cotação foi enviada para {onde}. Abra o e-mail para ver o '
+            f'preço.{prazo} Confira a caixa de entrada e o spam — esta tela '
+            f'não muda quando ela chegar.</div>')
 
 
 @app.get("/whatsapp/{cotacao_id}/{slug}")
@@ -1245,7 +1313,7 @@ def ver_cotacao(cotacao_id: int,
             destaque, selo = "", ""
             # O print da tela "Recebemos seu pedido" é a prova de que o envio
             # saiu. Sem ele o vendedor só tem a nossa palavra.
-            corpo = (cartao_resposta_por_email(c.get("email"))
+            corpo = (cartao_resposta_por_email(c.get("email"), slug)
                      + _img(r["evidencia"]))
         elif r["status"] == StatusCotacao.RECUSADO.value:
             # Recusa NÃO é defeito. O site recebeu a carga inteira, entendeu,

@@ -642,7 +642,11 @@ def test_formulario_tem_o_painel_de_escolha(app_web, cliente):
     html = cliente.get("/").text
 
     assert "Escolher" in html
-    assert "todas as 17 transportadoras" in html
+    # Derivado, e nao "17" na mao: em 26/08/2026 a Della Volpe entrou e virou
+    # 18. O teste ao lado ja avisava que numero escrito a mao apodrece — este
+    # tinha ficado de fora.
+    assert (f"todas as {len(app_web.TODAS_AS_SLUGS)} transportadoras"
+            in html)
     # uma de cada grupo, para provar que os dois foram desenhados
     assert 'value="camilo"' in html
     assert 'value="coruja"' in html

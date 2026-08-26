@@ -29,9 +29,14 @@ RAIZ = Path(__file__).resolve().parent
 BANCO = RAIZ / "cotafrete.db"
 
 # As que o robô cota sozinho, na ordem em que aparecem na tela do vendedor.
-AUTOMATICAS = ("camilo", "jadlog", "translovato", "generoso")
+# Tem que ser a MESMA lista de web/app.py — conferido por
+# tests/test_dellavolpe_automatica.py. Esta copia ja parou em
+# ("camilo", "jadlog") quando a Translovato entrou, e o monitor passou a
+# mentir sobre quantas faltavam.
+AUTOMATICAS = ("camilo", "jadlog", "translovato", "generoso", "dellavolpe")
 TITULOS = {"camilo": "CAMILO", "jadlog": "JADLOG",
-           "translovato": "TRANSLOVATO", "generoso": "GENEROSO"}
+           "translovato": "TRANSLOVATO", "generoso": "GENEROSO",
+           "dellavolpe": "DELLA VOLPE"}
 
 PAUSA_S = 5
 LARGURA = 116
