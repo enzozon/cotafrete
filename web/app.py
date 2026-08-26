@@ -156,9 +156,9 @@ if _orfas:
 if "dellavolpe" in AUTOMATICAS and os.getenv("DV_ENVIO_REAL_AUTORIZADO") != "sim":
     print("[cotafrete] AVISO: a Della Volpe está ligada mas o envio real "
           "está travado.")
-    print("            Nenhuma cotação vai chegar nela até a linha")
-    print("            DV_ENVIO_REAL_AUTORIZADO=sim entrar no .env "
-          "desta pasta.")
+    print("            Nenhuma cotação vai chegar nela enquanto a linha")
+    print("            DV_ENVIO_REAL_AUTORIZADO do arquivo .env desta pasta")
+    print("            não disser 'sim'.")
 
 # Logo das automaticas. As de WhatsApp trazem a sua do cadastro
 # (web/transportadoras.py); estas quatro nao passam por la.
