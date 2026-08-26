@@ -197,23 +197,48 @@ JS_RESTAURAR_ROLAGEM = """() => {
 
 MARGEM_PRINT_PX = 24
 JS_CAIXA_DO_FORMULARIO = """() => {
-    // UNIÃO das caixas de TODOS os campos visíveis da página — sem escopar
-    // por <form>. Três tentativas anteriores falharam por escopo: o <form>
-    // tem altura 0; o ancestral com tamanho é ora metade do modal, ora o site
-    // inteiro; e os campos do modal estão espalhados em MAIS DE UM <form>, o
-    // que recortava o print na metade. Como só o modal aberto tem campos
-    // visíveis, "todo campo visível" é exatamente o formulário que interessa.
+    // UNIÃO das caixas dos campos visíveis DO FORMULÁRIO QUE VAI SER ENVIADO.
+    //
+    // O escopo é o <form> dono do primeiro botão de envio VISÍVEL — o mesmo
+    // que `_enviar` clica. Assim o print enquadra, por construção, exatamente
+    // o formulário que o site vai receber.
+    //
+    // Sem esse escopo era a união de todo campo visível da PÁGINA, e a página
+    // tem dois Contact Form 7 abertos ao mesmo tempo. Medido em 26/08/2026
+    // por recon/recon_dellavolpe_formularios.py:
+    //
+    //     o nosso modal de cotação ... y  725 -> 1970  (1245px)
+    //     o "fale conosco" do rodapé.. y 4403 -> 4877
+    //
+    // O recorte saía com 4723px: o formulário no topo e 2400px de página
+    // vazia embaixo. Na tela do vendedor o cartão da Della Volpe ficava três
+    // vezes mais alto que os das outras quatro, quase todo preto.
+    //
+    // NÃO voltar a escopar por outros caminhos: o <form> tem altura 0, e o
+    // ancestral com tamanho é ora metade do modal, ora o site inteiro. Foram
+    // as duas tentativas anteriores, e as duas cortavam a evidência ao meio.
+    const visivel = x => (x.offsetWidth || x.offsetHeight)
+                         && x.type !== 'hidden'
+                         // banner de cookies não faz parte da cotação
+                         && !x.closest('#onetrust-consent-sdk, [id*=onetrust i]');
+
+    const botao = [...document.querySelectorAll('input.wpcf7-submit')]
+        .find(b => b.offsetWidth || b.offsetHeight);
+    // Sem botão visível não dá para saber qual formulário é o nosso. Aí vale
+    // a página toda: com o envio já feito, evidência larga é melhor que
+    // nenhuma.
+    const dono = botao ? botao.closest('form') : null;
+    const nosso = x => !dono || x.closest('form') === dono;
+
     const partes = [...document.querySelectorAll('input, select, textarea')]
-        .filter(x => (x.offsetWidth || x.offsetHeight)
-                     && x.type !== 'hidden'
-                     // banner de cookies não faz parte da cotação
-                     && !x.closest('#onetrust-consent-sdk, [id*=onetrust i]'));
+        .filter(x => visivel(x) && nosso(x));
 
     // A confirmação ("Agradecemos a sua mensagem...") fica ABAIXO do botão,
     // fora da área dos campos. Sem incluí-la, o print do envio não mostra
-    // justamente a prova de que o envio deu certo.
+    // justamente a prova de que o envio deu certo. A do rodapé não conta:
+    // `nosso` a descarta junto com o resto daquele formulário.
     partes.push(...[...document.querySelectorAll('.wpcf7-response-output')]
-        .filter(e => e.innerText.trim().length > 5));
+        .filter(e => e.innerText.trim().length > 5 && nosso(e)));
 
     if (!partes.length) return null;
 
