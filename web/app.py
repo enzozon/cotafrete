@@ -171,6 +171,10 @@ LOGOS_AUTOMATICAS = {
     "camilo": "camilo.png",
     "jadlog": "jadlog.png",
     "generoso": "generoso.png",
+    # MAIUSCULA de proposito: e o nome exato do arquivo que o Enzo colocou
+    # nas duas pastas em 26/08/2026. Renomear para minuscula deixaria um
+    # arquivo orfao em cotafrete-producao, onde ele foi posto a mao.
+    "dellavolpe": "DELLAVOLPE.png",
 }
 
 NOMES = {"camilo": "Camilo dos Santos", "jadlog": "Jadlog Entregas",
@@ -209,6 +213,11 @@ COTAM_POR_VOLUME = ("jadlog",)
 # nenhum, porque o vendedor copia assim mesmo. Continua havendo teto: sem ele
 # um stack trace inteiro vai para a tela.
 LIMITE_MENSAGEM_ERRO = 400
+
+# Quanto tempo a tela espera antes de assumir que ninguém mais responde, em
+# minutos — é o número que a aba de Documentação mostra. Derivado e não
+# escrito: o teto já mudou uma vez (de 240s para 300s).
+ESPERA_MAXIMA_MIN = ESPERA_MAXIMA_S // 60
 
 CSS = """
 :root{--tinta:#16181d;--fraco:#6b7280;--borda:#e2e5ea;--fundo:#f5f6f8;
@@ -310,6 +319,19 @@ font-size:14px;font-weight:600;text-decoration:none}
 .menu a{margin-right:14px;font-size:13px;text-decoration:none}
 /* Aviso DENTRO do cartão, colado no preço que ele qualifica. Numa faixa no
    topo da página ele seria lido antes do número e esquecido depois. */
+/* Aba de Documentacao. Escopo proprio: o resto do sistema quase nao usa
+   texto corrido, e soltar estilo de <h2>/<ul> no global mexeria nas telas
+   de cotacao. */
+.doc h2{font-size:15px;margin:22px 0 6px;color:var(--marca)}
+.doc h2:first-child{margin-top:0}
+.doc p{margin:0 0 10px;font-size:14px}
+.doc ul{margin:0 0 12px;padding-left:20px;font-size:14px}
+.doc li{margin-bottom:6px}
+.doc table{margin-bottom:12px}
+.doc td{vertical-align:top}
+.doc .errado{color:var(--erro);font-weight:600}
+.doc .certo{color:var(--ok);font-weight:600}
+.doc .passo{font-size:14px;margin:0 0 10px;padding-left:20px}
 .alerta{background:#fffae6;border:1px solid #ffe380;border-radius:6px;
 padding:8px 10px;font-size:12px;margin:6px 0 2px;line-height:1.35}
 /* Amarelo e para "cuidado, esse numero engana". Aqui nao ha erro nenhum: e
@@ -433,6 +455,7 @@ def pagina(titulo: str, corpo: str, usuario: str | None = None) -> str:
     if usuario:
         quem = ('<span class="quem"><span class="menu">'
                 '<a href="/">Nova cotação</a><a href="/historico">Histórico</a>'
+                '<a href="/documentacao">Documentação</a>'
                 f'<a href="/sair">Sair</a></span> <b>{e(usuario)}</b></span>')
     return f"""<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -1461,6 +1484,181 @@ document.querySelectorAll(".print").forEach(i =>
 
 
 # ---------------------------------------------------------------- histórico
+# ------------------------------------------------------- documentação
+def _lista_automaticas() -> str:
+    """Os nomes vêm de NOMES e as frases de NOTAS — as MESMAS que o cartão da
+    cotação usa. Escrever a lista à mão aqui faria a ajuda descrever um
+    sistema que não é este; foi assim que "todas as 17 transportadoras" ficou
+    mentindo por semanas."""
+    return "".join(
+        f"<li><b>{e(NOMES[s])}</b> — {e(NOTAS[s])}</li>" for s in AUTOMATICAS)
+
+
+def pagina_documentacao() -> str:
+    """A ajuda que o vendedor lê.
+
+    Todo número aqui é derivado de onde o sistema o lê de verdade. É a mesma
+    razão do subtítulo da home ser calculado: número escrito à mão apodrece em
+    silêncio, e ajuda errada é pior que ajuda nenhuma — quem lê erra com
+    confiança."""
+    com_zap = transportadoras.com_whatsapp()
+    zap = len(com_zap)
+    # A Translovato e automatica E tem WhatsApp, entao 5 + 14 da 19 e o total
+    # e 18. Dizer "e as OUTRAS 14" fazia o vendedor somar 19 e procurar uma
+    # transportadora que nao existe. A frase nomeia quem se repete, e o nome
+    # sai da intersecao real das duas listas.
+    slugs_zap = {r.slug for r in com_zap}
+    nas_duas = [NOMES[s] for s in AUTOMATICAS if s in slugs_zap]
+    repetida = (f" A {' e a '.join(nas_duas)} "
+                f"{'entram' if len(nas_duas) > 1 else 'entra'} nas duas "
+                f"listas, por isso a soma não bate." if nas_duas else "")
+    return f"""
+<h1>Como usar o Cotafrete</h1>
+<p class="sub">Você preenche a carga uma vez. O sistema cota sozinho em
+{len(AUTOMATICAS)} transportadoras e deixa a mensagem do WhatsApp pronta para
+{zap}. São {len(TODAS_AS_SLUGS)} no total.{repetida}</p>
+
+<div class="cartao doc">
+<h2>O caminho normal</h2>
+<p class="passo">1. Preencha o formulário na aba <b>Nova cotação</b>.<br>
+2. Se quiser, escolha quais transportadoras vão cotar.<br>
+3. Clique em <b>Cotar fretes</b>. A tela se atualiza sozinha conforme cada uma
+responde — não precisa recarregar nem ficar apertando F5.<br>
+4. Compare os preços. O mais barato ganha um selo verde.</p>
+<p>A cotação inteira leva até {ESPERA_MAXIMA_MIN} minutos. Passado esse tempo
+a tela para de atualizar e diz quem não respondeu.</p>
+
+<h2>Preenchendo o formulário</h2>
+<ul>
+  <li><b>CEP de origem e destino</b> — 8 dígitos. A cidade e o estado aparecem
+      sozinhos; você não digita.</li>
+  <li><b>CNPJ do remetente e do destinatário</b> — 14 dígitos. O sistema
+      confere o dígito verificador e busca a razão social.</li>
+  <li><b>Tipo de frete</b> — <b>CIF</b> quem paga é o remetente, <b>FOB</b>
+      quem paga é o destinatário. Você não digita quem paga: o sistema tira do
+      CNPJ da ponta certa. Marcar errado faz a transportadora cotar para a
+      empresa errada.</li>
+  <li><b>Quantidade de volumes</b> — quantas caixas.</li>
+  <li><b>Peso</b> — o peso <b>de um volume</b>, não o do lote. Três caixas de
+      12 kg são <b>12</b> aqui e <b>3</b> na quantidade.</li>
+  <li><b>Comprimento, largura e altura</b> — em <b>centímetros</b>, de uma
+      caixa.</li>
+  <li><b>Valor da nota fiscal</b> e <b>Material</b> — o que é a carga, em
+      palavras.</li>
+  <li><b>Nome, e-mail e WhatsApp</b> — é para este e-mail que a
+      {e(NOMES["dellavolpe"])} responde. Confira antes de enviar.</li>
+</ul>
+
+<h2>Os erros que mais custam caro</h2>
+<p>O sistema barra tudo isto <b>antes</b> de cotar, com os seus dados
+preservados na tela — você corrige e segue, sem redigitar nada.</p>
+<table>
+<tr><th>o que acontece</th><th>por que dá problema</th></tr>
+<tr><td><span class="errado">Medida em metro</span> no campo de
+    centímetro</td>
+    <td>O pior de todos. Uma caixa de <span class="certo">30</span> cm
+    digitada como <span class="errado">0,3</span> cota uma carga 100 vezes
+    menor, e o preço volta barato e errado. Por isso nada abaixo de
+    {MEDIDA_MINIMA_CM} cm passa.</td></tr>
+<tr><td><span class="errado">Zero</span> em qualquer medida, na quantidade ou
+    no valor da nota</td>
+    <td>Vira uma carga que não existe. A cotação #14 saiu como "0x1x0 cm" e a
+    transportadora recusou sem dizer por quê.</td></tr>
+<tr><td><span class="errado">Peso do lote</span> no campo de peso</td>
+    <td>O campo é o peso de UM volume. Pôr o total ali multiplica a carga pela
+    quantidade e o frete sai caro demais.</td></tr>
+<tr><td>Peso abaixo de <span class="errado">{PESO_MINIMO_KG} kg</span></td>
+    <td>A {e(NOMES["dellavolpe"])} não cota abaixo disso, e você só
+    descobriria depois de dois minutos de espera.</td></tr>
+<tr><td>CEP ou CNPJ <span class="errado">incompleto</span></td>
+    <td>O sistema diz quantos dígitos vieram e quantos faltam.</td></tr>
+<tr><td><span class="errado">Nenhuma</span> transportadora marcada</td>
+    <td>Cotar em ninguém não é uma cotação — sobraria uma linha vazia no
+    histórico.</td></tr>
+</table>
+
+<h2>Escolher as transportadoras</h2>
+<p>Acima do botão de cotar há o painel <b>Escolher</b>. Ele vem com todas as
+{len(TODAS_AS_SLUGS)} marcadas. Desmarque quem você não quer nesta cotação —
+serve para pedir preço só a quem atende aquela rota, ou para repetir uma
+cotação só na que faltou.</p>
+<p>Quem você desmarcar não aparece na tela do resultado: nem com preço, nem
+como "cotando", nem como quem falhou.</p>
+
+<h2>O que cada cartão do resultado quer dizer</h2>
+<ul>
+  <li><b>Preço em verde</b> — cotou. O menor leva o selo
+      <b>MAIS BARATO</b>.</li>
+  <li><b>"Preço de 1 volume, não da carga"</b> — a {e(NOMES["jadlog"])} cota
+      <b>por volume</b>. Com mais de uma caixa o sistema mostra a estimativa
+      do total e tira ela da disputa do selo, porque comparar preço de uma
+      caixa com preço da carga inteira elege o vencedor errado.</li>
+  <li><b>"Cotação enviada"</b> — o pedido entrou, mas o preço não vem nesta
+      tela: chega no seu e-mail.</li>
+  <li><b>"O site não cotou"</b> — a transportadora entendeu a carga e disse
+      não, com as palavras dela na tela. Repetir dá o mesmo resultado.</li>
+  <li><b>"Precisa de alguém"</b> — a senha daquela transportadora foi
+      recusada. Repetir não resolve e ainda empurra a conta da Ventura para o
+      bloqueio: avise quem cuida do Cotafrete e siga pelo WhatsApp.</li>
+  <li><b>"Não retornou preço"</b> — algo deu errado, e o cartão diz o quê.</li>
+  <li><b>"cotando…"</b> — ainda esperando. Quando uma tentativa falha o
+      sistema tenta de novo sozinho, até {TENTATIVAS_MAXIMAS} vezes, e o
+      cartão avisa em qual tentativa está.</li>
+</ul>
+
+<h2>Todo erro vem com print</h2>
+<p>Sempre que uma transportadora não devolve preço, o sistema guarda uma
+<b>foto da tela dela</b> no momento exato do problema e mostra no cartão. É a
+prova de que o "não" veio do site e não do Cotafrete — e é o que você manda
+para a transportadora quando precisa reclamar.</p>
+<p>Nas que dão certo o print também fica: a tela preenchida, com o preço.</p>
+
+<h2>A {e(NOMES["dellavolpe"])} é diferente</h2>
+<div class="alerta email">
+<p><b>Ela não devolve preço na tela.</b> As outras têm sistema de cotação
+online; a {e(NOMES["dellavolpe"])} tem um formulário que cai na mesa de um
+vendedor, e ele responde <b>por e-mail</b>.</p>
+<p>Por isso o cartão dela diz <b>"Cotação enviada"</b> e mostra o e-mail para
+onde a resposta vai — o mesmo que você digitou no formulário. A resposta
+costuma chegar em <b>{e(ESPERA_DO_EMAIL["dellavolpe"])}</b>.</p>
+<p><b>Confira a caixa de entrada e também o spam.</b> Esta tela não muda
+quando o e-mail chegar.</p>
+<p>Cada cotação dela é enviada <b>uma única vez</b>, de propósito: do outro
+lado tem uma pessoa, e repetir colocaria a mesma carga duas vezes na fila
+dela.</p>
+</div>
+
+<h2>As {zap} do WhatsApp</h2>
+<p>As que não têm sistema online ficam na parte de baixo da tela, em
+<b>Precisa de você</b>. Clicar em <b>Abrir no WhatsApp</b> abre a conversa com
+a mensagem <b>já escrita</b>: remetente, destinatário, quem paga, CEPs,
+medidas, peso, valor da nota e o material.</p>
+<p><b>Quem aperta enviar é você.</b> Por isso o contador diz <b>abertas</b> e
+não "enviadas" — depois que a conversa abre, o sistema não tem como saber se
+a mensagem saiu.</p>
+
+<h2>Histórico e repetir</h2>
+<p>A aba <b>Histórico</b> guarda suas cotações com a rota, o material, o peso
+e o melhor preço. Clique numa linha para rever todos os preços e os prints
+daquele dia.</p>
+<p>Dentro de uma cotação, <b>Repetir esta cotação</b> devolve o formulário já
+preenchido com aqueles dados — serve para mudar só o peso, só o destino, ou
+para tentar de novo quem falhou.</p>
+
+<h2>Quem cota sozinho hoje</h2>
+<ul>{_lista_automaticas()}</ul>
+</div>
+
+<p><a href="/">← nova cotação</a></p>"""
+
+
+@app.get("/documentacao", response_class=HTMLResponse)
+def documentacao(usuario: str | None = Cookie(None, alias=COOKIE)):
+    if not usuario:
+        return RedirectResponse("/login", status_code=303)
+    return HTMLResponse(pagina("Documentação", pagina_documentacao(), usuario))
+
+
 @app.get("/historico", response_class=HTMLResponse)
 def historico(usuario: str | None = Cookie(None, alias=COOKIE)):
     if not usuario:
