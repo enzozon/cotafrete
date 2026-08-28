@@ -50,8 +50,24 @@ CONFIRMACOES_SEGUIDAS = 3        # 3 x 800ms = 2,4s de campo intacto
 TENTATIVAS_LOGIN = 3
 # Se não entrou em 15s, não vai entrar: os 45s antigos queimavam a cotação
 # inteira numa espera que já estava perdida, sem sobrar tempo para tentar outra
-# vez.
+# vez. Confirmado em 28/08/2026 com as credenciais reais: o login que dá certo
+# termina em 1s, e o que trava fica ≥90s — não existe caso no meio.
 TIMEOUT_LOGIN_MS = 15_000
+
+# A chamada que autentica de verdade, achada no tráfego em 28/08/2026:
+#   POST https://apigwjadlogentregas.azure-api.net/api/Usuario/LoginJWT
+#        -> 200 {"token": "eyJ..."}
+# O fragmento basta, e não amarra o teste ao domínio da API.
+API_LOGIN = "Usuario/LoginJWT"
+
+# Os únicos status que PROVAM senha recusada. Qualquer outra coisa — inclusive
+# não haver resposta nenhuma — é falha nossa, de rede ou do site, e repetir
+# pode resolver.
+#
+# A lista é curta de propósito. Chutar para o lado da recusa foi o defeito da
+# #56: transforma um tropeço passageiro em "avise quem cuida do Cotafrete" e
+# ainda desliga a retentativa, que era o que salvaria a cotação.
+STATUS_CREDENCIAL_RECUSADA = (401, 403)
 
 # Rótulo exato ao lado de cada campo, medido no recon de 13/08/2026.
 ROTULO_ALTURA = "Altura (cm)"
@@ -232,6 +248,19 @@ class JadlogPainelAdapter:
 
     def _entrar(self, page) -> None:
         usuario, senha = self._credenciais()
+
+        # O status de API_LOGIN é a ÚNICA prova de que a senha foi recusada.
+        # A tela não diz nada: no print da cotação #56 (28/08/2026) estão os
+        # dois campos preenchidos, os dois com o ✓ verde de validação do
+        # site, o botão com foco — e nenhuma mensagem de erro em lugar
+        # nenhum. Sem ler isto aqui, só sobra adivinhar.
+        autenticacao: list[int] = []
+
+        def anotar(resposta) -> None:
+            if API_LOGIN in resposta.url:
+                autenticacao.append(resposta.status)
+
+        page.on("response", anotar)
         page.goto(URL_LOGIN, wait_until="domcontentloaded")
         self._fechar_cookies(page)
 
@@ -251,21 +280,35 @@ class JadlogPainelAdapter:
                 page.wait_for_timeout(2500)
                 return
             except PlaywrightTimeoutError:
-                # Campo VAZIO significa que o formulário nem chegou a ser
-                # submetido: seguro repetir. Campo PREENCHIDO com a tela parada
-                # é o site recusando as credenciais — repetir aí só arrisca
-                # bloquear a conta do Enzo por excesso de tentativas.
-                if page.locator('input[type="email"]').first.input_value().strip():
+                # Três casos, e só UM deles é senha errada. Confundi-los foi o
+                # que fez a #56 mandar o vendedor conferir uma senha que
+                # estava certa.
+                status = autenticacao[-1] if autenticacao else None
+
+                if status in STATUS_CREDENCIAL_RECUSADA:
+                    # O site recebeu e disse não, com todas as letras. Só aqui
+                    # repetir martela a conta da Ventura.
                     raise CredencialRecusada(
-                        "a Jadlog não aceitou o login. Os dados foram enviados "
-                        "e o site não deixou entrar: pode ser senha trocada, "
-                        "conta bloqueada, ou outra sessão aberta com o mesmo "
-                        "usuário. Tente entrar à mão em "
-                        f"{URL_LOGIN} para ver a mensagem do site.")
+                        f"a Jadlog recusou as credenciais (HTTP {status}). "
+                        "Repetir não resolve e ainda arrisca bloquear a conta. "
+                        f"Confira o login entrando à mão em {URL_LOGIN}.")
+
+                if status is not None:
+                    # Autenticou e o painel não abriu. É falha passageira, e
+                    # medida: em 28/08/2026 uma tentativa ficou 90s presa e a
+                    # seguinte entrou em 1s. Repetir é exatamente o certo.
+                    raise RuntimeError(
+                        f"a Jadlog autenticou (HTTP {status}) mas o painel não "
+                        f"abriu em {TIMEOUT_LOGIN_MS // 1000}s. A senha está "
+                        "certa; o site não saiu da tela de login.")
+
+                # Nenhuma resposta de autenticação: o formulário nem chegou a
+                # ser enviado. É o caso que a docstring de CredencialRecusada
+                # manda repetir, e o laço faz isso.
 
         raise RuntimeError(
             f"não foi possível entrar no painel da Jadlog em {TENTATIVAS_LOGIN} "
-            "tentativas — a página não terminou de carregar")
+            "tentativas — o clique em Entrar não chegou a enviar o formulário")
 
     def _campo_por_rotulo(self, page, rotulo: str):
         """Os campos não têm name nem id — só o rótulo os distingue.
