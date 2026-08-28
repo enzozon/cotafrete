@@ -25,9 +25,53 @@ empresa do grupo no destino. Nenhuma outra falha da Generoso tem.
 
 from __future__ import annotations
 
+import re
 from typing import NamedTuple
 
 from core.models import CotacaoRequest, TipoFrete, limpa_doc
+
+# A Generoso dizendo que não tem o CNPJ cadastrado.
+#
+# Ela diz isso na RESPOSTA, nunca na tela — por isso a cotação #56 registrou
+# "O site diz: (nenhuma mensagem visível)" e foi repetida três vezes. Medido
+# em 28/08/2026 por recon/recon_generoso_cnpj.py:
+#
+#   conhecido    {"erro":false,"mensagem":"OK","nome":"UNIAO INFO LTDA - ME",…}
+#   desconhecido {"status":400,"message":"Cliente 41747639000112 nao
+#                 cadastrado","error":true}
+#
+# Casa com acento e sem, porque a frase vem do backend deles e não há por que
+# apostar em como vão escrevê-la amanhã.
+RE_CLIENTE_NAO_CADASTRADO = re.compile(
+    r'"message"\s*:\s*"Cliente\s+(\d+)\s+n[ãa]o\s+cadastrad', re.IGNORECASE)
+
+
+def cliente_nao_cadastrado(corpo: str) -> str | None:
+    """O CNPJ que a Generoso disse não conhecer, ou None.
+
+    FUNÇÃO PURA. `corpo` é o texto das respostas do portal durante o
+    preenchimento da ponta.
+
+    None quer dizer "ela não disse isso" — o que inclui não ter respondido
+    nada. Essa distinção é o motivo de o recon existir: sem ela, campo de
+    endereço vazio viraria recusa, e uma falha de rede de verdade deixaria de
+    ser repetida."""
+    achado = RE_CLIENTE_NAO_CADASTRADO.search(corpo or "")
+    return achado.group(1) if achado else None
+
+
+def recusa_cliente_nao_cadastrado(cnpj: str, lado: str) -> str:
+    """Mensagem para o vendedor. `lado` é "origem" ou "destino".
+
+    Escrita para ele RESOLVER sozinho, como recusa_cep_nao_atendido: numa
+    cotação existem dois CNPJs, e não dizer qual deixa quem lê procurando no
+    escuro. Não é defeito do robô nem carga inválida — é a regra comercial da
+    Generoso, que só cota para quem tem cadastro."""
+    return (
+        f"A Generoso não tem o CNPJ de {lado} {cnpj} cadastrado como cliente, "
+        f"e só cota para CNPJ cadastrado. Peça o cadastro a ela, use outro "
+        f"CNPJ nessa ponta, ou fale com a Generoso pelo WhatsApp, no botão "
+        f"aqui embaixo.")
 
 
 class Empresa(NamedTuple):

@@ -63,7 +63,8 @@ from carriers.base import (
     recusa_por_validacao,
 )
 from carriers.generoso.mapping import (
-    conflito_cif_fob, empresa_alvo, empresa_de,
+    cliente_nao_cadastrado, conflito_cif_fob, empresa_alvo, empresa_de,
+    recusa_cliente_nao_cadastrado,
 )
 from core.models import CotacaoRequest, StatusCotacao, TipoFrete, limpa_doc
 
@@ -193,6 +194,24 @@ def e_unidade_parceira(texto: str) -> bool:
     cotação foi recusada."""
     t = (texto or "").lower()
     return all(f in t for f in FRASES_UNIDADE_PARCEIRA)
+
+
+def _e_busca_de_cnpj(resposta) -> bool:
+    """A resposta da busca de CNPJ, entre as ~190 que o portal dispara.
+
+    É uma server action do Next.js: POST para a própria /cotacao, com o
+    resultado no corpo em formato RSC. Medida em 28/08/2026 por
+    recon/recon_generoso_cnpj.py. O `endswith` evita casar com os prefetch
+    `/cotacao?_rsc=…` e com `/cotacao/listar`."""
+    return (resposta.request.method == "POST"
+            and resposta.url.split("?")[0].rstrip("/").endswith("/cotacao"))
+
+
+class ClienteNaoCadastrado(Exception):
+    """A Generoso não tem esse CNPJ como cliente.
+
+    Resposta da transportadora, não falha nossa: vira RECUSADO, e portanto
+    NÃO é repetida. Como `ForaDeArea` e `SemTabela` na Translovato."""
 
 
 def pontas_a_digitar(req: CotacaoRequest) -> tuple[str | None, str | None]:
@@ -555,16 +574,45 @@ class GenerosoAdapter:
         campo.blur()
         page.wait_for_timeout(ESPERA_BUSCA_MS)
 
-    def _preencher_ponta(self, page, cnpj: str | None) -> dict:
-        """Preenche uma ponta e devolve o endereço que o site achou.
+    def _preencher_ponta(self, page, cnpj: str | None) -> tuple[dict, str]:
+        """Preenche uma ponta. Devolve (endereço achado, resposta da busca).
 
         cnpj=None quer dizer "esta ponta é a conta": vem travada. Nunca
-        digitar o CEP — cada ponta é preenchida pelo CNPJ."""
+        digitar o CEP — cada ponta é preenchida pelo CNPJ.
+
+        A resposta da busca vem junto porque é ONDE a Generoso diz que não
+        conhece o CNPJ. Na tela ela não diz nada — a cotação #56 registrou
+        "(nenhuma mensagem visível)" e foi repetida três vezes por causa
+        disso.
+
+        O ouvinte é ESTREITO e some no fim. Ler o corpo de tudo que passa não
+        serve: o portal dispara ~190 respostas por cotação, fonte binária
+        estoura UnicodeDecodeError e o custo chega atrasado na hora de
+        decidir. E `expect_response` sozinho também não: ele entrega a
+        PRIMEIRA que casa, e o `fill("")` do `_digitar` já dispara uma server
+        action antes da busca — a resposta que interessa é a segunda."""
         if cnpj is not None:
-            self._digitar(page, SELETOR_CNPJ_LIVRE, cnpj)
-            self._campo(page, SELETOR_CNPJ_LIVRE).blur()
-            page.wait_for_timeout(ESPERA_BUSCA_MS)
-            return self._esperar_endereco(page)
+            corpos: list[str] = []
+
+            def guardar(resposta) -> None:
+                if not _e_busca_de_cnpj(resposta):
+                    return
+                try:
+                    corpos.append(resposta.text())
+                except Exception:
+                    # Corpo já consumido ou ilegível. Some em silêncio: quem
+                    # manda na decisão continua sendo o endereço.
+                    pass
+
+            page.on("response", guardar)
+            try:
+                self._digitar(page, SELETOR_CNPJ_LIVRE, cnpj)
+                self._campo(page, SELETOR_CNPJ_LIVRE).blur()
+                page.wait_for_timeout(ESPERA_BUSCA_MS)
+                achado = self._esperar_endereco(page)
+            finally:
+                page.remove_listener("response", guardar)
+            return achado, "\n".join(corpos)
 
         # Ponta travada. No CIF (origem) ela vem completa. No FOB (destino) o
         # CNPJ traz SÓ o CEP: cidade e rua ficam vazias e o "Próximo" não
@@ -573,7 +621,8 @@ class GenerosoAdapter:
         if not achado["city"]:
             self._reativar_cep(page)
             achado = self._esperar_endereco(page)
-        return achado
+        # Ponta travada não tem busca: ninguém digitou CNPJ nenhum aqui.
+        return achado, ""
 
     def _avancar(self, page) -> None:
         page.get_by_role("button", name=BOTAO_PROXIMO).last.click()
@@ -715,8 +764,21 @@ class GenerosoAdapter:
                 # livre em branco faz a cotacao nao ter para onde ir.
                 for numero, (lado, cnpj) in enumerate(
                         zip(("origem", "destino"), pontas_a_digitar(req)), 2):
-                    achado = self._preencher_ponta(page, cnpj)
+                    achado, resposta_da_busca = self._preencher_ponta(
+                        page, cnpj)
                     if not achado["city"]:
+                        # A Generoso pode ter respondido que não conhece este
+                        # CNPJ. Se respondeu, é recusa dela e repetir dá o
+                        # mesmo resultado — foi o que a #56 fez três vezes.
+                        sem_cadastro = cliente_nao_cadastrado(
+                            resposta_da_busca)
+                        if sem_cadastro:
+                            raise ClienteNaoCadastrado(
+                                recusa_cliente_nao_cadastrado(
+                                    cnpj or sem_cadastro, lado))
+
+                        # Ela NÃO disse nada: aí continua sendo "não sabemos",
+                        # e não sabemos mesmo. Erro comum, que repete.
                         de_onde = (f"o CNPJ {cnpj}" if cnpj
                                    else "a conta da Generoso")
                         raise RuntimeError(
@@ -786,6 +848,15 @@ class GenerosoAdapter:
                     res.erro = "; ".join(avisos)
                 return res
 
+            except ClienteNaoCadastrado as sem_cadastro:
+                # A Generoso respondeu. RECUSADO, com as palavras dela — e
+                # sem retentativa, que só gastaria vaga de navegador para
+                # ouvir o mesmo não.
+                return ResultadoCotacao(
+                    self.slug, StatusCotacao.RECUSADO, enviado_em=enviado,
+                    motivo_recusa=str(sem_cadastro),
+                    evidencias=evidencias
+                    + print_seguro(page, run / "sem_cadastro.png"))
             except Exception as exc:
                 return erro_do_adapter(
                     self.slug, exc, enviado_em=enviado,

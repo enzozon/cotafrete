@@ -1,0 +1,24 @@
+{
+  "conhecido": {
+    "cnpj": "20.837.281/0001-49",
+    "corpo": "0:{\"a\":\"$@1\",\"f\":\"\",\"q\":\"\",\"i\":false}\n1:{\"erro\":false,\"mensagem\":\"OK\",\"nome\":\"UNIAO INFO LTDA - ME\",\"endereco\":\"RUA SETE\",\"numero\":\"492\",\"complemento\":\"\",\"bairro\":\"COCAL\",\"cep\":\"29105770\",\"cidade\":\"VILA VELHA\",\"uf\":\"ES\",\"transportar\":\"S\",\"prazoPgto\":7,\"tipoCobranca\":\"C\",\"dataUltMvto\":\"19/08/2026\",\"telefone\":\"2732991664\",\"celular\":\"27993126123\",\"cnpjColeta\":\"\",\"enderecoColeta\":\"RUA SETE\",\"numeroColeta\":\"492\",\"complementoColeta\":\"\",\"bairroColeta\":\"COCAL\",\"cepColeta\":\"29105770\",\"latColeta\":\"-20,3613562\",\"lonColeta\":\"-40,3081233\",\"emails\":[\"financeiro@venturainformatica.com.br\",\"nfe@venturainformatica.com.br\",\"vendas2@venturainformatica.com.br\",\"financeiro2@venturainformatica.com.br\",\"adm2@ventu",
+    "endereco": {
+      "cep": "29.105-770",
+      "city": "Vila Velha",
+      "state": "ES",
+      "neighborhood": "COCAL",
+      "address": "RUA SETE"
+    }
+  },
+  "desconhecido": {
+    "cnpj": "41.747.639/0001-12",
+    "corpo": "0:{\"a\":\"$@1\",\"f\":\"\",\"q\":\"\",\"i\":false}\n1:{\"status\":400,\"message\":\"Cliente 41747639000112 nao cadastrado\",\"cause\":\"$undefined\",\"error\":true}\n",
+    "endereco": {
+      "cep": "",
+      "city": "",
+      "state": "",
+      "neighborhood": "",
+      "address": ""
+    }
+  }
+}
