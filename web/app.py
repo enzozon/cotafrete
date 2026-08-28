@@ -935,7 +935,9 @@ def _rodar(cotacao_id: int, slug: str, cotar_fn, req) -> None:
             # vendedor ler. Gravando só `erro`, ela era jogada fora e o cartão
             # caía no genérico "o site respondeu: recusado".
             protocolo=res.protocolo, erro=res.erro or res.motivo_recusa,
-            evidencia=res.evidencias[-1] if res.evidencias else None)
+            evidencia=res.evidencias[-1] if res.evidencias else None,
+            respondido_em=(res.respondido_em.isoformat(timespec="seconds")
+                           if res.respondido_em else None))
     except Exception as exc:
         banco.salvar_resultado(cotacao_id, slug, status="erro",
                                erro=f"{type(exc).__name__}: {exc}")
