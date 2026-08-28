@@ -124,6 +124,18 @@ def historico(con: sqlite3.Connection, *, dias: int = 30,
     if usuario:
         condicoes.append("usuario = ?")
         valores.append(usuario)
+    if so_com_falha:
+        # Filtro precisa entrar ANTES do LIMIT: aplicá-lo depois, em Python,
+        # deixava o SQL cortar nas `limite` cotações mais recentes e só então
+        # descartar as sem falha — se a janela de `dias` tivesse mais que
+        # `limite` cotações, falha antiga sumia sem aviso. `sorted()` porque
+        # frozenset não garante ordem, e a quantidade de "?" tem que bater
+        # com a de valores.
+        falhas = sorted(FALHA)
+        condicoes.append(
+            "id IN (SELECT cotacao_id FROM resultado"
+            f" WHERE status IN ({', '.join('?' * len(falhas))}))")
+        valores.extend(falhas)
 
     cotacoes = con.execute(
         f"SELECT * FROM cotacao WHERE {' AND '.join(condicoes)}"
@@ -146,9 +158,6 @@ def historico(con: sqlite3.Connection, *, dias: int = 30,
         for r in resultados:
             chave = categoria(r["status"])
             contagem[chave] = contagem.get(chave, 0) + 1
-
-        if so_com_falha and not contagem.get("falha"):
-            continue
 
         precos = [p for p in (_preco(r["valor"]) for r in resultados)
                   if p is not None]

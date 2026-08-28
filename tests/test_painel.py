@@ -158,3 +158,19 @@ def test_historico_vem_do_mais_novo_para_o_mais_velho(db):
 
     with db._conectar() as con:
         assert [l["id"] for l in painel.historico(con)] == [segundo, primeiro]
+
+
+def test_historico_so_com_falha_nao_perde_falha_antiga_pro_limite(db):
+    """O filtro tem que entrar ANTES do LIMIT. Aplicado depois, em Python, o
+    SQL corta nas `limite` mais recentes e só então descarta as sem falha —
+    com `limite=2` e 3 cotações, a mais antiga (a única com falha) seria
+    cortada antes de chegar a ser considerada."""
+    antiga_com_falha = db.salvar_cotacao("enzo", CARGA)
+    db.salvar_resultado(antiga_com_falha, "jadlog", status="erro", erro="timeout")
+    db.salvar_cotacao("enzo", CARGA)
+    db.salvar_cotacao("enzo", CARGA)
+
+    with db._conectar() as con:
+        linhas = painel.historico(con, so_com_falha=True, limite=2)
+
+    assert [l["id"] for l in linhas] == [antiga_com_falha]
