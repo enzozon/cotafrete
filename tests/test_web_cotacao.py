@@ -808,3 +808,35 @@ def test_a_tela_nao_promete_mais_um_cnpj_fixo_na_generoso(app_web, cliente):
     assert "não dá para trocar" not in html
     assert "Cotada com o CNPJ" not in html
     assert "08.310.365/0001-24" not in html
+
+
+# ------------------------------------------- erro técnico virado em português
+def test_cartao_de_erro_traduz_sem_esconder_o_original(app_web, cliente):
+    """A frase entra ANTES do texto técnico, nunca no lugar dele.
+
+    O vendedor lê a primeira linha e resolve sozinho; quem for investigar
+    continua com o texto do Playwright logo abaixo. Trocar um pelo outro
+    apagaria a única pista de quem precisa depurar — foi por isso que a regra
+    combinada em 18/08/2026 diz "erro desconhecido continua mostrando o texto
+    original"."""
+    cru = ('TimeoutError: Page.wait_for_selector: Timeout 45000ms exceeded.\n'
+           'Call log:\n  - waiting for locator("input[name=\\"email\\"]")')
+    cotacao_id = _criar(app_web)
+    app_web.banco.salvar_resultado(cotacao_id, "generoso", status="erro",
+                                   erro=cru)
+
+    html = cliente.get(f"/cotacao/{cotacao_id}").text
+
+    assert "A tela de login da Generoso não abriu a tempo" in html
+    assert "wait_for_selector" in html, "o texto técnico não pode sumir"
+
+
+def test_erro_sem_traducao_continua_aparecendo_inteiro(app_web, cliente):
+    """Sem frase conhecida, o cartão não inventa nada e mostra o que veio."""
+    cotacao_id = _criar(app_web)
+    app_web.banco.salvar_resultado(cotacao_id, "camilo", status="erro",
+                                   erro="MemoryError: sei lá o que aconteceu")
+
+    html = cliente.get(f"/cotacao/{cotacao_id}").text
+
+    assert "sei lá o que aconteceu" in html

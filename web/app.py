@@ -29,6 +29,7 @@ from __future__ import annotations
 import base64
 import html
 import os
+import unicodedata
 from concurrent.futures import ThreadPoolExecutor
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from datetime import datetime
@@ -201,6 +202,66 @@ NOTAS = {
 # quem responde é um vendedor, em horas — herdar "minutos" faria o vendedor
 # dar a cotação por perdida antes de ela chegar.
 ESPERA_DO_EMAIL = {"dellavolpe": "2 a 5 minutos"}
+
+# Erro técnico -> frase que o vendedor entende.
+#
+# Pedido do Enzo em 18/08/2026. O motivo é concreto: ele não sabe o que é
+# "timeout" nem "wait_for_selector", então lendo o texto cru não distingue
+# problema do sistema, da internet dele, ou da carga — e liga para o Enzo.
+#
+# A frase NÃO substitui o texto técnico no cartão; entra antes dele. Esconder
+# o original tiraria de quem for investigar a única pista que existe.
+#
+# As marcas saem dos erros que a transportadora produziu DE VERDADE em
+# produção, não de imaginação. Recusa e senha não estão aqui de propósito:
+# essas já viram frase boa na FONTE (`motivo_recusa`), que é onde a
+# classificação deve morar — ver core/retentativa.py.
+#
+# Só a Generoso por enquanto. Uma entrada aqui é dívida: significa que o
+# adapter ainda devolve como "não sabemos" algo que dava para classificar.
+MENSAGENS_DE_ERRO = {
+    "generoso": (
+        ("verificar seu navegador",
+         "O portal da Generoso está com uma verificação de segurança "
+         "barrando o acesso automático. Não é a sua cotação — enquanto isso "
+         "durar, nenhuma passa por ela. Cote pelo WhatsApp."),
+        ("wait_for_selector",
+         "A tela de login da Generoso não abriu a tempo. Pode ser lentidão "
+         "do portal ou a verificação de segurança dele."),
+        ("nao trouxe o endereco",
+         "A Generoso não trouxe o endereço desse CNPJ e não disse por quê. "
+         "Confira o CNPJ; se estiver certo, pode ser que ela não tenha esse "
+         "cliente cadastrado."),
+        ("nao avancou",
+         "O portal da Generoso parou numa etapa do formulário e não seguiu. "
+         "Costuma ser passageiro — o sistema já tenta de novo sozinho."),
+        ("nao trouxe preco nem confirmacao",
+         "A Generoso preencheu a cotação inteira mas não mostrou preço na "
+         "tela. Vale repetir; se continuar, cote pelo WhatsApp."),
+    ),
+}
+
+
+def _sem_acento(texto: str) -> str:
+    """Minúsculas e sem acento, para casar a marca.
+
+    O mesmo adapter escreve "endereço" numa linha e "endereco" na outra —
+    casar só uma das formas deixaria metade dos erros reais sem tradução."""
+    return "".join(c for c in unicodedata.normalize("NFKD", texto.lower())
+                   if not unicodedata.combining(c))
+
+
+def mensagem_amigavel(slug: str, erro: str | None) -> str | None:
+    """A frase para este erro, ou None se ninguém o reconhece.
+
+    None é resposta legítima e comum: o cartão então mostra o texto original,
+    que é a regra combinada — nunca esconder informação por não saber
+    traduzi-la."""
+    achatado = _sem_acento(erro or "")
+    for marca, frase in MENSAGENS_DE_ERRO.get(slug, ()):
+        if _sem_acento(marca) in achatado:
+            return frase
+    return None
 
 # A calculadora da Jadlog cota UM pacote por vez (carriers/jadlog/painel.py).
 # Com mais de um volume o número dela não é comparável com o da Camilo e o da
@@ -1362,9 +1423,14 @@ def ver_cotacao(cotacao_id: int,
             # site é a informação que importa: é nela que se vê em que passo
             # a coisa parou.
             motivo = r["erro"] or f"o site respondeu: {r['status']}"
+            # A frase entra ANTES do texto técnico, nunca no lugar dele: o
+            # vendedor lê a primeira linha e resolve; quem for investigar
+            # continua tendo o original logo abaixo.
+            frase = mensagem_amigavel(slug, r["erro"])
             corpo = ('<div class="falhou">Não retornou preço</div>'
-                     f'<div class="nota">'
-                     f'{e(motivo[:LIMITE_MENSAGEM_ERRO])}</div>'
+                     + (f'<div class="alerta">{e(frase)}</div>' if frase else '')
+                     + f'<div class="nota">'
+                       f'{e(motivo[:LIMITE_MENSAGEM_ERRO])}</div>'
                      + _img(r["evidencia"]))
         cartoes += (f'<div class="res{destaque}"><div class="nome">'
                     f'{e(NOMES.get(slug, slug))} {selo}</div>{corpo}</div>')
