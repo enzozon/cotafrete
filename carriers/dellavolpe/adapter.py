@@ -18,8 +18,8 @@ from pathlib import Path
 from typing import Any
 
 from carriers.base import (
-    CampoSpec, ErroValidacao, Modo, ResultadoCotacao, print_seguro,
-    recusa_por_validacao,
+    ARG_FORA_DA_TELA, CampoSpec, ErroValidacao, Modo, ResultadoCotacao,
+    print_seguro, recusa_por_validacao,
 )
 from carriers.dellavolpe import mapping as m
 from carriers.dellavolpe.planilha import gerar_planilha_volumes
@@ -42,7 +42,13 @@ URL_PRODUCAO = "https://dellavolpe.com.br/#cotacao"
 #
 # -3000 é maior que qualquer monitor comum, então a janela inteira fica fora.
 # Medido: `screenX` volta -3000 e o Windows NÃO puxa a janela de volta.
-ARGS_FORA_DA_TELA = ("--window-position=-3000,-3000",)
+#
+# A posição vem de carriers.base porque a Generoso passou a precisar da mesma
+# janela em 28/08/2026 (checkpoint da Vercel). O que ela NÃO herda é a flag
+# `--disable-blink-features=AutomationControlled` que a Generoso ganhou: a
+# configuração daqui foi medida contra o reCAPTCHA v3 em 25/08/2026, e mexer
+# nela sem remedir custaria uma submissão de verdade na mesa de um vendedor.
+ARGS_FORA_DA_TELA = (ARG_FORA_DA_TELA,)
 
 
 def argumentos_do_navegador(headless: bool,

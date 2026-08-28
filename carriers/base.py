@@ -16,6 +16,47 @@ from core.models import CotacaoRequest, StatusCotacao
 TIMEOUT_PRINT_ERRO_MS = 8_000
 
 
+# ------------------------------------------------- navegador que parece gente
+#
+# Dois sites já barraram o Chromium por ele se anunciar como robô, cada um a
+# seu modo: o reCAPTCHA v3 da Della Volpe (13/08/2026) engolia o envio como
+# spam, e o checkpoint da Vercel no portal da Generoso (28/08/2026) nem
+# entregava a página de login — "Falha ao verificar seu navegador, Código 21".
+#
+# São DUAS marcas independentes, e a matriz medida na Generoso mostra que
+# tirar uma só não resolve — muda o código do erro:
+#
+#   janela   webdriver   User-Agent        checkpoint
+#   não      true        HeadlessChrome    Código 21
+#   sim      true        Chrome            Código 21
+#   não      false       HeadlessChrome    Código 29
+#   sim      false       Chrome            PASSOU (4,9s)
+#
+# -3000 é maior que qualquer monitor comum, então a janela inteira fica fora
+# da tela. Medido: `screenX` volta -3000 e o Windows NÃO puxa a janela de
+# volta. O que o site lê é a impressão digital do navegador, não onde a
+# janela está.
+ARG_FORA_DA_TELA = "--window-position=-3000,-3000"
+
+# Apaga `navigator.webdriver`. Sem isto o navegador declara, em uma linha de
+# JavaScript, que está sendo controlado por um programa.
+ARG_SEM_MARCA_DE_ROBO = "--disable-blink-features=AutomationControlled"
+
+
+def argumentos_de_navegador_real(mostrar_janela: bool = False) -> list[str]:
+    """Argumentos para um Chromium indistinguível de um navegador de gente.
+
+    Pressupõe `headless=False`: sem janela o User-Agent diz "HeadlessChrome"
+    e nenhum argumento conserta isso.
+
+    `mostrar_janela=True` traz a janela para o monitor — serve para assistir
+    à cotação quando se está investigando, e não muda mais nada."""
+    args = [ARG_SEM_MARCA_DE_ROBO]
+    if not mostrar_janela:
+        args.append(ARG_FORA_DA_TELA)
+    return args
+
+
 # Assinatura do elemento: posição, tamanho e texto. Se isso não muda entre
 # duas leituras E não há overlay de bloqueio na frente, a página está pronta
 # para ser fotografada. Devolve null enquanto não estiver.

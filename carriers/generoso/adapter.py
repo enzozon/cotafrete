@@ -59,7 +59,8 @@ from datetime import datetime
 
 from carriers.base import (
     CampoSpec, ErroValidacao, Modo, ResultadoCotacao, Severidade, print_seguro,
-    CredencialRecusada, erro_do_adapter, recusa_por_validacao,
+    CredencialRecusada, argumentos_de_navegador_real, erro_do_adapter,
+    recusa_por_validacao,
 )
 from carriers.generoso.mapping import (
     conflito_cif_fob, empresa_alvo, empresa_de,
@@ -283,6 +284,22 @@ class GenerosoAdapter:
                 f"embalagem {embalagem!r} não existe no site. "
                 f"Use uma de: {', '.join(EMBALAGENS)}")
         self.embalagem = embalagem
+
+    def opcoes_do_navegador(self) -> dict:
+        """Como o Chromium sobe. Janela de verdade, e sem marca de automação.
+
+        Não é preferência: desde 28/08/2026 o portal está atrás do checkpoint
+        de segurança da Vercel, que reprova navegador automatizado ANTES de
+        entregar qualquer página — a cotação #57 morreu esperando o campo de
+        e-mail que estava atrás de "Falha ao verificar seu navegador, Código
+        21". `self.headless` fica ignorado de propósito: headless não passa, e
+        cotação que não passa não é opção de configuração.
+
+        Método, e não argumentos soltos no `launch`, para o teste poder subir
+        o navegador EXATAMENTE como a produção sobe e perguntar a ele quem ele
+        diz que é. Conferir a lista de argumentos não serviria: foi um
+        argumento certo com efeito nenhum que deixou este bug passar."""
+        return {"headless": False, "args": argumentos_de_navegador_real()}
 
     # ------------------------------------------------------- camada pura
     def campos_obrigatorios(self, req: CotacaoRequest) -> list[CampoSpec]:
@@ -662,7 +679,7 @@ class GenerosoAdapter:
         avisos: list[str] = []
 
         with sync_playwright() as p:
-            browser = p.chromium.launch(headless=self.headless)
+            browser = p.chromium.launch(**self.opcoes_do_navegador())
             page = browser.new_context(
                 locale="pt-BR",
                 viewport={"width": 1400, "height": 1400}).new_page()
