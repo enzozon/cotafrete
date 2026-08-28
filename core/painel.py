@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import sqlite3
 from datetime import datetime, timedelta
+from decimal import Decimal, InvalidOperation
 
 # Como cada status conta. Definição única: sem ela, cada bloco da tela
 # poderia contar diferente e os números não fechariam entre si.
@@ -96,3 +97,70 @@ def saude_das_transportadoras(con: sqlite3.Connection,
     return sorted(linhas.values(),
                   key=lambda a: (a["aproveitamento"] is not None,
                                  a["aproveitamento"] or 0))
+
+
+def _preco(bruto: str | None) -> Decimal | None:
+    """`resultado.valor` é TEXTO no banco (ver core/banco.py) e pode estar
+    ausente ou, em tese, corrompido — daqui não vira exceção, vira None."""
+    if bruto is None:
+        return None
+    try:
+        return Decimal(bruto)
+    except InvalidOperation:
+        return None
+
+
+def historico(con: sqlite3.Connection, *, dias: int = 30,
+              usuario: str | None = None, so_com_falha: bool = False,
+              limite: int = 200) -> list[dict]:
+    """As cotações de TODA a empresa, da mais nova para a mais velha.
+
+    É a diferença central em relação a `banco.listar_cotacoes`, que mostra só
+    as do próprio vendedor. Aquela função NÃO muda: a garantia dela é da tela
+    do vendedor. Esta é outra porta, para outro público — em vez de um
+    `if adm` no meio da que já existe."""
+    condicoes = ["criado_em >= ?"]
+    valores: list = [_desde(dias)]
+    if usuario:
+        condicoes.append("usuario = ?")
+        valores.append(usuario)
+
+    cotacoes = con.execute(
+        f"SELECT * FROM cotacao WHERE {' AND '.join(condicoes)}"
+        f" ORDER BY id DESC LIMIT ?", [*valores, limite]).fetchall()
+    if not cotacoes:
+        return []
+
+    ids = [c["id"] for c in cotacoes]
+    marcas = ", ".join("?" * len(ids))
+    por_cotacao: dict[int, list] = {i: [] for i in ids}
+    for r in con.execute(
+            f"SELECT cotacao_id, status, valor FROM resultado"
+            f" WHERE cotacao_id IN ({marcas})", ids):
+        por_cotacao[r["cotacao_id"]].append(r)
+
+    linhas = []
+    for c in cotacoes:
+        resultados = por_cotacao[c["id"]]
+        contagem: dict[str, int] = {}
+        for r in resultados:
+            chave = categoria(r["status"])
+            contagem[chave] = contagem.get(chave, 0) + 1
+
+        if so_com_falha and not contagem.get("falha"):
+            continue
+
+        precos = [p for p in (_preco(r["valor"]) for r in resultados)
+                  if p is not None]
+        linhas.append({
+            "id": c["id"],
+            "criado_em": c["criado_em"],
+            "usuario": c["usuario"],
+            "rota": f"{c['cidade_origem'] or c['cep_origem']} -> "
+                    f"{c['cidade_destino'] or c['cep_destino']}",
+            "material": c["material"],
+            # None, não 0: zero seria um preço. Não ter preço é outra coisa.
+            "melhor_preco": min(precos) if precos else None,
+            "contagem": contagem,
+        })
+    return linhas

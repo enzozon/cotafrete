@@ -8,6 +8,8 @@ manda o Enzo cobrar a transportadora errada."""
 
 from __future__ import annotations
 
+from decimal import Decimal
+
 import pytest
 
 from core.banco import Banco
@@ -93,3 +95,66 @@ def test_banco_vazio_nao_quebra(db):
     with db._conectar() as con:
         assert painel.saude_das_transportadoras(con, dias=30) == []
         assert painel.resumo_do_dia(con)["cotacoes"] == 0
+
+
+def test_historico_traz_cotacao_de_todos_os_usuarios(db):
+    """É a diferença central em relação ao histórico do vendedor, que só
+    mostra as dele. Aqui o adm vê a empresa inteira."""
+    a = db.salvar_cotacao("enzo", CARGA)
+    db.salvar_resultado(a, "camilo", status="cotado", valor=Decimal("100.00"))
+    b = db.salvar_cotacao("leandro", CARGA)
+    db.salvar_resultado(b, "camilo", status="cotado", valor=Decimal("90.00"))
+
+    with db._conectar() as con:
+        linhas = painel.historico(con)
+
+    assert {l["usuario"] for l in linhas} == {"enzo", "leandro"}
+
+
+def test_historico_mostra_o_melhor_preco_de_cada_cotacao(db):
+    cid = db.salvar_cotacao("enzo", CARGA)
+    db.salvar_resultado(cid, "camilo", status="cotado", valor=Decimal("150.00"))
+    db.salvar_resultado(cid, "generoso", status="cotado", valor=Decimal("90.50"))
+
+    with db._conectar() as con:
+        assert painel.historico(con)[0]["melhor_preco"] == Decimal("90.50")
+
+
+def test_historico_sem_preco_nenhum_devolve_none_e_nao_zero(db):
+    """Zero seria um preço. None é "não teve preço" — coisas diferentes."""
+    cid = db.salvar_cotacao("enzo", CARGA)
+    db.salvar_resultado(cid, "camilo", status="erro", erro="deu ruim")
+
+    with db._conectar() as con:
+        assert painel.historico(con)[0]["melhor_preco"] is None
+
+
+def test_historico_filtra_por_usuario(db):
+    db.salvar_cotacao("enzo", CARGA)
+    db.salvar_cotacao("leandro", CARGA)
+
+    with db._conectar() as con:
+        linhas = painel.historico(con, usuario="leandro")
+
+    assert [l["usuario"] for l in linhas] == ["leandro"]
+
+
+def test_historico_filtra_so_as_que_tiveram_falha(db):
+    """O filtro que o Enzo vai usar mais: mostra só o que deu problema."""
+    boa = db.salvar_cotacao("enzo", CARGA)
+    db.salvar_resultado(boa, "camilo", status="cotado", valor=Decimal("10.00"))
+    ruim = db.salvar_cotacao("enzo", CARGA)
+    db.salvar_resultado(ruim, "jadlog", status="erro", erro="timeout")
+
+    with db._conectar() as con:
+        linhas = painel.historico(con, so_com_falha=True)
+
+    assert [l["id"] for l in linhas] == [ruim]
+
+
+def test_historico_vem_do_mais_novo_para_o_mais_velho(db):
+    primeiro = db.salvar_cotacao("enzo", CARGA)
+    segundo = db.salvar_cotacao("enzo", CARGA)
+
+    with db._conectar() as con:
+        assert [l["id"] for l in painel.historico(con)] == [segundo, primeiro]
