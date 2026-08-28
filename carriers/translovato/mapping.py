@@ -63,6 +63,16 @@ REDESPACHO_NAO = "0"
 # Frase do site quando a praça está fora da malha. Não é erro do robô.
 AVISO_FORA_DE_AREA = "não está em nossa regi"
 
+# Frase do sweet-alert que o `get-cnpj` dispara quando o REMETENTE não tem
+# cadastro. Medida no print da cotação #56 (28/08/2026): "Oops! CNPJ não
+# cadastrado.", com o CNPJ de um fornecedor no campo.
+#
+# É o mesmo fato comercial de `recusa_sem_tabela` — a Translovato só cota
+# carga saindo da Ventura —, só que descoberto uma etapa antes: o `get-cnpj`
+# responde logo depois do campo, e o `get-products` só mais adiante. Por isso
+# os dois caminhos usam a MESMA frase de recusa.
+AVISO_CNPJ_NAO_CADASTRADO = "CNPJ não cadastrado"
+
 # Os CNPJs da Ventura que a Translovato tem cadastrados como cliente. Quem
 # decide se existe tabela de preço é o REMETENTE (medido em 18/08/2026,
 # confirmado pelo Enzo em 19/08/2026) — a Translovato só cota carga SAINDO

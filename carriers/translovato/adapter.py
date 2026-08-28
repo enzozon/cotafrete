@@ -222,6 +222,17 @@ class TranslovatoAdapter:
                           campos["value[sender_cpnj]"])
         page.wait_for_timeout(ESPERA_AJAX_MS)
 
+        # Ler o alerta AQUI, e não só depois do CEP. O `get-cnpj` responde com
+        # um sweet-alert quando o remetente não tem cadastro, e ele cobre o
+        # formulário: na cotação #56 (28/08/2026) o clique no campo seguinte
+        # bateu no `.sweet-overlay` e queimou os 45s inteiros do timeout, três
+        # vezes seguidas — com a resposta da Translovato já visível na tela.
+        aviso = self._limpar_tela(page)
+        if m.AVISO_CNPJ_NAO_CADASTRADO in aviso:
+            raise SemTabela(m.recusa_sem_tabela(campos["value[sender_cpnj]"]))
+        if m.AVISO_FORA_DE_AREA in aviso:
+            raise ForaDeArea(aviso)
+
         self._digitar(page, 'input[name="value[sender_zipcode]"]',
                       campos["value[sender_zipcode]"])
         page.wait_for_timeout(ESPERA_AJAX_MS)
