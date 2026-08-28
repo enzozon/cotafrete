@@ -63,7 +63,10 @@ CREATE TABLE IF NOT EXISTS resultado (
     protocolo      TEXT,
     prazo          TEXT,
     erro           TEXT,
-    evidencia      TEXT
+    evidencia      TEXT,
+    -- Quando a transportadora respondeu. NULL nas linhas anteriores a
+    -- 28/08/2026, e a tela precisa dizer "sem dados ainda" em vez de zero.
+    respondido_em  TEXT
 );
 
 -- Conversa de WhatsApp ABERTA. Nunca "enviada": o sistema abre a conversa
@@ -99,6 +102,10 @@ CAMPOS_CARGA = (
     "transportadoras",
 )
 
+# Colunas de `resultado` que nasceram depois do banco. Mesma razão de
+# CAMPOS_CARGA: CREATE TABLE IF NOT EXISTS não altera tabela existente.
+CAMPOS_RESULTADO = ("respondido_em",)
+
 
 def _decimal(valor: str | None) -> Decimal | None:
     return Decimal(valor) if valor not in (None, "") else None
@@ -125,6 +132,11 @@ class Banco:
         for coluna in CAMPOS_CARGA:
             if coluna not in existentes:
                 con.execute(f"ALTER TABLE cotacao ADD COLUMN {coluna} TEXT")
+
+        existentes = {r["name"] for r in con.execute("PRAGMA table_info(resultado)")}
+        for coluna in CAMPOS_RESULTADO:
+            if coluna not in existentes:
+                con.execute(f"ALTER TABLE resultado ADD COLUMN {coluna} TEXT")
 
         # UMA linha por transportadora por cotação. Sem esta regra o banco
         # aceitava duas, e a tela desenhava as duas: foi assim que a #50
@@ -174,22 +186,24 @@ class Banco:
                          protocolo: str | None = None,
                          prazo: str | None = None,
                          erro: str | None = None,
-                         evidencia: str | None = None) -> None:
+                         evidencia: str | None = None,
+                         respondido_em: str | None = None) -> None:
         # Sobrescreve em vez de acrescentar: a transportadora que responde
         # depois de ter sido dada como interrompida precisa APAGAR o aviso,
         # não conviver com ele. Ver o índice resultado_unico em _migrar.
         with closing(self._conectar()) as con, con:
             con.execute(
                 "INSERT INTO resultado (cotacao_id, transportadora, status,"
-                " valor, protocolo, prazo, erro, evidencia)"
-                " VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+                " valor, protocolo, prazo, erro, evidencia, respondido_em)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
                 " ON CONFLICT (cotacao_id, transportadora) DO UPDATE SET"
                 " status = excluded.status, valor = excluded.valor,"
                 " protocolo = excluded.protocolo, prazo = excluded.prazo,"
-                " erro = excluded.erro, evidencia = excluded.evidencia",
+                " erro = excluded.erro, evidencia = excluded.evidencia,"
+                " respondido_em = excluded.respondido_em",
                 (cotacao_id, transportadora, status,
                  str(valor) if valor is not None else None,
-                 protocolo, prazo, erro, evidencia))
+                 protocolo, prazo, erro, evidencia, respondido_em))
 
     def marcar_whatsapp_aberto(self, cotacao_id: int, transportadora: str,
                                usuario: str) -> None:

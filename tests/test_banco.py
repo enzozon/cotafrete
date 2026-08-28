@@ -359,3 +359,60 @@ def test_marca_cotacao_velha_que_ja_passou_do_prazo(db):
     assert db.marcar_interrompidas(("camilo", "generoso")) == 2
     resultados = db.buscar_cotacao(cotacao_id, "enzo")["resultados"]
     assert {r["status"] for r in resultados} == {"interrompido"}
+
+
+# -------------------------------------------------- hora em que a transportadora respondeu
+def test_banco_antigo_ganha_a_coluna_sem_perder_linha(tmp_path):
+    """Migração ADITIVA. CREATE TABLE IF NOT EXISTS não altera tabela que já
+    existe: sem isto, quem já tem cotafrete.db recebe "table resultado has no
+    column named respondido_em" no primeiro INSERT."""
+    import sqlite3
+    caminho = tmp_path / "antigo.db"
+    con = sqlite3.connect(caminho)
+    con.executescript("""
+        CREATE TABLE cotacao (id INTEGER PRIMARY KEY AUTOINCREMENT,
+            usuario TEXT NOT NULL, criado_em TEXT NOT NULL,
+            cep_origem TEXT, cep_destino TEXT, peso_kg TEXT,
+            quantidade INTEGER, comprimento_cm INTEGER, largura_cm INTEGER,
+            altura_cm INTEGER, valor_nf TEXT);
+        CREATE TABLE resultado (id INTEGER PRIMARY KEY AUTOINCREMENT,
+            cotacao_id INTEGER NOT NULL, transportadora TEXT NOT NULL,
+            status TEXT NOT NULL, valor TEXT, protocolo TEXT, prazo TEXT,
+            erro TEXT, evidencia TEXT);
+        INSERT INTO cotacao (usuario, criado_em) VALUES ('enzo', '2026-08-01T10:00:00');
+        INSERT INTO resultado (cotacao_id, transportadora, status)
+            VALUES (1, 'camilo', 'cotado');
+    """)
+    con.commit()
+    con.close()
+
+    banco.Banco(caminho)          # abrir já migra
+
+    con = sqlite3.connect(caminho)
+    colunas = {r[1] for r in con.execute("PRAGMA table_info(resultado)")}
+    assert "respondido_em" in colunas
+    assert con.execute("SELECT COUNT(*) FROM resultado").fetchone()[0] == 1, \
+        "a migração não pode perder linha"
+    con.close()
+
+
+def test_guarda_a_hora_em_que_a_transportadora_respondeu(db):
+    """Sem isto é impossível saber qual transportadora está lenta — e o
+    adapter já calculava o valor para depois descartá-lo."""
+    cotacao_id = db.salvar_cotacao("enzo", _carga())
+
+    db.salvar_resultado(cotacao_id, "camilo", status="cotado",
+                        respondido_em="2026-08-28T14:30:15")
+
+    resultados = db.buscar_cotacao(cotacao_id, "enzo")["resultados"]
+    assert resultados[0]["respondido_em"] == "2026-08-28T14:30:15"
+
+
+def test_resultado_sem_hora_continua_valendo(db):
+    """As 325 linhas que já existem não têm hora. NULL é resposta legítima, e
+    a tela precisa mostrar 'sem dados ainda' em vez de fingir zero."""
+    cotacao_id = db.salvar_cotacao("enzo", _carga())
+
+    db.salvar_resultado(cotacao_id, "camilo", status="cotado")
+
+    assert db.buscar_cotacao(cotacao_id, "enzo")["resultados"][0]["respondido_em"] is None
