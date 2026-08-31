@@ -111,10 +111,15 @@ def test_transportadora_so_com_interrompido_mostra_sem_dados(cliente):
 
 def test_cotacao_sem_resultado_mostra_travessao(cliente):
     """`melhor_preco` None é "não teve preço", não "R$ 0,00" — zero seria um
-    preço de verdade, e a diferença é a razão de a coluna existir."""
+    preço de verdade, e a diferença é a razão de a coluna existir.
+
+    O travessão em si já está no `<title>` de toda página (o "—" de "Painel
+    — Cotafrete"), então `assert "—" in html` passaria mesmo se a célula do
+    preço saísse vazia. A asserção precisa do fragmento exato que
+    `_historico` escreve para a célula: `<td>{_moeda(...)}</td>`."""
     adm.banco.salvar_cotacao("enzo", CARGA)
 
     html = cliente.get("/adm").text
 
-    assert "—" in html
+    assert "<td>—</td>" in html
     assert "R$ 0,00" not in html
