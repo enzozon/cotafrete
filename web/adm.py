@@ -26,14 +26,13 @@ import hmac
 import os
 import time
 from contextlib import closing
-from decimal import Decimal
 
 from fastapi import APIRouter, Cookie, Form, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from core.banco import Banco
 from core import painel as contas
-from web.layout import LOGO, e, pagina
+from web.layout import LOGO, e, moeda, pagina
 
 # O banco chega por INJEÇÃO: `web/app.py` faz `adm.banco = banco` logo
 # depois de criar o dele. Importar `web.app` daqui seria circular —
@@ -51,7 +50,10 @@ VALIDADE_S = 60 * 60 * 12
 # Atraso na senha errada. Ver a regra 3 no topo do módulo.
 PAUSA_SENHA_ERRADA_S = 1.0
 
-router = APIRouter(prefix="/adm")
+# include_in_schema=False: a Regra 1 do módulo (404 sem senha configurada) é
+# aplicada no HANDLER, não no registro da rota — sem isto as quatro rotas do
+# /adm aparecem em /openapi.json e /docs mesmo quando a tela responde 404.
+router = APIRouter(prefix="/adm", include_in_schema=False)
 
 
 def senha_configurada() -> str | None:
@@ -71,7 +73,11 @@ def autorizado(cookie: str | None) -> bool:
         return False
     # compare_digest, não ==: comparação comum vaza tempo e conta a quem
     # tenta quantos caracteres já acertou.
-    return hmac.compare_digest(cookie, token_de(senha))
+    #
+    # .encode() nos dois lados: compare_digest com `str` só aceita ASCII e
+    # levanta TypeError (viraria 500) diante de qualquer outro caractere —
+    # um cookie adulterado com acento bastava para derrubar a checagem.
+    return hmac.compare_digest(cookie.encode(), token_de(senha).encode())
 
 
 def _exigir_montado() -> str:
@@ -103,7 +109,11 @@ def tela_de_entrada():
 @router.post("/entrar")
 def entrar(senha: str = Form(...)):
     correta = _exigir_montado()
-    if not hmac.compare_digest(senha, correta):
+    # .encode() nos dois lados, pelo mesmo motivo de autorizado(): sem isto,
+    # COTAFRETE_ADM_SENHA com acento ou cedilha no .env de produção — o caso
+    # provável, escrevendo em português — faz até a senha CERTA levantar
+    # TypeError (500) e o painel fica inacessível para sempre.
+    if not hmac.compare_digest(senha.encode(), correta.encode()):
         time.sleep(PAUSA_SENHA_ERRADA_S)
         # Sem repetir o que foi digitado: nem na tela, nem em log.
         return HTMLResponse(pagina("Painel", """
@@ -127,15 +137,11 @@ def sair():
     return r
 
 
-def _moeda(valor: Decimal | None) -> str:
-    """Preço em português. None vira travessão, nunca "0,00" — zero seria um
-    preço, e não ter preço é outra coisa."""
-    if valor is None:
-        return "—"
-    return "R$ " + f"{valor:.2f}".replace(".", ",")
-
-
-PERIODOS = ((1, "hoje"), (7, "7 dias"), (30, "30 dias"), (3650, "tudo"))
+PERIODOS = ((1, "24 h"), (7, "7 dias"), (30, "30 dias"), (3650, "tudo"))
+# "24 h", não "hoje": esta faixa usa `_desde(1)` (agora menos 24 horas), e a
+# faixa ao vivo do topo (resumo_do_dia) usa o dia do CALENDÁRIO. Às 9h da
+# manhã os dois discordam — "hoje" prometia um recorte que a consulta não
+# fazia. Só o rótulo mudou; a consulta continua a mesma de sempre.
 
 
 def _seletor(dias: int) -> str:
@@ -168,8 +174,11 @@ def _barra(fracao: float | None) -> str:
     """Barra em CSS puro. Sem biblioteca, funciona sem internet."""
     if fracao is None:
         return '<span class="sem-dado">sem dados ainda</span>'
-    return (f'<div class="barra"><i style="width:{fracao * 100:.0f}%"></i>'
-            f'</div> {fracao * 100:.0f}%')
+    # Uma casa decimal: com .0f, 99,6% arredondava para "100%" numa
+    # transportadora que acabou de falhar — o número mais otimista possível
+    # bem em cima de quem não merecia.
+    return (f'<div class="barra"><i style="width:{fracao * 100:.1f}%"></i>'
+            f'</div> {fracao * 100:.1f}%')
 
 
 def _saude(linhas: list[dict]) -> str:
@@ -180,28 +189,36 @@ def _saude(linhas: list[dict]) -> str:
         f'<tr><td>{e(l["transportadora"])}</td>'
         f'<td>{l["sucesso"]}</td><td>{l["recusa"]}</td>'
         f'<td>{l["falha"]}</td><td>{l["nossa"]}</td>'
+        f'<td>{l["inesperado"]}</td>'
         f'<td>{_barra(l["aproveitamento"])}</td></tr>'
         for l in linhas)
     return (
         "<h2>Saúde das transportadoras</h2>"
         "<table><tr><th>transportadora</th><th>Sucessos</th>"
         "<th>Recusas</th><th>Falhas</th><th>Interrompidas</th>"
-        "<th>aproveitamento</th></tr>"
+        "<th>Inesperado</th><th>aproveitamento</th></tr>"
         f"{corpo}</table>"
         '<p class="sub">Recusa é a transportadora dizendo não, com o motivo '
         "dela — não é defeito. Interrompida é o servidor tendo reiniciado no "
-        "meio, e por isso fica fora do aproveitamento.</p>")
+        "meio, e por isso fica fora do aproveitamento. Inesperado é status "
+        "que core/painel.py ainda não conhece — mostrado, e não escondido, "
+        'porque esconder o desconhecido foi como "(nenhuma mensagem '
+        'visível)" nasceu.</p>')
 
 
 def _historico(linhas: list[dict]) -> str:
     if not linhas:
-        return ""
+        return "<h2>Histórico</h2><p>Nenhuma cotação no período.</p>"
     corpo = "".join(
-        f'<tr><td><a href="/cotacao/{l["id"]}">#{l["id"]}</a></td>'
+        # SEM link de propósito: /cotacao/{id} é a rota do VENDEDOR — exige o
+        # cookie dele e filtra por dono em banco.buscar_cotacao. Clicar aqui
+        # jogava para /login ou devolvia 404 numa cotação que esta própria
+        # tela acabou de listar. A rota própria do adm é Fase 2.
+        f'<tr><td>#{l["id"]}</td>'
         f'<td>{e(l["criado_em"][5:16].replace("T", " "))}</td>'
         f'<td>{e(l["usuario"])}</td><td>{e(l["rota"])}</td>'
         f'<td>{e(l["material"] or "")}</td>'
-        f'<td>{_moeda(l["melhor_preco"])}</td>'
+        f'<td>{moeda(l["melhor_preco"])}</td>'
         f'<td>{l["contagem"].get("falha", 0)}</td></tr>'
         for l in linhas)
     return ("<h2>Histórico</h2>"
@@ -227,6 +244,14 @@ def painel(adm: str | None = Cookie(None, alias=COOKIE_ADM),
     if not autorizado(adm):
         return RedirectResponse("/adm/entrar", status_code=303)
 
+    # `dias` vem cru da URL — só precisa ser um int válido para o FastAPI, não
+    # um período que a tela ofereça. Sem esta trava, ?dias=999999999 estourava
+    # OverflowError no timedelta lá dentro de _desde(), ?dias=15 renderizava
+    # sem marcar nenhum link como atual, e ?dias=-5 buscava no futuro e
+    # devolvia tudo vazio. Cai em 30 — o padrão — fora dos valores da tela.
+    if dias not in {d for d, _ in PERIODOS}:
+        dias = 30
+
     with closing(banco._conectar()) as con:
         resumo = contas.resumo_do_dia(con)
         saude = contas.saude_das_transportadoras(con, dias=dias)
@@ -245,7 +270,13 @@ def painel(adm: str | None = Cookie(None, alias=COOKIE_ADM),
 setInterval(async () => {{
   try {{
     const r = await fetch('/adm/agora');
-    if (r.ok) document.getElementById('agora').innerHTML = await r.text();
+    // fetch segue redirect por padrão: passadas as 12h do cookie, /adm/agora
+    // redireciona para /adm/entrar e o fetch recebe 200 com a PÁGINA DE LOGIN
+    // inteira — r.ok sozinho não percebe isso, e o <!doctype> inteiro ia
+    // parar dentro da faixa. r.redirected denuncia que a resposta veio de
+    // outro lugar.
+    if (r.ok && !r.redirected) document.getElementById('agora').innerHTML = await r.text();
+    else location.href = '/adm/entrar';
   }} catch (erro) {{ /* rede caiu; a próxima volta tenta de novo */ }}
 }}, 10000);
 </script>"""

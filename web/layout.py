@@ -8,6 +8,7 @@ Nada aqui conhece banco, cotação ou transportadora. É só desenho."""
 from __future__ import annotations
 
 import html
+from decimal import Decimal
 from pathlib import Path
 
 LOGO = (Path(__file__).parent / "logo_b64.txt").read_text(encoding="utf-8").strip()
@@ -196,6 +197,19 @@ box-shadow:0 0 0 1px var(--marca)}
 def e(v) -> str:
     """Escapa para HTML. O material vem do usuário e vai para a tela."""
     return html.escape(str(v if v is not None else ""))
+
+
+def moeda(v: Decimal | None) -> str:
+    """Preço em português: milhar com ponto, decimal com vírgula. None vira
+    travessão, nunca "0,00" — zero seria um preço, e não ter preço é outra
+    coisa.
+
+    Vive aqui, e não em web/app.py, porque web/adm.py tinha a própria versão
+    (`_moeda`, sem separador de milhar) — a mesma moeda escrita como
+    "R$ 12345,67" numa tela e "R$ 12.345,67" na outra, no mesmo sistema."""
+    if v is None:
+        return "—"
+    return f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 
 def pagina(titulo: str, corpo: str, usuario: str | None = None) -> str:
