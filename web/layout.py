@@ -8,6 +8,7 @@ Nada aqui conhece banco, cotação ou transportadora. É só desenho."""
 from __future__ import annotations
 
 import html
+from decimal import Decimal
 from pathlib import Path
 
 LOGO = (Path(__file__).parent / "logo_b64.txt").read_text(encoding="utf-8").strip()
@@ -179,12 +180,36 @@ box-shadow:0 0 0 1px var(--marca)}
 .opcao span{font-size:11px;color:var(--fraco)}
 .ficha .val{font-size:14px;font-weight:600;word-break:break-word}
 .ficha .pouco{display:block;font-size:11px;font-weight:400;color:var(--fraco)}
+.faixa{display:flex;gap:18px;flex-wrap:wrap;margin:16px 0}
+.numero{background:#f4f4f6;border-radius:10px;padding:12px 18px;min-width:120px}
+.numero b{display:block;font-size:28px;line-height:1.1}
+.numero span{font-size:12px;color:#666}
+.numero.ruim b{color:#b00020}
+.barra{display:inline-block;width:90px;height:9px;background:#e6e6ea;
+       border-radius:5px;vertical-align:middle;overflow:hidden}
+.barra i{display:block;height:100%;background:#1f9d55}
+.sem-dado{color:#888;font-size:12px}
+.periodo{text-decoration:none;color:#555}
+.periodo.atual{font-weight:700;color:#111;text-decoration:underline}
 """
 
 
 def e(v) -> str:
     """Escapa para HTML. O material vem do usuário e vai para a tela."""
     return html.escape(str(v if v is not None else ""))
+
+
+def moeda(v: Decimal | None) -> str:
+    """Preço em português: milhar com ponto, decimal com vírgula. None vira
+    travessão, nunca "0,00" — zero seria um preço, e não ter preço é outra
+    coisa.
+
+    Vive aqui, e não em web/app.py, porque web/adm.py tinha a própria versão
+    (`_moeda`, sem separador de milhar) — a mesma moeda escrita como
+    "R$ 12345,67" numa tela e "R$ 12.345,67" na outra, no mesmo sistema."""
+    if v is None:
+        return "—"
+    return f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 
 def pagina(titulo: str, corpo: str, usuario: str | None = None) -> str:

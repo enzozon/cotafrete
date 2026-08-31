@@ -60,6 +60,38 @@ def test_interrompido_fica_fora_do_aproveitamento(db):
         "sem nada no denominador, aproveitamento é desconhecido, não zero"
 
 
+def test_desconhecido_vai_para_o_fim_da_ordenacao(db):
+    """None (sem dados) não pode ordenar como "pior que 0%": senão uma
+    transportadora sem nenhuma cotação no período aparece no topo da lista
+    dos piores, à frente até de quem errou todas."""
+    sempre_erra = db.salvar_cotacao("enzo", CARGA)
+    db.salvar_resultado(sempre_erra, "camilo", status="erro")
+    sempre_acerta = db.salvar_cotacao("enzo", CARGA)
+    db.salvar_resultado(sempre_acerta, "jadlog", status="cotado")
+    sem_dados = db.salvar_cotacao("enzo", CARGA)
+    db.salvar_resultado(sem_dados, "generoso", status="interrompido")
+
+    with db._conectar() as con:
+        ordem = [l["transportadora"]
+                 for l in painel.saude_das_transportadoras(con, dias=30)]
+
+    assert ordem == ["camilo", "jadlog", "generoso"]
+
+
+def test_aguardando_retorno_conta_como_sucesso_na_coluna(db):
+    """A regra "aguardando_retorno é sucesso" só estava presa dentro de
+    categoria(). Esta prova leva ela até a coluna que a tela lê de verdade,
+    num banco de verdade."""
+    cid = db.salvar_cotacao("enzo", CARGA)
+    db.salvar_resultado(cid, "dellavolpe", status="aguardando_retorno")
+
+    with db._conectar() as con:
+        linha = painel.saude_das_transportadoras(con, dias=30)[0]
+
+    assert linha["sucesso"] == 1
+    assert linha["aproveitamento"] == 1.0
+
+
 def test_aproveitamento_conta_recusa_no_denominador(db):
     """Recusa não é defeito, mas também não é preço: entra na conta."""
     cid = db.salvar_cotacao("enzo", CARGA)

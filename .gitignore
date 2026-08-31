@@ -29,6 +29,8 @@ backup/
 # so
 .DS_Store
 .cache/
+# atalho do Windows — entra por arrasto acidental, nao pertence ao repositorio
+*.lnk
 cotafrete.db
 # arquivos que o modo WAL cria ao lado do banco
 cotafrete.db-wal

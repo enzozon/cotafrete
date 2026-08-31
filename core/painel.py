@@ -94,8 +94,14 @@ def saude_das_transportadoras(con: sqlite3.Connection,
         # DESCONHECIDO. Zero diria "nunca acertou", que é outra coisa.
         alvo["aproveitamento"] = alvo["sucesso"] / base if base else None
 
+    # None (sem dados) vai para o FIM da lista, depois até de quem tem a
+    # melhor nota. A chave antiga ("is not None") fazia o contrário: None
+    # virava (False, 0), que ordena ANTES de qualquer aproveitamento real —
+    # "desconhecido" aparecia como pior do que "0% conhecido", e uma
+    # transportadora sem nenhuma cotação no período ia parar no topo da
+    # lista dos piores, à frente de quem de fato errou todas.
     return sorted(linhas.values(),
-                  key=lambda a: (a["aproveitamento"] is not None,
+                  key=lambda a: (a["aproveitamento"] is None,
                                  a["aproveitamento"] or 0))
 
 

@@ -66,6 +66,13 @@ CREATE TABLE IF NOT EXISTS resultado (
     evidencia      TEXT,
     -- Quando a transportadora respondeu. NULL nas linhas anteriores a
     -- 28/08/2026, e a tela precisa dizer "sem dados ainda" em vez de zero.
+    --
+    -- Os adapters gravam datetime.now() só na tentativa BEM-SUCEDIDA (ver,
+    -- por exemplo, carriers/camilo/adapter.py) — então respondido_em -
+    -- criado_em inclui as esperas de QUALQUER retentativa que veio antes
+    -- daquela. Quem for calcular "qual transportadora está lenta" na Fase 2
+    -- vai culpar a transportadora pela nossa própria retentativa se não
+    -- descontar isso.
     respondido_em  TEXT
 );
 
