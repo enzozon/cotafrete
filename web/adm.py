@@ -25,6 +25,7 @@ from __future__ import annotations
 import hmac
 import os
 import time
+from contextlib import closing
 from decimal import Decimal
 
 from fastapi import APIRouter, Cookie, Form, HTTPException
@@ -215,7 +216,7 @@ def agora(adm: str | None = Cookie(None, alias=COOKIE_ADM)):
     _exigir_montado()
     if not autorizado(adm):
         return RedirectResponse("/adm/entrar", status_code=303)
-    with banco._conectar() as con:
+    with closing(banco._conectar()) as con:
         return HTMLResponse(_faixa(contas.resumo_do_dia(con)))
 
 
@@ -226,7 +227,7 @@ def painel(adm: str | None = Cookie(None, alias=COOKIE_ADM),
     if not autorizado(adm):
         return RedirectResponse("/adm/entrar", status_code=303)
 
-    with banco._conectar() as con:
+    with closing(banco._conectar()) as con:
         resumo = contas.resumo_do_dia(con)
         saude = contas.saude_das_transportadoras(con, dias=dias)
         linhas = contas.historico(con, dias=dias)

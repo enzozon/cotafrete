@@ -91,3 +91,30 @@ def test_faixa_ao_vivo_tambem_exige_cookie(monkeypatch, tmp_path):
                                            follow_redirects=False)
 
     assert resposta.status_code == 303
+
+
+def test_transportadora_so_com_interrompido_mostra_sem_dados(cliente):
+    """`aproveitamento` None é DESCONHECIDO, não zero. Se a tela confundir os
+    dois, uma transportadora que só viu o servidor reiniciar aparece com
+    "0%" — igual a quem nunca acerta uma cotação, o que é mentira."""
+    cid = adm.banco.salvar_cotacao("enzo", CARGA)
+    adm.banco.salvar_resultado(cid, "jadlog", status="interrompido")
+
+    html = cliente.get("/adm").text
+
+    assert "sem dados ainda" in html
+    # Não "0%" cru: a CSS já tem "width:100%" espalhada, que contém "0%"
+    # como substring. O que não pode aparecer é a barra de _barra() marcando
+    # zero — o texto exato que ela escreve depois do </div>.
+    assert "</div> 0%" not in html
+
+
+def test_cotacao_sem_resultado_mostra_travessao(cliente):
+    """`melhor_preco` None é "não teve preço", não "R$ 0,00" — zero seria um
+    preço de verdade, e a diferença é a razão de a coluna existir."""
+    adm.banco.salvar_cotacao("enzo", CARGA)
+
+    html = cliente.get("/adm").text
+
+    assert "—" in html
+    assert "R$ 0,00" not in html
