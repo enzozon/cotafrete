@@ -25,12 +25,14 @@ from __future__ import annotations
 import hmac
 import os
 import time
+from decimal import Decimal
 
 from fastapi import APIRouter, Cookie, Form, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from core.banco import Banco
-from web.layout import LOGO, pagina
+from core import painel as contas
+from web.layout import LOGO, e, pagina
 
 # O banco chega por INJEÇÃO: `web/app.py` faz `adm.banco = banco` logo
 # depois de criar o dele. Importar `web.app` daqui seria circular —
@@ -124,9 +126,126 @@ def sair():
     return r
 
 
-@router.get("", response_class=HTMLResponse)
-def painel(adm: str | None = Cookie(None, alias=COOKIE_ADM)):
+def _moeda(valor: Decimal | None) -> str:
+    """Preço em português. None vira travessão, nunca "0,00" — zero seria um
+    preço, e não ter preço é outra coisa."""
+    if valor is None:
+        return "—"
+    return "R$ " + f"{valor:.2f}".replace(".", ",")
+
+
+PERIODOS = ((1, "hoje"), (7, "7 dias"), (30, "30 dias"), (3650, "tudo"))
+
+
+def _seletor(dias: int) -> str:
+    """Qual recorte está na tela. Marcar o escolhido não é enfeite: um número
+    lido no período errado é pior que número nenhum."""
+    return '<p class="sub">' + " · ".join(
+        f'<a class="periodo{" atual" if d == dias else ""}" '
+        f'href="/adm?dias={d}">{e(rotulo)}</a>'
+        for d, rotulo in PERIODOS) + "</p>"
+
+
+def _faixa(resumo: dict) -> str:
+    """A faixa ao vivo. Fragmento SEM casco: é ela que o JavaScript troca."""
+    def bloco(rotulo: str, valor: int, destaque: str = "") -> str:
+        return (f'<div class="numero{destaque}"><b>{valor}</b>'
+                f'<span>{e(rotulo)}</span></div>')
+
+    return (
+        '<div class="faixa">'
+        + bloco("cotações hoje", resumo["cotacoes"])
+        + bloco("com preço", resumo["com_preco"])
+        # O número que mais importa: o vendedor ficou na mão.
+        + bloco("sem nenhum preço", resumo["sem_nenhum_preco"],
+                " ruim" if resumo["sem_nenhum_preco"] else "")
+        + bloco("cotando agora", resumo["em_andamento"])
+        + "</div>")
+
+
+def _barra(fracao: float | None) -> str:
+    """Barra em CSS puro. Sem biblioteca, funciona sem internet."""
+    if fracao is None:
+        return '<span class="sem-dado">sem dados ainda</span>'
+    return (f'<div class="barra"><i style="width:{fracao * 100:.0f}%"></i>'
+            f'</div> {fracao * 100:.0f}%')
+
+
+def _saude(linhas: list[dict]) -> str:
+    if not linhas:
+        return ("<h2>Saúde das transportadoras</h2>"
+                "<p>Nenhuma cotação no período.</p>")
+    corpo = "".join(
+        f'<tr><td>{e(l["transportadora"])}</td>'
+        f'<td>{l["sucesso"]}</td><td>{l["recusa"]}</td>'
+        f'<td>{l["falha"]}</td><td>{l["nossa"]}</td>'
+        f'<td>{_barra(l["aproveitamento"])}</td></tr>'
+        for l in linhas)
+    return (
+        "<h2>Saúde das transportadoras</h2>"
+        "<table><tr><th>transportadora</th><th>Sucessos</th>"
+        "<th>Recusas</th><th>Falhas</th><th>Interrompidas</th>"
+        "<th>aproveitamento</th></tr>"
+        f"{corpo}</table>"
+        '<p class="sub">Recusa é a transportadora dizendo não, com o motivo '
+        "dela — não é defeito. Interrompida é o servidor tendo reiniciado no "
+        "meio, e por isso fica fora do aproveitamento.</p>")
+
+
+def _historico(linhas: list[dict]) -> str:
+    if not linhas:
+        return ""
+    corpo = "".join(
+        f'<tr><td><a href="/cotacao/{l["id"]}">#{l["id"]}</a></td>'
+        f'<td>{e(l["criado_em"][5:16].replace("T", " "))}</td>'
+        f'<td>{e(l["usuario"])}</td><td>{e(l["rota"])}</td>'
+        f'<td>{e(l["material"] or "")}</td>'
+        f'<td>{_moeda(l["melhor_preco"])}</td>'
+        f'<td>{l["contagem"].get("falha", 0)}</td></tr>'
+        for l in linhas)
+    return ("<h2>Histórico</h2>"
+            "<table><tr><th>nº</th><th>quando</th><th>quem</th><th>rota</th>"
+            "<th>material</th><th>melhor preço</th><th>falhas</th></tr>"
+            f"{corpo}</table>")
+
+
+@router.get("/agora", response_class=HTMLResponse)
+def agora(adm: str | None = Cookie(None, alias=COOKIE_ADM)):
+    """Só a faixa. Tem os mesmos dados da tela, então exige o mesmo cookie."""
     _exigir_montado()
     if not autorizado(adm):
         return RedirectResponse("/adm/entrar", status_code=303)
-    return HTMLResponse(pagina("Painel", "<p>em construção</p>"))
+    with banco._conectar() as con:
+        return HTMLResponse(_faixa(contas.resumo_do_dia(con)))
+
+
+@router.get("", response_class=HTMLResponse)
+def painel(adm: str | None = Cookie(None, alias=COOKIE_ADM),
+           dias: int = 30):
+    _exigir_montado()
+    if not autorizado(adm):
+        return RedirectResponse("/adm/entrar", status_code=303)
+
+    with banco._conectar() as con:
+        resumo = contas.resumo_do_dia(con)
+        saude = contas.saude_das_transportadoras(con, dias=dias)
+        linhas = contas.historico(con, dias=dias)
+
+    corpo = f"""
+<h1>Painel</h1>
+<div id="agora">{_faixa(resumo)}</div>
+{_seletor(dias)}
+{_saude(saude)}
+{_historico(linhas)}
+<p class="sub"><a href="/adm/sair">Sair do painel</a></p>
+<script>
+// Troca SÓ a faixa. Recarregar a página inteira perderia a rolagem de quem
+// estivesse lendo a tabela embaixo.
+setInterval(async () => {{
+  try {{
+    const r = await fetch('/adm/agora');
+    if (r.ok) document.getElementById('agora').innerHTML = await r.text();
+  }} catch (erro) {{ /* rede caiu; a próxima volta tenta de novo */ }}
+}}, 10000);
+</script>"""
+    return HTMLResponse(pagina("Painel", corpo))
