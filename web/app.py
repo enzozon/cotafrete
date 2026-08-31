@@ -65,6 +65,13 @@ from core.models import (
 app = FastAPI(title="Cotafrete — Ventura")
 banco = Banco()
 
+from web import adm
+
+app.include_router(adm.router)
+# O painel usa o MESMO banco do resto do sistema. Injetado aqui, e não
+# importado lá, porque `web/adm.py` importar `web/app.py` seria circular.
+adm.banco = banco
+
 # Quantas transportadoras rodam juntas, quantas vezes se tenta de novo e por
 # quanto tempo: tudo em core/retentativa.py, porque as três decisões dependem
 # umas das outras. ESPERA_MAXIMA_S é usado aqui embaixo pela TELA — e é de
