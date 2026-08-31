@@ -27,7 +27,6 @@ fora da rede local sem virar autenticação de verdade.
 from __future__ import annotations
 
 import base64
-import html
 import os
 import unicodedata
 from concurrent.futures import ThreadPoolExecutor
@@ -55,8 +54,8 @@ from core.banco import Banco
 from core.retentativa import (
     ESPERA_MAXIMA_S, SEM_REPETICAO, TENTATIVAS_MAXIMAS, cotar_com_retentativa,
 )
-from web import transportadoras
-from web.layout import CSS, LOGO, e, pagina
+from web import adm, transportadoras
+from web.layout import LOGO, e, moeda, pagina
 from core.models import (
     CotacaoRequest, Local, Mercadoria, NotaFiscal, Parte, Servico,
     Solicitante, StatusCotacao, TipoFrete, Volume, limpa_doc,
@@ -64,8 +63,6 @@ from core.models import (
 
 app = FastAPI(title="Cotafrete — Ventura")
 banco = Banco()
-
-from web import adm
 
 app.include_router(adm.router)
 # O painel usa o MESMO banco do resto do sistema. Injetado aqui, e não
@@ -305,12 +302,6 @@ def _img(caminho: str | None) -> str:
     dados = base64.b64encode(Path(caminho).read_bytes()).decode()
     return (f'<img class="print" src="data:image/png;base64,{dados}" '
             f'alt="comprovante da cotacao">')
-
-
-def moeda(v: Decimal | None) -> str:
-    if v is None:
-        return "—"
-    return f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 
 def _kg(valor) -> str:
