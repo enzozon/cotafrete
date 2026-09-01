@@ -49,3 +49,71 @@ def test_a_generoso_e_acompanhada_como_as_outras():
     Enzo nao veria nem que ela rodou."""
     assert "generoso" in monitorar.AUTOMATICAS
     assert "generoso" in monitorar.TITULOS
+
+
+# --------------------------------------------- colunas derivadas do banco
+def test_slugs_do_periodo_pega_quem_apareceu_no_banco():
+    """O bug real: a Della Volpe saiu de AUTOMATICAS em 31/08/2026 e sumiu
+    da tela inteira, mesmo com erro dela salvo no banco. As colunas agora
+    vem do que o banco tem, nao de uma lista fixa copiada a mao."""
+    resultados = {1: {"dellavolpe": {"status": "intervencao_necessaria"}}}
+
+    assert monitorar.slugs_do_periodo(resultados) == ("dellavolpe",)
+
+
+def test_slugs_do_periodo_cai_para_automaticas_com_banco_vazio():
+    """Banco novo, sem nenhum resultado ainda: a tela nao pode subir sem
+    coluna nenhuma."""
+    assert monitorar.slugs_do_periodo({}) == monitorar.AUTOMATICAS
+
+
+def test_titulo_cai_para_slug_maiusculo_quando_desconhecido():
+    """Uma transportadora nova nunca some da tela por faltar em TITULOS —
+    aparece com o slug em maiusculo ate alguem cadastrar o nome bonito."""
+    assert monitorar._titulo("nova_transportadora") == "NOVA_TRANSPORTADORA"
+    assert monitorar._titulo("camilo") == "CAMILO"
+
+
+def test_desenhar_nao_quebra_com_transportadora_fora_de_automaticas(capsys):
+    """A reproducao direta do bug: um resultado de uma transportadora que
+    nao esta em AUTOMATICAS (a Della Volpe, hoje) tem que aparecer na tela
+    e no historico de falhas, nao ser ignorado silenciosamente."""
+    dados = {
+        "cotacoes": [{"id": 1, "criado_em": "2026-09-01T10:00:00",
+                      "usuario": "enzo", "uf_origem": "SP", "uf_destino": "ES",
+                      "quantidade": 1, "peso_kg": "10"}],
+        "resultados": {1: {"dellavolpe": {
+            "transportadora": "dellavolpe", "valor": None,
+            "status": "intervencao_necessaria",
+            "erro": "Envio barrado como spam pelo formulário."}}},
+        "zaps": {},
+    }
+
+    monitorar.desenhar(dados, dias=1)
+    saida = capsys.readouterr().out
+
+    assert "DELLA VOLPE" in saida
+    assert "Envio barrado como spam" in saida
+
+
+# --------------------------------------------- linhas sem estourar o terminal
+def test_linhas_disponiveis_respeita_o_minimo(monkeypatch):
+    """Terminal pequeno nao pode zerar a tabela — cai no minimo, nunca em
+    zero ou negativo."""
+    import os
+    import shutil
+
+    monkeypatch.setattr(shutil, "get_terminal_size",
+                        lambda fallback=None: os.terminal_size((80, 10)))
+
+    assert monitorar._linhas_disponiveis() == monitorar.LINHAS_MIN_TABELA
+
+
+def test_linhas_disponiveis_cresce_com_o_terminal(monkeypatch):
+    import os
+    import shutil
+
+    monkeypatch.setattr(shutil, "get_terminal_size",
+                        lambda fallback=None: os.terminal_size((200, 80)))
+
+    assert monitorar._linhas_disponiveis() == 80 - monitorar.LINHAS_MOLDURA
