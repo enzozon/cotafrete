@@ -43,7 +43,6 @@ from fastapi.staticfiles import StaticFiles
 load_dotenv(override=False)
 
 from carriers.camilo.adapter import CamiloAdapter
-from carriers.dellavolpe.adapter import DellavolpeAdapter
 from carriers.generoso.adapter import GenerosoAdapter
 from carriers.jadlog.painel import JadlogPainelAdapter
 from carriers.translovato.adapter import TranslovatoAdapter
@@ -105,14 +104,21 @@ MEDIDA_MINIMA_CM = Decimal("1")
 
 # Quem roda automaticamente. A tela usa para saber quantos resultados esperar
 # e decidir se ainda esta cotando.
-AUTOMATICAS = ("camilo", "jadlog", "translovato", "generoso",
-               "dellavolpe")
+#
+# A Della Volpe SAIU daqui em 31/08/2026. Eles puseram Cloudflare Turnstile no
+# formulário público — uma caixa "Confirme que é humano" — e sem ela marcada o
+# Contact Form 7 recusa como spam sem gerar e-mail nenhum (cotações #78 a #84).
+# Enquanto ela estivesse nesta lista, toda cotação gastaria uma vaga de
+# navegador para terminar num cartão vermelho que ninguém consegue resolver.
+# Hoje ela é acionada pelo vendedor: ver POR_EMAIL em web/transportadoras.py.
+AUTOMATICAS = ("camilo", "jadlog", "translovato", "generoso")
 
 # As 17 DISTINTAS. A Translovato conta uma vez so: ela e automatica E tem
 # WhatsApp. dict.fromkeys em vez de set para a ordem nao mudar a cada
 # reinicio do servidor — tela que troca de ordem sozinha confunde quem usa.
 TODAS_AS_SLUGS = tuple(dict.fromkeys(
-    [*AUTOMATICAS, *(r.slug for r in transportadoras.com_whatsapp())]))
+    [*AUTOMATICAS, *(r.slug for r in transportadoras.com_whatsapp()),
+     *(r.slug for r in transportadoras.com_email())]))
 
 
 # Sobrevive à requisição de propósito: o /cotar dispara as transportadoras e
@@ -205,7 +211,13 @@ NOTAS = {
 # A Generoso NÃO entra aqui de propósito. Quando ela cai neste mesmo cartão,
 # quem responde é um vendedor, em horas — herdar "minutos" faria o vendedor
 # dar a cotação por perdida antes de ela chegar.
-ESPERA_DO_EMAIL = {"dellavolpe": "2 a 5 minutos"}
+# Prazo prometido no cartão de "cotação enviada", por transportadora.
+#
+# VAZIO desde 31/08/2026. Tinha a Della Volpe com "2 a 5 minutos", medido nos
+# envios reais — mas ela deixou de ser automática, e prometer prazo de um
+# e-mail que o sistema não manda mandaria o vendedor esperar o que nunca vem.
+# O mecanismo fica: sem entrada, o cartão simplesmente não promete prazo.
+ESPERA_DO_EMAIL: dict[str, str] = {}
 
 # Erro técnico -> frase que o vendedor entende.
 #
@@ -624,10 +636,21 @@ def painel_transportadoras() -> str:
               '<span class="selo-zap">+ WhatsApp</span>' if slug in zap else "")
         for slug in AUTOMATICAS)
 
-    # As de WhatsApp menos as que já apareceram acima (hoje, a Translovato).
-    whatsapp = "".join(
+    # As de WhatsApp menos as que já apareceram acima (hoje, a Translovato),
+    # mais as de e-mail. Vão no MESMO grupo porque o grupo é rotulado pelo que
+    # a transportadora FAZ, e para o vendedor as duas fazem a mesma coisa: o
+    # sistema deixa a mensagem pronta e ele envia.
+    #
+    # Esquecer as de e-mail aqui foi um bug real, em 31/08/2026: a Della Volpe
+    # sumiu da tela inteira. Sem caixa no painel ela nunca vinha marcada, a
+    # lista guardada saía sem ela, e `selecao.entra` passava a responder False
+    # para sempre — sem nenhuma mensagem dizendo o que houve.
+    manuais = "".join(
         caixa(r.slug, r.nome, r.logo)
         for r in transportadoras.com_whatsapp() if r.slug not in AUTOMATICAS)
+    manuais += "".join(
+        caixa(r.slug, r.nome, r.logo, '<span class="selo-zap">e-mail</span>')
+        for r in transportadoras.com_email())
 
     def grupo(titulo: str, explica: str, itens: str) -> str:
         return (f'<div class="grupo"><div class="grupo-cab">'
@@ -642,8 +665,9 @@ def painel_transportadoras() -> str:
         f'{len(TODAS_AS_SLUGS)} transportadoras</span>'
         f'<span class="abrir">Escolher</span></summary>'
         + grupo("AUTOMÁTICAS", "devolvem preço nesta tela", automaticas)
-        + grupo("POR WHATSAPP", "abrem a mensagem pronta para você enviar",
-                whatsapp)
+        + grupo("PRECISA DE VOCÊ",
+                "abrem a mensagem pronta — por WhatsApp ou e-mail — para "
+                "você enviar", manuais)
         + '</details>')
 
 
@@ -886,27 +910,12 @@ def _cotar_generoso(req):
     return GenerosoAdapter().cotar(req, confirmar_envio=True)
 
 
-def _cotar_dellavolpe(req):
-    """Envia o formulário público da Della Volpe DE VERDADE.
-
-    Diferente das outras quatro: aqui não existe auto-serviço. Cada envio cai
-    na fila de um vendedor da transportadora, que responde por e-mail — e é
-    por isso que o adapter exige DV_ENVIO_REAL_AUTORIZADO=sim no ambiente.
-
-    A janela é headed e fica em -3000,-3000: o reCAPTCHA v3 do site pontua
-    Chromium headless como robô e o Contact Form 7 barra como spam (medido em
-    13/08/2026, cinco envios, nenhum e-mail gerado). Fora da tela ela não
-    aparece para quem está trabalhando na máquina."""
-    return DellavolpeAdapter().cotar(req, confirmar_envio=True)
-
-
 # No módulo, e não dentro de /cotar: é o que permite a
 # tests/test_dellavolpe_automatica.py conferir que quem está em AUTOMATICAS
 # tem como ser despachada. Entrar na lista sem fábrica só estourava dentro de
 # uma thread do executor, e lá um KeyError vira cartão girando para sempre.
 FABRICAS = {"camilo": _cotar_camilo, "jadlog": _cotar_jadlog,
-            "translovato": _cotar_translovato, "generoso": _cotar_generoso,
-            "dellavolpe": _cotar_dellavolpe}
+            "translovato": _cotar_translovato, "generoso": _cotar_generoso}
 
 
 def _rodar(cotacao_id: int, slug: str, cotar_fn, req) -> None:
@@ -1140,6 +1149,77 @@ def abrir_whatsapp(cotacao_id: int, slug: str,
                             status_code=303)
 
 
+@app.get("/email/{cotacao_id}/{slug}", response_class=HTMLResponse)
+def preparar_email(cotacao_id: int, slug: str,
+                   usuario: str | None = Cookie(None, alias=COOKIE)):
+    """A cotação escrita, pronta para o vendedor copiar e mandar por e-mail.
+
+    Existe porque a Della Volpe pôs Cloudflare Turnstile no formulário
+    público em 31/08/2026: uma caixa "Confirme que é humano" que, sem estar
+    marcada, faz o Contact Form 7 recusar o envio como spam sem gerar e-mail
+    nenhum. O robô não marca essa caixa — ela existe justamente para impedir
+    isso — então quem envia passou a ser a pessoa.
+
+    Página nossa, e não `mailto:`: parte da equipe lê e-mail pelo navegador, e
+    ali um `mailto:` não abre nada. Um botão que não faz nada é pior que
+    botão nenhum — o mesmo motivo que deixa transportadora sem número fora da
+    lista do WhatsApp.
+
+    O texto é o MESMO do WhatsApp, de propósito: um segundo texto seria mais
+    um para divergir do primeiro."""
+    if not usuario:
+        return RedirectResponse("/login", status_code=303)
+
+    c = banco.buscar_cotacao(cotacao_id, usuario)
+    reg = transportadoras.por_slug_email(slug)
+    if c is None or reg is None:
+        return HTMLResponse("Não encontrado", status_code=404)
+
+    # Mesma tabela do WhatsApp: o fato registrado é idêntico — a pessoa abriu
+    # a coisa pronta. Uma tabela nova só daria duas contagens para conciliar.
+    banco.marcar_whatsapp_aberto(cotacao_id, slug, usuario)
+    texto = mensagem_whatsapp(c)
+
+    return HTMLResponse(pagina(f"Cotação {cotacao_id} — {reg.nome}", f"""
+<h1>{e(reg.nome)}</h1>
+<p class="sub">Cotação #{cotacao_id} · {e(c['cidade_origem'])}/{e(c['uf_origem'])}
+→ {e(c['cidade_destino'])}/{e(c['uf_destino'])}</p>
+
+<div class="cartao">
+  <div class="alerta email"><b>Esta é a única que você envia à mão.</b>
+  O site da {e(reg.nome)} passou a exigir uma verificação "confirme que é
+  humano", e o sistema não marca essa caixa por você. O texto abaixo já está
+  pronto — copie e mande para o endereço deles.</div>
+
+  <p>Enviar para <b class="caixa">{e(reg.email)}</b>
+  <button class="botao2" type="button" onclick="copiar('endereco')">Copiar
+  endereço</button></p>
+  <textarea id="endereco" class="escondido">{e(reg.email)}</textarea>
+
+  <p><b>A cotação:</b>
+  <button class="botao2" type="button" onclick="copiar('texto')">Copiar
+  texto</button></p>
+  <textarea id="texto" class="pronto" rows="20" readonly>{e(texto)}</textarea>
+
+  <p class="sub">Depois que você copia, o sistema não tem como saber se a
+  mensagem saiu — por isso o contador da cotação diz <b>abertas</b>, e nunca
+  enviadas.</p>
+</div>
+
+<p><a class="botao2" href="/cotacao/{cotacao_id}">voltar para a cotação</a></p>
+<script>
+function copiar(id) {{
+  const campo = document.getElementById(id);
+  campo.classList.remove('escondido');
+  campo.select();
+  campo.setSelectionRange(0, 99999);
+  try {{ document.execCommand('copy'); }} catch (erro) {{ }}
+  if (id === 'endereco') campo.classList.add('escondido');
+  window.getSelection().removeAllRanges();
+}}
+</script>""", usuario))
+
+
 @app.get("/cotacao/{cotacao_id}", response_class=HTMLResponse)
 def ver_cotacao(cotacao_id: int,
                 usuario: str | None = Cookie(None, alias=COOKIE)):
@@ -1300,6 +1380,8 @@ def ver_cotacao(cotacao_id: int,
 
     lista_zap = [r for r in transportadoras.com_whatsapp()
                  if selecao.entra(r.slug, escolhidas)]
+    lista_email = [r for r in transportadoras.com_email()
+                   if selecao.entra(r.slug, escolhidas)]
     abertas = banco.whatsapp_abertos(cotacao_id)
     zaps = "".join(
         f'<a class="zap{" aberta" if reg.slug in abertas else ""}"'
@@ -1311,6 +1393,19 @@ def ver_cotacao(cotacao_id: int,
         f'<span class="ir">Abrir no WhatsApp</span>'
         f'<span class="jafoi">Aberta</span></a>'
         for reg in lista_zap)
+
+    # As de e-mail entram na MESMA seção: para o vendedor o gesto é o mesmo —
+    # o sistema deixou pronto e ele envia. Só o destino muda, e o rótulo diz.
+    zaps += "".join(
+        f'<a class="zap{" aberta" if reg.slug in abertas else ""}"'
+        f' id="zap-{e(reg.slug)}"'
+        f' href="/email/{cotacao_id}/{e(reg.slug)}"'
+        f' target="_blank" rel="noopener">'
+        f'<img class="marca" src="/logos/{e(reg.logo)}" alt="" loading="lazy">'
+        f'<b>{e(reg.nome)}</b>'
+        f'<span class="ir">Abrir e-mail pronto</span>'
+        f'<span class="jafoi">Aberta</span></a>'
+        for reg in lista_email)
 
     return HTMLResponse(pagina(f"Cotação {cotacao_id}", f"""
 {recarrega}
@@ -1329,7 +1424,7 @@ def ver_cotacao(cotacao_id: int,
 <div class="cartao">
   <h2 style="font-size:15px;margin:0 0 4px">Precisa de você
     <span class="contador"><b id="quantas">{len(abertas)}</b> de
-    {len(lista_zap)} abertas</span></h2>
+    {len(lista_zap) + len(lista_email)} abertas</span></h2>
   <p class="sub">A mensagem abre pronta — <b>quem aperta enviar é você</b>,
   no WhatsApp. Por isso a conta acima diz <b>abertas</b>, e não enviadas:
   daqui o sistema não tem como saber se a mensagem saiu.</p>
@@ -1422,8 +1517,8 @@ a tela para de atualizar e diz quem não respondeu.</p>
       caixa.</li>
   <li><b>Valor da nota fiscal</b> e <b>Material</b> — o que é a carga, em
       palavras.</li>
-  <li><b>Nome, e-mail e WhatsApp</b> — é para este e-mail que a
-      {e(NOMES["dellavolpe"])} responde. Confira antes de enviar.</li>
+  <li><b>Nome, e-mail e WhatsApp</b> — seus dados de contato, que entram
+      na mensagem pronta das transportadoras que você aciona à mão.</li>
 </ul>
 
 <h2>Os erros que mais custam caro</h2>
@@ -1490,19 +1585,20 @@ prova de que o "não" veio do site e não do Cotafrete — e é o que você mand
 para a transportadora quando precisa reclamar.</p>
 <p>Nas que dão certo o print também fica: a tela preenchida, com o preço.</p>
 
-<h2>A {e(NOMES["dellavolpe"])} é diferente</h2>
+<h2>A {e(NOMES["dellavolpe"])} mudou: agora quem envia é você</h2>
 <div class="alerta email">
-<p><b>Ela não devolve preço na tela.</b> As outras têm sistema de cotação
-online; a {e(NOMES["dellavolpe"])} tem um formulário que cai na mesa de um
-vendedor, e ele responde <b>por e-mail</b>.</p>
-<p>Por isso o cartão dela diz <b>"Cotação enviada"</b> e mostra o e-mail para
-onde a resposta vai — o mesmo que você digitou no formulário. A resposta
-costuma chegar em <b>{e(ESPERA_DO_EMAIL["dellavolpe"])}</b>.</p>
-<p><b>Confira a caixa de entrada e também o spam.</b> Esta tela não muda
-quando o e-mail chegar.</p>
-<p>Cada cotação dela é enviada <b>uma única vez</b>, de propósito: do outro
-lado tem uma pessoa, e repetir colocaria a mesma carga duas vezes na fila
-dela.</p>
+<p>Ela era cotada sozinha até <b>31/08/2026</b>. Nesse dia o site dela passou
+a exigir uma verificação <b>"confirme que é humano"</b> — aquela caixinha da
+Cloudflare — e o sistema não marca essa caixa por você: ela existe justamente
+para impedir que um programa envie o formulário.</p>
+<p>Tentar assim mesmo não funcionava e ainda enganava: o site respondia
+"submissão marcada como spam" e <b>nenhum e-mail era gerado</b>. Testado com
+envio real: nem o segundo clique passa.</p>
+<p><b>O que mudou para você:</b> ela saiu da parte de cima da tela e agora
+aparece em <b>Precisa de você</b>, junto das do WhatsApp. Clicar em
+<b>Abrir e-mail pronto</b> mostra a cotação já escrita e o endereço deles —
+você copia, cola no seu e-mail e manda. O sistema continua fazendo a parte
+chata, que é preencher os dados da carga.</p>
 </div>
 
 <h2>As {zap} do WhatsApp</h2>

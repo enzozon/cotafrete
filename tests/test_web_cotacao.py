@@ -357,11 +357,19 @@ def test_a_tela_mostra_quantas_ja_foram_abertas(app_web, cliente):
 
     texto = _texto(cliente.get(f"/cotacao/{cotacao_id}").text)
 
-    assert "3 de 14 abertas" in texto
+    # Derivado, nunca escrito a mao: o "14" fixo daqui quebrou em 31/08/2026,
+    # quando a Della Volpe saiu das automaticas e entrou nesta mesma secao
+    # por e-mail. Numero a mao aqui apodrece a cada transportadora nova — foi
+    # assim que "todas as 17 transportadoras" ficou mentindo por semanas.
+    from web import transportadoras
+    quantas = (len(transportadoras.com_whatsapp())
+               + len(transportadoras.com_email()))
+
+    assert f"3 de {quantas} abertas" in texto
     # A frase da tela explica a diferença e por isso usa as duas palavras.
     # O que não pode existir é a CONTAGEM dizendo "enviadas": o sistema não
     # sabe se foi enviado, e prometer isso é pior que não contar nada.
-    assert "de 14 enviadas" not in texto
+    assert f"de {quantas} enviadas" not in texto
 
 
 def test_transportadora_ja_aberta_fica_marcada_na_lista(app_web, cliente):

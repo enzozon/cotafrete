@@ -33,10 +33,12 @@ BANCO = RAIZ / "cotafrete.db"
 # tests/test_dellavolpe_automatica.py. Esta copia ja parou em
 # ("camilo", "jadlog") quando a Translovato entrou, e o monitor passou a
 # mentir sobre quantas faltavam.
-AUTOMATICAS = ("camilo", "jadlog", "translovato", "generoso", "dellavolpe")
+# A Della Volpe saiu em 31/08/2026: o site dela passou a exigir "confirme
+# que e humano" e ela virou acionada pelo vendedor. Para trazer de volta,
+# acrescente aqui E em web/app.py — o teste confere que as duas batem.
+AUTOMATICAS = ("camilo", "jadlog", "translovato", "generoso")
 TITULOS = {"camilo": "CAMILO", "jadlog": "JADLOG",
-           "translovato": "TRANSLOVATO", "generoso": "GENEROSO",
-           "dellavolpe": "DELLA VOLPE"}
+           "translovato": "TRANSLOVATO", "generoso": "GENEROSO"}
 
 PAUSA_S = 5
 LARGURA = 116

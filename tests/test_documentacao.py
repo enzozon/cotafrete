@@ -85,9 +85,19 @@ def test_toda_transportadora_automatica_esta_documentada(app_web, texto):
         assert app_web.NOMES[slug] in texto, f"{slug} fora da documentacao"
 
 
-def test_o_prazo_da_dellavolpe_e_o_mesmo_do_cartao(app_web, texto):
-    """Dois lugares dizendo prazos diferentes e pior que um lugar so."""
-    assert app_web.ESPERA_DO_EMAIL["dellavolpe"] in texto
+def test_a_ajuda_nao_promete_prazo_que_o_cartao_nao_promete(app_web, texto):
+    """Dois lugares dizendo prazos diferentes e pior que um lugar so.
+
+    Derivado, e nao escrito a mao: ESPERA_DO_EMAIL ficou VAZIO em 31/08/2026,
+    quando a Della Volpe deixou de ser automatica. Com a assercao antiga
+    (`ESPERA_DO_EMAIL["dellavolpe"] in texto`) o teste morria de KeyError; com
+    esta, ele passa com o dicionario vazio E volta a proteger sozinho no dia
+    em que alguem cadastrar um prazo."""
+    for prazo in app_web.ESPERA_DO_EMAIL.values():
+        assert prazo in texto, f"cartao promete {prazo}, a ajuda nao diz"
+
+    if not app_web.ESPERA_DO_EMAIL:
+        assert "costuma chegar em" not in texto
 
 
 def test_os_minimos_sao_os_que_a_validacao_usa(app_web, texto):
