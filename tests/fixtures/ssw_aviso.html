@@ -66,5 +66,14 @@ function mostrarAvisoCidadeNaoAtendida() {
   caixa.style.visibility = 'visible';
   document.getElementById('errorpanel').style.visibility = 'visible';
 }
+// Preencher CNPJ remet/destin (01/09/2026) fez o SSW passar a validar se o
+// destinatario esta cadastrado -- e ele avisa ANTES de existir Cubagem
+// nenhuma, nao depois do Simular. Print real em 01/09/2026.
+function mostrarAvisoDestinatarioNaoCadastrado() {
+  var caixa = document.getElementById('errormsg');
+  caixa.innerHTML = "<div id=\"scontentbar\" style=\"text-align: right; width: 415px;\"><label style=\"left:16px;top:6px;color:white;\" class=\"texto\">Aviso</label><a href=\"#\" onclick=\"ccx();showmsgonclick();return false;\" style=\"position:relative;font-size:18px;color:white;text-decoration:none;\" class=\"texto\">&nbsp;<b>×</b>&nbsp;</a></div><div class=\"texto\" id=\"errormsglabel\" style=\"color:red;left:16px;top:32px;text-align:left;overflow:visible\"><b>CNPJ DO DESTINATÁRIO NÃO CADASTRADO.</b></div><a id=\"0\" onfocus=\"obj=this;\" accesskey=\"&amp;\" ak=\"7\" class=\"dialog\" onclick=\"showmsgonclick();return false;\" style=\"top:64px;left:16px;\" href=\"#\">7. OK</a>undefined";
+  caixa.style.visibility = 'visible';
+  document.getElementById('errorpanel').style.visibility = 'visible';
+}
 </script>
 </body></html>

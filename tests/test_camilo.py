@@ -107,11 +107,21 @@ def test_padroes_confirmados_pelo_enzo(adapter):
     assert p["ent_dif"] == "N"
 
 
-def test_campos_opcionais_ficam_de_fora(adapter):
-    """Enzo cota só com o CNPJ pagador, como faz à mão."""
+def test_cnpj_remetente_e_destinatario_vao_preenchidos(adapter):
+    """"CNPJ remet (opc)" e "CNPJ destin (opc)": opcionais no rótulo, mas o
+    SSW muda o valor do frete quando vêm preenchidos — comparado por print
+    real em 01/09/2026. Vão sempre em dígitos, mesmo tratamento do cgc_pag."""
     p = adapter.preparar_payload(montar())
-    for opcional in ("cgc_rem", "cgc_dest", "tp_merc", "qtde_pares",
-                     "chave_nfe"):
+
+    assert p["cgc_rem"] == "11222333000181"
+    assert p["cgc_dest"] == "45723174000110"
+
+
+def test_campos_opcionais_ficam_de_fora(adapter):
+    """Enzo cota só com o CNPJ pagador, como faz à mão. tp_merc/qtde_pares/
+    chave_nfe continuam vazios de propósito — só cgc_rem/cgc_dest mudam."""
+    p = adapter.preparar_payload(montar())
+    for opcional in ("tp_merc", "qtde_pares", "chave_nfe"):
         assert p.get(opcional, "") == ""
 
 
