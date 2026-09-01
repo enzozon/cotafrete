@@ -97,16 +97,37 @@ _LIXO_DO_AVISO = ("aviso", "ok", "undefined", "×")
 FRASES_DE_SUCESSO = ("operacao realizada com sucesso",
                      "operação realizada com sucesso")
 
+# Avisos que acompanham uma cotação que DEU CERTO, mas o SSW quer que o
+# vendedor saiba de algo antes de fechar. Diferente de recusa por regra de
+# negócio (cidade não atendida, cliente sem tabela, CNPJ não cadastrado): ali
+# o preço não serve pra nada; aqui o preço É válido, só carrega uma ressalva
+# operacional. Cotação #99 de produção (01/09/2026): "Entrega em área de
+# risco (opc 304)" com R$ 819,51 e protocolo 2822420 calculados por baixo do
+# popup — e o adapter estava descartando os dois por tratar isto como recusa.
+FRASES_DE_AVISO_OPERACIONAL = ("área de risco", "area de risco")
+
 
 def e_recusa(aviso: str | None) -> bool:
-    """O popup é recusa, ou só o site avisando que deu certo?
+    """O popup é recusa, ou só o site avisando que deu certo (ou que deu
+    certo com ressalva)?
 
     Existe porque a PRESENÇA do popup não decide nada: `#errormsg` é a caixa
     de aviso genérica do SSW. Tratar toda caixa como recusa fez a foto do
     resultado sair com o popup tapando Frete Valor, Despacho, TDE, Pedágio e
     a Cubagem — e ainda salva com nome de recusa."""
     t = (aviso or "").strip().lower()
-    return bool(t) and not any(f in t for f in FRASES_DE_SUCESSO)
+    if not t:
+        return False
+    return not any(f in t for f in FRASES_DE_SUCESSO + FRASES_DE_AVISO_OPERACIONAL)
+
+
+def e_aviso_operacional(aviso: str | None) -> bool:
+    """Ressalva que NÃO invalida um preço já calculado — ver
+    FRASES_DE_AVISO_OPERACIONAL. Função própria, e não só "não é recusa",
+    porque "sem popup nenhum" também não é recusa e não tem nada a mostrar
+    ao vendedor; aqui existe uma frase real que precisa chegar até ele."""
+    t = (aviso or "").strip().lower()
+    return any(f in t for f in FRASES_DE_AVISO_OPERACIONAL)
 
 
 def _texto_do_aviso(page) -> str:
@@ -251,6 +272,12 @@ class CamiloAdapter:
             return ResultadoCotacao(
                 self.slug, StatusCotacao.ERRO, raw_response=str(raw)[:800],
                 erro="A tela não devolveu valor de frete.")
+        # Preço válido, mas o SSW deixou um aviso operacional em cima dele
+        # (ex.: "Entrega em área de risco") — não é recusa, o vendedor só
+        # precisa saber antes de fechar. Cotação #99 de produção
+        # (01/09/2026): guardado em `erro` porque é o único campo que a
+        # tela do vendedor já lê ao lado de um preço (ver web/app.py).
+        aviso = (campos.get("aviso") or "").strip()
         return ResultadoCotacao(
             transportadora=self.slug,
             status=StatusCotacao.COTADO,
@@ -258,6 +285,8 @@ class CamiloAdapter:
             protocolo=protocolo or None,
             prazo_dias=None,   # a tela dá data de previsão, não número de dias
             raw_response=str(raw)[:800],
+            erro=(f"Cotação bem-sucedida, porém em área de risco: {aviso}"
+                  if aviso else None),
         )
 
     # --------------------------------------------------------- mecânica
@@ -351,6 +380,15 @@ class CamiloAdapter:
             estragou as fotos das cotações #27, #28 e #29, todas com preço
             e popup de sucesso.
 
+        Aviso operacional (popup presente, com preço, e é uma das frases de
+            FRASES_DE_AVISO_OPERACIONAL) -> o preço É válido, o aviso é
+            GUARDADO (não descartado como no caso de sucesso comum) para o
+            vendedor ler, e o print continua mostrando o popup — a mesma
+            foto de sempre, não a tela fechada. Cotação #99 de produção
+            (01/09/2026): "Entrega em área de risco" com R$ 819,51 e
+            protocolo calculados; antes desta distinção existir, os dois
+            eram jogados fora e a cotação virava recusa por engano.
+
         Sem recusa e sem preço ainda resta o rótulo vermelho ao lado do
             CEP, que é o outro lugar em que o SSW diz não."""
         lidos = {
@@ -359,6 +397,11 @@ class CamiloAdapter:
             if page.locator(f'input[name="{n}"]').count()
         }
         aviso = _texto_do_aviso(page)
+        tem_preco = bool((lidos.get("vlr_frete") or "").strip())
+
+        if tem_preco and e_aviso_operacional(aviso):
+            lidos["aviso"] = aviso
+            return lidos, self._print_resultado(page, run / "resultado.png")
 
         if e_recusa(aviso):
             lidos["vlr_frete"] = ""
@@ -366,7 +409,6 @@ class CamiloAdapter:
             return lidos, self._print_resultado(
                 page, run / "recusa_do_site.png")
 
-        tem_preco = bool((lidos.get("vlr_frete") or "").strip())
         lidos["aviso"] = "" if tem_preco else _cep_recusado(page)
         self._fechar_aviso(page)
         return lidos, self._print_resultado(page, run / "resultado.png")

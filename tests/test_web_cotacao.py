@@ -132,6 +132,25 @@ def test_cotacao_pronta_nao_recarrega(app_web, cliente):
     assert "cotando…" not in resposta.text
 
 
+def test_preco_com_ressalva_mostra_os_dois(app_web, cliente):
+    """Cotação #99 de produção (01/09/2026): a Camilo cotou com preço, mas
+    deixou um aviso operacional ("Entrega em área de risco") junto. O
+    vendedor precisa ver o preço E o aviso — nenhum dos dois pode sumir."""
+    from decimal import Decimal
+
+    cotacao_id = _criar(app_web)
+    app_web.banco.salvar_resultado(
+        cotacao_id, "camilo", status="cotado", valor=Decimal("819.51"),
+        protocolo="2822420",
+        erro="Cotação bem-sucedida, porém em área de risco: "
+             "Entrega em área de risco (opc 304).")
+
+    resposta = cliente.get(f"/cotacao/{cotacao_id}")
+
+    assert "819,51" in resposta.text or "819" in resposta.text
+    assert "área de risco" in resposta.text
+
+
 def test_cotacao_de_outro_usuario_nao_abre(app_web, cliente):
     """Trocar o número na URL não pode dar acesso à cotação alheia."""
     cotacao_id = app_web.banco.salvar_cotacao("outra_pessoa", CARGA)

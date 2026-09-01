@@ -17,6 +17,7 @@ Roda por file:// — nao sobe servidor e nao toca a rede.
 
 from __future__ import annotations
 
+from decimal import Decimal
 from pathlib import Path
 
 import pytest
@@ -197,6 +198,62 @@ def test_cotacao_38_cidade_nao_atendida_com_preco_calculado(page, tmp_path):
     assert resultado.status is StatusCotacao.RECUSADO
     assert "CIDADE" in (resultado.motivo_recusa or "").upper()
     assert "NÃO ATENDIDA" in (resultado.motivo_recusa or "").upper()
+
+
+# ------------------------------- aviso operacional NAO invalida o preco
+def test_area_de_risco_nao_e_recusa():
+    """A distincao central: "area de risco" e ressalva, nao motivo de
+    bloqueio -- diferente de "nao atendida"/"nao cadastrado"."""
+    from carriers.camilo.adapter import e_aviso_operacional, e_recusa
+
+    assert e_aviso_operacional("Entrega em área de risco (opc 304).") is True
+    assert e_recusa("Entrega em área de risco (opc 304).") is False
+    assert e_aviso_operacional("Cliente não possui tabela de frete negociada.") \
+        is False
+
+
+def test_cotacao_99_area_de_risco_mantem_preco_e_print_com_popup(page, tmp_path):
+    """Reproducao direta da cotacao #99 de producao (01/09/2026): o site
+    calculou R$ 819,51 e protocolo 2822420, com "Entrega em area de risco"
+    por cima. Antes desta correcao, os dois eram descartados e a cotacao
+    virava recusa por engano — o vendedor lia "O site nao cotou" numa
+    cotacao que, de fato, cotou.
+
+    O print continua mostrando o popup (mesma foto de sempre): o pedido foi
+    manter a evidencia como esta, so a mensagem muda."""
+    from carriers.camilo.adapter import CamiloAdapter
+    from core.models import StatusCotacao
+
+    page.evaluate("preencherPreco()")
+    page.evaluate("mostrarAvisoAreaDeRisco()")
+    lidos, evidencias = CamiloAdapter()._ler_e_fotografar(page, tmp_path)
+    resultado = CamiloAdapter().normalizar_resposta(lidos)
+
+    assert lidos["vlr_frete"] == "117,91"          # preco NAO descartado
+    assert [Path(x).name for x in evidencias] == ["resultado.png"]
+    assert page.locator("#errormsg").is_visible(), \
+        "print tem que continuar mostrando o popup, como o Enzo pediu"
+
+    assert resultado.status is StatusCotacao.COTADO
+    assert resultado.valor_frete == Decimal("117.91")
+    assert resultado.protocolo == "2812827"
+    assert "bem-sucedida" in (resultado.erro or "").lower()
+    assert "área de risco" in (resultado.erro or "").lower()
+
+
+def test_sucesso_comum_continua_sem_mensagem_nenhuma(page, tmp_path):
+    """"Operação realizada com sucesso" nao pode virar ressalva visivel —
+    ela nunca disse nada de util pro vendedor (cotacoes #27-29)."""
+    from carriers.camilo.adapter import CamiloAdapter
+    from core.models import StatusCotacao
+
+    page.evaluate("preencherPreco()")
+    page.evaluate("mostrarSucesso()")
+    lidos, _ = CamiloAdapter()._ler_e_fotografar(page, tmp_path)
+    resultado = CamiloAdapter().normalizar_resposta(lidos)
+
+    assert resultado.status is StatusCotacao.COTADO
+    assert resultado.erro is None
 
 
 # ------------------------ recusa ANTES da cubagem (cgc_rem/cgc_dest novos)
