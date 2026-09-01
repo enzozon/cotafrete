@@ -191,6 +191,14 @@ box-shadow:0 0 0 1px var(--marca)}
 .sem-dado{color:#888;font-size:12px}
 .periodo{text-decoration:none;color:#555}
 .periodo.atual{font-weight:700;color:#111;text-decoration:underline}
+
+/* Tela da cotação pronta para o vendedor copiar (rota /email/...). */
+.pronto{width:100%;font-family:ui-monospace,Consolas,monospace;font-size:13px;
+        line-height:1.5;padding:12px;border:1px solid #d9d9de;border-radius:8px;
+        background:#fafafb;color:#222;resize:vertical}
+/* O campo do endereço existe só para o botão Copiar ter o que selecionar:
+   selecionar exige um campo de verdade, e display:none não é selecionável. */
+.escondido{position:absolute;left:-9999px;width:1px;height:1px;opacity:0}
 """
 
 

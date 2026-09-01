@@ -34,10 +34,16 @@ class Transportadora:
     nome: str
     telefone: str
     logo: str
+    # Só para quem é acionada por e-mail em vez de WhatsApp. Vazio no resto.
+    email: str = ""
 
     @property
     def tem_numero(self) -> bool:
         return bool(self.telefone.strip())
+
+    @property
+    def tem_email(self) -> bool:
+        return bool(self.email.strip())
 
 
 # Ordem = ordem na tela. As três primeiras já rodavam desde 14/08/2026.
@@ -69,6 +75,41 @@ WHATSAPP: tuple[Transportadora, ...] = (
                    "vitlog.png"),
     Transportadora("rv", "RV Log", "5511986959141", "rv.jpg"),
 )
+
+
+# Quem o vendedor aciona por E-MAIL, com o texto pronto na tela.
+#
+# A Della Volpe entrou aqui em 31/08/2026, vinda das automáticas. Eles
+# puseram Cloudflare Turnstile no formulário público — uma caixa "Confirme
+# que é humano" — e sem ela marcada o Contact Form 7 recusa o envio como spam
+# sem gerar e-mail nenhum. As cotações #78 a #84 falharam todas assim.
+#
+# Medido com envio real autorizado em 31/08/2026: o token fica vazio antes do
+# clique, continua vazio 30s depois da recusa, e o segundo clique é recusado
+# igual. Não é espera que resolve, e marcar a caixa por código seria derrubar
+# um controle que o dono do site instalou de propósito.
+#
+# O endereço é o que está impresso no rodapé do formulário deles — o mesmo
+# destino que o formulário usaria. Se um dia liberarem o acesso, voltar a
+# automática é acrescentar o slug em AUTOMATICAS e a fábrica em FABRICAS.
+POR_EMAIL: tuple[Transportadora, ...] = (
+    Transportadora("dellavolpe", "Della Volpe", "", "DELLAVOLPE.png",
+                   email="comercial@dellavolpe.com.br"),
+)
+
+
+def com_email() -> tuple[Transportadora, ...]:
+    """As que o vendedor aciona por e-mail, com o texto pronto."""
+    return tuple(t for t in POR_EMAIL if t.tem_email)
+
+
+def por_slug_email(slug: str) -> Transportadora | None:
+    """Acha entre as de e-mail, ou None.
+
+    Separada de `por_slug` de propósito: aquela protege um REDIRECIONAMENTO
+    (o wa.me), e misturar as duas listas abriria a porta que o comentário
+    dela existe para fechar. Esta aqui só alimenta uma página nossa."""
+    return next((t for t in com_email() if t.slug == slug), None)
 
 
 def com_whatsapp() -> tuple[Transportadora, ...]:

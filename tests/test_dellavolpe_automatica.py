@@ -32,8 +32,15 @@ SLUG = "dellavolpe"
 
 
 # ------------------------------------------------- ela esta ligada mesmo
-def test_dellavolpe_entra_nas_automaticas():
-    assert SLUG in app_web.AUTOMATICAS
+def test_dellavolpe_saiu_das_automaticas():
+    """Invertido em 31/08/2026. O site dela passou a exigir "confirme que e
+    humano" (Cloudflare Turnstile) e o envio automatico deixou de gerar
+    e-mail. Ver tests/test_dellavolpe_assistida.py para o fluxo novo.
+
+    O arquivo continua existindo porque o que ele protege — a coerencia entre
+    AUTOMATICAS, FABRICAS e o monitor, e a trava SEM_REPETICAO — vale para as
+    quatro que ficaram, e voltaria a valer para ela."""
+    assert SLUG not in app_web.AUTOMATICAS
 
 
 def test_o_monitor_enxerga_as_mesmas_automaticas():
@@ -68,17 +75,23 @@ def test_toda_automatica_tem_nome_e_nota():
         assert app_web.NOTAS.get(slug), f"{slug} sem nota"
 
 
-def test_a_nota_da_dellavolpe_avisa_que_o_preco_vem_por_email():
-    """Ela e a unica automatica que nao devolve preco na tela. Se a nota nao
-    disser isso, o vendedor lê "enviada" e fica esperando o numero aparecer."""
+def test_a_nota_da_dellavolpe_continua_explicando_o_e_mail():
+    """Ela saiu das automaticas, mas o NOME e a NOTA seguem em uso: o cartao
+    de "Precisa de voce" e a Documentacao leem os dois. Nota vazia deixaria a
+    tela mostrando slug cru."""
+    assert app_web.NOMES[SLUG]
     assert "-mail" in app_web.NOTAS[SLUG]
 
 
 # --------------------------------------------------------- o cartao da tela
-def test_o_cartao_diz_o_tempo_de_espera_da_dellavolpe():
-    html = app_web.cartao_resposta_por_email("arthur@ventura.com.br", SLUG)
+def test_sem_prazo_cadastrado_o_cartao_nao_promete_prazo():
+    """ESPERA_DO_EMAIL ficou VAZIO em 31/08/2026: nada mais e enviado
+    sozinho, entao nao ha prazo honesto a prometer. O mecanismo continua —
+    quem entrar nele volta a ter prazo no cartao."""
+    html = app_web.cartao_resposta_por_email("a@b.com", "dellavolpe")
 
-    assert "2 a 5 minutos" in html
+    assert "A resposta costuma chegar" not in html
+    assert "minutos" not in html
 
 
 def test_o_cartao_nomeia_o_email_digitado_no_formulario():
@@ -102,15 +115,18 @@ def test_o_cartao_da_generoso_nao_promete_o_prazo_da_dellavolpe():
     html = app_web.cartao_resposta_por_email("arthur@ventura.com.br",
                                              "generoso")
 
-    assert "2 a 5 minutos" not in html
+    assert "costuma chegar" not in html
 
 
 def test_sem_email_guardado_o_cartao_ainda_faz_sentido():
-    """Cotacoes anteriores a 20/08/2026 nao tem e-mail na coluna."""
+    """Cotacoes anteriores a 20/08/2026 nao tem e-mail na coluna.
+
+    Sem e-mail o cartao fala do "e-mail que voce digitou" em vez de nomear
+    um; o que nao pode e a palavra None vazar para a tela do vendedor."""
     html = app_web.cartao_resposta_por_email(None, SLUG)
 
     assert "None" not in html
-    assert "2 a 5 minutos" in html
+    assert "e-mail que você digitou" in html
 
 
 def test_email_no_cartao_sai_escapado():
