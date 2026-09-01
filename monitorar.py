@@ -17,6 +17,7 @@ monitorando. De quebra, nunca cria um banco vazio por engano na pasta errada
 from __future__ import annotations
 
 import os
+import shutil
 import sqlite3
 import sys
 import time
@@ -28,20 +29,63 @@ from pathlib import Path
 RAIZ = Path(__file__).resolve().parent
 BANCO = RAIZ / "cotafrete.db"
 
-# As que o robô cota sozinho, na ordem em que aparecem na tela do vendedor.
-# Tem que ser a MESMA lista de web/app.py — conferido por
-# tests/test_dellavolpe_automatica.py. Esta copia ja parou em
-# ("camilo", "jadlog") quando a Translovato entrou, e o monitor passou a
-# mentir sobre quantas faltavam.
-# A Della Volpe saiu em 31/08/2026: o site dela passou a exigir "confirme
-# que e humano" e ela virou acionada pelo vendedor. Para trazer de volta,
-# acrescente aqui E em web/app.py — o teste confere que as duas batem.
+# Fallback puro: só entra em cena se o período não tiver NENHUM resultado
+# ainda (banco novo), pra tela não subir sem coluna nenhuma. Fora isso, quem
+# decide as colunas é `slugs_do_periodo` — o que já apareceu no banco, não
+# uma lista copiada de web/app.py. Essa cópia já ficou desatualizada duas
+# vezes (parou em "camilo","jadlog" quando a Translovato entrou; sumiu com a
+# Della Volpe quando ela saiu das automáticas em 31/08/2026) e cada vez o
+# histórico de erro de quem ficou de fora sumia da tela, sem aviso nenhum.
 AUTOMATICAS = ("camilo", "jadlog", "translovato", "generoso")
+# Nomes bonitos para quem é conhecido; `_titulo` cai para `slug.upper()` no
+# resto. Assim uma transportadora nova nunca desaparece da tela por faltar
+# aqui — só aparece com o slug em maiúsculo até alguém cadastrar o nome.
 TITULOS = {"camilo": "CAMILO", "jadlog": "JADLOG",
-           "translovato": "TRANSLOVATO", "generoso": "GENEROSO"}
+           "translovato": "TRANSLOVATO", "generoso": "GENEROSO",
+           "dellavolpe": "DELLA VOLPE"}
 
 PAUSA_S = 5
-LARGURA = 116
+LARGURA_MINIMA = 116
+FALHAS_MAX = 15
+# Linhas que a moldura gasta além da tabela de cotações: cabeçalho (7),
+# bloco de falhas (2 + FALHAS_MAX) e rodapé (2). Superestimado de propósito
+# — sobrar linha em branco é inofensivo, faltar é o que faz a tela crescer
+# mais que o terminal e "descer a página" a cada atualização.
+LINHAS_MOLDURA = 7 + 2 + FALHAS_MAX + 2
+LINHAS_MIN_TABELA = 3
+
+_ANSI_LIMPAR = "\x1b[H\x1b[J"  # cursor pro topo + apaga da posição até o fim
+
+
+def _preparar_console() -> None:
+    """Liga o processamento ANSI do console do Windows.
+
+    Sem isto, `_ANSI_LIMPAR` sai como texto cru (ESC[H ESC[J) na tela em vez
+    de mover o cursor: cmd.exe só interpreta escape VT100 quando
+    ENABLE_VIRTUAL_TERMINAL_PROCESSING está ligado, e ele começa desligado.
+    O `os.system("cls")` que o monitor usava antes não precisava disto
+    porque não usava escape nenhum — mas cada `cls` redesenha a tela do zero
+    E deixa o terminal seguir o conteúdo novo até o fim, que é o que fazia a
+    janela "descer a página" a cada atualização."""
+    if os.name != "nt":
+        return
+    import ctypes
+    ENABLE_VIRTUAL_TERMINAL_PROCESSING = 0x0004
+    handle = ctypes.windll.kernel32.GetStdHandle(-11)  # STD_OUTPUT_HANDLE
+    modo = ctypes.c_uint32()
+    if not ctypes.windll.kernel32.GetConsoleMode(handle, ctypes.byref(modo)):
+        return  # saída redirecionada para arquivo, sem console de verdade
+    ctypes.windll.kernel32.SetConsoleMode(
+        handle, modo.value | ENABLE_VIRTUAL_TERMINAL_PROCESSING)
+
+
+def _linhas_disponiveis() -> int:
+    """Quantas linhas de cotação cabem no terminal sem precisar rolar.
+
+    `shutil.get_terminal_size` é stdlib e já lida com o caso sem terminal de
+    verdade (saída redirecionada): cai no fallback (80, 24) sozinho."""
+    altura = shutil.get_terminal_size(fallback=(LARGURA_MINIMA, 24)).lines
+    return max(LINHAS_MIN_TABELA, altura - LINHAS_MOLDURA)
 
 
 def conectar() -> sqlite3.Connection:
@@ -124,12 +168,32 @@ def coletar(con: sqlite3.Connection, dias: int) -> dict:
     return {"cotacoes": cotacoes, "resultados": resultados, "zaps": zaps}
 
 
-def contar(cotacoes: list[dict], resultados: dict) -> dict[str, int]:
+def slugs_do_periodo(resultados: dict[int, dict[str, dict]]) -> tuple[str, ...]:
+    """Toda transportadora que devolveu resultado no período, em ordem
+    estável. Substitui a lista fixa AUTOMATICAS como base das colunas e do
+    histórico de erro: aqui não tem como uma transportadora sumir da tela
+    por alguém esquecer de atualizar uma cópia à mão — se ela apareceu no
+    banco, ela aparece na tela.
+
+    Vazio (banco novo, sem nenhum resultado ainda) cai para as automáticas
+    conhecidas, só para a tela não subir sem coluna nenhuma."""
+    vistas = {slug for por_slug in resultados.values() for slug in por_slug}
+    return tuple(sorted(vistas)) if vistas else AUTOMATICAS
+
+
+def _titulo(slug: str) -> str:
+    return TITULOS.get(slug, slug.upper())
+
+
+def contar(cotacoes: list[dict], resultados: dict,
+          slugs: tuple[str, ...] | None = None) -> dict[str, int]:
+    if slugs is None:
+        slugs = slugs_do_periodo(resultados)
     contas = {"preco": 0, "recusadas": 0, "por_email": 0, "erros": 0,
               "andamento": 0}
     for c in cotacoes:
         por_slug = resultados.get(c["id"], {})
-        for slug in AUTOMATICAS:
+        for slug in slugs:
             r = por_slug.get(slug)
             if r is None:
                 contas["andamento"] += 1
@@ -144,56 +208,74 @@ def contar(cotacoes: list[dict], resultados: dict) -> dict[str, int]:
     return contas
 
 
-def desenhar(dados: dict, dias: int) -> None:
+def desenhar(dados: dict, dias: int, linhas_tabela: int = 25) -> int:
+    """Desenha o quadro e devolve a largura usada, pro rodapé alinhar."""
     cotacoes, resultados = dados["cotacoes"], dados["resultados"]
-    contas = contar(cotacoes, resultados)
+    slugs = slugs_do_periodo(resultados)
+    contas = contar(cotacoes, resultados, slugs)
 
-    print("=" * LARGURA)
-    print(" COTAFRETE — monitor".ljust(LARGURA - 30)
+    cabecalho = (f"{'#':>4} {'QUANDO':<12} {'QUEM':<10} {'ROTA':<8} "
+                 f"{'CARGA':<14}")
+    for slug in slugs:
+        cabecalho += f"{_titulo(slug):<14}"
+    cabecalho += "ZAP"
+    # Largura calculada do conteúdo de verdade, não um número fixo: o número
+    # de colunas varia com quantas transportadoras aparecem no período.
+    largura = max(LARGURA_MINIMA, len(cabecalho) + 2)
+
+    print("=" * largura)
+    print(" COTAFRETE — monitor".ljust(largura - 30)
           + f"atualizado {datetime.now():%H:%M:%S}".rjust(30))
-    print("=" * LARGURA)
+    print("=" * largura)
     print(f" {len(cotacoes)} cotações em {dias} dia(s)  ·  "
           f"{contas['preco']} com preço  ·  {contas['recusadas']} recusadas  ·  "
           f"{contas['por_email']} por e-mail  ·  {contas['erros']} com erro"
           f"  ·  {contas['andamento']} em andamento"
           f"  ·  {sum(dados['zaps'].values())} WhatsApp abertos")
-    print("-" * LARGURA)
-
-    cabecalho = (f"{'#':>4} {'QUANDO':<12} {'QUEM':<10} {'ROTA':<8} "
-                 f"{'CARGA':<14}")
-    for slug in AUTOMATICAS:
-        cabecalho += f"{TITULOS[slug]:<14}"
-    print(cabecalho + "ZAP")
-    print("-" * LARGURA)
+    print("-" * largura)
+    print(cabecalho)
+    print("-" * largura)
 
     if not cotacoes:
         print("  (ninguém cotou no período)")
 
-    for c in cotacoes[:25]:
+    for c in cotacoes[:linhas_tabela]:
         por_slug = resultados.get(c["id"], {})
         rota = f"{c['uf_origem'] or '?'}>{c['uf_destino'] or '?'}"
         carga = f"{c['quantidade']}vol {c['peso_kg']}kg"
         linha = (f"{c['id']:>4} {_hora(c['criado_em']):<12} "
                  f"{(c['usuario'] or '')[:9]:<10} {rota:<8} {carga[:13]:<14}")
-        for slug in AUTOMATICAS:
+        for slug in slugs:
             linha += f"{_celula(por_slug.get(slug)):<14}"
         zap = dados["zaps"].get(c["id"], 0)
         print(linha + (str(zap) if zap else ""))
+    if len(cotacoes) > linhas_tabela:
+        print(f"  … e mais {len(cotacoes) - linhas_tabela} cotação(ões) "
+              f"fora da tela (terminal maior mostra mais, ou use --uma-vez)")
 
     # O erro por extenso, embaixo. Na coluna só cabe "ERRO", e "ERRO" sem
-    # motivo obriga a abrir o sistema para descobrir o que houve.
+    # motivo obriga a abrir o sistema para descobrir o que houve. Percorre
+    # TODAS as transportadoras do período — antes só as automáticas fixas,
+    # e um erro de quem tivesse saído dessa lista (a Della Volpe, em
+    # 31/08/2026) sumia daqui mesmo estando salvo no banco.
     falhas = [(c["id"], slug, resultados[c["id"]][slug])
               for c in cotacoes
-              for slug in AUTOMATICAS
+              for slug in slugs
               if slug in resultados.get(c["id"], {})
               and not resultados[c["id"]][slug]["valor"]
               and resultados[c["id"]][slug]["status"] != "aguardando_retorno"]
     if falhas:
-        print("-" * LARGURA)
-        print(" O QUE NÃO VOLTOU COM PREÇO (mais recentes)")
-        for cid, slug, r in falhas[:6]:
+        print("-" * largura)
+        print(f" O QUE NÃO VOLTOU COM PREÇO ({len(falhas)} no período, "
+              f"mais recentes primeiro)")
+        for cid, slug, r in falhas[:FALHAS_MAX]:
             motivo = (r["erro"] or r["status"] or "").replace("\n", " ")
-            print(f"  #{cid} {slug:<12} {motivo[:LARGURA - 22]}")
+            print(f"  #{cid} {slug:<12} {motivo[:largura - 22]}")
+        if len(falhas) > FALHAS_MAX:
+            print(f"  … e mais {len(falhas) - FALHAS_MAX}. "
+                  f"Amplie o terminal ou use --dias 1 para reduzir o período.")
+
+    return largura
 
 
 def main() -> int:
@@ -206,16 +288,25 @@ def main() -> int:
             return 2
 
     uma_vez = "--uma-vez" in sys.argv
+    # isatty(): saída redirecionada pra arquivo não tem cursor pra mover, e
+    # jogar escape ANSI nela sujaria o arquivo com "ESC[H ESC[J" literal.
+    dinamico = not uma_vez and sys.stdout.isatty()
+    if dinamico:
+        _preparar_console()
+
     con = conectar()
     try:
         while True:
             dados = coletar(con, dias)
-            if not uma_vez:
+            linhas_tabela = _linhas_disponiveis() if dinamico else 25
+            if dinamico:
+                print(_ANSI_LIMPAR, end="")
+            elif not uma_vez:
                 os.system("cls" if os.name == "nt" else "clear")
-            desenhar(dados, dias)
+            largura = desenhar(dados, dias, linhas_tabela)
             if uma_vez:
                 return 0
-            print("-" * LARGURA)
+            print("-" * largura)
             print(f" atualiza a cada {PAUSA_S}s  ·  Ctrl+C para sair")
             time.sleep(PAUSA_S)
     except KeyboardInterrupt:
