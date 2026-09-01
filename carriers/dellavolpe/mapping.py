@@ -11,7 +11,7 @@ automação viva quando eles mexerem no layout.
 from __future__ import annotations
 
 import re
-from decimal import ROUND_HALF_UP, Decimal
+from decimal import ROUND_CEILING, ROUND_HALF_UP, Decimal
 from typing import Any
 
 from carriers.base import CampoSpec, ErroValidacao, Modo, Severidade
@@ -67,10 +67,18 @@ def num_br(v: Decimal, casas: int = 2) -> str:
 
 
 def peso_br(v: Decimal) -> str:
-    """Peso sem separador de milhar: o campo aceita '350' ou '1500,5'."""
-    q = v.normalize()
-    s = f"{q:f}"
-    return s.replace(".", ",")
+    """Peso sem separador de milhar, e SEMPRE inteiro — o campo não aceita
+    fração nenhuma.
+
+    Medido em teste real (02/09/2026): '22,5' não vira 22,5 kg no site, vira
+    225 kg. O campo não tem máscara para vírgula decimal — ele só concatena
+    os dígitos e descarta o separador, em silêncio, sem recusar nada. Não é
+    bug nosso: o formulário "Peso total" da Della Volpe é peso inteiro.
+
+    Arredonda para CIMA, nunca para baixo: perder peso na cotação cotaria
+    frete mais barato do que a carga pesa de verdade. 22,5 -> 23; 99,1 -> 100."""
+    inteiro = v.to_integral_value(rounding=ROUND_CEILING)
+    return f"{inteiro:f}"
 
 
 def medida_br(v: Decimal) -> str:

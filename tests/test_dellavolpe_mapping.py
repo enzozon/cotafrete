@@ -124,7 +124,22 @@ def test_valor_em_formato_brasileiro(entrada, esperado):
 
 def test_peso_sem_separador_de_milhar():
     assert dv.peso_br(Decimal(1500)) == "1500"
-    assert dv.peso_br(Decimal("1500.5")) == "1500,5"
+    assert dv.peso_br(Decimal("1500.5")) == "1501"
+
+
+def test_peso_quebrado_arredonda_para_cima_sem_virgula():
+    """Bug real, medido em teste com envio de verdade (02/09/2026): o campo
+    "Peso total" da Della Volpe não tem máscara para vírgula decimal. Ele
+    concatena os dígitos e descarta o separador em silêncio — '22,5' virava
+    225 kg na tela deles, dez vezes mais do que a carga pesa.
+
+    Arredondar para CIMA (nunca para baixo) evita o erro sem nunca subcotar
+    o peso: 22,5 -> 23; 100,2 -> 101; 99,1 -> 100."""
+    assert dv.peso_br(Decimal("22.5")) == "23"
+    assert dv.peso_br(Decimal("100.2")) == "101"
+    assert dv.peso_br(Decimal("99.1")) == "100"
+    assert dv.peso_br(Decimal("20.0")) == "20"       # já inteiro: não mexe
+    assert dv.peso_br(Decimal("0.4")) == "1"          # nunca vira "0"
 
 
 def test_a_palavra_sucesso_sozinha_nao_prova_envio():

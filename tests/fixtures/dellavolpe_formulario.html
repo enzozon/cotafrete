@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8">
+<title>Della Volpe - formulario (fixture)</title></head>
+<body>
+<!--
+  Fixture do formulario PUBLICO da Della Volpe, para testar o bookmarklet
+  (carriers/dellavolpe/bookmarklet.py) sem depender do site deles no ar.
+
+  Nao e uma copia byte a byte do DOM real (essa fidelidade ja existe nos
+  seletores medidos por recon/recon_dellavolpe.py, usados pelo Playwright em
+  carriers/dellavolpe/adapter.py). O que este fixture prova e o
+  COMPORTAMENTO que o bookmarklet precisa acertar sem Playwright: achar
+  campo por name=, disparar os eventos certos, e esperar o select de cidade
+  ser populado por AJAX antes de escolher - a mesma corrida que
+  _esperar_opcoes resolve do lado do Playwright.
+-->
+<div id="accordion-fechado" style="display:none">Fazer Cotação</div>
+
+<form>
+  <select name="servico">
+    <option value="">Selecione</option>
+    <option value="Fracionado -LTL">Fracionado -LTL</option>
+    <option value="Lotação/Dedicado-FTL">Lotação/Dedicado-FTL</option>
+  </select>
+
+  <input type="text" name="nome" value="">
+  <input type="email" name="email" value="">
+  <input type="tel" name="whatsapp" value="">
+
+  <input type="text" name="cnpj_origem" value="">
+  <select name="estado_origem" onchange="popularCidade('origem')">
+    <option value="">UF</option>
+    <option value="ES">Espírito Santo</option>
+    <option value="SP">São Paulo</option>
+  </select>
+  <select name="cidade_origem"><option value="">Selecione o estado</option></select>
+
+  <input type="text" name="cnpj_destino" value="">
+  <select name="estado_destino" onchange="popularCidade('destino')">
+    <option value="">UF</option>
+    <option value="ES">Espírito Santo</option>
+    <option value="SP">São Paulo</option>
+  </select>
+  <select name="cidade_destino"><option value="">Selecione o estado</option></select>
+
+  <!-- type=text, não number: os valores chegam em formato brasileiro
+       ("12,5", com vírgula) via peso_br/medida_br/num_br em mapping.py, e
+       um input[type=number] nativo rejeita vírgula como decimal — o campo
+       fica vazio em silêncio. É por isso que estes campos, apesar de
+       numéricos, usam type=text com máscara do lado do site. -->
+  <input type="text" name="peso" value="">
+  <input type="text" name="qtd-volume" value="">
+  <input type="text" name="comprimento" value="">
+  <input type="text" name="largura" value="">
+  <input type="text" name="altura" value="">
+  <input type="text" name="valor" value="">
+  <input type="text" name="material" value="">
+  <input type="text" name="cnpj" value="">
+</form>
+
+<script>
+  var CIDADES = {
+    ES: [["Vila Velha", "Vila Velha"], ["Vitória", "Vitória"]],
+    SP: [["São Paulo", "São Paulo"], ["Campinas", "Campinas"]],
+  };
+
+  // Simula o AJAX deles: o select de cidade fica vazio por um instante
+  // depois do change no estado - é essa janela que _esperar_opcoes (lado
+  // Playwright) e esperarCidade (lado bookmarklet) existem para não perder.
+  function popularCidade(lado) {
+    var estadoSel = document.querySelector('select[name="estado_' + lado + '"]');
+    var cidadeSel = document.querySelector('select[name="cidade_' + lado + '"]');
+    cidadeSel.innerHTML = '<option value="">Carregando...</option>';
+    var uf = estadoSel.value;
+    setTimeout(function () {
+      var opcoes = CIDADES[uf] || [];
+      cidadeSel.innerHTML = '<option value="">Selecione a cidade</option>'
+          + opcoes.map(function (o) {
+              return '<option value="' + o[0] + '">' + o[1] + '</option>';
+            }).join('');
+    }, 250);
+  }
+</script>
+</body></html>

@@ -43,6 +43,7 @@ from fastapi.staticfiles import StaticFiles
 load_dotenv(override=False)
 
 from carriers.camilo.adapter import CamiloAdapter
+from carriers.dellavolpe import bookmarklet as dv_bookmarklet
 from carriers.generoso.adapter import GenerosoAdapter
 from carriers.jadlog.painel import JadlogPainelAdapter
 from carriers.translovato.adapter import TranslovatoAdapter
@@ -874,6 +875,10 @@ def cotar(usuario: str | None = Cookie(None, alias=COOKIE),
         # É por aqui que a resposta da Generoso chega. Guardado na cotação, e
         # não só no formulário, porque a tela precisa dele em toda visita.
         "email": req.solicitante.email,
+        # Mesma razão do e-mail: o bookmarklet da Della Volpe precisa disto
+        # em visitas FUTURAS à tela, não só na hora do /cotar.
+        "nome_solicitante": req.solicitante.nome,
+        "whatsapp_solicitante": req.solicitante.whatsapp_formatado,
         "transportadoras": escolhidas,
     })
 
@@ -1220,6 +1225,76 @@ function copiar(id) {{
 </script>""", usuario))
 
 
+@app.get("/dellavolpe/{cotacao_id}", response_class=HTMLResponse)
+def formulario_dellavolpe(cotacao_id: int,
+                          usuario: str | None = Cookie(None, alias=COOKIE)):
+    """O formulário REAL da Della Volpe, pronto para o vendedor preencher com
+    um clique — e por isso respondido em minutos, não em horas.
+
+    Existe porque `/email/{id}/dellavolpe` (o e-mail avulso) demora de 10 a
+    12 horas: vira uma mensagem solta que uma pessoa lê na fila. O formulário
+    oficial deles responde em 2 a 5 minutos — o mesmo SLA que a automação por
+    Playwright tinha, antes do Turnstile ("confirme que é humano") entrar.
+
+    O Turnstile continua lá, e continua exigindo humano de verdade — isto
+    aqui não tenta passar por cima dele. Só poupa a digitação: o vendedor
+    abre a aba, clica no favorito UMA vez, confere os campos, resolve o
+    captcha e envia — tudo com o navegador DELE, sem automação nenhuma no
+    meio. Ver carriers/dellavolpe/bookmarklet.py para o porquê completo."""
+    if not usuario:
+        return RedirectResponse("/login", status_code=303)
+
+    c = banco.buscar_cotacao(cotacao_id, usuario)
+    if c is None:
+        return HTMLResponse("Não encontrado", status_code=404)
+
+    # Mesma tabela do WhatsApp/e-mail: abrir esta tela já conta como "abriu
+    # a coisa pronta", pelo mesmo motivo de sempre — o sistema não tem como
+    # saber se o vendedor de fato enviou depois.
+    banco.marcar_whatsapp_aberto(cotacao_id, "dellavolpe", usuario)
+    url = dv_bookmarklet.url_formulario(c)
+    href_favorito = dv_bookmarklet.href_bookmarklet()
+
+    return HTMLResponse(pagina(f"Cotação {cotacao_id} — Della Volpe", f"""
+<h1>Della Volpe</h1>
+<p class="sub">Cotação #{cotacao_id} · {e(c['cidade_origem'])}/{e(c['uf_origem'])}
+→ {e(c['cidade_destino'])}/{e(c['uf_destino'])}</p>
+
+<div class="cartao">
+  <div class="alerta email"><b>Esta é a via rápida: responde em 2 a 5
+  minutos</b>, contra 10 a 12 horas do e-mail avulso. É o formulário
+  OFICIAL deles — o preenchimento só poupa a digitação, quem resolve o
+  captcha e clica em enviar é você.</div>
+
+  <p><b>Passo 1 — só na primeira vez:</b> arraste este link para a barra de
+  favoritos do navegador.</p>
+  <p><a class="botao2" href="{href_favorito}"
+  onclick="return confirm('Não clique — ARRASTE este link para a barra de favoritos.')"
+  >📋 Preencher cotação (Cotafrete)</a></p>
+
+  <p><b>Passo 2:</b> abra o formulário da Della Volpe nesta aba nova.</p>
+  <p><a class="botao2" href="{e(url)}" target="_blank" rel="noopener"
+  >Abrir formulário da Della Volpe</a></p>
+
+  <p><b>Passo 3:</b> NA ABA NOVA, clique no favorito "Preencher cotação
+  (Cotafrete)" que você salvou no passo 1. Os campos enchem sozinhos.</p>
+
+  <p><b>Passo 4:</b> confira os dados, resolva o captcha ("confirme que é
+  humano") e clique em "Pedir orçamento". Isso o sistema não faz por
+  você — nem deveria.</p>
+
+  <p class="sub">Anexo de planilha ou FISPQ não entra sozinho — o navegador
+  não permite preencher esse tipo de campo por segurança. Anexe à mão se a
+  carga precisar.</p>
+</div>
+
+<p class="sub">Prefere continuar mandando por e-mail (mais lento)?
+<a href="/email/{cotacao_id}/dellavolpe">Abrir e-mail pronto</a></p>
+
+<p><a class="botao2" href="/cotacao/{cotacao_id}">voltar para a cotação</a></p>
+""", usuario))
+
+
 @app.get("/cotacao/{cotacao_id}", response_class=HTMLResponse)
 def ver_cotacao(cotacao_id: int,
                 usuario: str | None = Cookie(None, alias=COOKIE)):
@@ -1395,17 +1470,26 @@ def ver_cotacao(cotacao_id: int,
         for reg in lista_zap)
 
     # As de e-mail entram na MESMA seção: para o vendedor o gesto é o mesmo —
-    # o sistema deixou pronto e ele envia. Só o destino muda, e o rótulo diz.
-    zaps += "".join(
-        f'<a class="zap{" aberta" if reg.slug in abertas else ""}"'
-        f' id="zap-{e(reg.slug)}"'
-        f' href="/email/{cotacao_id}/{e(reg.slug)}"'
-        f' target="_blank" rel="noopener">'
-        f'<img class="marca" src="/logos/{e(reg.logo)}" alt="" loading="lazy">'
-        f'<b>{e(reg.nome)}</b>'
-        f'<span class="ir">Abrir e-mail pronto</span>'
-        f'<span class="jafoi">Aberta</span></a>'
-        for reg in lista_email)
+    # o sistema deixou pronto e ele age. Só o destino muda, e o rótulo diz.
+    #
+    # A Della Volpe é um caso à parte: para ela existe uma via mais rápida
+    # (o formulário oficial deles, preenchido por bookmarklet — responde em
+    # 2 a 5 min) e ela vira a ação PADRÃO do card. O e-mail avulso (10 a 12h)
+    # continua existindo, só que como opção secundária dentro daquela tela.
+    for reg in lista_email:
+        if reg.slug == "dellavolpe":
+            href, rotulo = f"/dellavolpe/{cotacao_id}", "Preencher formulário (rápido)"
+        else:
+            href, rotulo = f"/email/{cotacao_id}/{e(reg.slug)}", "Abrir e-mail pronto"
+        zaps += (
+            f'<a class="zap{" aberta" if reg.slug in abertas else ""}"'
+            f' id="zap-{e(reg.slug)}"'
+            f' href="{href}"'
+            f' target="_blank" rel="noopener">'
+            f'<img class="marca" src="/logos/{e(reg.logo)}" alt="" loading="lazy">'
+            f'<b>{e(reg.nome)}</b>'
+            f'<span class="ir">{rotulo}</span>'
+            f'<span class="jafoi">Aberta</span></a>')
 
     return HTMLResponse(pagina(f"Cotação {cotacao_id}", f"""
 {recarrega}
@@ -1595,10 +1679,19 @@ para impedir que um programa envie o formulário.</p>
 "submissão marcada como spam" e <b>nenhum e-mail era gerado</b>. Testado com
 envio real: nem o segundo clique passa.</p>
 <p><b>O que mudou para você:</b> ela saiu da parte de cima da tela e agora
-aparece em <b>Precisa de você</b>, junto das do WhatsApp. Clicar em
-<b>Abrir e-mail pronto</b> mostra a cotação já escrita e o endereço deles —
-você copia, cola no seu e-mail e manda. O sistema continua fazendo a parte
-chata, que é preencher os dados da carga.</p>
+aparece em <b>Precisa de você</b>, junto das do WhatsApp.</p>
+<p><b>Preferência: "Preencher formulário (rápido)".</b> Abre o formulário
+OFICIAL da Della Volpe com os campos já prontos — na primeira vez você
+arrasta um favorito para o navegador; depois disso é clicar nele em cada
+cotação nova, conferir, resolver o captcha e enviar. Continua sendo você
+que envia — o sistema só poupa a digitação. É a via rápida: costuma
+responder em <b>2 a 5 minutos</b>, o mesmo prazo de quando ela cotava
+sozinha.</p>
+<p><b>Alternativa: "Abrir e-mail pronto".</b> Mostra a cotação já escrita e
+o endereço deles — você copia, cola no seu e-mail e manda. Funciona sempre,
+mas cai numa fila de e-mail avulso: costuma demorar <b>10 a 12 horas</b>
+para responder. Use quando o formulário oficial estiver fora do ar, ou
+antes de instalar o favorito.</p>
 </div>
 
 <h2>As {zap} do WhatsApp</h2>
