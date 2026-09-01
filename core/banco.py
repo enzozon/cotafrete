@@ -103,6 +103,11 @@ CAMPOS_CARGA = (
     "comprimento_cm", "largura_cm", "altura_cm", "valor_nf", "material",
     "cnpj_remetente", "cnpj_destinatario", "cnpj_pagador",
     "nome_remetente", "nome_destinatario", "nome_pagador", "email",
+    # Quem pediu a cotação, não quem envia/recebe a carga. Guardado por causa
+    # do bookmarklet da Della Volpe: sem isto, "Nome completo" e "WhatsApp"
+    # do formulário deles ficavam perdidos depois do /cotar terminar — só
+    # existiam no POST original, igual o e-mail antes de 20/08/2026.
+    "nome_solicitante", "whatsapp_solicitante",
     "tipo_frete",
     # Quem participa desta cotação. NULL = todas — ver core/selecao.py, que
     # explica por que ausência e escolha vazia precisam ser coisas distintas.

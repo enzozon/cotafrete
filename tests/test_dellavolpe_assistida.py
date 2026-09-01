@@ -157,12 +157,20 @@ def test_transportadora_desconhecida_nao_abre(app, cliente):
 
 # ---------------------------------------------------------- a documentação
 def test_a_documentacao_parou_de_dizer_que_ela_cota_sozinha(cliente):
-    """A ajuda dizia "a resposta costuma chegar em 2 a 5 minutos". Hoje nada
-    é enviado sozinho: manter a frase mandaria o vendedor esperar um e-mail
-    que nunca vem."""
+    """A ajuda dizia "a resposta costuma chegar em 2 a 5 minutos" como se o
+    SISTEMA tivesse enviado sozinho. Isso continua proibido: nada é enviado
+    sem a pessoa clicar.
+
+    "2 a 5 minutos" em si voltou a aparecer — legítimo, desde que o
+    bookmarklet existe: é o prazo de quem manda pelo formulário oficial, e a
+    ajuda precisa dizer isso para o vendedor escolher a via certa. O que não
+    pode voltar é a frase antiga, que prometia o prazo sem dizer que é a
+    PESSOA quem envia."""
     html = cliente.get("/documentacao").text
 
-    assert "2 a 5 minutos" not in html
+    assert "A resposta costuma chegar em 2 a 5 minutos." not in html
+    assert "2 a 5 minutos" in html  # o bookmarklet trouxe a promessa de volta
+    assert "formulário" in html.lower()  # só que agora ligada a quem envia
 
 
 # ------------------------------------------- o painel "Escolher", no formulário
