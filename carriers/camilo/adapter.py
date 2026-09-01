@@ -313,38 +313,45 @@ class CamiloAdapter:
     def _ler_e_fotografar(self, page, run: Path) -> tuple[dict, list[str]]:
         """(campos lidos, evidências) logo depois de clicar em simular.
 
-        Quem manda é o PREÇO, não o popup. `#errormsg` é a caixa de aviso
+        Quem manda é o AVISO, não o preço. `#errormsg` é a caixa de aviso
         genérica do SSW: serve tanto para "Cliente não possui tabela de frete
-        negociada" quanto para "Operação realizada com sucesso".
+        negociada" quanto para "Operação realizada com sucesso" — e
+        `e_recusa` já sabe separar as duas.
 
-        Sem preço e com recusa  -> foto COM o popup. É a única imagem em que
-            o motivo aparece, e não há preço atrás dele para desobstruir. Foi
-            o que faltou na cotação #20: fotografávamos depois de fechar e
-            sobrava uma tela vazia, com cara de defeito nosso.
+        Recusa (popup presente e não é frase de sucesso) -> foto COM o
+            popup, e o preço lido é DESCARTADO, tenha ele valor ou não.
+            Medido na cotação #38 (31/08/2026): o SSW mostrou "CIDADE NÃO
+            ATENDIDA PARA COLETA — CONSULTAR TRANSPORTADORA" com R$ 203,32 já
+            calculado por trás do popup. Confiar no preço só porque o campo
+            veio preenchido mandava pro vendedor uma cotação com cara de
+            fechada, numa cidade que a Camilo nem atende — o número existe,
+            mas não dá pra agendar coleta nenhuma com ele. Até aqui o único
+            caso tratado era popup com preço VAZIO (cotação #20); o texto do
+            popup é sempre mais confiável que um valor que pode ter sido
+            calculado antes da recusa acontecer.
 
-        Nos demais casos       -> fecha e fotografa a tela limpa. O popup
-            cobre a coluna do meio da tabela de custos (Frete Valor,
-            Despacho, TDE, Pedágio) e a Cubagem — foi o que estragou as fotos
-            das cotações #27, #28 e #29, todas com preço."""
+        Sem recusa (sem popup, ou popup de sucesso) -> fecha e fotografa a
+            tela limpa. O popup cobre a coluna do meio da tabela de custos
+            (Frete Valor, Despacho, TDE, Pedágio) e a Cubagem — foi o que
+            estragou as fotos das cotações #27, #28 e #29, todas com preço
+            e popup de sucesso.
+
+        Sem recusa e sem preço ainda resta o rótulo vermelho ao lado do
+            CEP, que é o outro lugar em que o SSW diz não."""
         lidos = {
             n: page.locator(f'input[name="{n}"]').first.input_value()
             for n in ("vlr_frete", "nro_cotacao")
             if page.locator(f'input[name="{n}"]').count()
         }
         aviso = _texto_do_aviso(page)
-        tem_preco = bool((lidos.get("vlr_frete") or "").strip())
 
-        if not tem_preco and e_recusa(aviso):
+        if e_recusa(aviso):
+            lidos["vlr_frete"] = ""
             lidos["aviso"] = aviso
             return lidos, self._print_resultado(
                 page, run / "recusa_do_site.png")
 
-        # Havendo preço não há o que explicar, e aviso de sucesso não pode
-        # virar motivo de recusa — sem isto o vendedor leria "A Camilo não
-        # cotou: Operação realizada com sucesso".
-        #
-        # Sem preço e sem popup de recusa ainda resta o rótulo vermelho ao
-        # lado do CEP, que é o outro lugar em que o SSW diz não.
+        tem_preco = bool((lidos.get("vlr_frete") or "").strip())
         lidos["aviso"] = "" if tem_preco else _cep_recusado(page)
         self._fechar_aviso(page)
         return lidos, self._print_resultado(page, run / "resultado.png")

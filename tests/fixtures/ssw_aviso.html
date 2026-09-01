@@ -56,5 +56,15 @@ function preencherPreco() {
   document.querySelector('input[name="vlr_frete"]').value = '117,91';
   document.querySelector('input[name="nro_cotacao"]').value = '2812827';
 }
+// O caso da cotacao #38 de producao (31/08/2026): recusa por regra de
+// negocio (cidade fora da area de coleta), mas o campo vlr_frete pode vir
+// preenchido do mesmo jeito -- o SSW calcula o valor ANTES de aplicar essa
+// regra. Print anexado pelo Enzo mostrou R$ 203,32 atras deste popup.
+function mostrarAvisoCidadeNaoAtendida() {
+  var caixa = document.getElementById('errormsg');
+  caixa.innerHTML = "<div id=\"scontentbar\" style=\"text-align: right; width: 415px;\"><label style=\"left:16px;top:6px;color:white;\" class=\"texto\">Aviso</label><a href=\"#\" onclick=\"ccx();showmsgonclick();return false;\" style=\"position:relative;font-size:18px;color:white;text-decoration:none;\" class=\"texto\">&nbsp;<b>×</b>&nbsp;</a></div><div class=\"texto\" id=\"errormsglabel\" style=\"color:red;left:16px;top:32px;text-align:left;overflow:visible\"><b>CIDADE NÃO ATENDIDA PARA COLETA - CONSULTAR TRANSPORTADORA.</b></div><a id=\"0\" onfocus=\"obj=this;\" accesskey=\"&amp;\" ak=\"7\" class=\"dialog\" onclick=\"showmsgonclick();return false;\" style=\"top:64px;left:16px;\" href=\"#\">7. OK</a>undefined";
+  caixa.style.visibility = 'visible';
+  document.getElementById('errorpanel').style.visibility = 'visible';
+}
 </script>
 </body></html>

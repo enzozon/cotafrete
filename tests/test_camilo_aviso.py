@@ -152,8 +152,15 @@ def test_com_preco_a_foto_e_a_da_tela_limpa(page, tmp_path):
     assert lidos["aviso"] == "", "sucesso nao pode virar motivo de recusa"
 
 
-def test_preco_com_popup_de_recusa_ainda_e_cotacao(page, tmp_path):
-    """A trava do meio: havendo preco, popup nenhum transforma em recusa."""
+def test_preco_com_popup_de_recusa_e_recusa_mesmo_assim(page, tmp_path):
+    """O bug real, da cotacao #38 (31/08/2026): o SSW calcula um valor no
+    campo vlr_frete ANTES de aplicar a recusa por regra de negocio. "Havendo
+    preco, popup nenhum transforma em recusa" (o que este teste garantia
+    antes) e exatamente a suposicao que mandou 203,32 pro vendedor como se
+    fosse uma cotacao fechada numa cidade que a Camilo nem atende.
+
+    O aviso manda, nao o campo de preco: com popup de recusa, a foto e a
+    do popup e o preco lido nao pode ser usado."""
     from carriers.camilo.adapter import CamiloAdapter
     from core.models import StatusCotacao
 
@@ -161,9 +168,35 @@ def test_preco_com_popup_de_recusa_ainda_e_cotacao(page, tmp_path):
     page.evaluate("mostrarAviso()")
     lidos, evidencias = CamiloAdapter()._ler_e_fotografar(page, tmp_path)
 
-    assert [Path(x).name for x in evidencias] == ["resultado.png"]
+    assert [Path(x).name for x in evidencias] == ["recusa_do_site.png"]
+    assert lidos["vlr_frete"] == "", \
+        "preco calculado atras de um popup de recusa nao pode ser usado"
     assert CamiloAdapter().normalizar_resposta(lidos).status \
-        is StatusCotacao.COTADO
+        is StatusCotacao.RECUSADO
+    assert page.locator("#errormsg").is_visible(), \
+        "a foto tem que pegar o popup, nao a tela com o preco limpo"
+
+
+def test_cotacao_38_cidade_nao_atendida_com_preco_calculado(page, tmp_path):
+    """Reproducao direta da cotacao #38: "CIDADE NAO ATENDIDA PARA COLETA -
+    CONSULTAR TRANSPORTADORA" com R$ 203,32 ja calculado por tras do popup
+    (print anexado pelo Enzo, 31/08/2026).
+
+    Prova o que o vendedor precisa ver: o motivo da recusa, no lugar do
+    preco que nao serve pra nada — aquela cidade nao entra na coleta."""
+    from carriers.camilo.adapter import CamiloAdapter
+    from core.models import StatusCotacao
+
+    page.evaluate("preencherPreco()")
+    page.evaluate("mostrarAvisoCidadeNaoAtendida()")
+    lidos, evidencias = CamiloAdapter()._ler_e_fotografar(page, tmp_path)
+    resultado = CamiloAdapter().normalizar_resposta(lidos)
+
+    assert [Path(x).name for x in evidencias] == ["recusa_do_site.png"], \
+        "tem que mostrar a print do erro, nao do resultado"
+    assert resultado.status is StatusCotacao.RECUSADO
+    assert "CIDADE" in (resultado.motivo_recusa or "").upper()
+    assert "NÃO ATENDIDA" in (resultado.motivo_recusa or "").upper()
 
 
 def test_sem_preco_e_com_recusa_continua_fotografando_o_popup(page, tmp_path):
