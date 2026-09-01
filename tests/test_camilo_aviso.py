@@ -199,6 +199,41 @@ def test_cotacao_38_cidade_nao_atendida_com_preco_calculado(page, tmp_path):
     assert "NÃO ATENDIDA" in (resultado.motivo_recusa or "").upper()
 
 
+# ------------------------ recusa ANTES da cubagem (cgc_rem/cgc_dest novos)
+def test_destinatario_nao_cadastrado_e_detectado_antes_da_cubagem(page):
+    """Reproducao direta do que aconteceu ao preencher CNPJ remet/destin pela
+    primeira vez (01/09/2026): o SSW valida o destinatario e avisa NESTE
+    ponto, antes de existir Cubagem — sem esta checagem o popup intercepta o
+    clique em Cubagem e o adapter estourava TimeoutError."""
+    from carriers.camilo.adapter import CamiloAdapter
+
+    page.evaluate("mostrarAvisoDestinatarioNaoCadastrado()")
+
+    aviso = CamiloAdapter()._recusa_antes_da_cubagem(page)
+
+    assert "DESTINATÁRIO" in aviso.upper()
+    assert "NÃO CADASTRADO" in aviso.upper()
+
+
+def test_sem_aviso_libera_seguir_para_a_cubagem(page):
+    """Caminho normal: nenhum popup, string vazia, quem chama continua."""
+    from carriers.camilo.adapter import CamiloAdapter
+
+    assert CamiloAdapter()._recusa_antes_da_cubagem(page) == ""
+
+
+def test_aviso_de_sucesso_nao_bloqueia_a_cubagem(page):
+    """A mesma caixa do SSW tambem confirma sucesso — isso nao pode virar
+    recusa antecipada (o caso das cotacoes #27-29, ja coberto em
+    test_popup_de_sucesso_nao_e_recusa, mas agora no momento ANTES da
+    cubagem tambem)."""
+    from carriers.camilo.adapter import CamiloAdapter
+
+    page.evaluate("mostrarSucesso()")
+
+    assert CamiloAdapter()._recusa_antes_da_cubagem(page) == ""
+
+
 def test_sem_preco_e_com_recusa_continua_fotografando_o_popup(page, tmp_path):
     """O caso da #20 nao pode ter regredido."""
     from carriers.camilo.adapter import CamiloAdapter

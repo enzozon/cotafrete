@@ -213,11 +213,15 @@ class CamiloAdapter:
             "coletar": "S",
             "contribuinte": "S",
             "ent_dif": "N",
+            # "CNPJ remet (opc)" e "CNPJ destin (opc)": opcionais no rótulo do
+            # site, mas o SSW muda o valor do frete quando eles vêm
+            # preenchidos — comparado por print real em 01/09/2026 contra a
+            # mesma cotação sem os dois campos. Pedido do Enzo.
+            "cgc_rem": limpa_doc(req.remetente.cnpj),
+            "cgc_dest": limpa_doc(req.destinatario.cnpj),
             # opcionais que ele não preenche à mão — ficam vazios de propósito
             "chave_nfe": "",
             "tp_merc": "",
-            "cgc_rem": "",
-            "cgc_dest": "",
             "qtde_pares": "",
         }
 
@@ -309,6 +313,17 @@ class CamiloAdapter:
             if so_digitos(obtido) != so_digitos(valor):
                 problemas.append(f"{nome}: mandei {valor!r}, campo tem {obtido!r}")
         return problemas
+
+    def _recusa_antes_da_cubagem(self, page) -> str:
+        """"" quando pode seguir; a frase do aviso quando o SSW já recusou.
+
+        Só existe por causa de cgc_rem/cgc_dest: sem eles preenchidos o site
+        nunca mostra aviso nenhum aqui — a validação do destinatário só
+        dispara quando o CNPJ dele está no formulário. Reaproveita
+        `_texto_do_aviso`/`e_recusa`, os mesmos que decidem recusa depois do
+        Simular; a única novidade é o MOMENTO em que a checagem acontece."""
+        aviso = _texto_do_aviso(page)
+        return aviso if e_recusa(aviso) else ""
 
     def _ler_e_fotografar(self, page, run: Path) -> tuple[dict, list[str]]:
         """(campos lidos, evidências) logo depois de clicar em simular.
@@ -449,6 +464,22 @@ class CamiloAdapter:
 
                 self._preencher(page, campos)
                 page.wait_for_timeout(1_500)   # o site busca CNPJ e CEPs
+
+                # Preencher cgc_rem/cgc_dest (01/09/2026) fez o SSW passar a
+                # validar se o destinatário está cadastrado, e ele avisa NESTE
+                # ponto — antes de existir Cubagem nenhuma. Sem esta checagem
+                # o popup ("CNPJ DO DESTINATÁRIO NÃO CADASTRADO") intercepta o
+                # clique em Cubagem, e o adapter estourava TimeoutError em vez
+                # de devolver a recusa de verdade que o site já deu.
+                if aviso_cedo := self._recusa_antes_da_cubagem(page):
+                    # print_seguro, e não _print_resultado: aqui não existe
+                    # "Valor do frete" nenhum ainda — o fim normal do
+                    # preenchimento, que aquele recorte pressupõe.
+                    evidencias += print_seguro(page, run / "recusa_do_site.png")
+                    return ResultadoCotacao(
+                        self.slug, StatusCotacao.RECUSADO, enviado_em=enviado,
+                        motivo_recusa=f"A Camilo não cotou: {aviso_cedo}",
+                        evidencias=evidencias)
 
                 # cubagem fica num popup à parte
                 page.locator('a[id="lnk_cubagem"]').first.click()
