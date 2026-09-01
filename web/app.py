@@ -1338,6 +1338,12 @@ def ver_cotacao(cotacao_id: int,
                     f'carga.</b> São {qtd} volumes: por estimativa, '
                     f'{moeda(r["valor"] * qtd)} no total. Por isso ela não '
                     f'disputa o selo de mais barato.</div>')
+            # Preço válido pode vir com uma ressalva (ex.: Camilo "Entrega
+            # em área de risco", cotação #99 de 01/09/2026) — não é falha,
+            # mas o vendedor precisa ler antes de fechar.
+            if r["erro"]:
+                corpo += (f'<div class="alerta">'
+                          f'{e(r["erro"][:LIMITE_MENSAGEM_ERRO])}</div>')
             corpo += f'<div class="nota">{e(NOTAS.get(slug, ""))}</div>'
             if r["protocolo"]:
                 corpo += (f'<div class="nota">Cotação nº '
