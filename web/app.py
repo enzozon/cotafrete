@@ -93,6 +93,14 @@ COOKIE = "cotafrete_usuario"
 app.mount("/logos", StaticFiles(directory=transportadoras.PASTA_LOGOS),
           name="logos")
 
+# Prints reais do fluxo da Della Volpe (favoritos, alerta de preenchimento,
+# captcha resolvido) — tirados pelo próprio Enzo em 01/09/2026, usados só no
+# tutorial de `/dellavolpe/{id}`. Pasta própria porque `/logos` tem teste
+# checando "todo arquivo aqui é logo de alguma transportadora" (ver
+# tests/test_transportadoras.py) — misturar quebraria essa checagem.
+PASTA_AJUDA = Path(__file__).parent / "ajuda"
+app.mount("/ajuda", StaticFiles(directory=PASTA_AJUDA), name="ajuda")
+
 # Limites que precisam aparecer ANTES de cotar. A Della Volpe recusa abaixo
 # de 1 kg; deixar o usuario esperar 2 minutos para receber "peso invalido" e
 # desrespeitoso com o tempo dele.
@@ -1272,6 +1280,12 @@ def formulario_dellavolpe(cotacao_id: int,
   onclick="return confirm('Não clique — ARRASTE este link para a barra de favoritos.')"
   >📋 Preencher cotação (Cotafrete)</a></p>
 
+  <img class="print" src="/ajuda/passo1_barra_favoritos.png"
+  alt="Print: o favorito salvo na barra do navegador, com uma seta apontando para ele">
+  <p class="sub">Depois de arrastar, o favorito "Preencher cotação
+  (Cotafrete)" fica salvo na barra do navegador (seta na imagem) — é nele que
+  você vai clicar no Passo 3, sempre na aba NOVA da Della Volpe.</p>
+
   <p><b>Passo 2:</b> abra o formulário da Della Volpe nesta aba nova.</p>
   <p><a class="botao2" href="{e(url)}" target="_blank" rel="noopener"
   >Abrir formulário da Della Volpe</a></p>
@@ -1280,14 +1294,26 @@ def formulario_dellavolpe(cotacao_id: int,
   (Cotafrete)" que você salvou no passo 1. Os campos enchem sozinhos, e
   aparece um aviso do navegador confirmando — é só clicar OK.</p>
 
+  <img class="print" src="/ajuda/passo3_alerta_preenchido.png"
+  alt="Print: aviso do navegador dizendo que o Cotafrete preencheu os campos">
+  <p class="sub">É este o aviso que aparece depois do clique: "Cotafrete
+  preencheu os campos. Confira, resolva o captcha e clique em 'Pedir
+  orçamento'." Clique OK e siga para o Passo 4.</p>
+
   <p><b>Passo 4:</b> confira os dados preenchidos e resolva o captcha da
   Della Volpe ("confirme que é humano") — quando ele validar, aparece um
   quadradinho verde escrito <b>"Sucesso!"</b>. Só depois clique em
   "Pedir orçamento". Isso o sistema não faz por você — nem deveria.</p>
 
+  <img class="print" src="/ajuda/passo4_captcha_sucesso.png"
+  alt="Print: captcha da Della Volpe resolvido, mostrando Sucesso em verde">
+  <p class="sub">É este quadradinho verde que confirma que o captcha foi
+  resolvido. Só depois dele aparecer o clique em "Pedir orçamento" envia de
+  verdade.</p>
+
   <div class="alerta"><b>É normal o primeiro clique em "Pedir orçamento"
   parecer que não fez nada.</b> Enquanto o captcha não terminar de validar
-  (o "Sucesso!" verde), o formulário não envia de verdade. Confira se o
+  (o "Sucesso!" verde acima), o formulário não envia de verdade. Confira se o
   "Sucesso!" apareceu e clique em "Pedir orçamento" outra vez.</div>
 
   <p class="sub">Anexo de planilha ou FISPQ não entra sozinho — o navegador
@@ -1299,6 +1325,12 @@ def formulario_dellavolpe(cotacao_id: int,
 <a href="/email/{cotacao_id}/dellavolpe">Abrir e-mail pronto</a></p>
 
 <p><a class="botao2" href="/cotacao/{cotacao_id}">voltar para a cotação</a></p>
+<script>
+// Mesmo gesto das prints de resultado: clique amplia, porque os detalhes do
+// captcha e da barra de favoritos ficam pequenos demais para ler direto.
+document.querySelectorAll(".print").forEach(i =>
+  i.onclick = () => i.classList.toggle("zoom"));
+</script>
 """, usuario))
 
 
