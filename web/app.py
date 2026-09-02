@@ -1277,11 +1277,18 @@ def formulario_dellavolpe(cotacao_id: int,
   >Abrir formulário da Della Volpe</a></p>
 
   <p><b>Passo 3:</b> NA ABA NOVA, clique no favorito "Preencher cotação
-  (Cotafrete)" que você salvou no passo 1. Os campos enchem sozinhos.</p>
+  (Cotafrete)" que você salvou no passo 1. Os campos enchem sozinhos, e
+  aparece um aviso do navegador confirmando — é só clicar OK.</p>
 
-  <p><b>Passo 4:</b> confira os dados, resolva o captcha ("confirme que é
-  humano") e clique em "Pedir orçamento". Isso o sistema não faz por
-  você — nem deveria.</p>
+  <p><b>Passo 4:</b> confira os dados preenchidos e resolva o captcha da
+  Della Volpe ("confirme que é humano") — quando ele validar, aparece um
+  quadradinho verde escrito <b>"Sucesso!"</b>. Só depois clique em
+  "Pedir orçamento". Isso o sistema não faz por você — nem deveria.</p>
+
+  <div class="alerta"><b>É normal o primeiro clique em "Pedir orçamento"
+  parecer que não fez nada.</b> Enquanto o captcha não terminar de validar
+  (o "Sucesso!" verde), o formulário não envia de verdade. Confira se o
+  "Sucesso!" apareceu e clique em "Pedir orçamento" outra vez.</div>
 
   <p class="sub">Anexo de planilha ou FISPQ não entra sozinho — o navegador
   não permite preencher esse tipo de campo por segurança. Anexe à mão se a
@@ -1477,27 +1484,47 @@ def ver_cotacao(cotacao_id: int,
         f'<span class="jafoi">Aberta</span></a>'
         for reg in lista_zap)
 
-    # As de e-mail entram na MESMA seção: para o vendedor o gesto é o mesmo —
-    # o sistema deixou pronto e ele age. Só o destino muda, e o rótulo diz.
-    #
     # A Della Volpe é um caso à parte: para ela existe uma via mais rápida
     # (o formulário oficial deles, preenchido por bookmarklet — responde em
-    # 2 a 5 min) e ela vira a ação PADRÃO do card. O e-mail avulso (10 a 12h)
-    # continua existindo, só que como opção secundária dentro daquela tela.
+    # 2 a 5 min) contra 10 a 12h do e-mail avulso das outras. Rápida demais
+    # para ficar perdida entre fileiras de "escreva e mande" — vira cartão
+    # próprio, abaixo das automáticas e ACIMA do "Precisa de você", com botão
+    # maior: o tamanho já diz "comece por aqui" sem precisar de mais texto.
+    #
+    # Sai de lista_email ANTES do laço abaixo — senão entra duas vezes: uma
+    # aqui, genérica, e outra no cartão dela.
+    dv = next((r for r in lista_email if r.slug == "dellavolpe"), None)
+    lista_email = [r for r in lista_email if r.slug != "dellavolpe"]
+
+    # As de e-mail entram na MESMA seção: para o vendedor o gesto é o mesmo —
+    # o sistema deixou pronto e ele age. Só o destino muda, e o rótulo diz.
     for reg in lista_email:
-        if reg.slug == "dellavolpe":
-            href, rotulo = f"/dellavolpe/{cotacao_id}", "Preencher formulário (rápido)"
-        else:
-            href, rotulo = f"/email/{cotacao_id}/{e(reg.slug)}", "Abrir e-mail pronto"
         zaps += (
             f'<a class="zap{" aberta" if reg.slug in abertas else ""}"'
             f' id="zap-{e(reg.slug)}"'
-            f' href="{href}"'
+            f' href="/email/{cotacao_id}/{e(reg.slug)}"'
             f' target="_blank" rel="noopener">'
             f'<img class="marca" src="/logos/{e(reg.logo)}" alt="" loading="lazy">'
             f'<b>{e(reg.nome)}</b>'
-            f'<span class="ir">{rotulo}</span>'
+            f'<span class="ir">Abrir e-mail pronto</span>'
             f'<span class="jafoi">Aberta</span></a>')
+
+    semiautomatica = ""
+    if dv:
+        semiautomatica = (
+            f'<div class="cartao">'
+            f'<h2 style="font-size:15px;margin:0 0 4px">Semiautomática</h2>'
+            f'<p class="sub">O formulário oficial da Della Volpe já vem '
+            f'preenchido — falta só você conferir, resolver o captcha e '
+            f'clicar em enviar. Responde em 2 a 5 minutos, contra 10 a 12 '
+            f'horas do e-mail avulso.</p>'
+            f'<a class="zap zap-dv{" aberta" if dv.slug in abertas else ""}"'
+            f' id="zap-{e(dv.slug)}" href="/dellavolpe/{cotacao_id}"'
+            f' target="_blank" rel="noopener">'
+            f'<img class="marca" src="/logos/{e(dv.logo)}" alt="" loading="lazy">'
+            f'<b>{e(dv.nome)}</b>'
+            f'<span class="ir">Preencher formulário (rápido)</span>'
+            f'<span class="jafoi">Aberta</span></a></div>')
 
     return HTMLResponse(pagina(f"Cotação {cotacao_id}", f"""
 {recarrega}
@@ -1513,14 +1540,16 @@ def ver_cotacao(cotacao_id: int,
   <div class="resultados">{cartoes or '<p class="sub">Nenhum resultado.</p>'}</div>
 </div>
 
+{semiautomatica}
+
 <div class="cartao">
   <h2 style="font-size:15px;margin:0 0 4px">Precisa de você
-    <span class="contador"><b id="quantas">{len(abertas)}</b> de
+    <span class="contador"><b id="quantas">{len(abertas & {r.slug for r in lista_zap + lista_email})}</b> de
     {len(lista_zap) + len(lista_email)} abertas</span></h2>
   <p class="sub">A mensagem abre pronta — <b>quem aperta enviar é você</b>,
   no WhatsApp. Por isso a conta acima diz <b>abertas</b>, e não enviadas:
   daqui o sistema não tem como saber se a mensagem saiu.</p>
-  {zaps}
+  <div id="grupo-precisa">{zaps}</div>
 </div>
 
 {ficha_da_cotacao(c)}
@@ -1535,6 +1564,10 @@ def ver_cotacao(cotacao_id: int,
 document.querySelectorAll(".zap").forEach(a => a.addEventListener("click", () => {{
   if (a.classList.contains("aberta")) return;
   a.classList.add("aberta");
+  // A Della Volpe tem cartão próprio, fora do #grupo-precisa -- o contador
+  // "X de Y abertas" e SO do WhatsApp/e-mail, e contar o clique dela ali
+  // faria a conta passar do total mostrado no cabecalho.
+  if (!a.closest("#grupo-precisa")) return;
   const q = document.getElementById("quantas");
   q.textContent = String(Number(q.textContent) + 1);
 }}));

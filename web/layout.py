@@ -91,6 +91,12 @@ padding:7px 12px;font-size:13px;font-weight:600}
 .selo-obs{display:inline-block;font-size:10px;font-weight:700;
 color:#a15c00;background:#fff1da;border:1px solid #ffd699;border-radius:99px;
 padding:2px 9px;letter-spacing:.2px;margin-left:4px}
+/* A Della Volpe fica sozinha no cartão "Semiautomática", e o botão maior é o
+   que diz "comece por aqui" sem precisar de mais nenhuma frase. */
+.zap-dv{padding:16px 18px;margin-bottom:0;border-color:var(--zap)}
+.zap-dv .marca{width:60px;height:60px}
+.zap-dv b{font-size:16px}
+.zap-dv .ir{font-size:14px;padding:10px 18px}
 table{width:100%;border-collapse:collapse;font-size:13px}
 th{text-align:left;font-size:11px;color:var(--fraco);text-transform:uppercase;
 letter-spacing:.5px;padding:6px 8px;border-bottom:1px solid var(--borda)}

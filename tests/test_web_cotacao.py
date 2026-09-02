@@ -380,9 +380,13 @@ def test_a_tela_mostra_quantas_ja_foram_abertas(app_web, cliente):
     # quando a Della Volpe saiu das automaticas e entrou nesta mesma secao
     # por e-mail. Numero a mao aqui apodrece a cada transportadora nova — foi
     # assim que "todas as 17 transportadoras" ficou mentindo por semanas.
+    #
+    # A Della Volpe saiu de novo desta conta em 02/09/2026, quando ganhou
+    # cartão próprio ("Semiautomática") — ela não soma mais aqui.
     from web import transportadoras
     quantas = (len(transportadoras.com_whatsapp())
-               + len(transportadoras.com_email()))
+               + len([r for r in transportadoras.com_email()
+                      if r.slug != "dellavolpe"]))
 
     assert f"3 de {quantas} abertas" in texto
     # A frase da tela explica a diferença e por isso usa as duas palavras.
