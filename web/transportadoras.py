@@ -36,6 +36,10 @@ class Transportadora:
     logo: str
     # Só para quem é acionada por e-mail em vez de WhatsApp. Vazio no resto.
     email: str = ""
+    # Selo chamativo no cartão — para quando a transportadora tem uma
+    # especialidade que o vendedor precisa ver ANTES de escolher para quem
+    # manda. Vazio na maioria.
+    observacao: str = ""
 
     @property
     def tem_numero(self) -> bool:
@@ -44,6 +48,10 @@ class Transportadora:
     @property
     def tem_email(self) -> bool:
         return bool(self.email.strip())
+
+    @property
+    def tem_observacao(self) -> bool:
+        return bool(self.observacao.strip())
 
 
 # Ordem = ordem na tela. As três primeiras já rodavam desde 14/08/2026.
@@ -74,6 +82,12 @@ WHATSAPP: tuple[Transportadora, ...] = (
     Transportadora("vitlog", "Vitlog (Grazyele)", "5527992689163",
                    "vitlog.png"),
     Transportadora("rv", "RV Log", "5511986959141", "rv.jpg"),
+
+    # Segundo contato da DEA Transportes (o outro é o slug "dea", com o
+    # Robson) — a Dayse atende pelo próprio número, cadastrada em 02/09/2026.
+    Transportadora("dea_carvalho", "Dayse Carvalho – DEA Transportes",
+                   "5527998650176", "dea_transportes.png",
+                   observacao="Especialista em linha branca no ES"),
 )
 
 

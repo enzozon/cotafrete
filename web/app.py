@@ -1471,7 +1471,9 @@ def ver_cotacao(cotacao_id: int,
         f' target="_blank" rel="noopener">'
         f'<img class="marca" src="/logos/{e(reg.logo)}" alt="" loading="lazy">'
         f'<b>{e(reg.nome)}</b>'
-        f'<span class="ir">Abrir no WhatsApp</span>'
+        + (f'<span class="selo-obs">{e(reg.observacao)}</span>'
+           if reg.tem_observacao else '')
+        + f'<span class="ir">Abrir no WhatsApp</span>'
         f'<span class="jafoi">Aberta</span></a>'
         for reg in lista_zap)
 
