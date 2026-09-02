@@ -86,6 +86,11 @@ font-size:13px;font-weight:600}
   border-radius:6px;background:#fff}
 .zap .ir{margin-left:auto;background:var(--zap);color:#fff;border-radius:6px;
 padding:7px 12px;font-size:13px;font-weight:600}
+/* Especialidade da transportadora — cor diferente de tudo no cartão de
+   propósito, para o olho parar aí antes de decidir para quem manda. */
+.selo-obs{display:inline-block;font-size:10px;font-weight:700;
+color:#a15c00;background:#fff1da;border:1px solid #ffd699;border-radius:99px;
+padding:2px 9px;letter-spacing:.2px;margin-left:4px}
 table{width:100%;border-collapse:collapse;font-size:13px}
 th{text-align:left;font-size:11px;color:var(--fraco);text-transform:uppercase;
 letter-spacing:.5px;padding:6px 8px;border-bottom:1px solid var(--borda)}
