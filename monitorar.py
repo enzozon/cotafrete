@@ -36,7 +36,7 @@ BANCO = RAIZ / "cotafrete.db"
 # vezes (parou em "camilo","jadlog" quando a Translovato entrou; sumiu com a
 # Della Volpe quando ela saiu das automáticas em 31/08/2026) e cada vez o
 # histórico de erro de quem ficou de fora sumia da tela, sem aviso nenhum.
-AUTOMATICAS = ("camilo", "jadlog", "translovato", "generoso")
+AUTOMATICAS = ("camilo", "jadlog", "translovato", "generoso", "braspress")
 # Nomes bonitos para quem é conhecido; `_titulo` cai para `slug.upper()` no
 # resto. Assim uma transportadora nova nunca desaparece da tela por faltar
 # aqui — só aparece com o slug em maiúsculo até alguém cadastrar o nome.

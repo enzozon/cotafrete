@@ -42,6 +42,7 @@ from fastapi.staticfiles import StaticFiles
 
 load_dotenv(override=False)
 
+from carriers.braspress.adapter import BraspressAdapter
 from carriers.camilo.adapter import CamiloAdapter
 from carriers.dellavolpe import bookmarklet as dv_bookmarklet
 from carriers.generoso.adapter import GenerosoAdapter
@@ -120,7 +121,7 @@ MEDIDA_MINIMA_CM = Decimal("1")
 # Enquanto ela estivesse nesta lista, toda cotação gastaria uma vaga de
 # navegador para terminar num cartão vermelho que ninguém consegue resolver.
 # Hoje ela é acionada pelo vendedor: ver POR_EMAIL em web/transportadoras.py.
-AUTOMATICAS = ("camilo", "jadlog", "translovato", "generoso")
+AUTOMATICAS = ("camilo", "jadlog", "translovato", "generoso", "braspress")
 
 # As 17 DISTINTAS. A Translovato conta uma vez so: ela e automatica E tem
 # WhatsApp. dict.fromkeys em vez de set para a ordem nao mudar a cada
@@ -199,7 +200,7 @@ LOGOS_AUTOMATICAS = {
 
 NOMES = {"camilo": "Camilo dos Santos", "jadlog": "Jadlog Entregas",
          "translovato": "Translovato", "generoso": "Transporte Generoso",
-         "dellavolpe": "Della Volpe"}
+         "dellavolpe": "Della Volpe", "braspress": "Braspress"}
 NOTAS = {
     "camilo": "Frete fracionado, com coleta. Preço já com taxas e ICMS.",
     "jadlog": "Etiqueta pré-paga, cotada por volume. Você leva ao balcão.",
@@ -211,6 +212,14 @@ NOTAS = {
     # nunca vai aparecer aqui.
     "dellavolpe": ("Frete fracionado, com coleta. O preço não sai na tela: "
                    "a cotação chega no seu e-mail em poucos minutos."),
+    # A Braspress prende um dos lados da carga no CNPJ do LOGIN (a própria
+    # conta da Ventura, 08.310.365/0001-24) assim que CIF/FOB é escolhido —
+    # mesmo que a ficha tenha outro remetente/destinatário para aquele lado.
+    # Pedido do Enzo em 02/09/2026: o vendedor precisa saber disso olhando
+    # o cartão, não descobrir depois.
+    "braspress": ("Frete fracionado, com coleta. Cotada sempre com o CNPJ "
+                  "padrão da Ventura (08.310.365/0001-24) — é o próprio "
+                  "login da Braspress, o site não deixa trocar."),
 }
 
 # Quanto a resposta por e-mail costuma demorar, por transportadora. MEDIDO,
@@ -923,12 +932,20 @@ def _cotar_generoso(req):
     return GenerosoAdapter().cotar(req, confirmar_envio=True)
 
 
+def _cotar_braspress(req):
+    """"Calcular" é cálculo automático (como o "Simular" da Camilo) — não
+    entra em fila de vendedor nem cria pendência na conta da Ventura, então
+    o envio é confirmado aqui: sem confirmar não existe preço na tela."""
+    return BraspressAdapter().cotar(req, confirmar_envio=True)
+
+
 # No módulo, e não dentro de /cotar: é o que permite a
 # tests/test_dellavolpe_automatica.py conferir que quem está em AUTOMATICAS
 # tem como ser despachada. Entrar na lista sem fábrica só estourava dentro de
 # uma thread do executor, e lá um KeyError vira cartão girando para sempre.
 FABRICAS = {"camilo": _cotar_camilo, "jadlog": _cotar_jadlog,
-            "translovato": _cotar_translovato, "generoso": _cotar_generoso}
+            "translovato": _cotar_translovato, "generoso": _cotar_generoso,
+            "braspress": _cotar_braspress}
 
 
 def _rodar(cotacao_id: int, slug: str, cotar_fn, req) -> None:
