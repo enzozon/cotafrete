@@ -196,6 +196,7 @@ LOGOS_AUTOMATICAS = {
     # nas duas pastas em 26/08/2026. Renomear para minuscula deixaria um
     # arquivo orfao em cotafrete-producao, onde ele foi posto a mao.
     "dellavolpe": "DELLAVOLPE.png",
+    "braspress": "braspress.png",
 }
 
 NOMES = {"camilo": "Camilo dos Santos", "jadlog": "Jadlog Entregas",
