@@ -179,3 +179,116 @@ def historico(con: sqlite3.Connection, *, dias: int = 30,
             "contagem": contagem,
         })
     return linhas
+
+
+# Quantas horas/dias/meses o gráfico do período mostra. A escolha não é
+# estética: 3650 dias em barras de um dia dariam 3650 barras de meio pixel, e
+# 24 horas numa barra só não é gráfico nenhum.
+def unidade_do_periodo(dias: int) -> str:
+    """FUNÇÃO PURA: o tamanho do balde para uma janela de `dias`."""
+    if dias <= 2:
+        return "hora"
+    if dias <= 92:
+        return "dia"
+    return "mes"
+
+
+# Quantos caracteres do `criado_em` ISO identificam o balde:
+# "2026-09-02T14:33:07" -> 13 é a hora, 10 é o dia, 7 é o mês.
+_TAMANHO = {"hora": 13, "dia": 10, "mes": 7}
+
+
+def _inicio_do_balde(agora: datetime, dias: int, unidade: str) -> datetime:
+    """O começo da janela, ALINHADO ao balde.
+
+    Alinhar não é detalhe: com a janela começando às 14h37, o primeiro balde
+    cobriria 23 minutos e apareceria como uma queda no gráfico que nunca
+    aconteceu."""
+    if unidade == "hora":
+        return (agora - timedelta(hours=23)).replace(
+            minute=0, second=0, microsecond=0)
+    if unidade == "dia":
+        return (agora - timedelta(days=dias - 1)).replace(
+            hour=0, minute=0, second=0, microsecond=0)
+    return agora.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+
+def _chaves(inicio: datetime, fim: datetime, unidade: str) -> list[str]:
+    """Todos os baldes da janela, INCLUSIVE os vazios.
+
+    Balde vazio é dado: um dia sem nenhuma cotação é notícia. Sem ele, dois
+    dias distantes ficariam colados e o gráfico mostraria um movimento
+    contínuo que não existiu."""
+    if unidade == "mes":
+        chaves, ano, mes = [], inicio.year, inicio.month
+        while (ano, mes) <= (fim.year, fim.month):
+            chaves.append(f"{ano:04d}-{mes:02d}")
+            ano, mes = (ano + 1, 1) if mes == 12 else (ano, mes + 1)
+        return chaves
+
+    passo = timedelta(hours=1) if unidade == "hora" else timedelta(days=1)
+    molde = "%Y-%m-%dT%H" if unidade == "hora" else "%Y-%m-%d"
+    chaves, quando = [], inicio
+    while quando <= fim:
+        chaves.append(quando.strftime(molde))
+        quando += passo
+    return chaves
+
+
+def serie_por_periodo(con: sqlite3.Connection, dias: int) -> dict:
+    """Cotações e cotações-com-preço por balde de tempo, para o gráfico.
+
+    "com preço" usa `status = 'cotado'` — o MESMO critério de
+    `resumo_do_dia`. Se aqui contasse `aguardando_retorno` também, o número
+    do gráfico e o do cartão do topo discordariam na mesma tela."""
+    unidade = unidade_do_periodo(dias)
+    agora = datetime.now()
+    inicio = _inicio_do_balde(agora, dias, unidade)
+
+    if unidade == "mes":
+        # Em meses a janela é longa demais para desenhar inteira: começa no
+        # mês da cotação mais antiga que existe, e não em dez anos atrás.
+        primeiro = con.execute(
+            "SELECT MIN(criado_em) AS m FROM cotacao WHERE criado_em >= ?",
+            (_desde(dias),)).fetchone()["m"]
+        # Fatiar em vez de fromisoformat: `criado_em` é TEXTO, e uma linha
+        # torta derrubaria a tela inteira em vez de sumir de um gráfico.
+        if primeiro and len(primeiro) >= 7:
+            try:
+                inicio = min(inicio, datetime(int(primeiro[:4]),
+                                              int(primeiro[5:7]), 1))
+            except ValueError:
+                pass
+
+    corte = inicio.isoformat(timespec="seconds")
+    # O `{tamanho}` no SQL vem de _TAMANHO[unidade], e `unidade` só pode ser
+    # uma das três de unidade_do_periodo(). Nada de fora entra nesta string.
+    tamanho = _TAMANHO[unidade]
+    totais = {r["chave"]: r["n"] for r in con.execute(
+        f"SELECT substr(criado_em, 1, {tamanho}) AS chave, COUNT(*) AS n"
+        " FROM cotacao WHERE criado_em >= ? GROUP BY chave", (corte,))}
+    com_preco = {r["chave"]: r["n"] for r in con.execute(
+        f"SELECT substr(c.criado_em, 1, {tamanho}) AS chave,"
+        " COUNT(DISTINCT c.id) AS n FROM cotacao c"
+        " JOIN resultado r ON r.cotacao_id = c.id"
+        " WHERE c.criado_em >= ? AND r.status = 'cotado' GROUP BY chave",
+        (corte,))}
+
+    return {"unidade": unidade, "pontos": [
+        {"chave": chave, "cotacoes": totais.get(chave, 0),
+         "com_preco": com_preco.get(chave, 0)}
+        for chave in _chaves(inicio, agora, unidade)]}
+
+
+def por_usuario(con: sqlite3.Connection, dias: int,
+                limite: int = 8) -> list[dict]:
+    """Quem cotou quanto no período, do mais ativo para o menos.
+
+    Desempate por nome: sem ele, dois vendedores com a mesma contagem trocam
+    de lugar entre dois carregamentos e a lista parece estar mexendo
+    sozinha."""
+    return [{"usuario": r["usuario"], "cotacoes": r["n"]}
+            for r in con.execute(
+                "SELECT usuario, COUNT(*) AS n FROM cotacao"
+                " WHERE criado_em >= ? GROUP BY usuario"
+                " ORDER BY n DESC, usuario LIMIT ?", (_desde(dias), limite))]

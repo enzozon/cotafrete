@@ -191,17 +191,12 @@ box-shadow:0 0 0 1px var(--marca)}
 .opcao span{font-size:11px;color:var(--fraco)}
 .ficha .val{font-size:14px;font-weight:600;word-break:break-word}
 .ficha .pouco{display:block;font-size:11px;font-weight:400;color:var(--fraco)}
-.faixa{display:flex;gap:18px;flex-wrap:wrap;margin:16px 0}
-.numero{background:#f4f4f6;border-radius:10px;padding:12px 18px;min-width:120px}
-.numero b{display:block;font-size:28px;line-height:1.1}
-.numero span{font-size:12px;color:#666}
-.numero.ruim b{color:#b00020}
-.barra{display:inline-block;width:90px;height:9px;background:#e6e6ea;
-       border-radius:5px;vertical-align:middle;overflow:hidden}
-.barra i{display:block;height:100%;background:#1f9d55}
-.sem-dado{color:#888;font-size:12px}
-.periodo{text-decoration:none;color:#555}
-.periodo.atual{font-weight:700;color:#111;text-decoration:underline}
+/* .faixa, .numero, .barra, .sem-dado e .periodo moraram aqui até o painel
+   ganhar casco próprio. Agora vivem em web/painel_ui.py, junto do resto do
+   desenho do /adm — que é a ÚNICA tela que usa qualquer um deles. Manter uma
+   segunda definição aqui não deixaria nada mais bonito: só faria toda página
+   do vendedor carregar regra que ela não aplica, e daria dois lugares para
+   alguém mudar a cor da barra pela metade. */
 
 /* Tela da cotação pronta para o vendedor copiar (rota /email/...). */
 .pronto{width:100%;font-family:ui-monospace,Consolas,monospace;font-size:13px;

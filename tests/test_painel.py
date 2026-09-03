@@ -8,6 +8,7 @@ manda o Enzo cobrar a transportadora errada."""
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta
 from decimal import Decimal
 
 import pytest
@@ -206,3 +207,153 @@ def test_historico_so_com_falha_nao_perde_falha_antiga_pro_limite(db):
         linhas = painel.historico(con, so_com_falha=True, limite=2)
 
     assert [l["id"] for l in linhas] == [antiga_com_falha]
+
+
+# ------------------------------- o que o gráfico do painel consome --------
+
+def _backdatar(db, cotacao_id: int, quando: datetime) -> None:
+    """`salvar_cotacao` sempre carimba agora. Para testar janela de tempo, a
+    data precisa ser empurrada na marra."""
+    with db._conectar() as con:
+        con.execute("UPDATE cotacao SET criado_em = ? WHERE id = ?",
+                    (quando.isoformat(timespec="seconds"), cotacao_id))
+
+
+def test_unidade_muda_com_o_tamanho_da_janela():
+    """Não é escolha estética: 3650 dias em barras de um dia dariam 3650
+    barras de meio pixel, e 24 horas numa barra só não é gráfico nenhum."""
+    assert painel.unidade_do_periodo(1) == "hora"
+    assert painel.unidade_do_periodo(7) == "dia"
+    assert painel.unidade_do_periodo(30) == "dia"
+    assert painel.unidade_do_periodo(3650) == "mes"
+
+
+def test_serie_de_sete_dias_traz_sete_baldes(db):
+    with db._conectar() as con:
+        serie = painel.serie_por_periodo(con, dias=7)
+
+    assert serie["unidade"] == "dia"
+    assert len(serie["pontos"]) == 7
+
+
+def test_serie_de_vinte_e_quatro_horas_traz_vinte_e_quatro_baldes(db):
+    with db._conectar() as con:
+        serie = painel.serie_por_periodo(con, dias=1)
+
+    assert serie["unidade"] == "hora"
+    assert len(serie["pontos"]) == 24
+
+
+def test_dia_sem_cotacao_aparece_zerado_e_nao_some(db):
+    """Balde vazio é DADO: um dia sem nenhuma cotação é notícia. Sem ele, dois
+    dias distantes ficariam colados e o gráfico mostraria um movimento
+    contínuo que nunca existiu."""
+    antiga = db.salvar_cotacao("enzo", CARGA)
+    _backdatar(db, antiga, datetime.now() - timedelta(days=3))
+    db.salvar_cotacao("enzo", CARGA)
+
+    with db._conectar() as con:
+        pontos = painel.serie_por_periodo(con, dias=7)["pontos"]
+
+    assert [p["cotacoes"] for p in pontos] == [0, 0, 0, 1, 0, 0, 1]
+
+
+def test_a_janela_de_dias_comeca_na_meia_noite(db):
+    """Alinhar o primeiro balde não é detalhe: começando as 14h37, ele
+    cobriria 23 minutos e apareceria como uma queda que nunca aconteceu."""
+    with db._conectar() as con:
+        pontos = painel.serie_por_periodo(con, dias=7)["pontos"]
+
+    esperado = (datetime.now() - timedelta(days=6)).strftime("%Y-%m-%d")
+    assert pontos[0]["chave"] == esperado
+    assert pontos[-1]["chave"] == datetime.now().strftime("%Y-%m-%d")
+
+
+def test_com_preco_conta_so_quem_virou_valor(db):
+    """Mesmo critério de `resumo_do_dia`: status "cotado". Se o gráfico
+    contasse `aguardando_retorno` também, ele e o cartão do topo discordariam
+    na mesma tela."""
+    com = db.salvar_cotacao("enzo", CARGA)
+    db.salvar_resultado(com, "camilo", status="cotado", valor=Decimal("10"))
+    sem = db.salvar_cotacao("enzo", CARGA)
+    db.salvar_resultado(sem, "jadlog", status="recusado", erro="peso")
+    esperando = db.salvar_cotacao("enzo", CARGA)
+    db.salvar_resultado(esperando, "dellavolpe", status="aguardando_retorno")
+
+    with db._conectar() as con:
+        hoje = painel.serie_por_periodo(con, dias=7)["pontos"][-1]
+
+    assert hoje["cotacoes"] == 3
+    assert hoje["com_preco"] == 1
+
+
+def test_duas_transportadoras_com_preco_contam_uma_cotacao_so(db):
+    """A linha do gráfico é "cotações que viraram preço", não "preços". Sem
+    o DISTINCT ela passaria por cima da barra de cotações."""
+    cid = db.salvar_cotacao("enzo", CARGA)
+    db.salvar_resultado(cid, "camilo", status="cotado", valor=Decimal("10"))
+    db.salvar_resultado(cid, "jadlog", status="cotado", valor=Decimal("20"))
+
+    with db._conectar() as con:
+        hoje = painel.serie_por_periodo(con, dias=7)["pontos"][-1]
+
+    assert hoje["cotacoes"] == 1
+    assert hoje["com_preco"] == 1
+
+
+def test_periodo_tudo_comeca_na_cotacao_mais_antiga_e_nao_em_dez_anos(db):
+    """3650 dias em baldes de mês dariam 120 barras, quase todas vazias, numa
+    empresa que começou a usar o sistema mês passado."""
+    antiga = db.salvar_cotacao("enzo", CARGA)
+    _backdatar(db, antiga, datetime.now() - timedelta(days=70))
+
+    with db._conectar() as con:
+        serie = painel.serie_por_periodo(con, dias=3650)
+
+    assert serie["unidade"] == "mes"
+    assert len(serie["pontos"]) <= 4
+
+
+def test_banco_vazio_ainda_desenha_a_janela(db):
+    """Pasta nova, primeiro dia. O gráfico mostra a semana zerada, e não um
+    vazio que pareceria defeito."""
+    with db._conectar() as con:
+        pontos = painel.serie_por_periodo(con, dias=7)["pontos"]
+
+    assert len(pontos) == 7
+    assert all(p["cotacoes"] == 0 for p in pontos)
+
+
+def test_por_usuario_vem_do_mais_ativo_para_o_menos(db):
+    for _ in range(3):
+        db.salvar_cotacao("leandro", CARGA)
+    db.salvar_cotacao("enzo", CARGA)
+
+    with db._conectar() as con:
+        linhas = painel.por_usuario(con, dias=30)
+
+    assert linhas == [{"usuario": "leandro", "cotacoes": 3},
+                      {"usuario": "enzo", "cotacoes": 1}]
+
+
+def test_por_usuario_desempata_por_nome(db):
+    """Sem desempate, dois vendedores com a mesma contagem trocam de lugar
+    entre dois carregamentos e a lista parece estar mexendo sozinha."""
+    db.salvar_cotacao("zeca", CARGA)
+    db.salvar_cotacao("ana", CARGA)
+
+    with db._conectar() as con:
+        nomes = [l["usuario"] for l in painel.por_usuario(con, dias=30)]
+
+    assert nomes == ["ana", "zeca"]
+
+
+def test_por_usuario_respeita_a_janela(db):
+    velha = db.salvar_cotacao("sumida", CARGA)
+    _backdatar(db, velha, datetime.now() - timedelta(days=40))
+    db.salvar_cotacao("atual", CARGA)
+
+    with db._conectar() as con:
+        nomes = [l["usuario"] for l in painel.por_usuario(con, dias=30)]
+
+    assert nomes == ["atual"]
