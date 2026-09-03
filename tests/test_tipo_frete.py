@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-from core.models import TipoFrete
+from core.models import StatusCotacao, TipoFrete
 from tests.test_jadlog import CNPJ_A, CNPJ_B, montar
 
 
@@ -103,6 +103,44 @@ def test_jadlog_nao_muda_com_o_tipo_de_frete():
 
     assert (a.preparar_payload(montar(tipo_frete=TipoFrete.CIF))
             == a.preparar_payload(montar(tipo_frete=TipoFrete.FOB)))
+
+
+# ------------------------------------------ a Jadlog so faz frete CIF de verdade
+def test_jadlog_recusa_fob_sem_abrir_navegador():
+    """Decisao do Enzo (03/09/2026): a Jadlog cota FOB sem reclamar no site,
+    mas na pratica ela nao coleta no fornecedor/cliente -- so entrega, saindo
+    sempre da base da Ventura. Cotar FOB e regra comercial que ja se sabe de
+    antemao, e barra ANTES do navegador abrir: e o adapter que roda em
+    producao (JadlogPainelAdapter), com Playwright de verdade."""
+    from carriers.jadlog.painel import JadlogPainelAdapter
+
+    res = JadlogPainelAdapter().cotar(montar(tipo_frete=TipoFrete.FOB))
+
+    assert res.status is StatusCotacao.RECUSADO
+    assert res.erro is None, "recusa nao e erro; o cartao le isso"
+    assert "CIF" in (res.motivo_recusa or "")
+    assert "FOB" in (res.motivo_recusa or "")
+
+
+def test_jadlog_continua_cotando_cif():
+    """Guarda contra o conserto virar uma trava nova: CIF (o caso normal,
+    carga saindo da Ventura) nao pode ganhar a recusa por engano."""
+    from carriers.jadlog import mapping as m
+
+    erros = m.bloqueantes(m.validar(montar(tipo_frete=TipoFrete.CIF)))
+
+    assert not erros, f"CIF nao devia recusar: {erros}"
+
+
+def test_jadlog_adapter_de_api_tambem_recusa_fob():
+    """O outro adapter (API pura, sem navegador) compartilha o mesmo
+    m.validar — a regra vale nos dois lugares, nao so no do painel."""
+    from carriers.jadlog.adapter import JadlogAdapter
+
+    res = JadlogAdapter(token="fake").cotar(montar(tipo_frete=TipoFrete.FOB))
+
+    assert res.status is StatusCotacao.RECUSADO
+    assert "CIF" in (res.motivo_recusa or "")
 
 
 # ------------------------------------------------------------------ a tela

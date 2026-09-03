@@ -26,7 +26,7 @@ from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
 from carriers.base import CampoSpec, ErroValidacao, Modo, ResultadoCotacao, Severidade
-from core.models import CotacaoRequest, StatusCotacao, limpa_doc
+from core.models import CotacaoRequest, StatusCotacao, TipoFrete, limpa_doc
 
 SLUG = "jadlog"
 NOME = "Jadlog"
@@ -62,6 +62,17 @@ RECUSA_VALOR = "Cobertura máxima de R$30.000 excedida."
 RECUSA_PESO = "Para caixas, o peso máximo permitido é 30kg"
 RECUSA_MEDIDA = ("Altura, Largura ou Comprimento excedida. Aceitamos pacotes "
                  "com até 80cm x 80cm x 80cm.")
+
+# A Jadlog só coleta na base da Ventura e entrega no cliente — frete CIF. Ela
+# NÃO coleta no fornecedor/cliente (frete FOB): o Enzo confirmou em
+# 03/09/2026 que o site deles cota FOB sem reclamar nada, mas na prática eles
+# recusam a coleta depois — a cotação sai bonita e o frete nunca acontece.
+# Por isso barra ANTES de chamar a API: cotar FOB aqui não é dúvida
+# operacional, é regra comercial que já se sabe de antemão.
+RECUSA_FOB = (
+    "A Jadlog só faz frete CIF (coleta na base da Ventura e entrega no "
+    "cliente) — ela não coleta no fornecedor/cliente. Para frete FOB, cote "
+    "com outra transportadora.")
 
 # VERIFICADO no simulador público da Jadlog (simulacao.jad), 12/08/2026 — são os
 # códigos que o próprio <select name="modalidade"> da transportadora expõe.
@@ -104,6 +115,9 @@ def campos_obrigatorios(req: CotacaoRequest) -> list[CampoSpec]:
 def validar(req: CotacaoRequest, *, modalidade: str = "package",
             tpentrega: str = TP_ENTREGA_DOMICILIO) -> list[ErroValidacao]:
     erros: list[ErroValidacao] = []
+
+    if req.tipo_frete is TipoFrete.FOB:
+        erros.append(ErroValidacao("tipo_frete", RECUSA_FOB))
 
     for lado, local in (("origem", req.origem), ("destino", req.destino)):
         cep = limpa_doc(local.cep or "")
