@@ -74,6 +74,26 @@ def recusa_cliente_nao_cadastrado(cnpj: str, lado: str) -> str:
         f"aqui embaixo.")
 
 
+# Aviso vermelho embaixo do campo de CEP quando a praça está fora da malha.
+# NÃO aparece em _erros_da_tela (o filtro lá só pega "obrigat/inválid/erro")
+# — por isso 6 cotações reais entre 24/08 e 31/08/2026 (#5, #20, #40, #43,
+# #78, #79) viraram o genérico "a etapa do destino não avançou. O site diz:
+# (nenhuma mensagem visível)" em vez de recusa. O CEP É resolvido (cidade e
+# rua vêm preenchidas) — só o "Próximo" trava, sem dizer por quê na tela.
+AVISO_CEP_NAO_ATENDIDO = "não atendemos essa"
+
+
+def recusa_cep_nao_atendido(cep: str, lado: str) -> str:
+    """Mensagem para o vendedor. `lado` é "origem" ou "destino".
+
+    Numa cotação existem dois CEPs, e não dizer qual deixa quem lê
+    procurando no escuro — mesmo raciocínio de recusa_cliente_nao_cadastrado."""
+    return (
+        f"A Generoso não atende o CEP de {lado} {cep} — praça fora da malha "
+        f"dela. Cote com outra transportadora, ou fale com a Generoso pelo "
+        f"WhatsApp, no botão aqui embaixo.")
+
+
 class Empresa(NamedTuple):
     cnpj: str
     nome: str          # como o SITE escreve, para casar no menu

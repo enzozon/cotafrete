@@ -253,6 +253,12 @@ class ClienteNaoCadastrado(Exception):
     NÃO é repetida. Como `ForaDeArea` e `SemTabela` na Translovato."""
 
 
+class ForaDeArea(Exception):
+    """Praça fora da malha da Generoso. Resposta da transportadora, não
+    falha nossa: vira RECUSADO. Mesmo nome que a exceção equivalente na
+    Translovato, pelo mesmo motivo."""
+
+
 def pontas_a_digitar(req: CotacaoRequest) -> tuple[str | None, str | None]:
     """(origem, destino). None = essa ponta é a conta e já vem travada.
 
@@ -829,6 +835,16 @@ class GenerosoAdapter:
                             f"{de_onde} nao trouxe o endereco de {lado}; sem "
                             f"isso a cotacao sairia de lugar nenhum. O site "
                             f"diz: {self._erros_da_tela(page)}")
+                    # O CEP É resolvido (cidade/rua vêm preenchidas) mas a
+                    # praça pode estar fora da malha — aviso vermelho que
+                    # _erros_da_tela não pega (ver AVISO_CEP_NAO_ATENDIDO).
+                    # Checar AQUI, antes do Próximo: depois ele só trava
+                    # calado, e vira o genérico "etapa não avançou".
+                    texto_tela = page.locator("body").inner_text().lower()
+                    if m.AVISO_CEP_NAO_ATENDIDO in texto_tela:
+                        cep = ((req.origem if lado == "origem"
+                               else req.destino).cep or "")
+                        raise ForaDeArea(m.recusa_cep_nao_atendido(cep, lado))
                     evidencias += print_seguro(
                         page, run / f"etapa{numero}_{lado}.png")
                     self._avancar(page)
@@ -901,6 +917,12 @@ class GenerosoAdapter:
                     motivo_recusa=str(sem_cadastro),
                     evidencias=evidencias
                     + print_seguro(page, run / "sem_cadastro.png"))
+            except ForaDeArea as fora:
+                return ResultadoCotacao(
+                    self.slug, StatusCotacao.RECUSADO, enviado_em=enviado,
+                    motivo_recusa=str(fora),
+                    evidencias=evidencias
+                    + print_seguro(page, run / "fora_de_area.png"))
             except Exception as exc:
                 return erro_do_adapter(
                     self.slug, exc, enviado_em=enviado,
