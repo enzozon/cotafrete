@@ -162,3 +162,100 @@ def test_dias_fora_da_lista_cai_em_trinta(cliente):
         assert r.status_code == 200
         assert '<a class="periodo atual" href="/adm?dias=30">30 dias</a>' \
             in r.text
+
+
+# ------------------------------- o painel visual ---------------------------
+
+def test_a_tela_desenha_o_grafico_do_periodo(cliente):
+    """O gráfico é montado no servidor, em SVG. Se ele sumisse, a tela ainda
+    responderia 200 com um buraco no lugar — status não é conferência."""
+    cid = adm.banco.salvar_cotacao("enzo", CARGA)
+    adm.banco.salvar_resultado(cid, "camilo", status="cotado",
+                               valor=Decimal("50"))
+
+    html = cliente.get("/adm").text
+
+    assert 'class="barra-g"' in html
+    assert 'class="linha-g"' in html
+
+
+def test_a_tela_nao_puxa_nada_da_internet(cliente):
+    """O Servidor.bat sobe numa máquina da empresa. Um gráfico vindo de CDN
+    viraria página em branco justamente no dia em que a internet cair — que é
+    o dia em que alguém quer olhar o painel."""
+    html = cliente.get("/adm").text
+
+    assert "http://" not in html
+    assert "https://" not in html
+
+
+def test_o_historico_agrupa_por_dia(cliente):
+    """A lista corrida obrigava a ler a data em toda linha para saber se
+    ainda era hoje."""
+    adm.banco.salvar_cotacao("enzo", CARGA)
+
+    html = cliente.get("/adm").text
+
+    assert 'class="dia"' in html
+    assert "hoje · " in html
+
+
+def test_o_historico_diz_o_que_aconteceu_em_cada_cotacao(cliente):
+    """"1" na coluna falhas obrigava a abrir a cotação para saber se o resto
+    deu certo. As pastilhas dizem as duas coisas de longe."""
+    cid = adm.banco.salvar_cotacao("enzo", CARGA)
+    adm.banco.salvar_resultado(cid, "camilo", status="cotado",
+                               valor=Decimal("50"))
+    adm.banco.salvar_resultado(cid, "jadlog", status="erro", erro="timeout")
+
+    html = cliente.get("/adm").text
+
+    assert "1 sucesso" in html
+    assert "1 falha" in html
+
+
+def test_cotacao_sem_resposta_nenhuma_nao_parece_bem_sucedida(cliente):
+    """Nenhuma resposta ainda não é "deu tudo certo"."""
+    adm.banco.salvar_cotacao("enzo", CARGA)
+
+    assert "ainda cotando" in cliente.get("/adm").text
+
+
+def test_a_busca_do_historico_enxerga_material_e_vendedor(cliente):
+    """O que a busca varre é montado no servidor, em minúsculas: procurar
+    dentro do HTML visível acharia nome de classe CSS."""
+    adm.banco.salvar_cotacao("leandro", CARGA)
+
+    html = cliente.get("/adm").text
+
+    assert "leandro" in html.lower()
+    assert "placa de video" in html.lower()
+
+
+def test_nome_de_vendedor_com_marcacao_nao_escapa_para_a_tela(cliente):
+    """O login é placeholder: digitou um nome, entrou. Então `usuario` é
+    texto de fora, e esta tela mostra o de TODO mundo — o nome de um vendedor
+    não pode virar script na tela de quem administra.
+
+    O nome passa por três lugares diferentes no render: a bolinha do avatar,
+    o atributo data-busca da linha e o ranking de quem mais cotou."""
+    veneno = "<script>alert(1)</script>"
+    adm.banco.salvar_cotacao(veneno, CARGA)
+
+    html = cliente.get("/adm").text
+
+    assert veneno not in html
+    assert "<script>alert" not in html
+
+
+def test_transportadora_sem_dados_tambem_fica_sem_dados_na_rosca(cliente):
+    """A rosca repete a regra da barra: None é DESCONHECIDO, não zero. Um
+    anel vermelho vazio acusaria de "nunca acerta" quem só viu o servidor
+    reiniciar."""
+    cid = adm.banco.salvar_cotacao("enzo", CARGA)
+    adm.banco.salvar_resultado(cid, "jadlog", status="interrompido")
+
+    html = cliente.get("/adm").text
+
+    assert 'class="arco"' not in html
+    assert "sem dados ainda" in html
