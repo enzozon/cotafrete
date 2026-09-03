@@ -51,6 +51,7 @@ from __future__ import annotations
 
 import os
 import re
+import threading
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
@@ -63,7 +64,8 @@ from carriers.base import (
     recusa_por_validacao,
 )
 from carriers.generoso.mapping import (
-    cliente_nao_cadastrado, conflito_cif_fob, empresa_alvo, empresa_de,
+    AVISO_CEP_NAO_ATENDIDO, cliente_nao_cadastrado, conflito_cif_fob,
+    empresa_alvo, empresa_de, recusa_cep_nao_atendido,
     recusa_cliente_nao_cadastrado,
 )
 from core.models import CotacaoRequest, StatusCotacao, TipoFrete, limpa_doc
@@ -76,6 +78,17 @@ URL_LOGIN = "https://cliente.generoso.com.br/login"
 # `_escolher_empresa` troca antes da etapa 1.
 CNPJ_CONTA = "08.310.365/0001-24"
 ESPERA_LOGIN_MS = 30_000
+
+# A empresa "ativa" (Alterar empresa) é estado da CONTA na Generoso, não da
+# aba do navegador — o próprio site conta com isso: "a conta abre na empresa
+# que cotou por último" (ver _escolher_empresa). Duas cotações concorrentes
+# logadas com o mesmo usuário se pisam: a #130 pediu Alianca
+# (05.954.058/0001-98), rodou junto com a #131 às 16:27-16:28 de 03/09/2026,
+# e saiu com o CNPJ da Ventura (o padrão da conta) — sem erro nenhum no
+# caminho. Repetida sozinha minutos depois (#132), saiu certa. Por isso o
+# `cotar` inteiro (login até fechar o navegador) roda sob esta trava: só uma
+# sessão da Generoso mexe na empresa da conta por vez.
+_TRAVA_CONTA = threading.Lock()
 
 # O CNPJ que da para digitar. Na origem o site trava o da conta
 # (input desabilitado); no destino ele vem vazio e editavel.
@@ -669,6 +682,21 @@ class GenerosoAdapter:
         # Ponta travada não tem busca: ninguém digitou CNPJ nenhum aqui.
         return achado, ""
 
+    @staticmethod
+    def _conferir_cobertura(page, lado: str, req: CotacaoRequest) -> None:
+        """Levanta ForaDeArea se a Generoso recusou esta ponta por praça
+        fora da malha.
+
+        O CEP É resolvido (cidade/rua vêm preenchidas) mas um aviso vermelho
+        pode aparecer embaixo do campo — `_erros_da_tela` não pega essa
+        frase (ver AVISO_CEP_NAO_ATENDIDO). Checar AQUI, antes do Próximo:
+        depois ele só trava calado, e vira o genérico "etapa não avançou"
+        (6 cotações reais entre 24/08 e 31/08/2026)."""
+        texto_tela = page.locator("body").inner_text().lower()
+        if AVISO_CEP_NAO_ATENDIDO in texto_tela:
+            cep = (req.origem if lado == "origem" else req.destino).cep or ""
+            raise ForaDeArea(recusa_cep_nao_atendido(cep, lado))
+
     def _avancar(self, page) -> None:
         page.get_by_role("button", name=BOTAO_PROXIMO).last.click()
         page.wait_for_timeout(2_500)
@@ -777,7 +805,7 @@ class GenerosoAdapter:
         evidencias: list[str] = []
         avisos: list[str] = []
 
-        with sync_playwright() as p:
+        with _TRAVA_CONTA, sync_playwright() as p:
             browser = p.chromium.launch(**self.opcoes_do_navegador())
             page = browser.new_context(
                 locale="pt-BR",
@@ -835,16 +863,7 @@ class GenerosoAdapter:
                             f"{de_onde} nao trouxe o endereco de {lado}; sem "
                             f"isso a cotacao sairia de lugar nenhum. O site "
                             f"diz: {self._erros_da_tela(page)}")
-                    # O CEP É resolvido (cidade/rua vêm preenchidas) mas a
-                    # praça pode estar fora da malha — aviso vermelho que
-                    # _erros_da_tela não pega (ver AVISO_CEP_NAO_ATENDIDO).
-                    # Checar AQUI, antes do Próximo: depois ele só trava
-                    # calado, e vira o genérico "etapa não avançou".
-                    texto_tela = page.locator("body").inner_text().lower()
-                    if m.AVISO_CEP_NAO_ATENDIDO in texto_tela:
-                        cep = ((req.origem if lado == "origem"
-                               else req.destino).cep or "")
-                        raise ForaDeArea(m.recusa_cep_nao_atendido(cep, lado))
+                    self._conferir_cobertura(page, lado, req)
                     evidencias += print_seguro(
                         page, run / f"etapa{numero}_{lado}.png")
                     self._avancar(page)

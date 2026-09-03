@@ -77,3 +77,67 @@ def test_cep_fora_de_area_vira_recusa_e_nao_repete(tmp_path):
     assert res.erro is None, "recusa não é erro; o cartão lê isso"
     assert "62670000" in (res.motivo_recusa or "")
     assert not vale_repetir(res), "repetir daria o mesmo não, custando uma vaga"
+
+
+# --------------------------- a regressao real: NameError em producao (03/09)
+class _PaginaFalsa:
+    """Só o suficiente para `_conferir_cobertura`: um `page.locator(...)
+    .inner_text()`. O bug de producao (`NameError: name 'm' is not
+    defined`) NUNCA teria passado no teste acima — ele forjava a exceção
+    pronta em vez de rodar a linha de verdade. Este teste chama o método
+    real, com o texto real da tela, e por isso quebra se o código quebrar."""
+    def __init__(self, texto: str) -> None:
+        self._texto = texto
+
+    def locator(self, _seletor: str) -> "_PaginaFalsa":
+        return self
+
+    def inner_text(self) -> str:
+        return self._texto
+
+
+def test_conferir_cobertura_roda_a_linha_de_verdade():
+    """Cotações #130, #131 e #132 (03/09/2026, ~16:27-16:39): TODAS as
+    tentativas da Generoso viraram 'NameError: name 'm' is not defined' —
+    o fix da praça fora da malha usava `m.AVISO_CEP_NAO_ATENDIDO`, mas este
+    adapter importa a mapping por nome (`from ... import X, Y`), não como
+    `m`. Nenhum teste chamava o código de verdade para pegar isso."""
+    page = _PaginaFalsa("cabeçalho\n" + AVISO_REAL + "\nrodapé")
+
+    with pytest.raises(ForaDeArea) as excinfo:
+        GenerosoAdapter._conferir_cobertura(page, "destino", montar())
+
+    assert "01310100" in str(excinfo.value)  # o CEP do destino da ficha
+
+
+def test_conferir_cobertura_no_caminho_feliz_nao_levanta_nada():
+    page = _PaginaFalsa("Peso total 63,00 kg — tudo certo")
+
+    GenerosoAdapter._conferir_cobertura(page, "origem", montar())  # não lança
+
+
+# ------------------------- a outra causa da #130: empresa da conta, nao da aba
+def test_cotar_esta_protegido_pela_trava_da_conta():
+    """A #130 (03/09/2026, 16:27) pediu a empresa Alianca e saiu com o CNPJ
+    da Ventura (o padrão da conta) — rodando ao mesmo tempo que a #131.
+    Repetida sozinha minutos depois (#132), saiu certa: a diferença foi só
+    ter rodado concorrente. A "empresa ativa" é estado DA CONTA na Generoso,
+    não da aba do navegador (o próprio `_escolher_empresa` já documentava
+    isso: "a conta abre na empresa que cotou por último") — duas sessões
+    concorrentes se pisam.
+
+    Simular duas cotações reais concorrentes exigiria mockar o Playwright
+    inteiro (`sync_playwright` é importado DENTRO de `cotar`, não dá para
+    substituir de fora). Este é o teste de fumaça mais barato que ainda
+    quebra se alguém tirar a trava do lugar certo: confere que `cotar`
+    adquire `_TRAVA_CONTA` ANTES de abrir o navegador, não depois."""
+    import inspect
+
+    from carriers.generoso.adapter import GenerosoAdapter
+
+    fonte = inspect.getsource(GenerosoAdapter.cotar)
+
+    assert "_TRAVA_CONTA" in fonte, "a trava sumiu de cotar()"
+    assert fonte.index("_TRAVA_CONTA") < fonte.index("sync_playwright() as p"), (
+        "a trava tem que vir ANTES do navegador abrir, senão duas sessões "
+        "ainda entram juntas na tela que troca a empresa")
