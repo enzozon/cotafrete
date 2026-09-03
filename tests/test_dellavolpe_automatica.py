@@ -75,6 +75,25 @@ def test_toda_automatica_tem_nome_e_nota():
         assert app_web.NOTAS.get(slug), f"{slug} sem nota"
 
 
+def test_toda_automatica_tem_data_de_nascimento():
+    """A mesma lacuna que gerou 118 linhas fantasma da Braspress em
+    03/09/2026: sem uma data em AUTOMATICA_DESDE, marcar_interrompidas volta
+    a carimbar TODO o historico antigo para a proxima automatica que entrar
+    aqui. Simetrico a test_toda_automatica_tem_fabrica."""
+    faltando = [s for s in app_web.AUTOMATICAS
+                if s not in app_web.AUTOMATICA_DESDE]
+
+    assert not faltando, f"em AUTOMATICAS sem AUTOMATICA_DESDE: {faltando}"
+
+
+def test_nenhuma_data_de_nascimento_orfa():
+    sobrando = [s for s in app_web.AUTOMATICA_DESDE
+                if s not in app_web.AUTOMATICAS]
+
+    assert not sobrando, (
+        f"AUTOMATICA_DESDE com slug fora de AUTOMATICAS: {sobrando}")
+
+
 def test_a_nota_da_dellavolpe_continua_explicando_o_e_mail():
     """Ela saiu das automaticas, mas o NOME e a NOTA seguem em uso: o cartao
     de "Precisa de voce" e a Documentacao leem os dois. Nota vazia deixaria a

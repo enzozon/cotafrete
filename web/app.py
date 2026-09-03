@@ -123,6 +123,22 @@ MEDIDA_MINIMA_CM = Decimal("1")
 # Hoje ela é acionada pelo vendedor: ver POR_EMAIL em web/transportadoras.py.
 AUTOMATICAS = ("camilo", "jadlog", "translovato", "generoso", "braspress")
 
+# Desde quando cada automática existe de verdade em produção (ISO 8601) —
+# para marcar_interrompidas nunca carimbar "sistema fechado no meio" numa
+# cotação de ANTES da transportadora nascer. Sem esta data, toda vez que uma
+# automática nova entra aqui a varredura de cotação-sem-resposta volta a TODO
+# o histórico: foi o que aconteceu com a Braspress em 02-03/09/2026 (118
+# linhas fantasma) e, num susto menor, com a Generoso em 20-24/08 (4 linhas).
+# Camilo e Jadlog usam a data mais antiga que o banco tem (19/08/2026) porque
+# são as duas originais — não há cotação anterior a elas para carimbar errado.
+AUTOMATICA_DESDE = {
+    "camilo": "2026-08-14T00:00:00",
+    "jadlog": "2026-08-14T00:00:00",
+    "translovato": "2026-08-18T17:28:00",
+    "generoso": "2026-08-24T10:47:15",
+    "braspress": "2026-09-03T08:51:41",
+}
+
 # As 17 DISTINTAS. A Translovato conta uma vez so: ela e automatica E tem
 # WhatsApp. dict.fromkeys em vez de set para a ordem nao mudar a cada
 # reinicio do servidor — tela que troca de ordem sozinha confunde quem usa.
@@ -161,7 +177,7 @@ def automaticas_da(escolhidas: str | None) -> tuple[str, ...]:
 # ("camilo", "jadlog") quando a Translovato entrou, e cotação interrompida
 # dela ficava girando para sempre. A Generoso é a mais lenta de todas — a
 # mais provável de estar no meio do caminho quando alguém fecha a janela.
-_orfas = banco.marcar_interrompidas(AUTOMATICAS)
+_orfas = banco.marcar_interrompidas(AUTOMATICA_DESDE)
 if _orfas:
     print(f"[cotafrete] {_orfas} cotação(ões) pendente(s) marcadas como "
           f"interrompidas — o sistema foi fechado durante elas.")

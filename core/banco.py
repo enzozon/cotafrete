@@ -291,7 +291,7 @@ class Banco:
             ]
             return c
 
-    def marcar_interrompidas(self, esperadas: tuple[str, ...]) -> int:
+    def marcar_interrompidas(self, esperadas: dict[str, str]) -> int:
         """Fecha cotações que ficaram sem resposta porque o sistema caiu.
 
         As transportadoras rodam em threads DENTRO do processo: fechar a
@@ -306,6 +306,15 @@ class Banco:
         na mesma pasta (pytest, um script solto, um segundo servidor) mata as
         cotações vivas do primeiro. Foi o que matou a #50 em 24/08/2026.
 
+        `esperadas` mapeia slug -> desde quando essa automática existe (ISO
+        8601), não só a lista de slugs. Cotação criada ANTES disso nunca teve
+        chance de ser cotada por ela — sem essa data, toda vez que uma
+        automática nova entra em produção esta varredura volta a TODO o
+        histórico e carimba "sistema fechado no meio" numa transportadora que
+        nunca chegou a ser chamada. Foi o que aconteceu com a Braspress em
+        02-03/09/2026: 118 linhas fantasma, corrigidas na mão por não existir
+        esta trava ainda.
+
         Passado o teto, a cotação está morta de qualquer jeito — a tela já
         parou de esperar por ela — e aí a linha só explica o porquê."""
         limite = (datetime.now() - timedelta(seconds=ESPERA_MAXIMA_S)
@@ -313,19 +322,20 @@ class Banco:
         marcadas = 0
         with closing(self._conectar()) as con, con:
             for linha in con.execute(
-                    "SELECT id FROM cotacao WHERE criado_em < ?",
+                    "SELECT id, criado_em FROM cotacao WHERE criado_em < ?",
                     (limite,)).fetchall():
                 jah = {r["transportadora"] for r in con.execute(
                     "SELECT transportadora FROM resultado WHERE cotacao_id = ?",
                     (linha["id"],))}
-                for slug in esperadas:
-                    if slug not in jah:
-                        con.execute(
-                            "INSERT INTO resultado (cotacao_id, transportadora,"
-                            " status, erro) VALUES (?, ?, 'interrompido', ?)",
-                            (linha["id"], slug,
-                             "O sistema foi fechado durante a cotação."))
-                        marcadas += 1
+                for slug, desde in esperadas.items():
+                    if slug in jah or linha["criado_em"] < desde:
+                        continue
+                    con.execute(
+                        "INSERT INTO resultado (cotacao_id, transportadora,"
+                        " status, erro) VALUES (?, ?, 'interrompido', ?)",
+                        (linha["id"], slug,
+                         "O sistema foi fechado durante a cotação."))
+                    marcadas += 1
         return marcadas
 
     def usuarios(self) -> list[str]:

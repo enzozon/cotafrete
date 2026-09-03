@@ -172,6 +172,13 @@ def test_email_do_solicitante_e_guardado(db):
     assert db.buscar_cotacao(cid, "enzo")["email"] == "joao@ventura.com.br"
 
 
+def _automaticas(*slugs: str) -> dict[str, str]:
+    """`marcar_interrompidas` espera slug -> desde quando existe, não só a
+    lista. Testes que não estão testando ESSA regra usam uma data bem antiga,
+    para o "desde" nunca ser o que decide o resultado."""
+    return {slug: "2000-01-01T00:00:00" for slug in slugs}
+
+
 def _envelhecer(db, cotacao_id: int) -> None:
     """Joga a cotação para antes do teto de espera.
 
@@ -196,7 +203,7 @@ def test_cotacao_pendente_vira_interrompida(db):
     db.salvar_resultado(cid, "jadlog", status="cotado", valor=Decimal("33.35"))
     _envelhecer(db, cid)
 
-    assert db.marcar_interrompidas(("camilo", "jadlog")) == 1
+    assert db.marcar_interrompidas(_automaticas("camilo", "jadlog")) == 1
 
     por_nome = {r["transportadora"]: r
                 for r in db.buscar_cotacao(cid, "enzo")["resultados"]}
@@ -211,7 +218,7 @@ def test_cotacao_completa_nao_e_mexida(db):
     for slug in ("camilo", "jadlog"):
         db.salvar_resultado(cid, slug, status="cotado", valor=Decimal("10"))
 
-    assert db.marcar_interrompidas(("camilo", "jadlog")) == 0
+    assert db.marcar_interrompidas(_automaticas("camilo", "jadlog")) == 0
     assert len(db.buscar_cotacao(cid, "enzo")["resultados"]) == 2
 
 
@@ -346,7 +353,7 @@ def test_nao_marca_cotacao_recente_que_ainda_pode_estar_rodando(db):
     """
     cotacao_id = db.salvar_cotacao("enzo", _carga())   # criada agora
 
-    assert db.marcar_interrompidas(("camilo", "generoso")) == 0
+    assert db.marcar_interrompidas(_automaticas("camilo", "generoso")) == 0
     assert db.buscar_cotacao(cotacao_id, "enzo")["resultados"] == []
 
 
@@ -356,9 +363,34 @@ def test_marca_cotacao_velha_que_ja_passou_do_prazo(db):
     cotacao_id = db.salvar_cotacao("enzo", _carga())
     _envelhecer(db, cotacao_id)
 
-    assert db.marcar_interrompidas(("camilo", "generoso")) == 2
+    assert db.marcar_interrompidas(_automaticas("camilo", "generoso")) == 2
     resultados = db.buscar_cotacao(cotacao_id, "enzo")["resultados"]
     assert {r["status"] for r in resultados} == {"interrompido"}
+
+
+def test_nao_marca_transportadora_que_ainda_nao_existia(db):
+    """A causa raiz das 118 linhas fantasma da Braspress (03/09/2026): a
+    varredura não sabia que uma automática só passou a existir numa certa
+    data, e carimbava "sistema fechado no meio" em cotação de SEMANAS antes
+    dela ter sido escrita.
+
+    Camilo já existia (marca normal); uma automática "nascida depois" da
+    cotação não pode ganhar linha nenhuma — nem 'interrompido', nem
+    silêncio que dá para confundir com falha."""
+    from datetime import datetime, timedelta
+
+    cotacao_id = db.salvar_cotacao("enzo", _carga())
+    _envelhecer(db, cotacao_id)
+    amanha = (datetime.now() + timedelta(days=1)).isoformat(
+        timespec="seconds")
+
+    marcadas = db.marcar_interrompidas(
+        {"camilo": "2000-01-01T00:00:00", "braspress": amanha})
+
+    assert marcadas == 1
+    resultados = {r["transportadora"]: r["status"]
+                  for r in db.buscar_cotacao(cotacao_id, "enzo")["resultados"]}
+    assert resultados == {"camilo": "interrompido"}
 
 
 # -------------------------------------------------- hora em que a transportadora respondeu
