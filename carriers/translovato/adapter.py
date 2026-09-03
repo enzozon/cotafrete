@@ -242,6 +242,16 @@ class TranslovatoAdapter:
 
         self._digitar(page, 'input[name="value[receiver_cnpj_cpf]"]',
                       campos["value[receiver_cnpj_cpf]"])
+        page.wait_for_timeout(ESPERA_AJAX_MS)
+        # Mesmo alerta do remetente ("CNPJ não cadastrado"), mas outro
+        # significado: o destinatário não é CLIENTE da Translovato — é só
+        # quem recebe a carga, e isso não impede cotar. Antes o adapter ia
+        # direto para o campo de CEP e o clique batia no overlay do alerta
+        # até estourar os 45s (cotação #117, 02/09/2026). Fechando aqui e
+        # preenchendo o CEP que o vendedor já digitou no formulário, a
+        # cotação segue normal — foi o que a #117 provou ao repetir manual.
+        self._limpar_tela(page)
+
         self._digitar(page, 'input[name="value[receiver_zipcode]"]',
                       campos["value[receiver_zipcode]"])
         page.wait_for_timeout(ESPERA_AJAX_MS)

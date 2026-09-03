@@ -58,11 +58,18 @@ FORMULARIO = """<!doctype html><meta charset="utf-8"><title>Cotação</title>
     alerta.classList.add('visible');
     alerta.classList.remove('escondido');
   };
+  // O site real dispara get-cnpj no blur de QUALQUER campo de CNPJ — o
+  // adapter espera essa resposta especificamente depois do remetente
+  // (page.expect_response). Os dois campos disparam sempre; só o campo sob
+  // teste (__CAMPO__) mostra o alerta.
+  const disparar = (nome) => async () => {
+    await fetch('/portal-do-cliente/get-cnpj', {method: 'POST', body: '{}'});
+    if (nome === '__CAMPO__' && __ALERTA__) mostrar();
+  };
   document.querySelector('[name="value[sender_cpnj]"]')
-      .addEventListener('blur', async () => {
-        await fetch('/portal-do-cliente/get-cnpj', {method: 'POST', body: '{}'});
-        if (__ALERTA__) mostrar();
-      });
+      .addEventListener('blur', disparar('value[sender_cpnj]'));
+  document.querySelector('[name="value[receiver_cnpj_cpf]"]')
+      .addEventListener('blur', disparar('value[receiver_cnpj_cpf]'));
   document.querySelector('.confirm').addEventListener('click', () => {
     overlay.classList.add('escondido');
     alerta.classList.add('escondido');
@@ -81,14 +88,19 @@ def navegador():
         browser.close()
 
 
-def _preencher(navegador, *, aviso: str | None):
-    """Roda `_preencher` contra o formulário de mentira. Devolve a exceção."""
+def _preencher(navegador, *, aviso: str | None,
+               campo_evento: str = "value[sender_cpnj]"):
+    """Roda `_preencher` contra o formulário de mentira. Devolve a exceção.
+
+    `campo_evento` é o campo cujo `blur` dispara o alerta — o remetente por
+    padrão (o bug original, #56), ou o destinatário para reproduzir a #117."""
     page = navegador.new_context().new_page()
     # Curto de propósito: com o bug, o clique bloqueado tem que estourar
     # rápido em vez de segurar o teste pelos 45s reais.
     page.set_default_timeout(2_500)
 
     corpo = (FORMULARIO
+             .replace("__CAMPO__", campo_evento)
              .replace("__AVISO__", aviso or "")
              .replace("__ALERTA__", "true" if aviso else "false"))
     page.route("https://www.translovato.com.br/**", lambda route: route.fulfill(
@@ -149,3 +161,37 @@ def test_sem_alerta_o_preenchimento_segue_normal(navegador):
 def test_a_frase_do_site_esta_reconhecida_no_mapping():
     """A marca vem do texto real medido em 28/08/2026, no print da #56."""
     assert m.AVISO_CNPJ_NAO_CADASTRADO in "Oops! CNPJ não cadastrado. OK"
+
+
+# --------------------------------------------------------------- o bug #117
+def test_cnpj_do_destinatario_nao_cadastrado_nao_trava_no_overlay(navegador):
+    """A cotação #117 (02/09/2026): o MESMO alerta, mas depois do CNPJ do
+    DESTINATÁRIO — que não é cliente da Translovato, só recebe a carga, e
+    isso não é recusa nenhuma. O adapter ia direto para o campo de CEP
+    seguinte e o clique batia no overlay até estourar os 45s, três vezes —
+    a Translovato já tinha respondido em segundos.
+
+    Fechando o alerta e preenchendo o CEP que o vendedor já digitou no
+    formulário, a cotação segue: foi o que a #117 provou ao repetir na mão
+    (fechar a mensagem, preencher o CEP, cotação saiu). Diferente do
+    remetente (recusa de verdade: só a Ventura tem tabela como origem), aqui
+    não pode virar SemTabela nem travar no overlay — só seguir."""
+    erro = _preencher(navegador, aviso="CNPJ não cadastrado.",
+                       campo_evento="value[receiver_cnpj_cpf]")
+
+    assert not isinstance(erro, SemTabela), (
+        f"destinatário sem cadastro não é recusa: {erro!r}")
+    # O sintoma do bug era exatamente isto — clique bloqueado até estourar
+    # o timeout batendo no overlay do alerta.
+    texto_erro = str(erro)
+    assert "Timeout" not in texto_erro and "sweet-overlay" not in texto_erro, (
+        f"ainda travou no alerta: {erro!r}")
+
+
+def test_sem_alerta_no_destinatario_continua_normal(navegador):
+    """Guarda contra o conserto do destinatário virar uma trava nova: sem
+    alerta nenhum, nada pode mudar de comportamento."""
+    erro = _preencher(navegador, aviso=None,
+                       campo_evento="value[receiver_cnpj_cpf]")
+
+    assert not isinstance(erro, SemTabela)
