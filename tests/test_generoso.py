@@ -297,6 +297,40 @@ def test_tela_desconhecida_continua_sendo_erro(adapter):
     assert res.status is StatusCotacao.ERRO
 
 
+# ---------------------------- a quinta tela: carga acima dos limites do site
+TELA_LIMITE_EXCEDIDO = """Resultado da cotação
+Aguardando validação: 2666464
+A carga ultrapassou os limites permitidos para o site.
+Confira os limites máximos abaixo:
+Peso máximo: 5000
+Cubagem máxima: 10
+Peso máximo por volume: 80
+Detalhes desta cotação"""
+
+
+def test_carga_acima_do_limite_do_site_e_recusa_e_nao_erro(adapter):
+    """Medida em duas cotacoes reais de 03/09/2026 (#120 e #122): a mesma
+    tela generica de "sem preco nem confirmacao" que ja tinha acontecido com
+    a unidade parceira — so que aqui a Generoso esta dizendo que a carga
+    passa do peso/cubagem que o site aceita, nao que houve falha nossa."""
+    res = adapter.normalizar_resposta(TELA_LIMITE_EXCEDIDO)
+
+    assert res.status is StatusCotacao.RECUSADO
+    assert res.erro is None
+    assert res.motivo_recusa
+    assert "limite" in res.motivo_recusa.lower()
+
+
+def test_recusa_de_limite_leva_os_numeros_da_tela(adapter):
+    """O vendedor precisa saber ATE QUANTO da para mandar, sem abrir a
+    print."""
+    res = adapter.normalizar_resposta(TELA_LIMITE_EXCEDIDO)
+
+    assert "5000" in res.motivo_recusa
+    assert "10" in res.motivo_recusa
+    assert "80" in res.motivo_recusa
+
+
 # ------------------- CIF/FOB trocado: recusa antes de abrir o navegador
 def test_cif_fob_trocado_vira_recusa_e_nao_abre_navegador():
     """Cotacoes #5 e #20 de producao, #53 de desenvolvimento.

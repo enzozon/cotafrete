@@ -137,6 +137,19 @@ FRASES_CONFIRMACAO = (
     "entraremos em contato",
 )
 
+# A carga passou dos limites do site (peso, cubagem ou peso por volume).
+# Medida em duas cotações reais de 03/09/2026 (#120 e #122, mesma origem e
+# tipo de carga): "A carga ultrapassou os limites permitidos para o site."
+# seguida dos três limites. Até aqui essa tela caía no ERRO genérico do
+# fallback — não é falha nossa, é a Generoso dizendo que não atende aquele
+# volume, o mesmo tipo de recusa que peso/cubagem já são para a Jadlog.
+FRASE_LIMITE_EXCEDIDO = "ultrapassou os limites"
+
+RE_LIMITE_PESO = re.compile(r"peso m[aá]ximo:\s*([\d.,]+)", re.IGNORECASE)
+RE_LIMITE_CUBAGEM = re.compile(r"cubagem m[aá]xima:\s*([\d.,]+)", re.IGNORECASE)
+RE_LIMITE_POR_VOLUME = re.compile(
+    r"peso m[aá]ximo por volume:\s*([\d.,]+)", re.IGNORECASE)
+
 # Digitação humana: a busca de CNPJ/CEP do site não dispara com fill().
 DELAY_DIGITACAO_MS = 60
 ESPERA_BUSCA_MS = 4_500
@@ -194,6 +207,32 @@ def e_unidade_parceira(texto: str) -> bool:
     cotação foi recusada."""
     t = (texto or "").lower()
     return all(f in t for f in FRASES_UNIDADE_PARCEIRA)
+
+
+def carga_excede_limites(texto: str) -> bool:
+    """True quando a Generoso recusou por a carga passar do peso, da
+    cubagem ou do peso por volume que o site aceita."""
+    return FRASE_LIMITE_EXCEDIDO in (texto or "").lower()
+
+
+def motivo_limite_excedido(texto: str) -> str:
+    """Mensagem para o vendedor, com os limites que a própria tela deu —
+    quando algum não aparece (site pode mudar a lista), a frase genérica
+    ainda deixa claro que é recusa e não falha nossa."""
+    limites = []
+    peso = RE_LIMITE_PESO.search(texto)
+    cubagem = RE_LIMITE_CUBAGEM.search(texto)
+    por_volume = RE_LIMITE_POR_VOLUME.search(texto)
+    if peso:
+        limites.append(f"peso total até {peso.group(1)} kg")
+    if cubagem:
+        limites.append(f"cubagem até {cubagem.group(1)} m³")
+    if por_volume:
+        limites.append(f"até {por_volume.group(1)} kg por volume")
+    detalhe = f" ({'; '.join(limites)})" if limites else ""
+    return (f"A Generoso não atende esta carga: ela ultrapassa os limites "
+            f"do site{detalhe}. Fale com a Generoso pelo WhatsApp, no botão "
+            f"aqui embaixo, ou reduza a carga.")
 
 
 def _e_busca_de_cnpj(resposta) -> bool:
@@ -689,6 +728,11 @@ class GenerosoAdapter:
                     "que cota por fora do portal — por isso não veio preço "
                     "aqui. Tem transporte: fale direto com a unidade "
                     f"responsável. Contatos em {LINK_UNIDADES}"))
+
+        if carga_excede_limites(texto):
+            return ResultadoCotacao(
+                self.slug, StatusCotacao.RECUSADO, raw_response=texto[:800],
+                motivo_recusa=motivo_limite_excedido(texto))
 
         return ResultadoCotacao(
             self.slug, StatusCotacao.ERRO, raw_response=texto[:800],
