@@ -347,7 +347,7 @@ class DellavolpeAdapter:
 
         payload = self.preparar_payload(req)
         campos = m.campos_do_formulario(payload)
-        run = self.workdir / datetime.now().strftime("%Y%m%d-%H%M%S")
+        run = self.workdir / datetime.now().strftime("%Y%m%d-%H%M%S-%f")
         run.mkdir(parents=True, exist_ok=True)
 
         # anexo gerado a partir da lista de volumes

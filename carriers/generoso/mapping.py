@@ -76,10 +76,12 @@ def recusa_cliente_nao_cadastrado(cnpj: str, lado: str) -> str:
 
 # Aviso vermelho embaixo do campo de CEP quando a praça está fora da malha.
 # NÃO aparece em _erros_da_tela (o filtro lá só pega "obrigat/inválid/erro")
-# — por isso 6 cotações reais entre 24/08 e 31/08/2026 (#5, #20, #40, #43,
-# #78, #79) viraram o genérico "a etapa do destino não avançou. O site diz:
-# (nenhuma mensagem visível)" em vez de recusa. O CEP É resolvido (cidade e
-# rua vêm preenchidas) — só o "Próximo" trava, sem dizer por quê na tela.
+# — por isso 4 das 6 cotações reais que caíram no genérico "a etapa do
+# destino não avançou. O site diz: (nenhuma mensagem visível)" entre 24/08 e
+# 31/08/2026 (#40, #43, #78, #79) eram na verdade isto. O CEP É resolvido
+# (cidade e rua vêm preenchidas) — só o "Próximo" trava, sem dizer por quê
+# na tela. As outras duas (#5, #20) são AVISO_MESMO_CEP, logo abaixo — mesmo
+# sintoma na tela, causa diferente.
 AVISO_CEP_NAO_ATENDIDO = "não atendemos essa"
 
 
@@ -92,6 +94,34 @@ def recusa_cep_nao_atendido(cep: str, lado: str) -> str:
         f"A Generoso não atende o CEP de {lado} {cep} — praça fora da malha "
         f"dela. Cote com outra transportadora, ou fale com a Generoso pelo "
         f"WhatsApp, no botão aqui embaixo.")
+
+
+# O outro aviso vermelho que pode aparecer no mesmo lugar: "CEP de destino
+# não pode ser o mesmo de coleta" (ou a ordem invertida, "CEP de coleta não
+# pode ser o mesmo de destino" — o site usa as duas conforme qual lado está
+# validando). "não pode ser o mesmo de" casa as duas por igual.
+#
+# Medido em 2 cotações reais (#5 e #20, 24-25/08/2026): as duas tinham o
+# CNPJ do lado livre batendo com uma empresa do grupo Ventura já cadastrada
+# no MESMO endereço da ponta travada — Ventura, Aliança e União Info
+# compartilham a mesma sede em Vila Velha no cadastro da Generoso. A conta
+# resolve os dois lados para o mesmo CEP, e o site recusa.
+AVISO_MESMO_CEP = "não pode ser o mesmo de"
+
+
+def recusa_mesmo_cep() -> str:
+    """Origem e destino colidiram no mesmo CEP dentro do cadastro da
+    Generoso — normalmente porque o CNPJ do lado livre é (ou coincide com)
+    uma empresa do grupo Ventura cadastrada no mesmo endereço da ponta
+    travada. Sem `lado`, ao contrário de recusa_cep_nao_atendido: o site usa
+    as duas ordens ("destino... coleta" e "coleta... destino") e não dá pra
+    saber de qual lado ele está reclamando desta vez."""
+    return (
+        "A Generoso recusou: origem e destino caíram no mesmo CEP dentro do "
+        "cadastro dela — normalmente porque o CNPJ do lado livre é uma "
+        "empresa do grupo Ventura com o mesmo endereço da ponta travada. "
+        "Confira os CNPJs de remetente e destinatário, ou fale com a "
+        "Generoso pelo WhatsApp, no botão aqui embaixo.")
 
 
 class Empresa(NamedTuple):

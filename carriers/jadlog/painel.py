@@ -382,7 +382,7 @@ class JadlogPainelAdapter:
             return recusa_por_validacao(self.slug, erros)
 
         campos = self.preparar_payload(req)
-        run = self.workdir / datetime.now().strftime("%Y%m%d-%H%M%S")
+        run = self.workdir / datetime.now().strftime("%Y%m%d-%H%M%S-%f")
         run.mkdir(parents=True, exist_ok=True)
         enviado = datetime.now()
 

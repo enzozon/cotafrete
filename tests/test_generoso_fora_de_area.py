@@ -116,6 +116,47 @@ def test_conferir_cobertura_no_caminho_feliz_nao_levanta_nada():
     GenerosoAdapter._conferir_cobertura(page, "origem", montar())  # não lança
 
 
+# ------------------ a outra metade dos 6: origem e destino no mesmo CEP
+# Frases reais, capturadas em teste_real/generoso/20260824-104757/erro.png
+# (cotação #5) e .../20260825-113325/erro.png (cotação #20) — as duas com o
+# CNPJ do lado livre batendo numa empresa do grupo Ventura já cadastrada no
+# mesmo endereço da ponta travada.
+AVISO_MESMO_CEP_REAL = "CEP de destino não pode ser o mesmo de coleta"
+# A ordem invertida que o mapping.py já documentava desde a Translovato, sem
+# nunca ter sido vista do lado da Generoso — a detecção tem que pegar as duas.
+AVISO_MESMO_CEP_INVERTIDO = "CEP de coleta não pode ser o mesmo de destino"
+
+
+def test_aviso_de_mesmo_cep_reconhecido_nas_duas_ordens():
+    assert m.AVISO_MESMO_CEP in AVISO_MESMO_CEP_REAL.lower()
+    assert m.AVISO_MESMO_CEP in AVISO_MESMO_CEP_INVERTIDO.lower()
+
+
+def test_mesmo_cep_vira_recusa_e_nao_erro_generico():
+    """Cotações #5 e #20 (24-25/08/2026): mesma classe de bug que
+    AVISO_CEP_NAO_ATENDIDO — o aviso não bate com "obrigat|inválid|erro" e
+    o Próximo trava calado, virando "etapa não avançou" genérico."""
+    page = _PaginaFalsa("cabeçalho\n" + AVISO_MESMO_CEP_REAL + "\nrodapé")
+
+    with pytest.raises(ForaDeArea) as excinfo:
+        GenerosoAdapter._conferir_cobertura(page, "destino", montar())
+
+    assert "CNPJ" in str(excinfo.value)
+
+
+def test_mesmo_cep_nao_precisa_dizer_qual_lado():
+    """Ao contrário de AVISO_CEP_NAO_ATENDIDO, aqui não dá para saber de
+    qual lado o site está reclamando (ele usa as duas ordens) — a mensagem
+    não pode fingir que sabe."""
+    page = _PaginaFalsa(AVISO_MESMO_CEP_INVERTIDO)
+
+    with pytest.raises(ForaDeArea) as excinfo:
+        GenerosoAdapter._conferir_cobertura(page, "origem", montar())
+
+    for lado in ("origem", "destino"):
+        assert f"de {lado}" not in str(excinfo.value)
+
+
 # ------------------------- a outra causa da #130: empresa da conta, nao da aba
 def test_cotar_esta_protegido_pela_trava_da_conta():
     """A #130 (03/09/2026, 16:27) pediu a empresa Alianca e saiu com o CNPJ

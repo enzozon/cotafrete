@@ -64,9 +64,9 @@ from carriers.base import (
     recusa_por_validacao,
 )
 from carriers.generoso.mapping import (
-    AVISO_CEP_NAO_ATENDIDO, cliente_nao_cadastrado, conflito_cif_fob,
-    empresa_alvo, empresa_de, recusa_cep_nao_atendido,
-    recusa_cliente_nao_cadastrado,
+    AVISO_CEP_NAO_ATENDIDO, AVISO_MESMO_CEP, cliente_nao_cadastrado,
+    conflito_cif_fob, empresa_alvo, empresa_de, recusa_cep_nao_atendido,
+    recusa_cliente_nao_cadastrado, recusa_mesmo_cep,
 )
 from core.models import CotacaoRequest, StatusCotacao, TipoFrete, limpa_doc
 
@@ -684,18 +684,21 @@ class GenerosoAdapter:
 
     @staticmethod
     def _conferir_cobertura(page, lado: str, req: CotacaoRequest) -> None:
-        """Levanta ForaDeArea se a Generoso recusou esta ponta por praça
-        fora da malha.
+        """Levanta ForaDeArea se a Generoso recusou esta ponta — praça fora
+        da malha, ou origem/destino colidindo no mesmo CEP.
 
         O CEP É resolvido (cidade/rua vêm preenchidas) mas um aviso vermelho
-        pode aparecer embaixo do campo — `_erros_da_tela` não pega essa
-        frase (ver AVISO_CEP_NAO_ATENDIDO). Checar AQUI, antes do Próximo:
-        depois ele só trava calado, e vira o genérico "etapa não avançou"
-        (6 cotações reais entre 24/08 e 31/08/2026)."""
+        pode aparecer embaixo do campo — `_erros_da_tela` não pega nenhuma
+        das duas frases (ver AVISO_CEP_NAO_ATENDIDO e AVISO_MESMO_CEP).
+        Checar AQUI, antes do Próximo: depois ele só trava calado, e vira o
+        genérico "etapa não avançou" (6 cotações reais entre 24/08 e
+        31/08/2026 — 4 do primeiro aviso, 2 do segundo)."""
         texto_tela = page.locator("body").inner_text().lower()
         if AVISO_CEP_NAO_ATENDIDO in texto_tela:
             cep = (req.origem if lado == "origem" else req.destino).cep or ""
             raise ForaDeArea(recusa_cep_nao_atendido(cep, lado))
+        if AVISO_MESMO_CEP in texto_tela:
+            raise ForaDeArea(recusa_mesmo_cep())
 
     def _avancar(self, page) -> None:
         page.get_by_role("button", name=BOTAO_PROXIMO).last.click()
@@ -799,7 +802,7 @@ class GenerosoAdapter:
         from playwright.sync_api import sync_playwright
 
         c = self.preparar_payload(req)
-        run = self.workdir / datetime.now().strftime("%Y%m%d-%H%M%S")
+        run = self.workdir / datetime.now().strftime("%Y%m%d-%H%M%S-%f")
         run.mkdir(parents=True, exist_ok=True)
         enviado = datetime.now()
         evidencias: list[str] = []

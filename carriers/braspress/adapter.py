@@ -267,7 +267,7 @@ class BraspressAdapter:
         from playwright.sync_api import sync_playwright
 
         c = self.preparar_payload(req)
-        run = self.workdir / datetime.now().strftime("%Y%m%d-%H%M%S")
+        run = self.workdir / datetime.now().strftime("%Y%m%d-%H%M%S-%f")
         run.mkdir(parents=True, exist_ok=True)
         enviado = datetime.now()
         evidencias: list[str] = []

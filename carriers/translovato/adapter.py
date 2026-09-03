@@ -445,7 +445,7 @@ class TranslovatoAdapter:
 
         campos = self.preparar_payload(req)
         esperado = m.cubagem_esperada(req)
-        run = self.workdir / datetime.now().strftime("%Y%m%d-%H%M%S")
+        run = self.workdir / datetime.now().strftime("%Y%m%d-%H%M%S-%f")
         run.mkdir(parents=True, exist_ok=True)
         enviado = datetime.now()
 
