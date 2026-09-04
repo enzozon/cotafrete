@@ -7,6 +7,7 @@ Nada aqui conhece banco, cotação ou transportadora. É só desenho."""
 
 from __future__ import annotations
 
+import base64
 import html
 from decimal import Decimal
 from pathlib import Path
@@ -224,6 +225,27 @@ def moeda(v: Decimal | None) -> str:
     if v is None:
         return "—"
     return f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+
+def print_embutido(caminho: str | None) -> str:
+    """Embute o print da transportadora na página, em base64.
+
+    Base64 em vez de servir o arquivo: teste_real/ tem CNPJ e valor de nota
+    fiscal, e abrir a pasta como estatica exporia todas as cotacoes de todo
+    mundo. Provisorio — a ideia e passar a so guardar em pasta.
+
+    Vive aqui porque as DUAS telas que mostram uma cotação precisam dele: a
+    do vendedor e a do adm. Ler arquivo é a única coisa não-pura deste
+    arquivo, e é o mesmo tipo de leitura que a LOGO lá em cima já faz.
+
+    Caminho vazio ou arquivo que sumiu devolve string vazia: print é prova,
+    não obrigação, e uma cotação antiga cujo `runs/` foi apagado precisa
+    continuar abrindo."""
+    if not caminho or not Path(caminho).exists():
+        return ""
+    dados = base64.b64encode(Path(caminho).read_bytes()).decode()
+    return (f'<img class="print" src="data:image/png;base64,{dados}" '
+            f'alt="comprovante da cotacao">')
 
 
 def pagina(titulo: str, corpo: str, usuario: str | None = None) -> str:

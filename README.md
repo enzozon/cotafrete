@@ -97,9 +97,43 @@ próxima subida.
 | `/cotar` | dispara e redireciona na hora |
 | `/cotacao/N` | resultados, com selo no mais barato e print de cada uma |
 | `/historico` | as cotações **da pessoa**, com o melhor preço de cada |
+| `/adm` | painel da empresa inteira — senha própria, no `.env` |
+| `/adm/cotacao/N` | a cotação de **qualquer** vendedor, inteira |
 
 **Separação por usuário:** cada um vê só as suas. Trocar o número na URL não
 abre a cotação alheia — o usuário entra na consulta ao banco.
+
+### Painel do administrador
+
+`COTAFRETE_ADM_SENHA` no `.env`. **Sem essa linha, `/adm` responde 404** — a
+tela não passa a existir "aberta por engano" numa pasta onde ninguém
+configurou nada. O cookie guarda um HMAC derivado da senha, e trocar a senha
+derruba todas as sessões sozinha.
+
+O painel mostra a empresa inteira no período escolhido (24 h / 7 / 30 dias /
+tudo): faixa ao vivo de hoje, **alerta de falhas seguidas** a partir de 3,
+movimento por dia, aproveitamento de cada transportadora, quem mais cotou,
+rotas mais cotadas e o histórico de todo mundo — filtrável por vendedor e por
+"só com falha".
+
+Clicar numa linha do histórico abre **`/adm/cotacao/N`**: o que cada
+transportadora respondeu, com preço, prazo, protocolo, o texto técnico do erro
+**inteiro** (a tela do vendedor corta em 400 caracteres), o print de cada uma,
+quanto tempo cada uma levou, a ficha da carga e quais conversas de WhatsApp o
+vendedor chegou a abrir.
+
+Essa é uma rota **própria** do adm: `/cotacao/N` continua exigindo o cookie do
+vendedor e filtrando por dono. Duas portas separadas, em vez de uma porta com
+um `if adm` no meio — e a garantia da tela do vendedor fica intacta, com teste
+provando as duas coisas juntas.
+
+A tela é **só leitura**: daqui não se apaga cotação, não se abre WhatsApp e
+não se repete cotação. O adm entra para entender o que aconteceu; as ações
+continuam sendo de quem cotou.
+
+⚠ O painel junta CNPJ, razão social e valor de nota de todos os clientes num
+lugar só. O `Servidor.bat` avisa que `0.0.0.0` inclui o Wi-Fi: numa rede com
+visitantes, a senha do `.env` é a única barreira.
 
 **Cidade e estado não são campos**: saem do CEP via ViaCEP. Foi digitar
 cidade à mão que gerou uma ficha dizendo "São José dos Campos" com CEP de São
@@ -175,7 +209,7 @@ Decisões de interface do site: **`REGRAS_SITE_COTACAO.md`**.
 ## Testes
 
 ```bash
-python -m pytest tests\ -q      # 223 testes, nenhum usa internet
+python -m pytest tests\ -q      # 777 testes, nenhum usa internet
 ```
 
 Cada teste tem o caso real que o gerou no docstring. Não são testes de
@@ -207,6 +241,7 @@ JADLOG_PAINEL_USUARIO / _SENHA             Jadlog Entregas
 TRANSLOVATO_CNPJ / _USUARIO / _SENHA       Translovato
 GENEROSO_USUARIO / GENEROSO_SENHA          Transporte Generoso
 DV_ENVIO_REAL_AUTORIZADO                   trava do envio real da Della Volpe
+COTAFRETE_ADM_SENHA                        senha do painel /adm
 ```
 
 **`GENEROSO_USUARIO`** é o "E-mail corporativo" da tela de login deles. Sem

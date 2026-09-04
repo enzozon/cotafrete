@@ -293,3 +293,182 @@ def test_todo_item_do_menu_aponta_para_uma_secao_que_existe():
 
     for _, _, alvo in ui.MENU:
         assert f'href="#{alvo}" data-secao="{alvo}"' in html
+
+
+def test_fora_do_painel_o_menu_volta_para_o_painel():
+    """Na tela de UMA cotação as seções não existem. Um href="#movimento" que
+    não sai do lugar deixa o menu inteiro parecendo quebrado."""
+    html = ui.pagina_painel("Cotação", "", base="/adm")
+
+    assert 'href="/adm#movimento"' in html
+    assert 'href="#movimento"' not in html
+
+
+# ------------------------------------------------------------- alertas
+
+def _alerta(**campos) -> dict:
+    base = {"transportadora": "jadlog", "quantas": 5,
+            "ids": [56, 55, 54, 53, 52], "ultima": "2026-08-28T09:22:00",
+            "desde": "2026-08-27T16:13:00", "erro": "login recusado"}
+    return {**base, **campos}
+
+
+def test_sem_alerta_nao_desenha_cartao_nenhum():
+    """Um cartão "nenhum alerta" fixo no topo treina o olho a pular a região
+    — e aí ele pula também no dia em que o alerta está lá."""
+    assert ui.alertas([], str) == ""
+
+
+def test_o_alerta_diz_quem_quantas_e_desde_quando():
+    html = ui.alertas([_alerta()], lambda s: "Jadlog Entregas")
+
+    assert "Jadlog Entregas falhou nas últimas 5 tentativas." in html
+    assert "27/08 às 16:13" in html
+    assert "login recusado" in html
+
+
+def test_o_alerta_linka_cada_cotacao_afetada():
+    """Sem os números, o alerta manda procurar."""
+    html = ui.alertas([_alerta()], str)
+
+    assert 'href="/adm/cotacao/56"' in html
+
+
+def test_alerta_comprido_nao_despeja_a_lista_inteira():
+    """Numa transportadora quebrada há duas semanas, a lista inteira cobriria
+    o alerta seguinte."""
+    html = ui.alertas([_alerta(quantas=12, ids=list(range(12)))], str)
+
+    assert html.count("/adm/cotacao/") == 5
+    assert ">+7</a>" in html
+
+
+def test_o_alerta_escapa_o_texto_do_erro():
+    """O erro vem do site da transportadora, não de nós."""
+    html = ui.alertas([_alerta(erro="<script>alert(1)</script>")], str)
+
+    assert "<script>" not in html
+
+
+# ------------------------------------------- cartão de uma resposta
+
+def test_cartao_de_resposta_mostra_preco_e_status():
+    html = ui.cartao_resposta(nome="Braspress", logo="braspress.png",
+                              status="cotado", valor="R$ 94,57")
+
+    assert "R$ 94,57" in html
+    assert "Cotou" in html
+
+
+def test_so_o_mais_barato_leva_o_selo():
+    com = ui.cartao_resposta(nome="x", logo="", status="cotado",
+                             valor="R$ 10,00", melhor=True)
+    sem = ui.cartao_resposta(nome="x", logo="", status="cotado",
+                             valor="R$ 20,00")
+
+    assert "MAIS BARATO" in com
+    assert "MAIS BARATO" not in sem
+
+
+def test_sem_preco_nunca_vira_zero():
+    """Zero seria um preço. Não ter preço é outra coisa — e a frase diz o que
+    aconteceu, em vez de deixar o cartão vazio."""
+    html = ui.cartao_resposta(nome="x", logo="", status="erro")
+
+    assert "R$ 0,00" not in html
+    assert "não retornou preço" in html
+
+
+def test_enviada_por_email_nao_e_apresentada_como_falha():
+    """A Della Volpe e a Generoso recebem e respondem por e-mail. "sem preço"
+    embaixo de "Enviada" contradiz a própria pastilha."""
+    html = ui.cartao_resposta(nome="x", logo="", status="aguardando_retorno")
+
+    assert "o preço vem por e-mail" in html
+    assert "sem preço" not in html
+
+
+def test_status_desconhecido_aparece_cru_em_vez_de_sumir():
+    """Esconder o desconhecido foi como "(nenhuma mensagem visível)"
+    nasceu."""
+    html = ui.cartao_resposta(nome="x", logo="", status="coisa_nova")
+
+    assert "coisa_nova" in html
+
+
+def test_o_erro_tecnico_vai_inteiro_na_tela_do_adm():
+    """A tela do vendedor corta em 400 caracteres; esta é onde se investiga,
+    e cortar esconderia justamente a linha que explica."""
+    enorme = "Timeout " + "x" * 900
+    html = ui.cartao_resposta(nome="x", logo="", status="erro",
+                              erro_cru=enorme)
+
+    assert enorme in html
+
+
+def test_transportadora_sem_logo_cadastrada_nao_vira_imagem_quebrada():
+    """Na tela do adm, o ícone de imagem quebrada parece defeito do sistema —
+    e não cadastro faltando."""
+    html = ui.cartao_resposta(nome="Acme", logo="", status="cotado")
+
+    assert "<img" not in html
+    assert 'class="bola"' in html
+
+
+def test_cartao_de_resposta_escapa_tudo_que_vem_de_fora():
+    html = ui.cartao_resposta(nome="<script>a</script>", logo="",
+                              status="erro", erro_cru="<script>b</script>",
+                              avisos=("<script>c</script>",),
+                              miudos=("<script>d</script>",))
+
+    assert "<script>" not in html
+
+
+# ------------------------------------------------------ tempo de resposta
+
+def test_a_barra_do_tempo_e_proporcional_a_mais_lenta():
+    """O que a tela responde é "quem segurou a cotação", e isso é comparação
+    entre elas."""
+    html = ui.tempos_de_resposta([
+        {"nome": "a", "segundos": 120, "cor": "#000"},
+        {"nome": "b", "segundos": 60, "cor": "#000"}])
+
+    assert "width:100.0%" in html
+    assert "width:50.0%" in html
+
+
+def test_quem_nao_tem_hora_registrada_continua_na_lista():
+    """Sumir da lista faria a transportadora parecer não ter sido chamada."""
+    html = ui.tempos_de_resposta([
+        {"nome": "antiga", "segundos": None, "cor": "#000"}])
+
+    assert "antiga" in html
+    assert "sem dados ainda" in html
+
+
+def test_tempo_por_extenso():
+    assert ui.segundos_por_extenso(25.4) == "25 s"
+    assert ui.segundos_por_extenso(125) == "2 min 05 s"
+    assert ui.segundos_por_extenso(None) == "sem dados ainda"
+
+
+# ------------------------------------------------------ whatsapp aberto
+
+def test_whatsapp_aberto_lista_quem_e_quando():
+    html = ui.abertas_no_whatsapp(
+        [{"transportadora": "movvi", "aberto_em": "2026-09-02T14:33:07"}],
+        lambda s: "Movvi Logística")
+
+    assert "Movvi Logística" in html
+    assert "02/09 às 14:33" in html
+
+
+def test_sem_whatsapp_aberto_diz_isso_em_vez_de_sumir():
+    """Nenhuma conversa aberta é DADO: explica metade de uma cotação que
+    ficou sem preço."""
+    assert "Nenhuma conversa" in ui.abertas_no_whatsapp([], str)
+
+
+def test_data_torta_no_alerta_nao_derruba_a_tela():
+    """`criado_em` é TEXTO no banco."""
+    assert ui.dia_e_hora("sem-data") == "sem-data"

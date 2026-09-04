@@ -116,6 +116,146 @@ def _preco(bruto: str | None) -> Decimal | None:
         return None
 
 
+def cotacao(con: sqlite3.Connection, cotacao_id: int) -> dict | None:
+    """UMA cotação, de QUALQUER usuário, com os resultados e os WhatsApps.
+
+    A porta do adm para a tela de detalhe, e a irmã de
+    `banco.buscar_cotacao` — que continua exigindo o dono e NÃO muda: a
+    garantia da tela do vendedor (coberta por
+    `test_cotacao_de_outro_usuario_nao_abre`) é dela. Duas portas separadas,
+    em vez de uma porta com um `if adm` no meio.
+
+    `peso_kg`, `valor_nf` e cada `valor` saem daqui como Decimal, do mesmo
+    jeito que `banco.buscar_cotacao` os devolve: são TEXTO no banco, e
+    `moeda()` recebendo texto levanta ValueError no meio do render.
+    """
+    linha = con.execute("SELECT * FROM cotacao WHERE id = ?",
+                        (cotacao_id,)).fetchone()
+    if linha is None:
+        return None
+
+    c = dict(linha)
+    c["peso_kg"] = _preco(c["peso_kg"])
+    c["valor_nf"] = _preco(c["valor_nf"])
+    c["resultados"] = [{**dict(r), "valor": _preco(r["valor"])}
+                       for r in con.execute(
+                           "SELECT * FROM resultado WHERE cotacao_id = ?"
+                           " ORDER BY id", (cotacao_id,))]
+    # Quais conversas foram ABERTAS com o texto pronto. Nunca "enviadas" —
+    # ver o comentário da tabela em core/banco.py. Na tela do adm isto
+    # responde "o vendedor chegou a acionar as manuais?", que é metade da
+    # explicação de uma cotação que ficou sem preço.
+    c["whatsapp"] = [dict(r) for r in con.execute(
+        "SELECT * FROM whatsapp_aberto WHERE cotacao_id = ? ORDER BY id",
+        (cotacao_id,))]
+    return c
+
+
+def duracao_s(inicio: str | None, fim: str | None) -> float | None:
+    """Segundos entre dois carimbos ISO do banco, ou None. FUNÇÃO PURA.
+
+    None quando falta um dos dois — `respondido_em` é NULL nas linhas
+    anteriores a 28/08/2026 — ou quando o texto não é data. A tela escreve
+    "sem dados ainda" em vez de fingir zero.
+
+    Negativo também vira None: relógio de máquina que andou para trás é dado
+    ruim, e "-3 s" num quadro de instrumentos engana mais do que a lacuna.
+    """
+    try:
+        segundos = (datetime.fromisoformat(fim)
+                    - datetime.fromisoformat(inicio)).total_seconds()
+    except (TypeError, ValueError):
+        return None
+    return segundos if segundos >= 0 else None
+
+
+def falhas_seguidas(con: sqlite3.Connection, *, dias: int = 30,
+                    minimo: int = 3) -> list[dict]:
+    """Quem está falhando SEGUIDO, da pior para a menos pior.
+
+    É o alerta que motivou o painel inteiro: a Jadlog falhou no login em 5
+    tentativas seguidas, da cotação #49 (27/08 16:13) à #56 (28/08 09:22), e
+    o problema só foi notado quando um vendedor reclamou — quase um dia
+    depois.
+
+    A contagem anda da cotação MAIS NOVA para trás e para na primeira
+    resposta que não é falha:
+
+    - `sucesso` e `recusa` PARAM. Recusa é a transportadora respondendo com o
+      motivo dela: o site está de pé, que é o que este alerta pergunta.
+    - `nossa` (interrompido) é PULADO: foi o servidor reiniciando no meio.
+      Não acusa a transportadora nem prova que ela voltou.
+    - `inesperado` é pulado pelo mesmo motivo — um status que este módulo
+      ainda não conhece não pode nem acusar nem inocentar ninguém.
+
+    `minimo` é 3 porque duas falhas acontecem por acaso; três seguidas, na
+    série medida até aqui, sempre foram problema de verdade.
+
+    A janela é a MESMA do resto da tela, e recortá-la nunca INVENTA alerta: o
+    que fica de fora é sempre mais velho que a falha mais antiga contada, então
+    a contagem só pode sair menor do que a real.
+    """
+    por_transportadora: dict[str, list] = {}
+    for r in con.execute(
+            "SELECT r.transportadora, r.status, r.erro, r.cotacao_id,"
+            " c.criado_em FROM resultado r"
+            " JOIN cotacao c ON c.id = r.cotacao_id"
+            " WHERE c.criado_em >= ? ORDER BY r.cotacao_id DESC",
+            (_desde(dias),)):
+        por_transportadora.setdefault(r["transportadora"], []).append(r)
+
+    alertas = []
+    for transportadora, respostas in por_transportadora.items():
+        seguidas = []
+        for r in respostas:
+            classe = categoria(r["status"])
+            if classe == "falha":
+                seguidas.append(r)
+            elif classe in ("nossa", "inesperado"):
+                continue
+            else:
+                break
+        if len(seguidas) < minimo:
+            continue
+        alertas.append({
+            "transportadora": transportadora,
+            "quantas": len(seguidas),
+            # Da mais nova para a mais velha, como vieram do SQL. A tela
+            # linka cada uma: sem os números, o alerta manda procurar.
+            "ids": [r["cotacao_id"] for r in seguidas],
+            "ultima": seguidas[0]["criado_em"],
+            "desde": seguidas[-1]["criado_em"],
+            # O erro da tentativa mais recente. É o que se leva para a
+            # conversa com a transportadora — ou para o .env, quando é senha.
+            "erro": seguidas[0]["erro"],
+        })
+
+    return sorted(alertas, key=lambda a: (-a["quantas"], a["transportadora"]))
+
+
+def rotas(con: sqlite3.Connection, dias: int, limite: int = 8) -> list[dict]:
+    """As rotas mais cotadas no período, da mais para a menos cotada.
+
+    Agrupa pela CIDADE quando ela existe e pelo CEP quando não — a mesma
+    regra que `historico` usa para escrever a rota na linha. Sem ela,
+    "Vila Velha -> São Paulo" e "29105770 -> 01310100" contariam separado
+    sendo a mesma rota, e as duas apareceriam pela metade do tamanho.
+
+    NULLIF junto do COALESCE porque cidade em branco ("") não é NULL para o
+    SQLite: sem ele, as cotações anteriores à busca por CEP viravam um grupo
+    " -> " sem nome nenhum no topo da lista.
+    """
+    return [{"rota": f"{r['origem']} -> {r['destino']}", "cotacoes": r["n"]}
+            for r in con.execute(
+                "SELECT COALESCE(NULLIF(cidade_origem, ''), cep_origem)"
+                " AS origem,"
+                " COALESCE(NULLIF(cidade_destino, ''), cep_destino)"
+                " AS destino, COUNT(*) AS n FROM cotacao"
+                " WHERE criado_em >= ? GROUP BY origem, destino"
+                " ORDER BY n DESC, origem, destino LIMIT ?",
+                (_desde(dias), limite))]
+
+
 def historico(con: sqlite3.Connection, *, dias: int = 30,
               usuario: str | None = None, so_com_falha: bool = False,
               limite: int = 200) -> list[dict]:

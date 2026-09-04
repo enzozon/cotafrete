@@ -22,7 +22,14 @@ from __future__ import annotations
 from datetime import date
 from math import hypot, pi
 
+from core.painel import categoria
 from web.layout import CSS as CSS_BASE, LOGO, e
+
+# `categoria` é a ÚNICA coisa que este arquivo importa de fora do desenho, e
+# é função pura. Vem de lá em vez de ser reescrita aqui porque é ela quem diz
+# se um status é sucesso, recusa ou falha — a mesma classificação que pinta a
+# rosca, a pizza e a pastilha. Uma segunda tabela aqui daria à mesma linha
+# duas leituras na mesma tela.
 
 # Cor por categoria de core.painel. Uma cor só, definida uma vez: se a rosca
 # pintasse "recusa" de vermelho e a tabela de laranja, a mesma linha contaria
@@ -116,7 +123,9 @@ color:#4e5771;border-top:1px solid rgba(255,255,255,.07)}
 .cabecalho{display:flex;align-items:center;gap:14px;flex-wrap:wrap;
 margin-bottom:18px}
 .cabecalho h1{font-size:23px;letter-spacing:-.4px;margin:0}
-.cabecalho .sub{margin:2px 0 0}
+.cabecalho .sub{margin:2px 0 0;display:flex;align-items:center;gap:6px;
+flex-wrap:wrap}
+.cabecalho .direita{margin-left:auto;display:flex;align-items:center;gap:10px}
 .aovivo{display:inline-flex;align-items:center;gap:7px;font-size:11.5px;
 color:var(--fraco);background:#fff;border:1px solid var(--borda);
 border-radius:99px;padding:5px 12px}
@@ -139,6 +148,11 @@ margin-bottom:16px}
 .c4{grid-column:span 4}.c5{grid-column:span 5}.c7{grid-column:span 7}
 .c8{grid-column:span 8}.c12{grid-column:span 12}
 @media(max-width:1180px){.c4,.c5,.c7,.c8{grid-column:span 12}}
+/* Dois cartões baixos empilhados numa coluna da grade. Sem isto eles caem em
+   linhas diferentes: a grade é de 12 colunas com colocação automática, e o
+   segundo c4 volta para a coluna 1 da linha seguinte em vez de ficar embaixo
+   do primeiro — deixando meia tela em branco ao lado de um cartão alto. */
+.coluna{display:flex;flex-direction:column;gap:16px;min-width:0}
 .painel .cartao{background:var(--papel);border:1px solid var(--borda);
 border-radius:14px;padding:18px 20px;margin:0;box-shadow:var(--sombra);
 min-width:0}
@@ -254,8 +268,10 @@ animation:cresce .8s cubic-bezier(.22,.9,.3,1) both}
 @keyframes cresce{from{width:0}}
 
 /* ---- avatar de quem cotou ---- */
+/* A bolinha é regra SOLTA, e não `.eu .bola`: ela também aparece sozinha, no
+   lugar da logo de uma transportadora sem arquivo cadastrado. */
 .eu{display:inline-flex;align-items:center;gap:8px;min-width:0}
-.eu .bola{width:24px;height:24px;border-radius:50%;flex:none;display:grid;
+.bola{width:24px;height:24px;border-radius:50%;flex:none;display:grid;
 place-items:center;font-size:10.5px;font-weight:700;color:#fff;
 background:var(--marca);text-transform:uppercase}
 
@@ -310,6 +326,133 @@ font-variant-numeric:tabular-nums;white-space:nowrap;color:var(--ok)}
 text-align:center}
 .nada.aparece{display:block}
 
+/* ---- alertas: falha seguida ---- */
+/* Só aparece quando existe algo. Um cartão "nenhum alerta" ocupando o topo
+   todo dia treina o olho a pular a região — e aí ele pula também no dia em
+   que o alerta está lá. */
+.alertas{display:flex;flex-direction:column;gap:10px;margin:0}
+.alerta-linha{display:flex;gap:12px;align-items:flex-start;
+border:1px solid #ffd5cc;background:#fff6f4;border-radius:12px;
+padding:12px 14px}
+.alerta-linha .sino{width:32px;height:32px;border-radius:9px;flex:none;
+display:grid;place-items:center;background:#fdece9;color:var(--erro)}
+.alerta-linha .sino svg{width:17px;height:17px}
+.alerta-linha .diz{min-width:0;flex:1}
+.alerta-linha b{font-size:13.5px}
+.alerta-linha .quando{font-size:11.5px;color:var(--fraco);margin:1px 0 0}
+/* O texto de erro é de programador e pode ser longo. Duas linhas dizem qual
+   é o problema; o resto está na cotação, a um clique daqui. */
+.alerta-linha .porque{font-size:12px;color:#7a3b2e;margin:6px 0 0;
+display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;
+overflow:hidden}
+.alerta-linha .quais{margin-left:auto;display:flex;gap:5px;flex-wrap:wrap;
+justify-content:flex-end}
+.alerta-linha .quais a{font-size:11.5px;font-weight:700;text-decoration:none;
+color:var(--erro);background:#fdece9;border-radius:99px;padding:2px 9px;
+white-space:nowrap}
+.alerta-linha .quais a:hover{background:#fbdcd6}
+
+/* ---- filtros do histórico ---- */
+.filtros{display:flex;align-items:center;gap:6px;flex-wrap:wrap;
+margin:0 0 12px}
+.filtros .rotulo{font-size:11px;text-transform:uppercase;letter-spacing:1px;
+color:#9aa2b1;font-weight:700;margin-right:2px}
+.filtro-p{padding:5px 12px;border-radius:99px;font-size:12px;color:#5b6478;
+text-decoration:none;border:1px solid var(--borda);background:var(--papel);
+white-space:nowrap;transition:background .15s,color .15s,border-color .15s}
+.filtro-p:hover{background:var(--fundo)}
+.filtro-p.atual{background:var(--marca);border-color:var(--marca);color:#fff;
+font-weight:600}
+.filtro-p.perigo.atual{background:var(--erro);border-color:var(--erro)}
+
+/* ---- linha do histórico que abre a cotação ---- */
+/* A linha inteira é clicável (o JavaScript leva), mas o número continua
+   sendo um <a> de verdade: é ele que responde ao teclado, ao botão do meio e
+   ao "abrir em nova aba" — coisas que um onclick sozinho tira de quem
+   trabalha com o teclado o dia inteiro. */
+.historico tbody tr[data-abrir]{cursor:pointer}
+.historico .id a{color:#7b839a;text-decoration:none;font-weight:700}
+.historico tbody tr:hover .id a{color:var(--marca);text-decoration:underline}
+.historico .seta{width:1%;color:#c7ccd8;text-align:right;padding-right:2px}
+.historico tbody tr:hover .seta{color:var(--marca)}
+
+/* ---- tela de UMA cotação ---- */
+.voltar{display:inline-flex;align-items:center;gap:6px;font-size:12px;
+color:var(--fraco);text-decoration:none;margin-bottom:2px}
+.voltar:hover{color:var(--marca)}
+.voltar svg{width:13px;height:13px}
+/* align-items:start para cada cartão ter a altura do que tem dentro. Esticado
+   até o mais alto da fileira, o cartão de quem só respondeu "enviada" virava
+   uma caixa quase vazia do tamanho do cartão que traz print e stack trace. */
+.respostas{display:grid;gap:12px;align-items:start;
+grid-template-columns:repeat(auto-fit,minmax(258px,1fr))}
+.resposta{border:1px solid var(--borda);border-radius:12px;padding:14px 15px;
+background:var(--papel);min-width:0}
+/* A mais barata ganha borda verde, e não fundo verde: o preço já é verde, e
+   dois verdes empilhados fazem o olho procurar o que está diferente em vez
+   de ler o número. */
+.resposta.melhor{border-color:var(--ok);box-shadow:0 0 0 1px var(--ok)}
+.resposta-cab{display:flex;align-items:center;gap:9px;margin-bottom:9px}
+.resposta-cab img.marca{width:30px;height:30px;object-fit:contain;flex:none;
+border-radius:6px;background:#fff}
+.resposta-cab .bola{width:30px;height:30px;font-size:13px}
+/* O nome QUEBRA em duas linhas em vez de virar reticências: com a pastilha
+   de status ao lado, "Camilo dos Santos" saía "Camilo do…" — e o cartão
+   passava a não dizer de quem era o preço, que é a única coisa que ele
+   precisa dizer. */
+.resposta-cab b{font-size:13px;min-width:0;flex:1;line-height:1.25;
+overflow-wrap:anywhere}
+.resposta-cab .pilula{flex:none}
+.resposta .preco{font-size:25px;font-weight:700;color:var(--ok);
+letter-spacing:-1px;font-variant-numeric:tabular-nums;margin:2px 0}
+/* Preço que não é da carga toda perde o verde: o olho compara os números
+   grandes antes de ler qualquer aviso, e era assim que R$ 33,29 por volume
+   parecia mais barato que R$ 69,91 pela carga. Mesma regra da tela do
+   vendedor (web/layout.py, .res .valor.incerto). */
+.resposta .preco.incerto{color:var(--fraco)}
+.resposta .sem{font-size:14px;font-weight:700;color:#9aa2b1;margin:2px 0}
+.resposta .miudos{font-size:11.5px;color:var(--fraco);margin-top:8px;
+display:flex;gap:5px;flex-wrap:wrap}
+.resposta .miudos span:not(:last-child)::after{content:" ·";color:#c7ccd8}
+.resposta .alerta{font-size:11.5px}
+/* O texto técnico vem INTEIRO na tela do adm — é ela que existe para
+   investigar, e cortar a mensagem no meio esconde justamente a linha que
+   explica. Rola dentro da caixa em vez de esticar o cartão: um stack trace
+   empurraria o print e os miúdos para fora do campo de visão. */
+.resposta .erro-cru{margin-top:8px;max-height:150px;overflow:auto;
+font-family:ui-monospace,Consolas,monospace;font-size:11px;line-height:1.45;
+color:#5b6478;background:#f7f8fa;border:1px solid var(--borda);
+border-radius:8px;padding:8px 10px;white-space:pre-wrap;word-break:break-word}
+.resposta .print{margin-top:9px}
+
+/* ---- tempos de resposta ---- */
+.tempos{display:flex;flex-direction:column;gap:11px;margin:0}
+.tempos .li{display:grid;grid-template-columns:1fr auto;gap:2px 10px;
+font-size:12.5px}
+.tempos .nome{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+font-weight:600}
+.tempos .quanto{color:var(--fraco);font-variant-numeric:tabular-nums}
+.tempos .trilho{grid-column:1/-1;height:8px;border-radius:99px;
+background:#eef0f5;overflow:hidden}
+.tempos .trilho i{display:block;height:100%;border-radius:99px;
+animation:cresce .8s cubic-bezier(.22,.9,.3,1) both}
+
+/* ---- lista de WhatsApp aberto ---- */
+.abertas{list-style:none;margin:0;padding:0;font-size:12.5px}
+.abertas li{display:flex;align-items:center;gap:8px;padding:7px 0;
+border-bottom:1px solid #f2f4f7}
+.abertas li:last-child{border-bottom:0}
+.abertas svg{width:15px;height:15px;flex:none;color:var(--zap)}
+.abertas .hora{margin-left:auto;color:var(--fraco);
+font-variant-numeric:tabular-nums;font-size:11.5px}
+
+/* ---- ficha dentro do painel ---- */
+/* A ficha vem inteira de web/ficha_ui.py, a MESMA que o vendedor vê. Aqui só
+   encolhe para caber no cartão do painel, que é mais apertado que a coluna
+   de 1080px da tela dele. */
+.painel .ficha fieldset{margin-bottom:10px}
+.painel .ficha .val{font-size:13px}
+
 /* Quem lê com movimento reduzido precisa ver o estado FINAL, não o inicial:
    animation:none deixaria a linha do gráfico presa no dashoffset cheio, ou
    seja, invisível. Duração quase zero preserva o `forwards`. */
@@ -328,6 +471,11 @@ flex-wrap:wrap;align-items:center;padding:12px 16px;gap:4px}
 .periodos{margin-left:0;width:100%;justify-content:space-between}
 .rolagem{margin:0 -20px;padding:0 20px}
 .svg{min-width:560px}
+/* No celular a lista de cotações do alerta desce para baixo do texto em vez
+   de espremer as duas colunas: encolhido, o "#49 #50 #51" ficava com um
+   número por linha. */
+.alerta-linha{flex-wrap:wrap}
+.alerta-linha .quais{margin-left:42px;justify-content:flex-start}
 }
 """
 
@@ -361,6 +509,11 @@ ICONES = {
                'L14.7 3.9a2 2 0 00-3.4 0z"/><path d="M12 9v4M12 17h.01"/>'),
     "relogio": '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
     "busca": '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/>',
+    "voltar": '<path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/>',
+    "zap": ('<path d="M21 11.5a8.4 8.4 0 01-9 8.4 8.5 8.5 0 01-4-1L3 21l2.1-5'
+            'a8.4 8.4 0 01-1-4 8.5 8.5 0 018.4-8.5h.5a8.5 8.5 0 018 8v.5z"/>'),
+    "balanca": ('<path d="M12 3v18"/><path d="M5 7h14"/>'
+                '<path d="M5 7l-3 7h6zM19 7l-3 7h6"/>'),
 }
 
 # (ícone, rótulo, id da seção). O id É o destino do link e o valor de
@@ -375,14 +528,20 @@ MENU = (
 )
 
 
-def _lateral() -> str:
+def _lateral(base: str = "") -> str:
+    """A navegação da esquerda.
+
+    `base` é o que vai na frente da âncora. Vazio no painel — os links são
+    âncoras da própria página. Na tela de UMA cotação ele vale "/adm": ali as
+    seções não existem, e um `href="#movimento"` que não sai do lugar deixa o
+    menu inteiro parecendo quebrado."""
     # `if LOGO`: web/logo_b64.txt pode estar vazio numa pasta recém-clonada, e
     # um src="data:image/png;base64," vira ícone de imagem quebrada bem no
     # canto mais visível da tela.
     marca = (f'<img src="data:image/png;base64,{LOGO}" alt="Ventura">'
              if LOGO else "")
     itens = "".join(
-        f'<a href="#{alvo}" data-secao="{alvo}">{_icone(ICONES[chave])}'
+        f'<a href="{base}#{alvo}" data-secao="{alvo}">{_icone(ICONES[chave])}'
         f'<span>{e(rotulo)}</span></a>'
         for chave, rotulo, alvo in MENU)
     return f"""<nav class="lateral">
@@ -395,7 +554,7 @@ def _lateral() -> str:
 </nav>"""
 
 
-def pagina_painel(titulo: str, corpo: str) -> str:
+def pagina_painel(titulo: str, corpo: str, *, base: str = "") -> str:
     """A página inteira do painel. Casco próprio, e não o `pagina()` do
     layout: aquele é uma faixa em cima e uma coluna de 1080px, desenhada para
     formulário. Quadro de instrumentos quer a largura toda e uma navegação
@@ -404,8 +563,16 @@ def pagina_painel(titulo: str, corpo: str) -> str:
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{e(titulo)} — Cotafrete</title>
 <style>{CSS_BASE}{CSS}</style></head><body>
-<div class="painel">{_lateral()}<main class="conteudo">{corpo}</main></div>
+<div class="painel">{_lateral(base)}<main class="conteudo">{corpo}</main></div>
 </body></html>"""
+
+
+def voltar_para(destino: str, rotulo: str) -> str:
+    """O caminho de volta, no alto do cabeçalho. Sem ele, quem abriu uma
+    cotação a partir do histórico só volta pelo botão do navegador — e quem
+    chegou pelo link de um alerta não volta de jeito nenhum."""
+    return (f'<a class="voltar" href="{destino}">{_icone(ICONES["voltar"])}'
+            f'{e(rotulo)}</a>')
 
 
 def cartao(titulo: str, conteudo: str, *, ident: str = "", nota: str = "",
@@ -430,6 +597,21 @@ def legenda(itens: tuple[tuple[str, str], ...]) -> str:
 
 # --------------------------------------------------------------- números
 
+def numero(rotulo: str, valor, cor: str, fraca: str, icone: str, *,
+           ruim: bool = False, conta: bool = False) -> str:
+    """Um dos quadradões do topo.
+
+    `conta=True` marca o número para o JavaScript animar a contagem — só vale
+    para inteiro. Um "R$ 1.234,50" com data-conta viraria `Number(...)` NaN e
+    o valor sumiria da tela no primeiro quadro da animação."""
+    return (
+        f'<div class="numero{" ruim" if ruim else ""}" '
+        f'style="--cor:{cor};--fraca:{fraca}">'
+        f'<div class="ico" style="color:{cor}">{_icone(ICONES[icone])}</div>'
+        f'<b{" data-conta" if conta else ""}>{e(valor)}</b>'
+        f'<span>{e(rotulo)}</span></div>')
+
+
 def faixa(resumo: dict) -> str:
     """A faixa ao vivo. Fragmento SEM casco: é ela que o JavaScript troca a
     cada 10s, então nada de <html> aqui dentro.
@@ -438,26 +620,57 @@ def faixa(resumo: dict) -> str:
     que o JavaScript aplica UMA vez, no carregamento — se rodasse a cada
     troca, o painel piscaria de zero até o valor a cada 10 segundos, na cara
     de quem está tentando ler."""
-    def bloco(rotulo: str, valor: int, cor: str, fraca: str, icone: str,
-              ruim: bool = False) -> str:
-        return (
-            f'<div class="numero{" ruim" if ruim else ""}" '
-            f'style="--cor:{cor};--fraca:{fraca}">'
-            f'<div class="ico" style="color:{cor}">{_icone(ICONES[icone])}</div>'
-            f'<b data-conta>{valor}</b><span>{e(rotulo)}</span></div>')
-
     return (
         '<div class="faixa">'
-        + bloco("cotações hoje", resumo["cotacoes"], "#4c5fc7", "#eef0fb",
-                "cotacoes")
-        + bloco("com preço", resumo["com_preco"], "#00875a", "#e6f4ee",
-                "preco")
+        + numero("cotações hoje", resumo["cotacoes"], "#4c5fc7", "#eef0fb",
+                 "cotacoes", conta=True)
+        + numero("com preço", resumo["com_preco"], "#00875a", "#e6f4ee",
+                 "preco", conta=True)
         # O número que mais importa: o vendedor ficou na mão.
-        + bloco("sem nenhum preço", resumo["sem_nenhum_preco"], "#bf2600",
-                "#fdecea", "alerta", ruim=bool(resumo["sem_nenhum_preco"]))
-        + bloco("cotando agora", resumo["em_andamento"], "#d97706", "#fdf3e3",
-                "relogio")
+        + numero("sem nenhum preço", resumo["sem_nenhum_preco"], "#bf2600",
+                 "#fdecea", "alerta", conta=True,
+                 ruim=bool(resumo["sem_nenhum_preco"]))
+        + numero("cotando agora", resumo["em_andamento"], "#d97706",
+                 "#fdf3e3", "relogio", conta=True)
         + "</div>")
+
+
+def alertas(linhas: list[dict], nome_de) -> str:
+    """As transportadoras que estão falhando seguido.
+
+    A parte mais valiosa da tela, e a razão de o painel existir: a Jadlog
+    falhou no login em 5 tentativas seguidas e ninguém notou até um vendedor
+    reclamar, quase um dia depois.
+
+    Cada alerta traz os NÚMEROS das cotações afetadas, e cada número é um
+    link. Sem eles o alerta manda procurar — e procurar dá trabalho o
+    bastante para o alerta virar decoração.
+
+    `nome_de` é injetado (web/transportadoras.nome_de) em vez de importado:
+    este módulo é só desenho, e o cadastro de quem é quem não é desenho."""
+    if not linhas:
+        return ""
+
+    itens = ""
+    for l in linhas:
+        # Só os cinco mais recentes: numa transportadora quebrada há duas
+        # semanas, a lista inteira cobriria o alerta seguinte.
+        alguns = l["ids"][:5]
+        restam = len(l["ids"]) - len(alguns)
+        quais = "".join(f'<a href="/adm/cotacao/{i}">#{i}</a>'
+                        for i in alguns)
+        if restam:
+            quais += f'<a href="/adm?falhas=1">+{restam}</a>'
+        porque = (f'<p class="porque">{e(l["erro"])}</p>' if l["erro"] else "")
+        itens += (
+            f'<div class="alerta-linha">'
+            f'<span class="sino">{_icone(ICONES["alerta"])}</span>'
+            f'<span class="diz"><b>{e(nome_de(l["transportadora"]))} falhou '
+            f'nas últimas {l["quantas"]} tentativas.</b>'
+            f'<p class="quando">desde {e(dia_e_hora(l["desde"]))} · '
+            f'a última foi {e(dia_e_hora(l["ultima"]))}</p>{porque}</span>'
+            f'<span class="quais">{quais}</span></div>')
+    return f'<div class="alertas">{itens}</div>'
 
 
 # --------------------------------------------------------------- gráficos
@@ -613,7 +826,11 @@ def rosca(fracao: float | None, nome: str, detalhe: str = "") -> str:
             f'{abaixo}</div>')
 
 
-def roscas_das_transportadoras(linhas: list[dict]) -> str:
+def roscas_das_transportadoras(linhas: list[dict], nome_de=None) -> str:
+    """`nome_de` é injetado (web/transportadoras.nome_de) para o anel dizer
+    "Jadlog Entregas" onde o banco guardou "jadlog". Sem ele, cai no slug —
+    é o que os testes puros deste arquivo usam, e é melhor do que exigir o
+    cadastro inteiro para desenhar um círculo."""
     if not linhas:
         return '<p class="vazio">Nenhuma cotação no período.</p>'
 
@@ -623,8 +840,9 @@ def roscas_das_transportadoras(linhas: list[dict]) -> str:
         base = l["sucesso"] + l["recusa"] + l["falha"]
         return f'{l["sucesso"]} de {base} resposta{"" if base == 1 else "s"}'
 
+    quem = nome_de or (lambda slug: slug)
     return '<div class="roscas">' + "".join(
-        rosca(l["aproveitamento"], l["transportadora"], quantas(l))
+        rosca(l["aproveitamento"], quem(l["transportadora"]), quantas(l))
         for l in linhas) + "</div>"
 
 
@@ -705,13 +923,18 @@ def pilulas(contagem: dict) -> str:
             else '<span class="sem-dado">ainda cotando</span>')
 
 
-def avatar(nome: str) -> str:
-    """Inicial num círculo. A cor sai do próprio nome — o mesmo vendedor tem
-    sempre a mesma cor, sem tabela de cor por pessoa para manter."""
+def bola(nome: str) -> str:
+    """Só o círculo com a inicial. A cor sai do próprio nome — o mesmo
+    vendedor tem sempre a mesma cor, sem tabela de cor por pessoa para
+    manter."""
     tom = sum(map(ord, nome)) * 47 % 360
-    return (f'<span class="eu"><span class="bola" '
-            f'style="background:hsl({tom},42%,45%)">{e(nome[:1] or "?")}</span>'
-            f'<span>{e(nome)}</span></span>')
+    return (f'<span class="bola" style="background:hsl({tom},42%,45%)">'
+            f'{e(nome[:1] or "?")}</span>')
+
+
+def avatar(nome: str) -> str:
+    """A bolinha com o nome ao lado, para a linha do histórico."""
+    return f'<span class="eu">{bola(nome)}<span>{e(nome)}</span></span>'
 
 
 def dia_por_extenso(iso: str) -> str:
@@ -723,3 +946,160 @@ def dia_por_extenso(iso: str) -> str:
         return iso[:10]
     prefixo = {0: "hoje · ", 1: "ontem · "}.get((date.today() - d).days, "")
     return f"{prefixo}{SEMANA[d.weekday()]}, {d.day:02d}/{d.month:02d}"
+
+
+def dia_e_hora(iso: str) -> str:
+    """"2026-09-02T14:33:07" -> "02/09 às 14:33".
+
+    Dia E hora porque é assim que se conta um alerta: "desde ontem de manhã"
+    e "desde ontem às 23h" pedem reações diferentes. Fatiado em vez de
+    `fromisoformat`, pelo mesmo motivo do resto do arquivo: `criado_em` é
+    TEXTO no banco, e uma linha torta some do rótulo em vez de derrubar a
+    tela."""
+    if len(iso or "") < 16:
+        return iso or ""
+    return f"{iso[8:10]}/{iso[5:7]} às {iso[11:16]}"
+
+
+# ------------------------------------------------- a tela de uma cotação
+
+# O rótulo humano de cada status do banco. A COR não mora aqui: sai de
+# `categoria()`, no core, que é de onde a rosca, a pizza e a pastilha também
+# tiram a delas.
+ROTULO_STATUS = {
+    "cotado": "Cotou",
+    "aguardando_retorno": "Enviada",
+    "recusado": "Recusou",
+    "erro": "Falhou",
+    "intervencao_necessaria": "Precisa de alguém",
+    "interrompido": "Interrompida",
+}
+
+# O que dizer no lugar do preço quando não veio preço. A pastilha diz o
+# STATUS; esta linha diz o que ele significa para quem procura o número — e
+# é ela que ocupa o lugar onde o olho vai procurar o valor.
+#
+# "sem preço" seco (o padrão) só sobra para status desconhecido: escrito
+# embaixo de "Enviada", ele contradizia a própria pastilha, porque a Della
+# Volpe e a Generoso mandam o preço por e-mail e não falharam em nada.
+SEM_PRECO = {
+    "aguardando_retorno": "o preço vem por e-mail",
+    "recusado": "o site não cotou",
+    "erro": "não retornou preço",
+    "intervencao_necessaria": "credencial recusada",
+    "interrompido": "fechado no meio",
+}
+
+
+def selo_status(status: str) -> str:
+    """A pastilha de status de UMA resposta.
+
+    Status que ninguém previu aparece com o texto CRU do banco em vez de
+    sumir — esconder o desconhecido foi como "(nenhuma mensagem visível)"
+    nasceu neste projeto."""
+    cor = CORES[categoria(status)]
+    return (f'<span class="pilula" style="color:{cor};background:{cor}1a">'
+            f'{e(ROTULO_STATUS.get(status, status))}</span>')
+
+
+def marca(logo: str, nome: str) -> str:
+    """A logo da transportadora — ou a inicial num círculo quando não há
+    arquivo cadastrado. Nunca o ícone de imagem quebrada, que na tela do adm
+    parece defeito do sistema e não cadastro faltando."""
+    if not logo:
+        return bola(nome)
+    return f'<img class="marca" src="/logos/{e(logo)}" alt="" loading="lazy">'
+
+
+def segundos_por_extenso(s: float | None) -> str:
+    """25.4 -> "25 s"; 125 -> "2 min 05 s"; None -> "sem dados ainda".
+
+    None é DESCONHECIDO: `respondido_em` é NULL nas linhas anteriores a
+    28/08/2026, e escrever "0 s" nelas inventaria a transportadora mais
+    rápida do sistema."""
+    if s is None:
+        return "sem dados ainda"
+    if s < 60:
+        return f"{s:.0f} s"
+    return f"{int(s // 60)} min {int(s % 60):02d} s"
+
+
+def cartao_resposta(*, nome: str, logo: str, status: str, valor: str = "",
+                    incerto: bool = False, melhor: bool = False,
+                    avisos: tuple[str, ...] = (), erro_cru: str = "",
+                    miudos: tuple[str, ...] = (),
+                    print_html: str = "") -> str:
+    """O que UMA transportadora respondeu nesta cotação.
+
+    Recebe tudo pronto — `valor` já em moeda, o print já embutido — porque
+    formatar dinheiro e ler arquivo do disco não é desenho, e este módulo
+    inteiro se testa sem banco e sem disco.
+
+    Sem preço NÃO vira "R$ 0,00" nem célula vazia: vira o travessão com o
+    motivo logo abaixo. Zero seria um preço."""
+    selo = ('<span class="selo">MAIS BARATO</span>' if melhor else "")
+    if valor:
+        corpo = (f'<div class="preco{" incerto" if incerto else ""}">'
+                 f'{e(valor)} {selo}</div>')
+    else:
+        corpo = (f'<div class="sem">'
+                 f'{e(SEM_PRECO.get(status, "sem preço"))}</div>')
+    corpo += "".join(f'<div class="alerta">{e(a)}</div>' for a in avisos)
+    if erro_cru:
+        corpo += f'<div class="erro-cru">{e(erro_cru)}</div>'
+    if miudos:
+        corpo += ('<div class="miudos">'
+                  + "".join(f"<span>{e(m)}</span>" for m in miudos)
+                  + "</div>")
+    return (f'<article class="resposta{" melhor" if melhor else ""}">'
+            f'<div class="resposta-cab">{marca(logo, nome)}'
+            f'<b title="{e(nome)}">{e(nome)}</b>{selo_status(status)}</div>'
+            f'{corpo}{print_html}</article>')
+
+
+def tempos_de_resposta(itens: list[dict]) -> str:
+    """Quanto cada transportadora demorou nesta cotação.
+
+    Barra proporcional à MAIS LENTA, e não a um teto fixo: o que a tela
+    responde é "quem segurou a cotação", e isso é comparação entre elas.
+
+    Quem não tem hora registrada aparece assim mesmo, com "sem dados ainda"
+    no lugar da barra. Sumir da lista faria a transportadora parecer não ter
+    sido chamada."""
+    medidos = [i["segundos"] for i in itens if i["segundos"] is not None]
+    if not itens:
+        return '<p class="vazio">Nenhuma resposta ainda.</p>'
+    maior = max(medidos) if medidos else 0
+
+    linhas = ""
+    for p, i in enumerate(itens):
+        s = i["segundos"]
+        if s is None:
+            barra = '<span class="sem-dado">sem dados ainda</span>'
+        else:
+            largura = (s / maior * 100) if maior else 0
+            barra = (f'<span class="trilho"><i style="width:{largura:.1f}%;'
+                     f'background:{i["cor"]};'
+                     f'animation-delay:{p * 0.05:.2f}s"></i></span>')
+        linhas += (f'<div class="li"><span class="nome">{e(i["nome"])}</span>'
+                   f'<span class="quanto">{e(segundos_por_extenso(s))}</span>'
+                   f'{barra}</div>')
+    return f'<div class="tempos">{linhas}</div>'
+
+
+def abertas_no_whatsapp(itens: list[dict], nome_de) -> str:
+    """Quais conversas o vendedor ABRIU com o texto pronto.
+
+    "Aberta", nunca "enviada": daqui em diante quem age é a pessoa, no
+    aplicativo, e disso não chega notícia nenhuma. A tela do adm precisa
+    dizer isso com todas as letras — senão o alerta vira "a transportadora
+    não respondeu" quando a mensagem talvez nem tenha saído."""
+    if not itens:
+        return ('<p class="vazio">Nenhuma conversa de WhatsApp foi aberta '
+                'nesta cotação.</p>')
+    linhas = "".join(
+        f'<li>{_icone(ICONES["zap"])}'
+        f'<span>{e(nome_de(i["transportadora"]))}</span>'
+        f'<span class="hora">{e(dia_e_hora(i["aberto_em"]))}</span></li>'
+        for i in itens)
+    return f'<ul class="abertas">{linhas}</ul>'

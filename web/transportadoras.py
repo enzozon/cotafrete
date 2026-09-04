@@ -112,6 +112,84 @@ POR_EMAIL: tuple[Transportadora, ...] = (
 )
 
 
+# As AUTOMÁTICAS: nome de tela e arquivo da logo. Elas não atendem por
+# WhatsApp, então não entram na lista de cima — mas o nome e a logo delas são
+# cadastro igual ao das outras, e o topo deste arquivo já diz que cadastro mora
+# aqui.
+#
+# Moravam em `web/app.py` até 04/09/2026, quando o painel do adm ganhou a tela
+# de UMA cotação (`/adm/cotacao/N`): ela precisa escrever "Camilo dos Santos"
+# onde o banco guardou "camilo", e `web/adm.py` não pode importar `web/app.py`
+# — é o app que registra as rotas do adm, e o import de volta seria circular.
+NOMES_AUTOMATICAS = {
+    "camilo": "Camilo dos Santos",
+    "jadlog": "Jadlog Entregas",
+    "translovato": "Translovato",
+    "generoso": "Transporte Generoso",
+    "dellavolpe": "Della Volpe",
+    "braspress": "Braspress",
+}
+
+# Slug sem arquivo aqui desenha um espaço vazio no lugar — melhor do que uma
+# imagem quebrada. O par é conferido nos dois sentidos por
+# tests/test_transportadoras.py: nome cadastrado tem que existir no disco, e
+# arquivo no disco tem que estar cadastrado.
+LOGOS_AUTOMATICAS = {
+    "camilo": "camilo.png",
+    "jadlog": "jadlog.png",
+    "generoso": "generoso.png",
+    # MAIUSCULA de proposito: e o nome exato do arquivo que o Enzo colocou
+    # nas duas pastas em 26/08/2026. Renomear para minuscula deixaria um
+    # arquivo orfao em cotafrete-producao, onde ele foi posto a mao.
+    "dellavolpe": "DELLAVOLPE.png",
+    "braspress": "braspress.png",
+}
+
+
+# A calculadora da Jadlog cota UM pacote por vez (carriers/jadlog/painel.py).
+# Com mais de um volume o número dela não é comparável com o da Camilo e o da
+# Translovato, que cotam a carga inteira — e o menor número na tela é o que
+# fecha negócio.
+#
+# Está no cadastro, e não na tela, porque agora são DUAS telas comparando
+# preço: a do vendedor e a do adm. Se cada uma tivesse a sua lista, a mesma
+# cotação elegeria vencedores diferentes conforme quem olhasse.
+COTAM_POR_VOLUME = ("jadlog",)
+
+
+def cota_por_volume(slug: str, quantidade: int) -> bool:
+    """A transportadora cotou UM volume e a carga tem mais de um?
+
+    Só nesse caso o preço dela deixa de ser comparável. Com um volume só, o
+    preço dela É o da carga — avisar ali seria ruído, e aviso que aparece
+    sempre é aviso que ninguém lê."""
+    return slug in COTAM_POR_VOLUME and quantidade > 1
+
+
+def nome_de(slug: str) -> str:
+    """O nome de tela do que o banco guardou como slug.
+
+    Devolve o PRÓPRIO slug quando ninguém o cadastrou. É feio de propósito:
+    uma transportadora nova aparece como "acme" na tela do adm, e quem olhar
+    percebe o cadastro faltando. Devolver vazio apagaria a linha inteira — o
+    resultado sumiria da tela em vez de pedir uma linha de cadastro."""
+    if slug in NOMES_AUTOMATICAS:
+        return NOMES_AUTOMATICAS[slug]
+    achada = next((t for t in (*WHATSAPP, *POR_EMAIL) if t.slug == slug), None)
+    return achada.nome if achada else slug
+
+
+def logo_de(slug: str) -> str:
+    """O arquivo da logo, ou "" para quem não tem nenhuma cadastrada.
+
+    Quem chama decide o que fazer com o vazio — a tela do adm desenha a
+    inicial num círculo, que é melhor do que o ícone de imagem quebrada."""
+    if slug in LOGOS_AUTOMATICAS:
+        return LOGOS_AUTOMATICAS[slug]
+    achada = next((t for t in (*WHATSAPP, *POR_EMAIL) if t.slug == slug), None)
+    return achada.logo if achada else ""
+
+
 def com_email() -> tuple[Transportadora, ...]:
     """As que o vendedor aciona por e-mail, com o texto pronto."""
     return tuple(t for t in POR_EMAIL if t.tem_email)

@@ -202,3 +202,35 @@ motivo.
    `Servidor.bat` avisa que `0.0.0.0` inclui o Wi-Fi. Numa rede com visitantes,
    a senha do `.env` é a única barreira entre eles e o histórico comercial da
    Ventura.
+
+---
+
+## O que existe hoje — 04/09/2026
+
+Registro do que foi de fato entregue, para o desenho acima não descrever um
+sistema que não é este.
+
+**Da Fase 1:** tudo. Senha, cookie, 404 sem variável, faixa ao vivo, saúde das
+transportadoras, histórico completo e a coluna `respondido_em`.
+
+**Da Fase 2:** o **alerta de 3 falhas seguidas** (`painel.falhas_seguidas`) —
+a parte que motivou o pedido. `assinatura_do_erro`, falhas agrupadas e recusas
+agrupadas continuam pendentes; o texto de erro inteiro aparece na tela de uma
+cotação, o que resolve o caso individual mas ainda não o ranking.
+
+**Da Fase 3:** os gráficos (em `web/painel_ui.py`, não em `web/graficos.py` —
+o arquivo virou o desenho inteiro do painel, casco incluído) e as **rotas mais
+cotadas**. A economia estimada e o WhatsApp por transportadora continuam
+pendentes.
+
+**Fora do desenho original: `/adm/cotacao/{id}`.** A tela de UMA cotação, de
+qualquer vendedor — o item 8 do desenho dizia "clicar abre a cotação com os
+prints" e não tinha rota para isso: `/cotacao/{id}` é do vendedor e filtra por
+dono. Ela usa `painel.cotacao`, que consulta sem o filtro, e
+`banco.buscar_cotacao` não mudou — as duas portas separadas que a seção de
+segurança pede. É **só leitura**: nada de abrir WhatsApp, repetir ou apagar.
+
+A ficha da carga passou a ser desenhada por `web/ficha_ui.py`, usada pelas
+DUAS telas. O cadastro de nome e logo das automáticas foi para
+`web/transportadoras.py`, junto com `cota_por_volume` — assim as duas telas
+elegem o mesmo "mais barato" e chamam a mesma transportadora pelo mesmo nome.
