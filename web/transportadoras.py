@@ -157,6 +157,19 @@ LOGOS_AUTOMATICAS = {
 COTAM_POR_VOLUME = ("jadlog",)
 
 
+# Quem ainda passa pelo pipeline automático de Playwright (web/app.py).
+#
+# Mora aqui, e não só em web/app.py, pelo mesmo motivo de NOMES_AUTOMATICAS
+# acima: web/adm.py precisa saber quem ainda está automática, para não
+# alertar em "Precisa de atenção" sobre uma transportadora já retirada da
+# automação — ela nunca mais vai gerar um resultado novo que zere o alerta
+# sozinha. A Della Volpe SAIU em 31/08/2026 (ver POR_EMAIL acima) e por isso
+# não entra aqui, mesmo continuando cadastrada em NOMES_AUTOMATICAS para os
+# resultados antigos que ainda têm o nome dela para mostrar.
+AUTOMATICAS: tuple[str, ...] = (
+    "camilo", "jadlog", "translovato", "generoso", "braspress")
+
+
 def cota_por_volume(slug: str, quantidade: int) -> bool:
     """A transportadora cotou UM volume e a carga tem mais de um?
 

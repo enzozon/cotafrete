@@ -125,7 +125,11 @@ MEDIDA_MINIMA_CM = Decimal("1")
 # Enquanto ela estivesse nesta lista, toda cotação gastaria uma vaga de
 # navegador para terminar num cartão vermelho que ninguém consegue resolver.
 # Hoje ela é acionada pelo vendedor: ver POR_EMAIL em web/transportadoras.py.
-AUTOMATICAS = ("camilo", "jadlog", "translovato", "generoso", "braspress")
+#
+# Vem de lá, e não é definida aqui, porque web/adm.py também precisa desta
+# lista (para não alertar sobre quem já saiu da automação) e não pode
+# importar este módulo — é este que registra as rotas do adm.
+AUTOMATICAS = transportadoras.AUTOMATICAS
 
 # Desde quando cada automática existe de verdade em produção (ISO 8601) —
 # para marcar_interrompidas nunca carimbar "sistema fechado no meio" numa

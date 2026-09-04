@@ -468,7 +468,13 @@ def painel(adm: str | None = Cookie(None, alias=COOKIE_ADM),
         vendedores = contas.por_usuario(con, dias=dias,
                                         limite=VENDEDORES_NO_FILTRO)
         rotas = contas.rotas(con, dias=dias)
-        avisos = contas.falhas_seguidas(con, dias=dias)
+        # Só alerta quem ainda está no pipeline automático. Uma
+        # transportadora retirada dali (a Della Volpe, em 31/08/2026, por
+        # exemplo) nunca mais grava um resultado novo — sem este filtro o
+        # alerta dela ficaria preso na tela até sair da janela de `dias`,
+        # sem ninguém poder fazer nada para "resolvê-lo".
+        avisos = [a for a in contas.falhas_seguidas(con, dias=dias)
+                  if a["transportadora"] in transportadoras.AUTOMATICAS]
         # `quem` vem cru da URL e vai direto para o WHERE, como parâmetro
         # ligado (nunca concatenado). Nome que não existe devolve lista
         # vazia, que é a resposta honesta — inventar "todos" seria mostrar a

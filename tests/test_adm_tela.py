@@ -287,6 +287,16 @@ def test_falha_seguida_vira_alerta_no_topo(cliente):
     assert "Jadlog Entregas falhou nas últimas 3 tentativas." in html
 
 
+def test_transportadora_fora_da_automacao_nao_gera_alerta(cliente):
+    """A Della Volpe saiu de AUTOMATICAS em 31/08/2026 (ver web/app.py) e
+    nunca mais vai gravar um resultado novo — sem este filtro, as falhas de
+    antes da saída ficariam presas na tela até sair da janela de `dias`, sem
+    ninguém poder "resolver" o alerta."""
+    _falhou(3, slug="dellavolpe")
+
+    assert "Precisa de atenção" not in cliente.get("/adm").text
+
+
 def test_sem_falha_seguida_o_cartao_de_alerta_nem_aparece(cliente):
     """Um cartão "nenhum alerta" fixo no topo treina o olho a pular a região
     — e aí ele pula também no dia em que o alerta está lá."""
