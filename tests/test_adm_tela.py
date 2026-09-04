@@ -86,13 +86,15 @@ def test_o_periodo_escolhido_fica_marcado(cliente):
     assert "?dias=7" in html
 
 
-def test_faixa_ao_vivo_e_um_fragmento_e_nao_a_pagina(cliente):
-    """A faixa troca sozinha a cada 10s. Se devolvesse a página inteira, o
-    JavaScript recolocaria uma página dentro dela mesma."""
-    fragmento = cliente.get("/adm/agora").text
+def test_ao_vivo_devolve_fragmentos_e_nao_a_pagina(cliente):
+    """A tela troca a faixa e a tabela sozinha. Se a rota devolvesse a página
+    inteira, o JavaScript recolocaria uma página dentro dela mesma."""
+    dados = cliente.get("/adm/agora").json()
 
-    assert "<!doctype" not in fragmento.lower()
-    assert "<html" not in fragmento.lower()
+    assert set(dados) == {"v", "faixa", "tabela"}
+    for pedaco in (dados["faixa"], dados["tabela"]):
+        assert "<!doctype" not in pedaco.lower()
+        assert "<html" not in pedaco.lower()
 
 
 def test_faixa_ao_vivo_tambem_exige_cookie(monkeypatch, tmp_path):
@@ -362,3 +364,175 @@ def test_nome_de_vendedor_com_aspas_nao_escapa_no_link_do_filtro(cliente):
     html = cliente.get("/adm").text
 
     assert 'onmouseover="alert' not in html
+
+
+# ------------------------------------------------------- painel ao vivo
+#
+# O painel se atualiza sozinho quando entra cotação ou chega resposta. Duas
+# metades, e as duas quebram feio sozinhas: não perceber a mudança deixa quem
+# está olhando sem a resposta que já está no banco; perceber mudança onde não
+# houve refaz a tabela debaixo do cursor de quem está lendo.
+
+def test_ao_vivo_devolve_204_quando_nada_mudou(cliente):
+    """O caso comum, e o que torna o pulso de 5s barato: o servidor nem monta
+    HTML, e a tela não é tocada."""
+    versao = cliente.get("/adm/agora").json()["v"]
+
+    assert cliente.get(f"/adm/agora?v={versao}").status_code == 204
+
+
+def test_ao_vivo_mostra_cotacao_que_entrou_depois(cliente):
+    """É o pedido inteiro: a cotação nova aparece sem ninguém apertar F5."""
+    versao = cliente.get("/adm/agora").json()["v"]
+    cid = adm.banco.salvar_cotacao("leandro", CARGA)
+
+    dados = cliente.get(f"/adm/agora?v={versao}").json()
+
+    assert dados["v"] != versao
+    assert "leandro" in dados["tabela"]
+    assert f"#{cid}" in dados["tabela"] or str(cid) in dados["tabela"]
+
+
+def test_ao_vivo_mostra_a_resposta_que_chegou(cliente):
+    """A outra metade do pedido: a cotação já está na tela, e o preço da
+    transportadora aparece nela conforme chega."""
+    cid = adm.banco.salvar_cotacao("enzo", CARGA)
+    versao = cliente.get("/adm/agora").json()["v"]
+
+    adm.banco.salvar_resultado(cid, "camilo", status="cotado",
+                               valor=Decimal("321,00".replace(",", ".")))
+    dados = cliente.get(f"/adm/agora?v={versao}").json()
+
+    assert dados["v"] != versao
+    assert "321,00" in dados["tabela"]
+
+
+def test_ao_vivo_respeita_o_filtro_da_tela(cliente):
+    """A tabela depende de dias/quem/falhas. Sem repassar o filtro, quem
+    estivesse vendo só as do Leandro receberia a empresa inteira de volta na
+    primeira cotação que entrasse."""
+    adm.banco.salvar_cotacao("leandro", CARGA)
+    adm.banco.salvar_cotacao("enzo", CARGA)
+
+    tabela = cliente.get("/adm/agora?quem=leandro").json()["tabela"]
+
+    assert "leandro" in tabela
+    assert "enzo" not in tabela
+
+
+def test_ao_vivo_tambem_exige_cookie(monkeypatch, tmp_path):
+    """O fragmento tem os mesmos dados da tela: não pode ser porta dos
+    fundos."""
+    monkeypatch.setenv("COTAFRETE_ADM_SENHA", SENHA)
+    monkeypatch.setattr(adm, "banco", Banco(tmp_path / "t.db"))
+
+    resposta = TestClient(app_web.app).get("/adm/agora",
+                                           follow_redirects=False)
+
+    assert resposta.status_code == 303
+
+
+def test_a_tela_leva_a_versao_para_o_navegador(cliente):
+    """Sem a versão no HTML, o primeiro pulso viria com `v` vazio e a tela se
+    redesenharia uma vez por nada, cinco segundos depois de abrir."""
+    html = cliente.get("/adm").text
+    versao = cliente.get("/adm/agora").json()["v"]
+
+    assert f'data-versao="{versao}"' in html
+
+
+# --------------------------------------------------- uma cotação ao vivo
+
+def test_ao_vivo_da_cotacao_mostra_a_resposta_chegando(cliente):
+    """A tela em que se fica olhando: a Della Volpe leva ~110s, e o preço
+    dela tem que aparecer sem recarregar."""
+    cid = adm.banco.salvar_cotacao("enzo", CARGA)
+    versao = cliente.get(f"/adm/cotacao/{cid}/agora").json()["v"]
+
+    adm.banco.salvar_resultado(cid, "camilo", status="cotado",
+                               valor=Decimal("456.78"))
+    dados = cliente.get(f"/adm/cotacao/{cid}/agora?v={versao}").json()
+
+    assert dados["v"] != versao
+    assert "456,78" in dados["respostas"]
+    assert dados["nota"] == "1 de 1 com preço"
+
+
+def test_ao_vivo_da_cotacao_devolve_204_quando_nada_mudou(cliente):
+    cid = adm.banco.salvar_cotacao("enzo", CARGA)
+    versao = cliente.get(f"/adm/cotacao/{cid}/agora").json()["v"]
+
+    assert cliente.get(
+        f"/adm/cotacao/{cid}/agora?v={versao}").status_code == 204
+
+
+def test_ao_vivo_da_cotacao_nao_reage_a_outra_cotacao(cliente):
+    """Sem isso, a tela aberta numa cotação se redesenharia inteira toda vez
+    que qualquer vendedor da empresa cotasse."""
+    minha = adm.banco.salvar_cotacao("enzo", CARGA)
+    outra = adm.banco.salvar_cotacao("leandro", CARGA)
+    versao = cliente.get(f"/adm/cotacao/{minha}/agora").json()["v"]
+
+    adm.banco.salvar_resultado(outra, "jadlog", status="cotado",
+                               valor=Decimal("10.00"))
+
+    assert cliente.get(
+        f"/adm/cotacao/{minha}/agora?v={versao}").status_code == 204
+
+
+def test_ao_vivo_da_cotacao_inexistente_e_404_seco(cliente):
+    """Quem recebe isto é o JavaScript, não uma pessoa: 404 sem o casco do
+    painel. A página inteira continua sendo devolvida por /adm/cotacao/{id},
+    que é onde alguém chega por um link velho."""
+    resposta = cliente.get("/adm/cotacao/9999/agora")
+
+    assert resposta.status_code == 404
+    assert "<html" not in resposta.text.lower()
+
+
+def test_ao_vivo_da_cotacao_tambem_exige_cookie(monkeypatch, tmp_path):
+    monkeypatch.setenv("COTAFRETE_ADM_SENHA", SENHA)
+    monkeypatch.setattr(adm, "banco", Banco(tmp_path / "t.db"))
+
+    resposta = TestClient(app_web.app).get("/adm/cotacao/1/agora",
+                                           follow_redirects=False)
+
+    assert resposta.status_code == 303
+
+
+def test_a_tela_da_cotacao_leva_numero_e_versao(cliente):
+    """O JavaScript lê os dois do DOM em vez de recebê-los interpolados: id de
+    cotação dentro de f-string com chave de JavaScript é a receita do bug que
+    o SCRIPT deste arquivo evita ficando fora do f-string."""
+    cid = adm.banco.salvar_cotacao("enzo", CARGA)
+    adm.banco.salvar_resultado(cid, "camilo", status="cotado",
+                               valor=Decimal("99.90"))
+    versao = cliente.get(f"/adm/cotacao/{cid}/agora").json()["v"]
+
+    html = cliente.get(f"/adm/cotacao/{cid}").text
+
+    assert f'data-cotacao="{cid}"' in html
+    assert f'data-versao="{versao}"' in html
+
+
+def test_o_alvo_da_troca_existe_mesmo_sem_cotacao_nenhuma(cliente):
+    """O bug que o banco recém-criado revelou: com o `id` na tabela, ele sumia
+    junto com ela no período vazio. A primeira cotação do dia não tinha onde
+    entrar, e a tela ficava em "Nenhuma cotação no período" até alguém
+    recarregar — justo no caso em que se está esperando a primeira."""
+    vazio = cliente.get("/adm/agora").json()["tabela"]
+    assert 'id="tabela"' in vazio
+
+    adm.banco.salvar_cotacao("enzo", CARGA)
+
+    assert 'id="tabela"' in cliente.get("/adm/agora").json()["tabela"]
+    assert 'id="tabela"' in cliente.get("/adm").text
+
+
+def test_a_contagem_filtrada_do_dia_sai_acentuada():
+    """A busca reescreve a contagem do dia em JavaScript, fora do alcance de
+    qualquer template. Uma reescrita do SCRIPT ja trocou "cotacoes" por
+    "cotacoes" sem acento e ninguem viu ate a tela estar no ar: e texto que so
+    aparece depois de alguem digitar na busca."""
+    assert "' cotação'" in adm.SCRIPT
+    assert "' cotações'" in adm.SCRIPT

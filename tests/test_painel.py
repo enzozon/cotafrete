@@ -560,3 +560,91 @@ def test_duracao_negativa_tambem_e_desconhecida():
     quadro de instrumentos engana mais do que a lacuna."""
     assert painel.duracao_s("2026-09-02T14:00:25",
                             "2026-09-02T14:00:00") is None
+
+
+# ---------------------------------------------------------------- ao vivo
+#
+# Estas versoes decidem se a tela se redesenha. Errar para MENOS (nao mudar
+# quando devia) e o defeito grave: a resposta chega no banco e o painel de
+# quem esta olhando nunca a mostra.
+
+def test_versao_do_painel_muda_quando_entra_cotacao(db):
+    """E o caso do pedido: cotacao nova tem que aparecer sozinha na tela."""
+    with db._conectar() as con:
+        antes = painel.versao_do_painel(con)
+    db.salvar_cotacao("enzo", CARGA)
+    with db._conectar() as con:
+        assert painel.versao_do_painel(con) != antes
+
+
+def test_versao_do_painel_muda_quando_transportadora_responde(db):
+    cid = db.salvar_cotacao("enzo", CARGA)
+    with db._conectar() as con:
+        antes = painel.versao_do_painel(con)
+    db.salvar_resultado(cid, "camilo", status="cotado", valor=Decimal("99.90"))
+    with db._conectar() as con:
+        assert painel.versao_do_painel(con) != antes
+
+
+def test_versao_do_painel_nao_muda_com_o_banco_parado(db):
+    """O outro lado: se a versao mudasse sozinha, a tabela seria refeita a
+    cada cinco segundos debaixo do cursor de quem esta lendo."""
+    db.salvar_resultado(db.salvar_cotacao("enzo", CARGA), "camilo",
+                        status="cotado", valor=Decimal("99.90"))
+    with db._conectar() as con:
+        assert painel.versao_do_painel(con) == painel.versao_do_painel(con)
+
+
+def test_versao_do_painel_percebe_resposta_que_sobrescreve_interrompido(db):
+    """`salvar_resultado` faz upsert: a transportadora que responde depois de
+    ter sido dada como interrompida SOBRESCREVE a linha em vez de criar
+    outra. Contagem e maior id ficam iguais - e sem `respondido_em` na
+    assinatura o painel nunca mostraria essa resposta."""
+    cid = db.salvar_cotacao("enzo", CARGA)
+    db.salvar_resultado(cid, "camilo", status="interrompido")
+    with db._conectar() as con:
+        antes = painel.versao_do_painel(con)
+
+    db.salvar_resultado(cid, "camilo", status="cotado", valor=Decimal("77.00"),
+                        respondido_em="2026-09-04T10:00:00")
+
+    with db._conectar() as con:
+        assert painel.versao_do_painel(con) != antes
+
+
+def test_versao_da_cotacao_muda_quando_o_status_muda_sem_mexer_na_contagem(db):
+    """Por que a assinatura desta tela e EXATA e nao contagem: a retentativa
+    que tira a Generoso de `erro` e a poe em `cotado` nao cria linha nenhuma.
+    Contando linhas, a tela ficaria mostrando o erro para sempre."""
+    cid = db.salvar_cotacao("enzo", CARGA)
+    db.salvar_resultado(cid, "generoso", status="erro", erro="TimeoutError")
+    with db._conectar() as con:
+        antes = painel.versao_da_cotacao(con, cid)
+
+    db.salvar_resultado(cid, "generoso", status="cotado",
+                        valor=Decimal("150.00"))
+
+    with db._conectar() as con:
+        assert painel.versao_da_cotacao(con, cid) != antes
+
+
+def test_versao_da_cotacao_ignora_o_que_acontece_em_outra(db):
+    """Cada tela olha a SUA cotacao. Sem isso, a tela aberta na #10 se
+    redesenharia inteira toda vez que qualquer vendedor cotasse."""
+    minha = db.salvar_cotacao("enzo", CARGA)
+    outra = db.salvar_cotacao("leandro", CARGA)
+    with db._conectar() as con:
+        antes = painel.versao_da_cotacao(con, minha)
+
+    db.salvar_resultado(outra, "jadlog", status="cotado", valor=Decimal("10"))
+
+    with db._conectar() as con:
+        assert painel.versao_da_cotacao(con, minha) == antes
+
+
+def test_versao_da_cotacao_sem_resposta_nenhuma_nao_estoura(db):
+    """A cotacao acabou de nascer: a tela abre antes de qualquer
+    transportadora responder, e e justamente essa a que fica olhando."""
+    cid = db.salvar_cotacao("enzo", CARGA)
+    with db._conectar() as con:
+        assert isinstance(painel.versao_da_cotacao(con, cid), str)

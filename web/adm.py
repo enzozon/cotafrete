@@ -37,7 +37,8 @@ from itertools import groupby
 from urllib.parse import quote
 
 from fastapi import APIRouter, Cookie, Form, HTTPException
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import (HTMLResponse, JSONResponse,
+                               RedirectResponse, Response)
 
 from core.banco import Banco
 from core import painel as contas
@@ -311,9 +312,17 @@ def _historico(linhas: list[dict]) -> str:
     Agrupar não é enfeite: a lista corrida obrigava a ler a data em toda
     linha para saber se ainda era hoje. `groupby` funciona porque
     `contas.historico` já devolve da mais nova para a mais velha — dias
-    iguais chegam grudados."""
+    iguais chegam grudados.
+
+    O `id="tabela"` fica num involucro que existe SEMPRE, inclusive no periodo
+    sem cotacao nenhuma: ele e o alvo que a atualizacao ao vivo troca. Posto na
+    tabela, ele sumiria junto com ela no dia vazio - e a primeira cotacao do
+    dia nao teria onde entrar, deixando a tela presa em "Nenhuma cotacao no
+    periodo" ate alguem recarregar. Foi assim que este bug apareceu, num banco
+    recem-criado."""
     if not linhas:
-        return '<p class="vazio">Nenhuma cotação no período.</p>'
+        return ('<div id="tabela">'
+                '<p class="vazio">Nenhuma cotação no período.</p></div>')
 
     grupos = ""
     for dia, cotacoes in groupby(linhas, key=lambda l: l["criado_em"][:10]):
@@ -331,49 +340,158 @@ def _historico(linhas: list[dict]) -> str:
             + "</tbody>")
 
     return (
-        '<div class="rolagem"><table class="historico">'
+        '<div id="tabela"><div class="rolagem"><table class="historico">'
         "<thead><tr><th>nº</th><th>hora</th><th>quem</th><th>rota</th>"
         "<th>material</th><th>melhor preço</th><th>resultado</th>"
         "<th></th></tr></thead>"
         f"{grupos}</table>"
-        '<p class="nada" id="nada">Nenhuma cotação bate com a busca.</p></div>')
+        '<p class="nada" id="nada">Nenhuma cotação bate com a busca.</p>'
+        "</div></div>")
 
 
-@router.get("/agora", response_class=HTMLResponse)
-def agora(adm: str | None = Cookie(None, alias=COOKIE_ADM)):
-    """Só a faixa. Tem os mesmos dados da tela, então exige o mesmo cookie."""
+def _periodo_valido(dias: int) -> int:
+    """O `dias` da URL, ou 30 se nao for um periodo que a tela oferece.
+
+    `dias` vem cru da URL - so precisa ser um int valido para o FastAPI, nao
+    um periodo que a tela ofereca. Sem esta trava, ?dias=999999999 estourava
+    OverflowError no timedelta la dentro de _desde(), ?dias=15 renderizava sem
+    marcar nenhum link como atual, e ?dias=-5 buscava no futuro e devolvia
+    tudo vazio.
+
+    Existe uma vez so porque a tela e a atualizacao ao vivo PRECISAM concordar:
+    se as duas tratassem `dias` diferente, a tabela seria trocada por um
+    recorte que ninguem pediu."""
+    return dias if dias in {d for d, _ in PERIODOS} else 30
+
+
+@router.get("/agora")
+def agora(adm: str | None = Cookie(None, alias=COOKIE_ADM),
+          dias: int = 30, quem: str = "", falhas: int = 0, v: str = ""):
+    """Os pedacos vivos do painel: a faixa do topo e a tabela do historico.
+
+    Devolve 204 quando nada mudou desde a versao `v` que o navegador mandou. E
+    o que faz a tela atualizar SO quando entra cotacao ou chega resposta, em
+    vez de se redesenhar a cada poucos segundos debaixo de quem esta lendo.
+
+    Recebe os mesmos filtros da tela porque a tabela depende deles: sem
+    dias/quem/falhas, a atualizacao trocaria um historico de 7 dias filtrado
+    por vendedor pelo de 30 dias inteiro, sem ninguem ter pedido.
+
+    Tem os mesmos dados da tela, entao exige o mesmo cookie."""
     _exigir_montado()
     if not autorizado(adm):
         return RedirectResponse("/adm/entrar", status_code=303)
+
+    dias = _periodo_valido(dias)
     with closing(banco._conectar()) as con:
-        return HTMLResponse(_faixa(contas.resumo_do_dia(con)))
+        versao = contas.versao_do_painel(con)
+        # A comparacao vem ANTES de montar qualquer HTML: no caso comum nada
+        # mudou, e o trabalho que nao se faz e o que deixa isto barato o
+        # bastante para rodar de cinco em cinco segundos.
+        if v and v == versao:
+            return Response(status_code=204)
+        resumo = contas.resumo_do_dia(con)
+        linhas = contas.historico(con, dias=dias, usuario=quem or None,
+                                  so_com_falha=bool(falhas))
+
+    return JSONResponse({"v": versao, "faixa": _faixa(resumo),
+                         "tabela": _historico(linhas)})
 
 
 # Fica FORA do f-string do corpo: chave de JavaScript dentro de f-string
 # precisa ser duplicada, e `{{` espalhado por trinta linhas é o tipo de coisa
 # que quebra na próxima edição sem ninguém perceber.
 SCRIPT = """
-// Troca SÓ a faixa. Recarregar a página inteira perderia a rolagem de quem
-// estivesse lendo a tabela embaixo.
-setInterval(async () => {
+// Intervalo do ao vivo. 5s porque a Jadlog responde em ~15s e a Della Volpe
+// em ~110s: mais devagar e a resposta aparece muito depois de existir; mais
+// rapido nao adianta, ninguem responde em menos de 15s.
+const PULSO_MS = 5000;
+
+// A versao que esta tela esta mostrando. Vai junto no pedido, e o servidor
+// devolve 204 enquanto ela continuar sendo a atual - e ai a tela nao e
+// tocada. E isso que faz o painel se redesenhar SO quando entra cotacao ou
+// chega resposta, em vez de se refazer sozinho a cada cinco segundos debaixo
+// de quem esta lendo.
+let versao = document.getElementById('agora').dataset.versao || '';
+
+// Busca no historico. Esconde a LINHA que nao bate e o dia inteiro que ficou
+// sem nenhuma - cabecalho de dia sozinho no meio da tabela parece defeito.
+//
+// Funcao com nome, e nao um ouvinte anonimo, porque a atualizacao ao vivo
+// precisa chama-la de novo: a tabela nova chega do servidor sem filtro
+// nenhum, e quem tinha "generoso" digitado veria a tabela inteira voltar
+// sozinha no meio da leitura.
+function aplicarBusca() {
+  const campo = document.getElementById('busca');
+  if (!campo) return;
+  const q = campo.value.trim().toLowerCase();
+  let achou = 0;
+  document.querySelectorAll('#historico tbody').forEach(grupo => {
+    let visiveis = 0;
+    grupo.querySelectorAll('tr[data-busca]').forEach(tr => {
+      const bate = !q || tr.dataset.busca.includes(q);
+      tr.classList.toggle('sumiu', !bate);
+      if (bate) visiveis++;
+    });
+    grupo.classList.toggle('sumiu', visiveis === 0);
+    // A contagem do dia passa a contar o que SOBROU na tela. Deixada como
+    // veio, ela diria "12 cotacoes" em cima de uma linha so.
+    const conta = grupo.querySelector('.conta');
+    if (conta) conta.textContent = q
+      ? visiveis + (visiveis === 1 ? ' cotação' : ' cotações')
+      : conta.dataset.todas;
+    achou += visiveis;
+  });
+  const nada = document.getElementById('nada');
+  if (nada) nada.classList.toggle('aparece', achou === 0);
+}
+
+const busca = document.getElementById('busca');
+if (busca) busca.addEventListener('input', aplicarBusca);
+
+// A linha inteira abre a cotacao. O numero dentro dela ja e um link de
+// verdade - isto aqui e para o resto da linha, que e onde o dedo cai. O
+// clique em cima de um link e devolvido para o proprio link: sem essa
+// checagem, "abrir em nova aba" abria a aba E navegava esta.
+//
+// Delegacao, e nao um ouvinte por linha: a tabela e substituida inteira a
+// cada cotacao nova, e ouvinte preso a uma linha morre junto com ela. A
+// partir da primeira atualizacao, clicar na linha nao abriria mais nada.
+const secaoHistorico = document.getElementById('historico');
+if (secaoHistorico) secaoHistorico.addEventListener('click', ev => {
+  const tr = ev.target.closest('tr[data-abrir]');
+  if (!tr || ev.target.closest('a')) return;
+  location.href = tr.dataset.abrir;
+});
+
+async function pulsar() {
+  // Os filtros da tela vao junto: a tabela depende de dias/quem/falhas, e
+  // location.search ja e exatamente isso.
+  const busca_url = new URLSearchParams(location.search);
+  busca_url.set('v', versao);
   try {
-    const r = await fetch('/adm/agora');
-    // fetch segue redirect por padrão: passadas as 12h do cookie, /adm/agora
-    // redireciona para /adm/entrar e o fetch recebe 200 com a PÁGINA DE LOGIN
-    // inteira — r.ok sozinho não percebe isso, e o <!doctype> inteiro ia
-    // parar dentro da faixa. r.redirected denuncia que a resposta veio de
-    // outro lugar.
-    if (r.ok && !r.redirected) document.getElementById('agora').innerHTML = await r.text();
-    else location.href = '/adm/entrar';
-  } catch (erro) { /* rede caiu; a próxima volta tenta de novo */ }
-}, 10000);
+    const r = await fetch('/adm/agora?' + busca_url);
+    // fetch segue redirect por padrao: passadas as 12h do cookie, /adm/agora
+    // redireciona para /adm/entrar e o fetch recebe 200 com a PAGINA DE LOGIN
+    // inteira - r.ok sozinho nao percebe isso. r.redirected denuncia que a
+    // resposta veio de outro lugar.
+    if (r.redirected) { location.href = '/adm/entrar'; return; }
+    if (r.status === 204 || !r.ok) return;   // 204 = nada mudou desde a ultima
+    const d = await r.json();
+    versao = d.v;
+    document.getElementById('agora').innerHTML = d.faixa;
+    const tabela = document.getElementById('tabela');
+    if (tabela) { tabela.outerHTML = d.tabela; aplicarBusca(); }
+  } catch (erro) { /* rede caiu; a proxima volta tenta de novo */ }
+}
+setInterval(pulsar, PULSO_MS);
 
 const parado = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-// Contagem crescente, UMA vez, no carregamento. A troca da faixa lá em cima
-// substitui os elementos por outros já com o número certo escrito dentro —
-// então ela NÃO reanima, e o painel não pisca de zero a cada 10 segundos na
-// cara de quem está tentando ler.
+// Contagem crescente, UMA vez, no carregamento. A troca da faixa la em cima
+// substitui os elementos por outros ja com o numero certo escrito dentro -
+// entao ela NAO reanima, e o painel nao pisca de zero a cada atualizacao na
+// cara de quem esta tentando ler.
 if (!parado) document.querySelectorAll('[data-conta]').forEach(el => {
   const fim = Number(el.textContent);
   if (!fim) return;
@@ -387,42 +505,7 @@ if (!parado) document.querySelectorAll('[data-conta]').forEach(el => {
   requestAnimationFrame(passo);
 });
 
-// Busca no histórico. Esconde a LINHA que não bate e o dia inteiro que ficou
-// sem nenhuma — cabeçalho de dia sozinho no meio da tabela parece defeito.
-const busca = document.getElementById('busca');
-if (busca) busca.addEventListener('input', () => {
-  const q = busca.value.trim().toLowerCase();
-  let achou = 0;
-  document.querySelectorAll('#historico tbody').forEach(grupo => {
-    let visiveis = 0;
-    grupo.querySelectorAll('tr[data-busca]').forEach(tr => {
-      const bate = !q || tr.dataset.busca.includes(q);
-      tr.classList.toggle('sumiu', !bate);
-      if (bate) visiveis++;
-    });
-    grupo.classList.toggle('sumiu', visiveis === 0);
-    // A contagem do dia passa a contar o que SOBROU na tela. Deixada como
-    // veio, ela diria "12 cotações" em cima de uma linha só.
-    const conta = grupo.querySelector('.conta');
-    conta.textContent = q
-      ? visiveis + (visiveis === 1 ? ' cotação' : ' cotações')
-      : conta.dataset.todas;
-    achou += visiveis;
-  });
-  document.getElementById('nada').classList.toggle('aparece', achou === 0);
-});
-
-// A linha inteira abre a cotação. O número dentro dela já é um link de
-// verdade — isto aqui é para o resto da linha, que é onde o dedo cai. O
-// clique em cima de um link é devolvido para o próprio link: sem essa
-// checagem, "abrir em nova aba" abria a aba E navegava esta.
-document.querySelectorAll('#historico tr[data-abrir]').forEach(tr =>
-  tr.addEventListener('click', ev => {
-    if (ev.target.closest('a')) return;
-    location.href = tr.dataset.abrir;
-  }));
-
-// Qual seção está na frente dos olhos, marcada no menu da lateral.
+// Qual secao esta na frente dos olhos, marcada no menu da lateral.
 const secoes = document.querySelectorAll('#topo,#movimento,#transportadoras,#historico');
 if (window.IntersectionObserver && secoes.length) {
   const olho = new IntersectionObserver(entradas => {
@@ -452,17 +535,12 @@ def painel(adm: str | None = Cookie(None, alias=COOKIE_ADM),
     if not autorizado(adm):
         return RedirectResponse("/adm/entrar", status_code=303)
 
-    # `dias` vem cru da URL — só precisa ser um int válido para o FastAPI, não
-    # um período que a tela ofereça. Sem esta trava, ?dias=999999999 estourava
-    # OverflowError no timedelta lá dentro de _desde(), ?dias=15 renderizava
-    # sem marcar nenhum link como atual, e ?dias=-5 buscava no futuro e
-    # devolvia tudo vazio. Cai em 30 — o padrão — fora dos valores da tela.
-    if dias not in {d for d, _ in PERIODOS}:
-        dias = 30
+    dias = _periodo_valido(dias)
     so_falhas = bool(falhas)
 
     with closing(banco._conectar()) as con:
         resumo = contas.resumo_do_dia(con)
+        versao = contas.versao_do_painel(con)
         saude = contas.saude_das_transportadoras(con, dias=dias)
         serie = contas.serie_por_periodo(con, dias=dias)
         vendedores = contas.por_usuario(con, dias=dias,
@@ -536,7 +614,7 @@ def painel(adm: str | None = Cookie(None, alias=COOKIE_ADM),
   <span class="aovivo"><i></i>ao vivo</span>
   {_seletor(dias, quem, so_falhas)}
 </div>
-<div id="agora">{_faixa(resumo)}</div>
+<div id="agora" data-versao="{versao}">{_faixa(resumo)}</div>
 <div class="grade">{grade}</div>
 <script>{SCRIPT}</script>"""
     return HTMLResponse(ui.pagina_painel("Painel", corpo))
@@ -578,6 +656,21 @@ def _comparaveis(c: dict, qtd: int) -> list:
 def _melhor_preco(c: dict, qtd: int):
     precos = _comparaveis(c, qtd)
     return min(precos) if precos else None
+
+
+def _resumo_das_respostas(c: dict) -> tuple[dict[str, int], int]:
+    """Quantas respostas por categoria, e quantas trouxeram preco.
+
+    Existe uma vez so porque a tela da cotacao e a atualizacao ao vivo dela
+    mostram os MESMOS dois numeros - as pilulas do topo e o "3 de 5 com
+    preco" do cabecalho do cartao. Contados em dois lugares, eles passariam a
+    discordar na primeira vez que um status novo entrasse no sistema."""
+    contagem: dict[str, int] = {}
+    for r in c["resultados"]:
+        chave = contas.categoria(r["status"])
+        contagem[chave] = contagem.get(chave, 0) + 1
+    com_preco = sum(1 for r in c["resultados"] if r["valor"] is not None)
+    return contagem, com_preco
 
 
 def _respostas(c: dict) -> str:
@@ -667,10 +760,44 @@ def _tempos(c: dict) -> str:
 
 
 SCRIPT_COTACAO = """
-// Clique amplia o print. Na tela ele fica pequeno, e quem abriu esta página
+// Clique amplia o print. Na tela ele fica pequeno, e quem abriu esta pagina
 // veio justamente ler o que apareceu no site da transportadora.
-document.querySelectorAll('.print').forEach(i =>
-  i.onclick = () => i.classList.toggle('zoom'));
+//
+// Delegacao no documento, e nao um onclick em cada print: os cartoes de
+// resposta sao substituidos conforme as transportadoras respondem, e um
+// ouvinte posto em cada imagem morreria na primeira atualizacao - o print da
+// transportadora que acabou de responder seria justamente o que nao ampliaria.
+document.addEventListener('click', ev => {
+  const print = ev.target.closest('.print');
+  if (print) print.classList.toggle('zoom');
+});
+
+// O mesmo ao vivo do painel, com a versao EXATA desta cotacao: aqui a pessoa
+// esta olhando a resposta chegar, e a Della Volpe leva ~110s.
+const PULSO_MS = 5000;
+const numeros = document.getElementById('numeros');
+let versao = numeros.dataset.versao || '';
+
+async function pulsar() {
+  try {
+    const r = await fetch('/adm/cotacao/' + numeros.dataset.cotacao
+                          + '/agora?v=' + encodeURIComponent(versao));
+    if (r.redirected) { location.href = '/adm/entrar'; return; }
+    if (r.status === 204 || !r.ok) return;   // 204 = nada mudou desde a ultima
+    const d = await r.json();
+    versao = d.v;
+    numeros.innerHTML = d.numeros;
+    document.getElementById('respostas').innerHTML = d.respostas;
+    document.getElementById('tempos').innerHTML = d.tempos;
+    document.getElementById('pilulas').innerHTML = d.pilulas;
+    // A nota vive no cabecalho do cartao, fora do pedaco trocado. Sem esta
+    // linha ela continuaria dizendo "2 de 5 com preco" com cinco precos na
+    // tela logo abaixo.
+    const nota = document.querySelector('#cartao-respostas .nota');
+    if (nota) nota.textContent = d.nota;
+  } catch (erro) { /* rede caiu; a proxima volta tenta de novo */ }
+}
+setInterval(pulsar, PULSO_MS);
 """
 
 
@@ -694,6 +821,7 @@ def ver_cotacao(cotacao_id: int,
 
     with closing(banco._conectar()) as con:
         c = contas.cotacao(con, cotacao_id)
+        versao = contas.versao_da_cotacao(con, cotacao_id)
 
     if c is None:
         # 404 de verdade, e com o casco do painel: quem chegou por um link
@@ -716,18 +844,15 @@ tem o seu, e o mesmo número é outra cotação em cada uma.</p>
 completo</a></p>''', classe="c8", atraso=0.05)}</div>""",
                                              base="/adm"), status_code=404)
 
-    contagem: dict[str, int] = {}
-    for r in c["resultados"]:
-        chave = contas.categoria(r["status"])
-        contagem[chave] = contagem.get(chave, 0) + 1
+    contagem, com_preco = _resumo_das_respostas(c)
 
     rota = (f'{lugar(c["cidade_origem"], c["uf_origem"]) or c["cep_origem"]}'
             f' → '
             f'{lugar(c["cidade_destino"], c["uf_destino"]) or c["cep_destino"]}')
-    com_preco = sum(1 for r in c["resultados"] if r["valor"] is not None)
-
     grade = (
-        ui.cartao("Respostas das transportadoras", _respostas(c),
+        ui.cartao("Respostas das transportadoras",
+                  f'<div id="respostas">{_respostas(c)}</div>',
+                  ident="cartao-respostas",
                   nota=f'{com_preco} de {len(c["resultados"])} com preço',
                   classe="c12", atraso=0.05)
         + ui.cartao("Dados desta cotação", ficha_da_cotacao(c, casco=False),
@@ -737,7 +862,8 @@ completo</a></p>''', classe="c8", atraso=0.05)}</div>""",
         # o segundo caía na linha de baixo e deixava meia tela em branco ao
         # lado da ficha, que é alta.
         + '<div class="c4 coluna">'
-        + ui.cartao("Tempo de resposta", _tempos(c),
+        + ui.cartao("Tempo de resposta",
+                    f'<div id="tempos">{_tempos(c)}</div>',
                     # O aviso não é detalhe: `respondido_em` é gravado só na
                     # tentativa que deu certo, então a conta inclui a espera
                     # das retentativas anteriores. Sem dizer isso, o número
@@ -755,10 +881,52 @@ completo</a></p>''', classe="c8", atraso=0.05)}</div>""",
   <h1>Cotação #{c["id"]}</h1>
   <p class="sub">{ui.avatar(c["usuario"])} · {e(_quando(c["criado_em"]))}
   · {e(rota)} · {e(c["material"] or "sem material informado")}</p></div>
-  <div class="direita">{ui.pilulas(contagem)}</div>
+  <div class="direita" id="pilulas">{ui.pilulas(contagem)}</div>
 </div>
-{_numeros_da_cotacao(c)}
+<div id="numeros" data-cotacao="{c["id"]}" data-versao="{versao}">{_numeros_da_cotacao(c)}</div>
 <div class="grade">{grade}</div>
 <script>{SCRIPT_COTACAO}</script>"""
     return HTMLResponse(ui.pagina_painel(f"Cotação {c['id']}", corpo,
                                          base="/adm"))
+
+
+@router.get("/cotacao/{cotacao_id}/agora")
+def cotacao_agora(cotacao_id: int,
+                  adm: str | None = Cookie(None, alias=COOKIE_ADM),
+                  v: str = ""):
+    """As respostas de UMA cotacao, para a tela mostra-las conforme chegam.
+
+    Mesma ideia do /adm/agora, com duas diferencas:
+
+    - a versao e exata (`versao_da_cotacao`), e nao contagem. Esta e a tela em
+      que se fica olhando a resposta aparecer, e uma transportadora que sai de
+      `erro` para `cotado` na retentativa nao mexe em contagem nenhuma;
+    - devolve tambem a nota do cabecalho ("3 de 5 com preco"), que fica FORA
+      do pedaco trocado. Sem ela, os precos novos apareceriam embaixo de um
+      cabecalho dizendo o numero velho.
+
+    Cotacao que nao existe devolve 404 SECO, sem o casco do painel: quem
+    recebe isto e o JavaScript, nao uma pessoa - e o `ver_cotacao` continua
+    respondendo a pagina inteira para quem chega pelo link."""
+    _exigir_montado()
+    if not autorizado(adm):
+        return RedirectResponse("/adm/entrar", status_code=303)
+
+    with closing(banco._conectar()) as con:
+        versao = contas.versao_da_cotacao(con, cotacao_id)
+        if v and v == versao:
+            return Response(status_code=204)
+        c = contas.cotacao(con, cotacao_id)
+
+    if c is None:
+        return Response(status_code=404)
+
+    contagem, com_preco = _resumo_das_respostas(c)
+    return JSONResponse({
+        "v": versao,
+        "numeros": _numeros_da_cotacao(c),
+        "respostas": _respostas(c),
+        "tempos": _tempos(c),
+        "pilulas": ui.pilulas(contagem),
+        "nota": f'{com_preco} de {len(c["resultados"])} com preço',
+    })
