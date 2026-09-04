@@ -357,3 +357,206 @@ def test_por_usuario_respeita_a_janela(db):
         nomes = [l["usuario"] for l in painel.por_usuario(con, dias=30)]
 
     assert nomes == ["atual"]
+
+
+# ------------------------------- a cotação de qualquer vendedor -----------
+
+def test_cotacao_abre_a_de_outro_usuario(db):
+    """A porta do adm. `banco.buscar_cotacao` exige o dono e continua
+    exigindo — esta é a OUTRA porta, e é a razão de a tela de detalhe do
+    painel existir."""
+    cid = db.salvar_cotacao("leandro", CARGA)
+    db.salvar_resultado(cid, "camilo", status="cotado",
+                        valor=Decimal("123.45"), prazo="3 dias")
+
+    with db._conectar() as con:
+        c = painel.cotacao(con, cid)
+
+    assert c["usuario"] == "leandro"
+    assert c["resultados"][0]["valor"] == Decimal("123.45")
+
+
+def test_o_isolamento_do_vendedor_continua_de_pe(db):
+    """A porta nova não pode ter afrouxado a antiga: trocar o número na URL
+    da tela do VENDEDOR continua não abrindo a cotação alheia."""
+    cid = db.salvar_cotacao("leandro", CARGA)
+
+    assert db.buscar_cotacao(cid, "enzo") is None
+    assert db.buscar_cotacao(cid, "leandro") is not None
+
+
+def test_cotacao_que_nao_existe_devolve_none(db):
+    with db._conectar() as con:
+        assert painel.cotacao(con, 4242) is None
+
+
+def test_cotacao_devolve_dinheiro_como_decimal(db):
+    """`peso_kg` e `valor_nf` são TEXTO no banco, e `moeda()` recebendo texto
+    levanta ValueError no meio do render — a tela inteira cairia por causa da
+    formatação de um número."""
+    cid = db.salvar_cotacao("enzo", CARGA)
+
+    with db._conectar() as con:
+        c = painel.cotacao(con, cid)
+
+    assert c["valor_nf"] == Decimal("1000")
+    assert c["peso_kg"] == Decimal("10")
+
+
+def test_cotacao_traz_os_whatsapps_abertos(db):
+    """Metade da explicação de uma cotação sem preço é se o vendedor chegou a
+    acionar as manuais."""
+    cid = db.salvar_cotacao("enzo", CARGA)
+    db.marcar_whatsapp_aberto(cid, "movvi", "enzo")
+
+    with db._conectar() as con:
+        c = painel.cotacao(con, cid)
+
+    assert [w["transportadora"] for w in c["whatsapp"]] == ["movvi"]
+
+
+# ------------------------------------------- alerta de falha seguida ------
+
+def _falhas(db, quantas: int, slug: str = "jadlog") -> list[int]:
+    return [_com(db, slug, "erro") for _ in range(quantas)]
+
+
+def _com(db, slug: str, status: str, erro: str = "timeout") -> int:
+    cid = db.salvar_cotacao("enzo", CARGA)
+    db.salvar_resultado(cid, slug, status=status, erro=erro)
+    return cid
+
+
+def test_tres_falhas_seguidas_viram_alerta(db):
+    """Duas acontecem por acaso; três seguidas, na série medida até aqui,
+    sempre foram problema de verdade."""
+    _falhas(db, 3)
+
+    with db._conectar() as con:
+        alertas = painel.falhas_seguidas(con, dias=30)
+
+    assert [a["transportadora"] for a in alertas] == ["jadlog"]
+    assert alertas[0]["quantas"] == 3
+
+
+def test_duas_falhas_seguidas_nao_alertam(db):
+    _falhas(db, 2)
+
+    with db._conectar() as con:
+        assert painel.falhas_seguidas(con, dias=30) == []
+
+
+def test_sucesso_depois_das_falhas_zera_a_contagem(db):
+    """O alerta é sobre AGORA. Se a última tentativa deu certo, a
+    transportadora voltou — e um alerta que não some deixa de ser lido."""
+    _falhas(db, 4)
+    _com(db, "jadlog", "cotado")
+
+    with db._conectar() as con:
+        assert painel.falhas_seguidas(con, dias=30) == []
+
+
+def test_recusa_tambem_zera_a_contagem(db):
+    """Recusa é a transportadora respondendo com o motivo dela: o site está
+    de pé, que é o que este alerta pergunta."""
+    _falhas(db, 3)
+    _com(db, "jadlog", "recusado", "peso acima de 120 kg")
+
+    with db._conectar() as con:
+        assert painel.falhas_seguidas(con, dias=30) == []
+
+
+def test_interrompida_no_meio_nao_zera_nem_conta(db):
+    """`interrompido` é o servidor reiniciando: não acusa a transportadora
+    nem prova que ela voltou. Sem pular, um restart nosso apagaria o alerta
+    de uma Jadlog que continua fora do ar."""
+    _falhas(db, 2)
+    _com(db, "jadlog", "interrompido")
+    _falhas(db, 1)
+
+    with db._conectar() as con:
+        alertas = painel.falhas_seguidas(con, dias=30)
+
+    assert alertas[0]["quantas"] == 3
+
+
+def test_o_alerta_traz_os_numeros_das_cotacoes_e_o_ultimo_erro(db):
+    """Sem os números, o alerta manda procurar — e procurar dá trabalho o
+    bastante para ele virar decoração."""
+    ids = _falhas(db, 3)
+    ultima = _com(db, "jadlog", "erro", "senha recusada")
+
+    with db._conectar() as con:
+        alerta = painel.falhas_seguidas(con, dias=30)[0]
+
+    assert alerta["ids"][0] == ultima
+    assert set(alerta["ids"]) == {*ids, ultima}
+    assert alerta["erro"] == "senha recusada"
+
+
+def test_alertas_vem_do_pior_para_o_menos_pior(db):
+    _falhas(db, 5, "jadlog")
+    _falhas(db, 3, "generoso")
+
+    with db._conectar() as con:
+        alertas = painel.falhas_seguidas(con, dias=30)
+
+    assert [a["transportadora"] for a in alertas] == ["jadlog", "generoso"]
+
+
+def test_falha_fora_da_janela_nao_entra_na_contagem(db):
+    """Recortar por período só pode DIMINUIR a contagem: o que fica de fora é
+    mais velho que a falha mais antiga contada."""
+    velhas = _falhas(db, 3)
+    for cid in velhas:
+        _backdatar(db, cid, datetime.now() - timedelta(days=40))
+    _falhas(db, 3)
+
+    with db._conectar() as con:
+        assert painel.falhas_seguidas(con, dias=30)[0]["quantas"] == 3
+
+
+# ------------------------------------------------------ rotas mais cotadas
+
+def test_rotas_agrupa_pela_cidade_e_conta(db):
+    for _ in range(3):
+        db.salvar_cotacao("enzo", CARGA)
+    db.salvar_cotacao("enzo", {**CARGA, "cidade_destino": "Curitiba"})
+
+    with db._conectar() as con:
+        linhas = painel.rotas(con, dias=30)
+
+    assert linhas[0] == {"rota": "Vila Velha -> São Paulo", "cotacoes": 3}
+    assert linhas[1]["cotacoes"] == 1
+
+
+def test_rota_sem_cidade_cai_no_cep_e_nao_num_grupo_vazio(db):
+    """Cidade em branco não é NULL para o SQLite: sem o NULLIF, as cotações
+    anteriores à busca por CEP viravam um grupo " -> " sem nome nenhum."""
+    db.salvar_cotacao("enzo", {**CARGA, "cidade_origem": "",
+                               "cidade_destino": ""})
+
+    with db._conectar() as con:
+        assert painel.rotas(con, dias=30)[0]["rota"] == \
+            "29105770 -> 01310100"
+
+
+# ------------------------------------------------------ tempo de resposta
+
+def test_duracao_conta_os_segundos_entre_os_dois_carimbos():
+    assert painel.duracao_s("2026-09-02T14:00:00",
+                            "2026-09-02T14:00:25") == 25
+
+
+def test_duracao_sem_hora_de_resposta_e_desconhecida():
+    """`respondido_em` é NULL nas linhas anteriores a 28/08/2026. Zero ali
+    inventaria a transportadora mais rápida do sistema."""
+    assert painel.duracao_s("2026-09-02T14:00:00", None) is None
+    assert painel.duracao_s("data torta", "2026-09-02T14:00:25") is None
+
+
+def test_duracao_negativa_tambem_e_desconhecida():
+    """Relógio de máquina que andou para trás é dado ruim, e "-3 s" num
+    quadro de instrumentos engana mais do que a lacuna."""
+    assert painel.duracao_s("2026-09-02T14:00:25",
+                            "2026-09-02T14:00:00") is None

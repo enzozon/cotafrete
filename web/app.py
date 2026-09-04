@@ -26,11 +26,10 @@ fora da rede local sem virar autenticação de verdade.
 
 from __future__ import annotations
 
-import base64
 import os
 import unicodedata
 from concurrent.futures import ThreadPoolExecutor
-from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
+from decimal import Decimal, InvalidOperation
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import quote
@@ -56,7 +55,12 @@ from core.retentativa import (
     ESPERA_MAXIMA_S, SEM_REPETICAO, TENTATIVAS_MAXIMAS, cotar_com_retentativa,
 )
 from web import adm, transportadoras
-from web.layout import LOGO, e, moeda, pagina
+from web.ficha_ui import (
+    ficha_da_cotacao, kg as _kg, pagador_da_cotacao, peso_por_volume,
+    quem_e as _quem,
+)
+from web.layout import LOGO, e, moeda, pagina, print_embutido as _img
+from web.transportadoras import cota_por_volume
 from core.models import (
     CotacaoRequest, Local, Mercadoria, NotaFiscal, Parte, Servico,
     Solicitante, StatusCotacao, TipoFrete, Volume, limpa_doc,
@@ -197,27 +201,15 @@ if "dellavolpe" in AUTOMATICAS and os.getenv("DV_ENVIO_REAL_AUTORIZADO") != "sim
     print("            DV_ENVIO_REAL_AUTORIZADO do arquivo .env desta pasta")
     print("            não disser 'sim'.")
 
-# Logo das automaticas. As de WhatsApp trazem a sua do cadastro
-# (web/transportadoras.py); estas quatro nao passam por la.
+# Nome de tela e logo das automáticas. O cadastro mora em
+# web/transportadoras.py, junto com o das de WhatsApp — foi para lá em
+# 04/09/2026, quando o painel do adm passou a precisar dos mesmos nomes e não
+# pode importar este arquivo de volta (seria circular).
 #
-# Slug sem arquivo aqui desenha um espaco vazio no lugar — melhor do que uma
-# imagem quebrada. O par e conferido nos dois sentidos por
-# tests/test_transportadoras.py: nome cadastrado tem que existir no disco, e
-# arquivo no disco tem que estar cadastrado.
-LOGOS_AUTOMATICAS = {
-    "camilo": "camilo.png",
-    "jadlog": "jadlog.png",
-    "generoso": "generoso.png",
-    # MAIUSCULA de proposito: e o nome exato do arquivo que o Enzo colocou
-    # nas duas pastas em 26/08/2026. Renomear para minuscula deixaria um
-    # arquivo orfao em cotafrete-producao, onde ele foi posto a mao.
-    "dellavolpe": "DELLAVOLPE.png",
-    "braspress": "braspress.png",
-}
-
-NOMES = {"camilo": "Camilo dos Santos", "jadlog": "Jadlog Entregas",
-         "translovato": "Translovato", "generoso": "Transporte Generoso",
-         "dellavolpe": "Della Volpe", "braspress": "Braspress"}
+# Os dois apelidos ficam: são o nome pelo qual o resto deste módulo — e os
+# testes — já chamavam as duas tabelas.
+LOGOS_AUTOMATICAS = transportadoras.LOGOS_AUTOMATICAS
+NOMES = transportadoras.NOMES_AUTOMATICAS
 NOTAS = {
     "camilo": "Frete fracionado, com coleta. Preço já com taxas e ICMS.",
     "jadlog": "Etiqueta pré-paga, cotada por volume. Você leva ao balcão.",
@@ -314,11 +306,10 @@ def mensagem_amigavel(slug: str, erro: str | None) -> str | None:
             return frase
     return None
 
-# A calculadora da Jadlog cota UM pacote por vez (carriers/jadlog/painel.py).
-# Com mais de um volume o número dela não é comparável com o da Camilo e o da
-# Translovato, que cotam a carga inteira — e o menor número na tela é o que
-# fecha negócio.
-COTAM_POR_VOLUME = ("jadlog",)
+# Quem cota UM volume por vez, e por isso não disputa o selo de mais barato
+# com mais de uma caixa. A lista mora no cadastro (web/transportadoras.py)
+# desde 04/09/2026, para a tela do adm eleger o mesmo vencedor que esta.
+COTAM_POR_VOLUME = transportadoras.COTAM_POR_VOLUME
 
 # Teto do texto de erro no cartão. Era 180, o bastante para partir um CNPJ no
 # meio da mensagem da Translovato — e um CNPJ pela metade é pior do que
@@ -338,49 +329,10 @@ def saudacao() -> str:
     return "Bom dia" if h < 12 else ("Boa tarde" if h < 18 else "Boa noite")
 
 
-def _img(caminho: str | None) -> str:
-    """Embute o print na pagina.
-
-    Base64 em vez de servir o arquivo: teste_real/ tem CNPJ e valor de nota
-    fiscal, e abrir a pasta como estatica exporia todas as cotacoes de todo
-    mundo. Provisorio — a ideia e passar a so guardar em pasta."""
-    if not caminho or not Path(caminho).exists():
-        return ""
-    dados = base64.b64encode(Path(caminho).read_bytes()).decode()
-    return (f'<img class="print" src="data:image/png;base64,{dados}" '
-            f'alt="comprovante da cotacao">')
-
-
-def _kg(valor) -> str:
-    """Peso do jeito que se lê aqui: vírgula, sem zeros à toa.
-
-    4,000 vira "4" e 3,333333… vira "3,333". `:f` em vez de str() porque
-    normalize() devolve Decimal('1E+2') para 100, e "1E+2 kg" não quer dizer
-    nada para quem está conferindo a carga.
-
-    Aceita o que vier do banco (str ou Decimal) e devolve o original se não
-    for número: uma linha da ficha com o valor cru ainda informa; uma tela
-    que estoura no meio, não."""
-    try:
-        redondo = Decimal(str(valor)).quantize(Decimal("0.001"),
-                                               rounding=ROUND_HALF_UP)
-    except (ArithmeticError, TypeError, ValueError):
-        return str(valor)
-    return f"{redondo.normalize():f}".replace(".", ",")
-
-
-def peso_por_volume(c: dict) -> Decimal | None:
-    """Peso de UM volume. O banco guarda o TOTAL (ver /cotar).
-
-    São grandezas diferentes com o mesmo nome, e é isso que torna o erro
-    perigoso: o formulário pede "Peso de UM volume", a coluna peso_kg guarda
-    qtd × unitário, e 36 kg é um peso tão válido quanto 12. Nada na tela
-    denuncia — a cotação sai com o triplo da carga e o preço vem junto."""
-    try:
-        qtd = int(c["quantidade"])
-        return Decimal(str(c["peso_kg"])) / qtd if qtd > 0 else None
-    except (ArithmeticError, TypeError, ValueError):
-        return None
+# _kg e peso_por_volume moraram aqui até 04/09/2026, e _img junto. Foram para
+# web/ficha_ui.py e web/layout.py com o resto da ficha, que agora é desenhada
+# nas duas telas — a do vendedor e a do adm, que não pode importar este
+# arquivo. Continuam com o mesmo nome aqui dentro, pelo import lá em cima.
 
 
 # ------------------------------------------------------------- validação
@@ -1002,23 +954,9 @@ def _rodar(cotacao_id: int, slug: str, cotar_fn, req) -> None:
 
 
 # ------------------------------------------------------------- ver cotação
-def _quem(nome: str | None, cnpj: str | None) -> str:
-    """Nome da empresa quando a busca por CNPJ funcionou; senão só o CNPJ."""
-    return f"{nome}\nCNPJ: {cnpj}" if nome else f"CNPJ: {cnpj}"
-
-
-def pagador_da_cotacao(c: dict) -> tuple[str, str, str]:
-    """Sigla, lado e quem é — tudo derivado do tipo de frete.
-
-    A salvaguarda no fim existe para as cotações anteriores a 20/08/2026, que
-    não têm `tipo_frete` guardado: elas caem em CIF, que é como o formulário
-    vinha preenchido, e o CNPJ sai da ponta certa em vez de virar "None"."""
-    fob = (c.get("tipo_frete") or "cif") == "fob"
-    sigla, lado = ("FOB", "DESTINATÁRIO") if fob else ("CIF", "REMETENTE")
-    ponta = "destinatario" if fob else "remetente"
-    nome = c.get("nome_pagador") or c.get(f"nome_{ponta}")
-    cnpj = c.get("cnpj_pagador") or c.get(f"cnpj_{ponta}")
-    return sigla, lado, _quem(nome, cnpj)
+# `_quem` e `pagador_da_cotacao` vêm de web/ficha_ui.py (ver o import no topo):
+# são a mesma leitura de CIF/FOB que a ficha faz, e a mensagem do WhatsApp não
+# pode discordar dela sobre quem paga o frete.
 
 
 def mensagem_whatsapp(c: dict) -> str:
@@ -1052,94 +990,6 @@ def mensagem_whatsapp(c: dict) -> str:
         f"Valor NF: {moeda(c['valor_nf'])}",
         f"ITEM: {c['material']}",
     ])
-
-
-def cota_por_volume(slug: str, quantidade: int) -> bool:
-    """A transportadora cotou UM volume e a carga tem mais de um?
-
-    Só nesse caso o preço dela deixa de ser comparável. Com um volume só, o
-    preço dela É o da carga — avisar ali seria ruído, e aviso que aparece
-    sempre é aviso que ninguém lê."""
-    return slug in COTAM_POR_VOLUME and quantidade > 1
-
-
-def _dado(rotulo: str, valor, detalhe: str = "") -> str:
-    """Um par rótulo/valor da ficha.
-
-    Campo vazio vira travessão em vez de sumir: uma linha que desaparece faz
-    o vendedor achar que aquele dado não existe no sistema."""
-    extra = f'<span class="pouco">{e(detalhe)}</span>' if detalhe else ""
-    return (f'<div><label>{e(rotulo)}</label>'
-            f'<div class="val">{e(valor) or "—"}{extra}</div></div>')
-
-
-def _lugar(cidade: str | None, uf: str | None) -> str:
-    return f"{cidade}/{uf}" if cidade and uf else (cidade or uf or "")
-
-
-def _parte(rotulo: str, nome: str | None, cnpj: str | None) -> str:
-    """Razão social em cima, CNPJ embaixo. Sem a razão social, o CNPJ sobe —
-    repetir o mesmo número duas vezes só ocupa espaço."""
-    return _dado(rotulo, nome or cnpj, cnpj if nome else "")
-
-
-def _quando(iso: str | None) -> str:
-    try:
-        return datetime.fromisoformat(iso).strftime("%d/%m/%Y às %H:%M")
-    except (TypeError, ValueError):
-        return iso or ""
-
-
-def _frete_por_extenso(c: dict) -> str:
-    """"CIF — paga o remetente". A sigla sozinha nao diz nada para quem esta
-    conferindo dois orcamentos parecidos na mesa."""
-    sigla, lado, _ = pagador_da_cotacao(c)
-    return f"{sigla} — paga o {lado.lower()}"
-
-
-def ficha_da_cotacao(c: dict) -> str:
-    """Os dados que geraram esta cotação, com os rótulos do formulário.
-
-    Pedido do Enzo em 19/08/2026. Resolve o caso de dois orçamentos parecidos
-    na mesa: sem a ficha, conferir para qual CEP cada preço foi cotado exigia
-    abrir o histórico e comparar de cabeça — e o preço certo no cliente
-    errado é um prejuízo que ninguém percebe na hora."""
-    unitario = peso_por_volume(c)
-    detalhe_peso = (f"{c['quantidade']} × {_kg(unitario)} kg cada"
-                    if unitario is not None else "")
-
-    return f"""<div class="cartao ficha">
-  <h2 style="font-size:15px;margin:0 0 4px">Dados desta cotação</h2>
-  <p class="sub">Foi com estes valores que os sites cotaram e que a mensagem
-  do WhatsApp foi escrita. Cotada em {e(_quando(c.get("criado_em")))}.</p>
-
-  <fieldset><legend>Rota</legend><div class="grid">
-    {_dado("CEP de origem", c["cep_origem"],
-           _lugar(c.get("cidade_origem"), c.get("uf_origem")))}
-    {_dado("CEP de destino", c["cep_destino"],
-           _lugar(c.get("cidade_destino"), c.get("uf_destino")))}
-  </div></fieldset>
-
-  <fieldset><legend>Documentos</legend><div class="grid">
-    {_parte("Remetente (quem envia)", c.get("nome_remetente"),
-            c.get("cnpj_remetente"))}
-    {_parte("Destinatário (quem recebe)", c.get("nome_destinatario"),
-            c.get("cnpj_destinatario"))}
-    {_dado("Tipo de frete", _frete_por_extenso(c))}
-    {_parte("Quem paga o frete", c.get("nome_pagador"),
-            c.get("cnpj_pagador"))}
-  </div></fieldset>
-
-  <fieldset><legend>Carga</legend><div class="grid">
-    {_dado("Quantidade de volumes", c["quantidade"])}
-    {_dado("Peso total", f"{_kg(c['peso_kg'])} kg", detalhe_peso)}
-    {_dado("Comprimento", f"{c['comprimento_cm']} cm")}
-    {_dado("Largura", f"{c['largura_cm']} cm")}
-    {_dado("Altura", f"{c['altura_cm']} cm")}
-    {_dado("Valor da nota fiscal", moeda(c["valor_nf"]))}
-    {_dado("Material", c.get("material"))}
-  </div></fieldset>
-</div>"""
 
 
 def cartao_resposta_por_email(email: str | None, slug: str = "") -> str:

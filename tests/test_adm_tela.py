@@ -62,9 +62,14 @@ def test_tela_separa_falha_de_recusa(cliente):
     html = cliente.get("/adm").text
 
     # Ordem das colunas em _saude: transportadora, sucesso, recusa, falha,
-    # nossa, inesperado.
-    assert '<td>jadlog</td><td>0</td><td>1</td><td>0</td><td>0</td><td>0</td>' in html
-    assert '<td>generoso</td><td>0</td><td>0</td><td>1</td><td>0</td><td>0</td>' in html
+    # nossa, inesperado. O nome da primeira célula é o de TELA
+    # (transportadoras.nome_de) desde 04/09/2026: o painel passou a mostrar
+    # logo e nome de verdade nos cartões, e a tabela escrevendo "jadlog"
+    # embaixo de um cartão escrito "Jadlog Entregas" parecia outra coisa.
+    assert ('<td>Jadlog Entregas</td><td>0</td><td>1</td><td>0</td><td>0</td>'
+            '<td>0</td>') in html
+    assert ('<td>Transporte Generoso</td><td>0</td><td>0</td><td>1</td>'
+            '<td>0</td><td>0</td>') in html
 
 
 def test_tela_vazia_nao_quebra(cliente):
@@ -259,3 +264,91 @@ def test_transportadora_sem_dados_tambem_fica_sem_dados_na_rosca(cliente):
 
     assert 'class="arco"' not in html
     assert "sem dados ainda" in html
+
+
+# ------------------------------- alertas e filtros do histórico ------------
+
+def _falhou(quantas: int, slug: str = "jadlog") -> None:
+    for _ in range(quantas):
+        cid = adm.banco.salvar_cotacao("enzo", CARGA)
+        adm.banco.salvar_resultado(cid, slug, status="erro",
+                                   erro="Login recusado pelo painel.")
+
+
+def test_falha_seguida_vira_alerta_no_topo(cliente):
+    """A parte mais valiosa da tela, e a razão de o painel existir: a Jadlog
+    falhou no login em 5 tentativas seguidas e ninguém notou até um vendedor
+    reclamar, quase um dia depois."""
+    _falhou(3)
+
+    html = cliente.get("/adm").text
+
+    assert "Precisa de atenção" in html
+    assert "Jadlog Entregas falhou nas últimas 3 tentativas." in html
+
+
+def test_sem_falha_seguida_o_cartao_de_alerta_nem_aparece(cliente):
+    """Um cartão "nenhum alerta" fixo no topo treina o olho a pular a região
+    — e aí ele pula também no dia em que o alerta está lá."""
+    cid = adm.banco.salvar_cotacao("enzo", CARGA)
+    adm.banco.salvar_resultado(cid, "camilo", status="cotado",
+                               valor=Decimal("50"))
+
+    assert "Precisa de atenção" not in cliente.get("/adm").text
+
+
+def test_o_filtro_por_vendedor_volta_ao_banco(cliente):
+    """A busca do topo filtra o que está NA PÁGINA; o filtro volta ao banco,
+    e por isso enxerga além das 200 linhas que a página carregou."""
+    adm.banco.salvar_cotacao("leandro", {**CARGA, "material": "SO DO LEANDRO"})
+    adm.banco.salvar_cotacao("enzo", {**CARGA, "material": "SO DO ENZO"})
+
+    html = cliente.get("/adm?dias=30&quem=leandro").text
+
+    assert "SO DO LEANDRO" in html
+    assert "SO DO ENZO" not in html
+
+
+def test_o_filtro_de_falhas_esconde_o_que_deu_certo(cliente):
+    """O filtro que o Enzo vai usar mais: mostra só o que deu problema."""
+    boa = adm.banco.salvar_cotacao("enzo", {**CARGA, "material": "DEU CERTO"})
+    adm.banco.salvar_resultado(boa, "camilo", status="cotado",
+                               valor=Decimal("10"))
+    ruim = adm.banco.salvar_cotacao("enzo", {**CARGA, "material": "DEU RUIM"})
+    adm.banco.salvar_resultado(ruim, "jadlog", status="erro", erro="timeout")
+
+    html = cliente.get("/adm?dias=30&falhas=1").text
+
+    assert "DEU RUIM" in html
+    assert "DEU CERTO" not in html
+
+
+def test_trocar_o_periodo_nao_joga_fora_o_filtro(cliente):
+    """Montados em separado, clicar em "7 dias" jogava fora o vendedor
+    escolhido sem avisar — e a tela passava a responder outra pergunta com a
+    mesma cara."""
+    adm.banco.salvar_cotacao("leandro", CARGA)
+
+    html = cliente.get("/adm?dias=30&quem=leandro&falhas=1").text
+
+    assert "/adm?dias=7&amp;quem=leandro&amp;falhas=1" in html
+
+
+def test_vendedor_que_nao_existe_devolve_lista_vazia(cliente):
+    """Resposta honesta. Cair em "todos" mostraria a empresa inteira para
+    quem pediu uma pessoa."""
+    adm.banco.salvar_cotacao("enzo", CARGA)
+
+    html = cliente.get("/adm?dias=30&quem=ninguem").text
+
+    assert "Nenhuma cotação no período." in html
+
+
+def test_nome_de_vendedor_com_aspas_nao_escapa_no_link_do_filtro(cliente):
+    """O login é placeholder: digitou um nome, entrou. Esse nome vira URL na
+    pastilha do filtro."""
+    adm.banco.salvar_cotacao('" onmouseover="alert(1)', CARGA)
+
+    html = cliente.get("/adm").text
+
+    assert 'onmouseover="alert' not in html
