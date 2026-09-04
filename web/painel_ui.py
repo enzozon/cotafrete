@@ -97,7 +97,7 @@ html{scroll-behavior:smooth}
 
 /* ---- barra lateral ---- */
 .lateral{flex:0 0 236px;width:236px;position:sticky;top:0;height:100vh;
-background:linear-gradient(175deg,#1b2030 0%,#12151f 100%);color:#aeb7ca;
+background:linear-gradient(175deg,#24305e 0%,#141a35 100%);color:#b6c2dd;
 display:flex;flex-direction:column;padding:20px 0 16px}
 .lateral .marca{display:flex;align-items:center;gap:10px;padding:0 20px 20px;
 border-bottom:1px solid rgba(255,255,255,.07);margin-bottom:14px}
@@ -105,18 +105,18 @@ border-bottom:1px solid rgba(255,255,255,.07);margin-bottom:14px}
 .lateral .marca b{color:#fff;font-size:15px;letter-spacing:2.4px;
 text-transform:uppercase;font-weight:700}
 .lateral .secao{padding:14px 20px 6px;font-size:10px;letter-spacing:1.4px;
-text-transform:uppercase;color:#5d6780;font-weight:700}
+text-transform:uppercase;color:#7280a6;font-weight:700}
 .lateral a{display:flex;align-items:center;gap:11px;padding:9px 20px;
-color:#aeb7ca;text-decoration:none;font-size:13.5px;
+color:#b6c2dd;text-decoration:none;font-size:13.5px;
 border-left:3px solid transparent;
 transition:background .16s,color .16s,border-color .16s}
 .lateral a:hover{background:rgba(255,255,255,.05);color:#fff}
-.lateral a.atual{background:rgba(91,110,220,.16);color:#fff;
-border-left-color:#6b7cd6;font-weight:600}
+.lateral a.atual{background:rgba(112,200,224,.14);color:#fff;
+border-left-color:#70c8e0;font-weight:600}
 .lateral a svg{width:17px;height:17px;flex:none;opacity:.75}
 .lateral a.atual svg{opacity:1}
 .lateral .rodape{margin-top:auto;padding:12px 20px 0;font-size:11px;
-color:#4e5771;border-top:1px solid rgba(255,255,255,.07)}
+color:#606e94;border-top:1px solid rgba(255,255,255,.07)}
 
 /* ---- área de conteúdo ---- */
 .conteudo{flex:1;min-width:0;padding:24px 28px 64px}
@@ -263,7 +263,7 @@ font-weight:600}
 .rank .trilho{grid-column:1/-1;height:8px;border-radius:99px;
 background:#eef0f5;overflow:hidden}
 .rank .trilho i{display:block;height:100%;border-radius:99px;
-background:linear-gradient(90deg,#4c5fc7,#8b9be8);
+background:linear-gradient(90deg,#384890,#70c8e0);
 animation:cresce .8s cubic-bezier(.22,.9,.3,1) both}
 @keyframes cresce{from{width:0}}
 
@@ -477,6 +477,62 @@ flex-wrap:wrap;align-items:center;padding:12px 16px;gap:4px}
 .alerta-linha{flex-wrap:wrap}
 .alerta-linha .quais{margin-left:42px;justify-content:flex-start}
 }
+
+/* ==================== acabamento da identidade Ventura ======================
+   Entra no fim do arquivo de propósito: são regras que ajustam o que já foi
+   desenhado acima, e ficam juntas para quem for mexer na marca achar tudo num
+   lugar só. O sistema de cores mora em web/layout.py — aqui só se USA. */
+
+/* A mesma assinatura de 3px da faixa do vendedor, agora no alto da lateral.
+   É o que faz as duas telas serem reconhecidas como o mesmo sistema: o painel
+   tem casco próprio e, sem isto, parecia software de outra empresa. */
+.lateral{position:relative}
+.lateral::before{content:"";position:absolute;left:0;right:0;top:0;height:3px;
+background:var(--marca-grad);z-index:1}
+
+/* Cartão que sobe sob o cursor. Num quadro de instrumentos com onze blocos
+   brancos iguais, é o que confirma qual deles o olho está seguindo — e custa
+   duas linhas. O `will-change` fica de fora de propósito: onze camadas
+   promovidas de graça custam mais memória de vídeo do que a animação
+   economiza. */
+.cartao{border-radius:var(--raio);box-shadow:var(--sombra-1);
+transition:transform .2s var(--suave),box-shadow .2s var(--suave)}
+.cartao:hover{transform:translateY(-2px);box-shadow:var(--sombra-2)}
+
+/* O pulso do "ao vivo" ganha um halo em vez de só piscar. Agora que a tela se
+   atualiza sozinha, este ponto é a única coisa que diz que ela está viva
+   quando nada mudou — e piscar sozinho lê como defeito, não como batimento. */
+.aovivo{border-color:var(--borda-forte)}
+.aovivo i{animation:pisca 2.2s ease-in-out infinite,halo 2.2s ease-out infinite}
+@keyframes halo{
+0%{box-shadow:0 0 0 0 rgba(0,120,90,.45)}
+70%{box-shadow:0 0 0 7px rgba(0,120,90,0)}
+100%{box-shadow:0 0 0 0 rgba(0,120,90,0)}}
+
+/* Pastilha de período: a escolhida ganha uma sombra baixa além do fundo, para
+   o estado ler de longe. Antes era só troca de cor, e num monitor fraco as
+   quatro pareciam iguais. */
+.periodo.atual{box-shadow:0 2px 6px -1px rgba(47,63,136,.45)}
+.periodo:hover{background:var(--lavagem);color:var(--marca)}
+
+/* Linha do histórico: o realce de hover passa a ser a lavagem da marca, e não
+   um cinza qualquer. A linha inteira é clicável — o fundo precisa dizer isso
+   antes de o cursor mudar. */
+#historico tr[data-abrir]{cursor:pointer;
+transition:background .12s var(--suave)}
+#historico tr[data-abrir]:hover td{background:var(--lavagem)}
+
+/* Cabeçalho do dia, na tabela: vira uma faixa da marca em vez de linha solta.
+   Com a tabela se atualizando sozinha, o agrupamento por dia é a âncora que
+   impede a leitura de se perder quando uma linha nova entra no topo. */
+#historico tr.dia td{background:var(--lavagem);color:var(--marca);
+font-weight:700;letter-spacing:.2px}
+
+/* A lateral marca o item atual com o ciano da logo. Era um violeta que não
+   existe em lugar nenhum da marca — a única cor da tela sem origem. */
+.lateral a.atual{border-left-color:var(--ciano-claro)}
+.lateral a:focus-visible{outline:2px solid var(--ciano-claro);
+outline-offset:-2px}
 """
 
 
@@ -622,7 +678,7 @@ def faixa(resumo: dict) -> str:
     de quem está tentando ler."""
     return (
         '<div class="faixa">'
-        + numero("cotações hoje", resumo["cotacoes"], "#4c5fc7", "#eef0fb",
+        + numero("cotações hoje", resumo["cotacoes"], "#384890", "#eef3fb",
                  "cotacoes", conta=True)
         + numero("com preço", resumo["com_preco"], "#00875a", "#e6f4ee",
                  "preco", conta=True)
@@ -778,8 +834,8 @@ def grafico_periodo(pontos: list[dict], unidade: str) -> str:
  role="img" aria-label="Cotações por {e(unidade)} no período">
 <defs>
 <linearGradient id="tintaBarra" x1="0" y1="0" x2="0" y2="1">
-<stop offset="0%" stop-color="#8b9be8"/>
-<stop offset="100%" stop-color="#4c5fc7"/></linearGradient>
+<stop offset="0%" stop-color="#70c8e0"/>
+<stop offset="100%" stop-color="#384890"/></linearGradient>
 <linearGradient id="tintaArea" x1="0" y1="0" x2="0" y2="1">
 <stop offset="0%" stop-color="#00875a" stop-opacity=".18"/>
 <stop offset="100%" stop-color="#00875a" stop-opacity="0"/></linearGradient>

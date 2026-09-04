@@ -583,7 +583,7 @@ def painel(adm: str | None = Cookie(None, alias=COOKIE_ADM),
         + ui.cartao(
             "Movimento", ui.grafico_periodo(serie["pontos"], serie["unidade"]),
             ident="movimento", nota=f"por {serie['unidade']} · {rotulo}",
-            direita=ui.legenda((("#4c5fc7", "cotações"),
+            direita=ui.legenda((("#384890", "cotações"),
                                 ("#00875a", "com preço"))),
             classe="c8", atraso=0.05)
         + ui.cartao("Como as transportadoras responderam",
@@ -742,7 +742,7 @@ def _numeros_da_cotacao(c: dict) -> str:
                     "#00875a", "#e6f4ee", "preco")
         + ui.numero("responderam com preço",
                     f'{com_preco} de {len(c["resultados"])}',
-                    "#4c5fc7", "#eef0fb", "cotacoes")
+                    "#384890", "#eef3fb", "cotacoes")
         + ui.numero("entre a mais barata e a mais cara", moeda(espalhamento),
                     "#d97706", "#fdf3e3", "balanca")
         + ui.numero("até a última resposta",

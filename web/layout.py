@@ -16,40 +16,124 @@ LOGO = (Path(__file__).parent / "logo_b64.txt").read_text(encoding="utf-8").stri
 
 
 CSS = """
-:root{--tinta:#16181d;--fraco:#6b7280;--borda:#e2e5ea;--fundo:#f5f6f8;
---papel:#fff;--marca:#3b4a9c;--ok:#00875a;--erro:#bf2600;--zap:#25d366}
+/* ============================ identidade Ventura =============================
+   As cores saem da LOGO, medida pixel a pixel em web/logo_b64.txt: a elipse é
+   um gradiente que vai de um ciano #70c8e0 na ponta esquerda até o índigo
+   #384890 da marca-palavra, que sozinho ocupa mais da metade do desenho.
+
+   O sistema antigo usava só a metade escura (#3b4a9c) e o ciano não aparecia
+   em lugar nenhum — a cor mais distintiva da marca ficava de fora da tela
+   inteira. Agora ele é o acento: foco, estado ativo, o filete do topo.
+
+   Neutros puxados para o azul de propósito. Cinza neutro (#6b7280) ao lado de
+   um índigo saturado parece sujo; o mesmo cinza com um empurrão de azul lê
+   como escolha. */
+:root{
+/* marca */
+--marca:#2f3f88;--marca-forte:#243268;--marca-viva:#384890;
+--ciano:#359fc0;--ciano-claro:#70c8e0;--lavagem:#eef3fb;
+--marca-grad:linear-gradient(135deg,#70c8e0 0%,#4058a0 45%,#384890 100%);
+/* neutros com viés azul */
+--tinta:#101623;--tinta2:#3b455c;--fraco:#656f86;
+--borda:#e2e8f2;--borda-forte:#ccd5e4;--fundo:#f3f6fb;--papel:#fff;
+/* semânticos: sentido, não marca — mudar estes muda o que a tela AFIRMA */
+--ok:#00785a;--erro:#c0341d;--atencao:#a15c00;--zap:#25d366;
+/* elevação: três degraus, e não sombra solta por regra. Borda de 1px em tudo
+   achata a hierarquia — quem precisa se destacar sobe, o resto fica no plano */
+--sombra-1:0 1px 2px rgba(20,32,66,.05),0 1px 3px rgba(20,32,66,.04);
+--sombra-2:0 2px 4px rgba(20,32,66,.04),0 10px 22px -8px rgba(20,32,66,.14);
+--sombra-3:0 18px 44px -12px rgba(20,32,66,.28);
+--raio:12px;--raio-p:8px;--raio-g:16px;
+--suave:cubic-bezier(.2,.6,.3,1);--mola:cubic-bezier(.34,1.32,.46,1)}
 *{box-sizing:border-box}
 body{margin:0;background:var(--fundo);color:var(--tinta);line-height:1.45;
-font-family:system-ui,-apple-system,"Segoe UI",sans-serif}
+font-family:system-ui,-apple-system,"Segoe UI",sans-serif;
+-webkit-font-smoothing:antialiased;
+/* O sistema é uma tela de números: peso, cubagem, preço. Dígito de largura
+   fixa faz as colunas de dinheiro alinharem sem tabela e sem monoespaçada. */
+font-variant-numeric:tabular-nums}
 a{color:var(--marca)}
+
+/* Movimento é enfeite até virar obstáculo. Quem pediu para o sistema parar de
+   se mexer não pode receber um formulário que entra deslizando. Uma regra, no
+   topo, valendo para todas as telas — inclusive as do painel, que empilha
+   o seu CSS depois deste. */
+@media(prefers-reduced-motion:reduce){
+*,*::before,*::after{animation-duration:.01ms !important;
+animation-iteration-count:1 !important;transition-duration:.01ms !important;
+scroll-behavior:auto !important}}
+
+/* ---- faixa do topo ---- */
 .topo{background:var(--papel);border-bottom:1px solid var(--borda);
-padding:12px 24px;display:flex;align-items:center;gap:16px}
+padding:12px 24px;display:flex;align-items:center;gap:16px;position:relative}
+/* O filete do gradiente da logo, atravessando a tela inteira. É a assinatura
+   da marca no lugar mais barato possível: 3px que nenhuma outra tela de
+   sistema interno tem, e que ninguém precisa ler para reconhecer. */
+.topo::before{content:"";position:absolute;left:0;right:0;top:0;height:3px;
+background:var(--marca-grad)}
 .topo img{height:38px}
 .topo .quem{margin-left:auto;font-size:13px;color:var(--fraco)}
 .wrap{max-width:1080px;margin:24px auto;padding:0 24px}
+
+/* Entrada em cascata. O formulário tem cinco blocos; todos aparecendo no
+   mesmo quadro é um susto, escalonados o olho acompanha de cima para baixo. */
+/* Nome com sufixo: web/painel_ui.py empilha o CSS dele depois
+   deste e ja tem um @keyframes `sobe` proprio, das barras do
+   grafico. Dois com o mesmo nome na mesma folha e o de baixo
+   ganha em silencio. */
+@keyframes sobe-bloco{from{opacity:0;transform:translateY(10px)}
+to{opacity:1;transform:none}}
 .cartao{background:var(--papel);border:1px solid var(--borda);
-border-radius:10px;padding:18px;margin-bottom:16px}
-h1{font-size:20px;margin:0 0 4px}
+border-radius:var(--raio);padding:20px;margin-bottom:16px;
+box-shadow:var(--sombra-1);animation:sobe-bloco .42s var(--suave) both}
+h1{font-size:24px;margin:0 0 4px;letter-spacing:-.5px;font-weight:700}
 .sub{color:var(--fraco);font-size:13px;margin:0 0 18px}
-fieldset{border:1px solid #eceef1;border-radius:8px;margin:0 0 14px;
-padding:12px 14px}
-legend{font-size:11px;font-weight:700;color:var(--fraco);padding:0 6px;
-text-transform:uppercase;letter-spacing:.6px}
-.grid{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
-label{display:block;font-size:11px;color:var(--fraco);margin-bottom:3px}
-input{width:100%;padding:8px 10px;border:1px solid var(--borda);
-border-radius:6px;font-size:14px;font-family:inherit}
-button{font:inherit;cursor:pointer;border:0;border-radius:6px;
-background:var(--marca);color:#fff;padding:12px 22px;font-weight:600;
-font-size:15px}
-button:hover{filter:brightness(1.12)}
-.resultados{display:grid;gap:12px;
+fieldset{border:1px solid var(--borda);border-radius:var(--raio-p);
+margin:0 0 14px;padding:14px 16px;background:#fcfdff}
+legend{font-size:10.5px;font-weight:700;color:var(--marca);padding:0 7px;
+text-transform:uppercase;letter-spacing:1px}
+.grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
+label{display:block;font-size:11px;color:var(--fraco);margin-bottom:4px;
+font-weight:500}
+input{width:100%;padding:10px 12px;border:1px solid var(--borda-forte);
+border-radius:var(--raio-p);font-size:14px;font-family:inherit;
+background:var(--papel);color:var(--tinta);
+transition:border-color .16s var(--suave),box-shadow .16s var(--suave)}
+input:hover{border-color:#b6c2d6}
+/* O ciano da logo finalmente usado: o anel de foco é a peça que mais aparece
+   num sistema onde se digita o dia inteiro, e era o contorno cinza do
+   navegador. */
+input:focus{outline:0;border-color:var(--ciano);
+box-shadow:0 0 0 3px rgba(112,200,224,.35)}
+button{font:inherit;cursor:pointer;border:0;border-radius:var(--raio-p);
+background:var(--marca);color:#fff;padding:13px 26px;font-weight:600;
+font-size:15px;box-shadow:var(--sombra-2);
+transition:transform .16s var(--mola),box-shadow .16s var(--suave),
+background .16s var(--suave)}
+button:hover{background:var(--marca-forte);transform:translateY(-1px);
+box-shadow:var(--sombra-3)}
+/* Afunda no clique. Num formulário que dispara cinco navegadores e leva dois
+   minutos, o retorno imediato do botão é o que diz "recebi" antes de a
+   primeira transportadora responder. */
+button:active{transform:translateY(1px);box-shadow:var(--sombra-1)}
+button:focus-visible,a:focus-visible,summary:focus-visible{outline:2px solid
+var(--ciano);outline-offset:2px}
+
+.resultados{display:grid;gap:14px;
 grid-template-columns:repeat(auto-fit,minmax(250px,1fr))}
-.res{border:1px solid var(--borda);border-radius:10px;padding:16px;
-background:var(--papel)}
-.res.melhor{border-color:var(--ok);box-shadow:0 0 0 1px var(--ok)}
+.res{border:1px solid var(--borda);border-radius:var(--raio);padding:18px;
+background:var(--papel);box-shadow:var(--sombra-1);
+transition:transform .18s var(--suave),box-shadow .18s var(--suave)}
+.res:hover{transform:translateY(-2px);box-shadow:var(--sombra-2)}
+/* A mais barata ganha a borda verde E um filete no topo: cor de borda sozinha
+   some numa tela cheia de cartões brancos vista de longe. */
+.res.melhor{border-color:var(--ok);box-shadow:0 0 0 1px var(--ok),
+var(--sombra-2);position:relative;overflow:hidden}
+.res.melhor::before{content:"";position:absolute;left:0;right:0;top:0;
+height:3px;background:var(--ok)}
 .res .nome{font-weight:700;font-size:14px}
-.res .valor{font-size:28px;font-weight:700;color:var(--ok);margin:6px 0 2px}
+.res .valor{font-size:30px;font-weight:700;color:var(--ok);margin:6px 0 2px;
+letter-spacing:-1px}
 /* Preço que não é da carga toda não pode usar o verde de "bom preço": o olho
    compara os números grandes antes de ler qualquer aviso, e era exatamente
    assim que R$ 33,29 por volume parecia mais barato que R$ 69,91 pela carga. */
@@ -60,16 +144,20 @@ background:var(--papel)}
    errado e nao ha numero para comparar. Fica na cor da marca, no tamanho que
    ocupa o lugar do preco - o olho passa pelos cartoes procurando o numero
    grande, e precisa parar aqui em vez de saltar. */
-.enviada{color:var(--marca);font-size:19px;font-weight:700;margin:6px 0 2px}
+.enviada{color:var(--marca);font-size:20px;font-weight:700;margin:6px 0 2px}
 .selo{display:inline-block;font-size:10px;font-weight:700;color:#fff;
-background:var(--ok);border-radius:99px;padding:2px 8px;letter-spacing:.4px}
+background:var(--ok);border-radius:99px;padding:3px 9px;letter-spacing:.4px}
 .zap{display:flex;align-items:center;gap:10px;border:1px solid var(--borda);
-border-radius:8px;padding:10px 12px;text-decoration:none;color:inherit;
-margin-bottom:8px;background:var(--papel)}
-.zap:hover{border-color:var(--zap)}
+border-radius:var(--raio-p);padding:11px 13px;text-decoration:none;
+color:inherit;margin-bottom:8px;background:var(--papel);
+transition:border-color .16s var(--suave),transform .16s var(--suave),
+box-shadow .16s var(--suave)}
+.zap:hover{border-color:var(--zap);transform:translateX(2px);
+box-shadow:var(--sombra-1)}
 /* Já aberta: fica apagada para o olho cair na próxima da lista sozinho, sem
    precisar de seta nem de "next". O visto verde diz que passou por ali. */
-.zap.aberta{background:#f7f8f9;border-color:#d6ecdc}
+.zap.aberta{background:#f7f9fb;border-color:#d6ecdc}
+.zap.aberta:hover{transform:none}
 .zap.aberta b{color:var(--fraco);font-weight:600}
 .zap.aberta .marca{opacity:.5}
 .zap.aberta .ir{display:none}
@@ -84,52 +172,72 @@ font-size:13px;font-weight:600}
 /* Altura fixa e contain: as logos vêm em tamanhos e proporções diferentes,
    e sem isto a CGB (359KB, quadrada) empurra a linha inteira para baixo. */
 .zap .marca{width:44px;height:44px;object-fit:contain;flex:0 0 auto;
-  border-radius:6px;background:#fff}
-.zap .ir{margin-left:auto;background:var(--zap);color:#fff;border-radius:6px;
-padding:7px 12px;font-size:13px;font-weight:600}
+  border-radius:var(--raio-p);background:#fff}
+.zap .ir{margin-left:auto;background:var(--zap);color:#fff;
+border-radius:var(--raio-p);padding:8px 13px;font-size:13px;font-weight:600}
 /* Especialidade da transportadora — cor diferente de tudo no cartão de
    propósito, para o olho parar aí antes de decidir para quem manda. */
 .selo-obs{display:inline-block;font-size:10px;font-weight:700;
-color:#a15c00;background:#fff1da;border:1px solid #ffd699;border-radius:99px;
-padding:2px 9px;letter-spacing:.2px;margin-left:4px}
+color:var(--atencao);background:#fff4e2;border:1px solid #ffd699;
+border-radius:99px;padding:2px 9px;letter-spacing:.2px;margin-left:4px}
 /* A Della Volpe fica sozinha no cartão "Semiautomática", e o botão maior é o
    que diz "comece por aqui" sem precisar de mais nenhuma frase. */
 .zap-dv{padding:16px 18px;margin-bottom:0;border-color:var(--zap)}
 .zap-dv .marca{width:60px;height:60px}
 .zap-dv b{font-size:16px}
-.zap-dv .ir{font-size:14px;padding:10px 18px}
+.zap-dv .ir{font-size:14px;padding:11px 19px}
 table{width:100%;border-collapse:collapse;font-size:13px}
-th{text-align:left;font-size:11px;color:var(--fraco);text-transform:uppercase;
-letter-spacing:.5px;padding:6px 8px;border-bottom:1px solid var(--borda)}
-td{padding:8px;border-bottom:1px solid #f0f1f4}
-tr:hover td{background:#fafbfc}
+th{text-align:left;font-size:10.5px;color:var(--fraco);text-transform:uppercase;
+letter-spacing:.8px;padding:8px;border-bottom:1px solid var(--borda);
+font-weight:700}
+td{padding:9px 8px;border-bottom:1px solid #f0f3f8}
+tr:hover td{background:var(--lavagem)}
 .listaerro{margin:0 0 16px;padding-left:20px;font-size:14px}
 .listaerro li{margin-bottom:6px}
 .cotando{display:flex;align-items:center;gap:10px;color:var(--fraco);
 font-size:13px}
 .girando{width:16px;height:16px;border:2px solid var(--borda);
-border-top-color:var(--marca);border-radius:50%;
+border-top-color:var(--ciano);border-radius:50%;
 animation:gira .8s linear infinite}
 @keyframes gira{to{transform:rotate(360deg)}}
-.aviso{background:#fffae6;border:1px solid #ffe380;border-radius:6px;
-padding:10px 12px;font-size:13px;margin-bottom:14px}
+/* Enquanto a transportadora não respondeu, o cartão fica com um brilho que
+   atravessa devagar. Diz "vivo, esperando" sem ocupar espaço com texto — e a
+   Della Volpe leva ~110s, que é muito tempo olhando para um cartão parado. */
+@keyframes brilho{to{background-position:200% 0}}
+.res:has(.cotando){background:linear-gradient(100deg,var(--papel) 38%,
+var(--lavagem) 50%,var(--papel) 62%);background-size:200% 100%;
+animation:brilho 2.2s var(--suave) infinite}
+.aviso{background:#fffae6;border:1px solid #ffe380;border-radius:var(--raio-p);
+padding:11px 13px;font-size:13px;margin-bottom:14px}
 .print{width:100%;margin-top:10px;border:1px solid var(--borda);
-border-radius:6px;cursor:zoom-in}
+border-radius:var(--raio-p);cursor:zoom-in;transition:box-shadow .16s}
+.print:hover{box-shadow:var(--sombra-2)}
 .print.zoom{position:fixed;inset:16px;width:auto;height:auto;z-index:9;
 object-fit:contain;background:#fff;box-shadow:0 8px 40px rgba(0,0,0,.4);
 cursor:zoom-out}
-.botao2{display:inline-block;background:#fff;color:var(--marca);
-border:1px solid var(--marca);border-radius:6px;padding:9px 16px;
-font-size:14px;font-weight:600;text-decoration:none}
-.login{max-width:380px;margin:70px auto;text-align:center}
+.botao2{display:inline-block;background:var(--papel);color:var(--marca);
+border:1px solid var(--borda-forte);border-radius:var(--raio-p);
+padding:10px 17px;font-size:14px;font-weight:600;text-decoration:none;
+transition:border-color .16s var(--suave),background .16s var(--suave)}
+.botao2:hover{border-color:var(--marca);background:var(--lavagem)}
+.login{max-width:380px;margin:70px auto;text-align:center;
+animation:sobe-bloco .5s var(--suave) both}
 .login img{height:64px;margin-bottom:18px}
-.menu a{margin-right:14px;font-size:13px;text-decoration:none}
+.menu a{margin-right:14px;font-size:13px;text-decoration:none;
+position:relative;padding-bottom:2px}
+/* Sublinhado que cresce do centro. É a única decoração de navegação do
+   sistema, e cabe em duas linhas. */
+.menu a::after{content:"";position:absolute;left:50%;right:50%;bottom:0;
+height:2px;background:var(--marca-grad);border-radius:2px;
+transition:left .2s var(--suave),right .2s var(--suave)}
+.menu a:hover::after{left:0;right:0}
 /* Aviso DENTRO do cartão, colado no preço que ele qualifica. Numa faixa no
    topo da página ele seria lido antes do número e esquecido depois. */
 /* Aba de Documentacao. Escopo proprio: o resto do sistema quase nao usa
    texto corrido, e soltar estilo de <h2>/<ul> no global mexeria nas telas
    de cotacao. */
-.doc h2{font-size:15px;margin:22px 0 6px;color:var(--marca)}
+.doc h2{font-size:16px;margin:24px 0 6px;color:var(--marca);
+letter-spacing:-.2px}
 .doc h2:first-child{margin-top:0}
 .doc p{margin:0 0 10px;font-size:14px}
 .doc ul{margin:0 0 12px;padding-left:20px;font-size:14px}
@@ -139,17 +247,18 @@ font-size:14px;font-weight:600;text-decoration:none}
 .doc .errado{color:var(--erro);font-weight:600}
 .doc .certo{color:var(--ok);font-weight:600}
 .doc .passo{font-size:14px;margin:0 0 10px;padding-left:20px}
-.alerta{background:#fffae6;border:1px solid #ffe380;border-radius:6px;
-padding:8px 10px;font-size:12px;margin:6px 0 2px;line-height:1.35}
+.alerta{background:#fffae6;border:1px solid #ffe380;border-radius:var(--raio-p);
+padding:9px 11px;font-size:12px;margin:6px 0 2px;line-height:1.35}
 /* Amarelo e para "cuidado, esse numero engana". Aqui nao ha erro nenhum: e
    instrucao de onde olhar. Azul separa os dois recados. */
-.alerta.email{background:#eef2ff;border-color:#c7d2fe}
+.alerta.email{background:var(--lavagem);border-color:#c7d6f5}
 /* ---- filtro de transportadoras ---- */
-.filtro{border:1px solid var(--borda);border-radius:8px;margin:0 0 14px;
-background:var(--papel)}
-.filtro>summary{cursor:pointer;padding:11px 14px;display:flex;
+.filtro{border:1px solid var(--borda);border-radius:var(--raio-p);
+margin:0 0 14px;background:var(--papel)}
+.filtro>summary{cursor:pointer;padding:12px 15px;display:flex;
 align-items:center;gap:10px;font-size:13px;color:var(--fraco);
-list-style:none}
+list-style:none;border-radius:var(--raio-p);transition:background .16s}
+.filtro>summary:hover{background:var(--lavagem)}
 .filtro>summary::-webkit-details-marker{display:none}
 .filtro>summary .abrir{margin-left:auto;color:var(--marca);font-weight:600}
 .filtro>summary .abrir::after{content:" ▾"}
@@ -158,18 +267,20 @@ list-style:none}
    virar erro silencioso semanas depois */
 .filtro.parcial{border-color:#ffe380;background:#fffae6}
 .filtro.parcial>summary{color:#7a5b00;font-weight:600}
+.filtro.parcial>summary:hover{background:#fff5d6}
 .grupo{border-top:1px solid var(--borda);padding:12px 14px}
 .grupo-cab{display:flex;align-items:baseline;gap:8px;margin-bottom:9px;
-font-size:11px;text-transform:uppercase;letter-spacing:.6px;
-color:var(--fraco)}
-.grupo-cab span{text-transform:none;letter-spacing:0}
+font-size:10.5px;text-transform:uppercase;letter-spacing:.8px;
+color:var(--fraco);font-weight:700}
+.grupo-cab span{text-transform:none;letter-spacing:0;font-weight:400}
 .grupo-cab .atalhos{margin-left:auto;white-space:nowrap}
 .caixas{display:grid;gap:6px;
 grid-template-columns:repeat(auto-fill,minmax(210px,1fr))}
 .tr{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--tinta);
-margin:0;padding:5px 7px;border-radius:6px;cursor:pointer}
-.tr:hover{background:var(--fundo)}
-.tr input{width:auto;margin:0;flex:none}
+margin:0;padding:6px 8px;border-radius:var(--raio-p);cursor:pointer;
+transition:background .14s var(--suave),opacity .14s var(--suave)}
+.tr:hover{background:var(--lavagem)}
+.tr input{width:auto;margin:0;flex:none;accent-color:var(--marca)}
 .tr img,.tr .sem-logo{width:26px;height:26px;object-fit:contain;flex:none}
 .tr-nome{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 /* desmarcada fica apagada: o estado precisa ser visivel de longe, que era
@@ -183,11 +294,15 @@ border-radius:10px;padding:1px 7px;font-weight:700;flex:none}
    atras de um clique, a diferenca entre cobrar de quem envia e de quem
    recebe passa despercebida - e e ela que decide quem paga a conta. */
 .opcoes{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:4px}
-.opcao{display:flex;align-items:center;gap:8px;border:1px solid var(--borda);
-border-radius:8px;padding:10px 12px;cursor:pointer;background:var(--papel)}
-.opcao:has(input:checked){border-color:var(--marca);
+.opcao{display:flex;align-items:center;gap:8px;border:1px solid
+var(--borda-forte);border-radius:var(--raio-p);padding:11px 13px;
+cursor:pointer;background:var(--papel);
+transition:border-color .16s var(--suave),background .16s var(--suave),
+box-shadow .16s var(--suave)}
+.opcao:hover{border-color:#b6c2d6;background:#fcfdff}
+.opcao:has(input:checked){border-color:var(--marca);background:var(--lavagem);
 box-shadow:0 0 0 1px var(--marca)}
-.opcao input{width:auto;margin:0}
+.opcao input{width:auto;margin:0;accent-color:var(--marca)}
 .opcao b{font-size:14px}
 .opcao span{font-size:11px;color:var(--fraco)}
 .ficha .val{font-size:14px;font-weight:600;word-break:break-word}
@@ -201,8 +316,11 @@ box-shadow:0 0 0 1px var(--marca)}
 
 /* Tela da cotação pronta para o vendedor copiar (rota /email/...). */
 .pronto{width:100%;font-family:ui-monospace,Consolas,monospace;font-size:13px;
-        line-height:1.5;padding:12px;border:1px solid #d9d9de;border-radius:8px;
-        background:#fafafb;color:#222;resize:vertical}
+        line-height:1.5;padding:13px;border:1px solid var(--borda-forte);
+        border-radius:var(--raio-p);background:#fafbfe;color:#222;
+        resize:vertical}
+.pronto:focus{outline:0;border-color:var(--ciano);
+box-shadow:0 0 0 3px rgba(112,200,224,.35)}
 /* O campo do endereço existe só para o botão Copiar ter o que selecionar:
    selecionar exige um campo de verdade, e display:none não é selecionável. */
 .escondido{position:absolute;left:-9999px;width:1px;height:1px;opacity:0}
