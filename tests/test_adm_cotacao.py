@@ -19,6 +19,8 @@ Os dois riscos que estes testes seguram:
 
 from __future__ import annotations
 
+import io
+import zipfile
 from datetime import datetime, timedelta
 from decimal import Decimal
 
@@ -259,3 +261,53 @@ def test_nada_que_vem_de_fora_vira_marcacao_na_tela(cliente):
 
     assert veneno not in html
     assert "<script>alert" not in html
+
+
+# --------------------------------------------------- baixar todos os prints
+
+def test_zip_traz_o_print_de_cada_transportadora_que_respondeu(cliente,
+                                                                tmp_path):
+    print1 = tmp_path / "camilo.png"
+    print1.write_bytes(b"fake-camilo")
+    print2 = tmp_path / "braspress.png"
+    print2.write_bytes(b"fake-braspress")
+
+    cid = adm.banco.salvar_cotacao("leandro", CARGA)
+    adm.banco.salvar_resultado(cid, "camilo", status="cotado",
+                               valor=Decimal("10"), evidencia=str(print1))
+    adm.banco.salvar_resultado(cid, "braspress", status="cotado",
+                               valor=Decimal("20"), evidencia=str(print2))
+
+    r = cliente.get(f"/adm/cotacao/{cid}/evidencias.zip")
+
+    assert r.status_code == 200
+    assert r.headers["content-type"] == "application/zip"
+    with zipfile.ZipFile(io.BytesIO(r.content)) as zf:
+        assert sorted(zf.namelist()) == ["braspress.png", "camilo.png"]
+        assert zf.read("camilo.png") == b"fake-camilo"
+
+
+def test_zip_ignora_evidencia_que_sumiu_do_disco(cliente):
+    """A tela já tolera print apagado (ver print_embutido); o zip também
+    precisa — não é para quebrar o download por causa de UMA transportadora
+    cujo print já foi limpo pela retenção."""
+    cid = adm.banco.salvar_cotacao("leandro", CARGA)
+    adm.banco.salvar_resultado(cid, "camilo", status="cotado",
+                               valor=Decimal("10"),
+                               evidencia="teste_real/camilo/sumiu/x.png")
+
+    r = cliente.get(f"/adm/cotacao/{cid}/evidencias.zip")
+
+    assert r.status_code == 200
+    with zipfile.ZipFile(io.BytesIO(r.content)) as zf:
+        assert zf.namelist() == []
+
+
+def test_zip_exige_login_do_adm(cliente):
+    cid = adm.banco.salvar_cotacao("leandro", CARGA)
+    cliente.cookies.clear()
+
+    r = cliente.get(f"/adm/cotacao/{cid}/evidencias.zip",
+                    follow_redirects=False)
+
+    assert r.status_code == 303

@@ -51,6 +51,7 @@ from core import cep as buscador_cep
 from core import cnpj as buscador_cnpj
 from core import selecao
 from core.banco import Banco
+from core.evidencias import limpar_antigas
 from core.retentativa import (
     ESPERA_MAXIMA_S, SEM_REPETICAO, TENTATIVAS_MAXIMAS, cotar_com_retentativa,
 )
@@ -68,6 +69,10 @@ from core.models import (
 
 app = FastAPI(title="Cotafrete — Ventura")
 banco = Banco()
+
+# Faxina dos prints velhos (>30 dias) a cada início do servidor — não há
+# scheduler no projeto, e reiniciar já é rotina (ver core/evidencias.py).
+limpar_antigas()
 
 app.include_router(adm.router)
 # O painel usa o MESMO banco do resto do sistema. Injetado aqui, e não

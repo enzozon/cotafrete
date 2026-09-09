@@ -30,14 +30,17 @@ Três regras que não devem ser afrouxadas sem pensar:
 from __future__ import annotations
 
 import hmac
+import io
 import os
 import time
+import zipfile
 from contextlib import closing
 from itertools import groupby
+from pathlib import Path
 from urllib.parse import quote
 
 from fastapi import APIRouter, Cookie, Form, HTTPException
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
 from core.banco import Banco
 from core import painel as contas
@@ -755,10 +758,40 @@ completo</a></p>''', classe="c8", atraso=0.05)}</div>""",
   <h1>Cotação #{c["id"]}</h1>
   <p class="sub">{ui.avatar(c["usuario"])} · {e(_quando(c["criado_em"]))}
   · {e(rota)} · {e(c["material"] or "sem material informado")}</p></div>
-  <div class="direita">{ui.pilulas(contagem)}</div>
+  <div class="direita">{ui.pilulas(contagem)}
+  {ui.baixar_evidencias(c["id"])}</div>
 </div>
 {_numeros_da_cotacao(c)}
 <div class="grade">{grade}</div>
 <script>{SCRIPT_COTACAO}</script>"""
     return HTMLResponse(ui.pagina_painel(f"Cotação {c['id']}", corpo,
                                          base="/adm"))
+
+
+@router.get("/cotacao/{cotacao_id}/evidencias.zip")
+def baixar_evidencias_zip(cotacao_id: int,
+                          adm: str | None = Cookie(None, alias=COOKIE_ADM)):
+    """Todos os prints desta cotação num .zip só — hoje só dava para pegar
+    abrindo teste_real/ na mão, um arquivo de cada vez. Só os prints finais
+    (os mesmos já mostrados na tela): as etapas intermediárias de cada
+    transportadora não têm registro no banco, então não têm como entrar aqui."""
+    _exigir_montado()
+    if not autorizado(adm):
+        return RedirectResponse("/adm/entrar", status_code=303)
+
+    with closing(banco._conectar()) as con:
+        c = contas.cotacao(con, cotacao_id)
+    if c is None:
+        raise HTTPException(404, "Cotação não encontrada")
+
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+        for r in c["resultados"]:
+            caminho = r["evidencia"]
+            if caminho and Path(caminho).exists():
+                zf.write(caminho, arcname=f'{r["transportadora"]}.png')
+
+    return Response(
+        buffer.getvalue(), media_type="application/zip",
+        headers={"Content-Disposition":
+                 f'attachment; filename="cotacao-{cotacao_id}-prints.zip"'})

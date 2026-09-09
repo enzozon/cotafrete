@@ -510,6 +510,8 @@ ICONES = {
     "relogio": '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
     "busca": '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/>',
     "voltar": '<path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/>',
+    "baixar": ('<path d="M12 3v12"/><path d="M7 10l5 5 5-5"/>'
+               '<path d="M5 21h14"/>'),
     "zap": ('<path d="M21 11.5a8.4 8.4 0 01-9 8.4 8.5 8.5 0 01-4-1L3 21l2.1-5'
             'a8.4 8.4 0 01-1-4 8.5 8.5 0 018.4-8.5h.5a8.5 8.5 0 018 8v.5z"/>'),
     "balanca": ('<path d="M12 3v18"/><path d="M5 7h14"/>'
@@ -573,6 +575,13 @@ def voltar_para(destino: str, rotulo: str) -> str:
     chegou pelo link de um alerta não volta de jeito nenhum."""
     return (f'<a class="voltar" href="{destino}">{_icone(ICONES["voltar"])}'
             f'{e(rotulo)}</a>')
+
+
+def baixar_evidencias(cotacao_id: int) -> str:
+    """Link para baixar, num .zip só, todos os prints desta cotação — mesmo
+    visual do link "voltar" para não precisar de CSS novo."""
+    return (f'<a class="voltar" href="/adm/cotacao/{cotacao_id}/evidencias.zip">'
+            f'{_icone(ICONES["baixar"])}Baixar prints</a>')
 
 
 def cartao(titulo: str, conteudo: str, *, ident: str = "", nota: str = "",
