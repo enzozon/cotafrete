@@ -9,6 +9,7 @@ Só LEITURA. Nada aqui escreve no banco.
 
 from __future__ import annotations
 
+import hashlib
 import sqlite3
 from datetime import datetime, timedelta
 from decimal import Decimal, InvalidOperation
@@ -432,3 +433,61 @@ def por_usuario(con: sqlite3.Connection, dias: int,
                 "SELECT usuario, COUNT(*) AS n FROM cotacao"
                 " WHERE criado_em >= ? GROUP BY usuario"
                 " ORDER BY n DESC, usuario LIMIT ?", (_desde(dias), limite))]
+
+
+# ------------------------------------------------------------------ ao vivo
+#
+# O painel se atualiza sozinho. Estas duas funcoes existem para ele so se
+# REDESENHAR quando algo mudou de verdade: a tela e lida, e refazer a tabela
+# debaixo do cursor de quem esta lendo, a cada poucos segundos, para nada, e
+# pior do que nao atualizar.
+
+def _assinatura(*partes: object) -> str:
+    """Encolhe as partes num rotulo curto o bastante para caber numa URL.
+
+    Nao e seguranca: e um detector de mudanca. blake2s e o hash rapido da
+    stdlib, e 8 bytes dao 16 caracteres - colisao aqui atrasaria uma
+    atualizacao da tela, nao corromperia nada."""
+    cru = "|".join(str(p) for p in partes).encode()
+    return hashlib.blake2s(cru, digest_size=8).hexdigest()
+
+
+def versao_do_painel(con: sqlite3.Connection) -> str:
+    """Muda quando entra cotacao nova ou quando alguma transportadora responde.
+
+    Contagens e maiores ids, nao o conteudo das linhas: a consulta roda a cada
+    poucos segundos para cada pessoa com o painel aberto, entao precisa ser
+    barata.
+
+    `respondido_em` entra por causa do upsert em `banco.salvar_resultado`: a
+    resposta que chega depois de a cotacao ter sido dada como `interrompido`
+    SOBRESCREVE a linha em vez de criar outra. Sem ela a contagem nao mexe, e
+    a tela nunca perceberia essa resposta."""
+    return _assinatura(*con.execute(
+        "SELECT (SELECT COUNT(*) FROM cotacao),"
+        "       (SELECT COALESCE(MAX(id), 0) FROM cotacao),"
+        "       (SELECT COUNT(*) FROM resultado),"
+        "       (SELECT COALESCE(MAX(id), 0) FROM resultado),"
+        "       (SELECT COALESCE(MAX(respondido_em), '') FROM resultado)"
+    ).fetchone())
+
+
+def versao_da_cotacao(con: sqlite3.Connection, cotacao_id: int) -> str:
+    """Muda a qualquer mudanca nas respostas DESTA cotacao.
+
+    Aqui a assinatura e EXATA, e nao contagem como no painel: sao no maximo
+    seis linhas, e esta e a tela em que se fica olhando a resposta chegar. Uma
+    transportadora que sai de `erro` para `cotado` na retentativa nao mexe em
+    contagem nenhuma, e precisa aparecer mesmo assim.
+
+    ORDER BY dentro da subconsulta porque a ordem do GROUP_CONCAT nao e
+    garantida pelo SQLite: sem ele, a mesma cotacao geraria versoes diferentes
+    entre duas leituras e a tela se redesenharia para sempre."""
+    (linhas,) = con.execute(
+        "SELECT COALESCE(GROUP_CONCAT(assinatura, ';'), '') FROM ("
+        "  SELECT transportadora || '/' || status"
+        "         || '/' || COALESCE(valor, '')"
+        "         || '/' || COALESCE(respondido_em, '') AS assinatura"
+        "  FROM resultado WHERE cotacao_id = ? ORDER BY transportadora)",
+        (cotacao_id,)).fetchone()
+    return _assinatura(linhas)

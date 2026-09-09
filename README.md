@@ -11,6 +11,10 @@ Cotafrete.bat        <- duplo clique, abre em http://localhost:8001
 Servidor.bat         <- publica na rede da empresa, na porta 8000
 ```
 
+Para instalar no servidor da empresa: [docs/DEPLOY_SERVIDOR.md](docs/DEPLOY_SERVIDOR.md).
+O Server 2012 R2 não roda o Chromium das transportadoras — o guia explica por
+que, e como subir numa VM dentro do próprio servidor.
+
 ---
 
 ## As sete transportadoras, e por que não são iguais
@@ -66,9 +70,8 @@ centímetros; quem sabe o resto é o código, e cada regra tem teste.
 
 ```bash
 python -m venv .venv
-.venv\Scripts\activate
-pip install -r requirements.txt
-python -m playwright install chromium
+.venv\Scripts\python.exe -m pip install -r requirements.txt
+.venv\Scripts\python.exe -m playwright install chromium
 ```
 
 Copie o `.env` (nunca vai pelo Git — tem senhas) para a raiz do projeto.

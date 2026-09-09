@@ -67,9 +67,8 @@ if not exist ".venv\Scripts\python.exe" (
     echo.
     echo  Rode uma vez, neste diretorio:
     echo      python -m venv .venv
-    echo      .venv\Scripts\activate
-    echo      pip install -r requirements.txt
-    echo      python -m playwright install chromium
+    echo      .venv\Scripts\python.exe -m pip install -r requirements.txt
+    echo      .venv\Scripts\python.exe -m playwright install chromium
     echo.
     pause
     exit /b 1
