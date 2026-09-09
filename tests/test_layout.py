@@ -200,3 +200,62 @@ def test_o_comprovante_abre_em_largura_de_leitura():
 
     assert "overflow:auto" in regra
     assert "object-fit" not in regra
+
+
+# --------------------------------------------------------- tela de entrada
+
+def test_a_entrada_nao_repete_a_logo():
+    """A tela de login usava `pagina()`, que traz a faixa do topo com a logo -
+    e o cartao mostrava a MESMA logo logo abaixo, uma embaixo da outra. O
+    casco proprio existe para isso: a faixa serve para navegar, e quem ainda
+    nao entrou nao tem para onde ir."""
+    html = layout.entrada("Entrar", "<div class='cartao'>x</div>",
+                          chamada="c", apoio="a")
+
+    assert html.count("base64,") == 1, "a logo tem que aparecer uma vez so"
+    assert 'class="topo"' not in html
+
+
+def test_a_entrada_escapa_o_que_vem_de_fora():
+    """`cartao` entra cru de proposito (e HTML montado por quem chama), mas
+    chamada, apoio, provas e rodape sao texto e passam por e()."""
+    html = layout.entrada("t", "<div>ok</div>", chamada="<script>a</script>",
+                          apoio="<b>b</b>", provas=(("<i>1</i>", "<u>x</u>"),),
+                          rodape="<em>r</em>")
+
+    for cru in ("<script>a</script>", "<b>b</b>", "<i>1</i>", "<em>r</em>"):
+        assert cru not in html
+    assert "&lt;script&gt;a&lt;/script&gt;" in html
+
+
+def test_o_texto_das_telas_de_entrada_sai_acentuado(monkeypatch):
+    """Segunda vez que acento se perde em texto que a pessoa LE - a primeira
+    foi a contagem do historico, que saiu "1 cotacao". Some quando o texto e
+    escrito por script e o shell come o UTF-8, e ninguem percebe ate a tela
+    estar no ar, porque o codigo ao redor continua funcionando."""
+    from web import adm, app as app_web
+
+    # Sem senha no ambiente o painel responde 404 de proposito (a Regra 1 do
+    # modulo: a tela nao passa a existir "aberta por engano"). O teste e do
+    # TEXTO, entao monta a senha para chegar na tela.
+    monkeypatch.setenv("COTAFRETE_ADM_SENHA", "so-para-o-teste")
+
+    vendedor = app_web.tela_login()
+    for palavra in ("formulário", "cotações", "automáticas", "histórico"):
+        assert palavra in vendedor, f"a tela do vendedor perdeu: {palavra}"
+
+    painel = adm.tela_de_entrada().body.decode("utf-8")
+    for palavra in ("cotações", "Números", "histórico", "única"):
+        assert palavra in painel, f"a tela do painel perdeu: {palavra}"
+
+
+def test_o_hero_conta_as_transportadoras_de_verdade():
+    """Os numeros do hero saem de len(AUTOMATICAS) e len(TODAS_AS_SLUGS).
+    Escritos a mao, a tela de entrada passaria a mentir sobre o tamanho do
+    proprio sistema na primeira transportadora que entrasse ou saisse."""
+    from web import app as app_web
+
+    html = app_web.tela_login()
+
+    assert f"<dt>{len(app_web.AUTOMATICAS)}</dt>" in html
+    assert f"<dt>{len(app_web.TODAS_AS_SLUGS)}</dt>" in html

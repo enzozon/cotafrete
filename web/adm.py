@@ -45,7 +45,7 @@ from core.evidencias import montar_zip_de_prints
 from core import painel as contas
 from web import painel_ui as ui, transportadoras
 from web.ficha_ui import ficha_da_cotacao, lugar, quando as _quando
-from web.layout import LOGO, e, moeda, pagina, print_embutido
+from web.layout import LOGO, e, entrada, moeda, pagina, print_embutido
 
 # O banco chega por INJEÇÃO: `web/app.py` faz `adm.banco = banco` logo
 # depois de criar o dele. Importar `web.app` daqui seria circular —
@@ -104,19 +104,22 @@ def _exigir_montado() -> str:
 @router.get("/entrar", response_class=HTMLResponse)
 def tela_de_entrada():
     _exigir_montado()
-    return HTMLResponse(pagina("Painel", f"""
-<div class="login">
-  <img src="data:image/png;base64,{LOGO}" alt="Ventura">
-  <div class="cartao">
-    <h1>Painel</h1>
-    <p class="sub">Esta tela mostra as cotações de toda a empresa.</p>
-    <form method="post" action="/adm/entrar">
-      <input name="senha" type="password" placeholder="Senha do painel"
-             autofocus required style="margin-bottom:12px">
-      <button type="submit" style="width:100%">Entrar</button>
-    </form>
-  </div>
-</div>"""))
+    return HTMLResponse(entrada("Painel", """
+<div class="cartao">
+  <h1>Painel</h1>
+  <p class="sub">As cotações de toda a empresa, num lugar só.</p>
+  <form method="post" action="/adm/entrar">
+    <input name="senha" type="password" placeholder="Senha do painel"
+           autocomplete="current-password" autofocus required
+           style="margin-bottom:12px">
+    <button type="submit" style="width:100%">Entrar</button>
+  </form>
+</div>""",
+        chamada="O que a empresa inteira cotou.",
+        apoio="Números por transportadora, tempo de resposta e o histórico "
+              "completo — atualizado sozinho conforme as cotações chegam.",
+        rodape="Esta tela junta CNPJ, valor de nota e print de cliente. "
+               "A senha é a única barreira."))
 
 
 @router.post("/entrar")

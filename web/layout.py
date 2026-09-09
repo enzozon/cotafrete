@@ -345,6 +345,91 @@ box-shadow:0 0 0 3px rgba(112,200,224,.35)}
 /* O campo do endereço existe só para o botão Copiar ter o que selecionar:
    selecionar exige um campo de verdade, e display:none não é selecionável. */
 .escondido{position:absolute;left:-9999px;width:1px;height:1px;opacity:0}
+
+/* ====================== a porta da frente: tela de entrada ==================
+   A única tela do sistema onde um hero cabe. É vista uma vez por sessão, não
+   tem trabalho para atrapalhar, e é a primeira impressão que a empresa tem do
+   sistema — as outras são formulário e resultado, onde área gasta com enfeite
+   é área tirada de quem está cotando.
+
+   Casco próprio (`entrada()`, em vez de `pagina()`) porque a faixa do topo não
+   faz sentido aqui: ela existe para navegar, e quem não entrou não tem para
+   onde ir. De quebra conserta a logo DUPLICADA — a faixa mostrava uma e o
+   cartão mostrava outra, uma embaixo da outra. */
+.entrada{min-height:100vh;display:grid;grid-template-columns:1.05fr .95fr}
+.entrada-marca{position:relative;overflow:hidden;padding:52px 48px;
+display:flex;flex-direction:column;gap:34px;justify-content:center;
+background:var(--marca-grad);color:#fff}
+/* O halo. O gradiente sozinho é uma parede chapada; um clarão fora de eixo dá
+   profundidade sem desenhar nada. `radial-gradient` e não imagem: o sistema
+   roda numa rede interna e não pode depender de arquivo que não chegou. */
+.entrada-marca::after{content:"";position:absolute;inset:-30% -20% auto auto;
+width:70%;aspect-ratio:1;border-radius:50%;
+background:radial-gradient(circle,rgba(255,255,255,.28),transparent 62%);
+pointer-events:none}
+.entrada-marca>*{position:relative;z-index:1}
+/* Em cores naturais, sobre uma pastilha branca. `brightness(0) invert(1)`
+   pintaria o desenho inteiro de branco — e o "V" da marca é um RECORTE, já
+   branco: some contra a elipse e a logo vira um borrão. Passa despercebido
+   na lateral do painel, onde ela tem 30px; aqui tem 52px e é a primeira
+   coisa que a empresa vê. */
+.entrada-marca .logo{height:52px;width:auto;align-self:flex-start;
+background:#fff;padding:11px 15px;border-radius:14px;
+box-shadow:0 8px 24px -8px rgba(10,18,45,.5)}
+.entrada-marca h1{font-size:clamp(28px,3.4vw,40px);line-height:1.12;
+margin:0 0 12px;letter-spacing:-.8px;color:#fff;text-wrap:balance}
+.entrada-marca p{margin:0;max-width:38ch;font-size:15px;line-height:1.55;
+color:rgba(255,255,255,.88);text-wrap:pretty}
+/* As provas saem dos NÚMEROS REAIS do sistema (len(AUTOMATICAS) e afins),
+   passados por quem chama. Escritos à mão aqui, envelheceriam na primeira
+   transportadora que entrasse — e uma tela de entrada mentindo sobre o
+   tamanho do próprio sistema é pior do que uma tela sem número nenhum. */
+.provas{display:flex;flex-wrap:wrap;gap:14px 34px;margin:0;
+border-top:1px solid rgba(255,255,255,.22);padding-top:26px}
+.provas div{display:flex;flex-direction:column;gap:2px}
+.provas dt{font-size:27px;font-weight:700;letter-spacing:-.6px;line-height:1}
+.provas dd{margin:0;font-size:12px;color:rgba(255,255,255,.8);
+text-transform:uppercase;letter-spacing:.7px}
+.entrada-form{display:flex;align-items:center;justify-content:center;
+padding:40px 28px;background:var(--fundo)}
+.entrada-form .cartao{width:100%;max-width:380px;margin:0;padding:28px}
+.entrada-form .rodape{margin:14px 0 0;font-size:12px;color:var(--fraco);
+text-wrap:pretty}
+/* Numa tela estreita a coluna da marca vira uma faixa curta em cima: some o
+   texto longo, fica a logo. Empilhar o hero inteiro empurraria o campo de
+   digitar para fora da tela, que é a única coisa que a pessoa veio fazer. */
+@media(max-width:820px){
+.entrada{grid-template-columns:1fr;min-height:0}
+.entrada-marca{padding:26px 24px;gap:18px}
+.entrada-marca h1{font-size:23px;margin:0}
+.entrada-marca p,.provas{display:none}
+.entrada-form{padding:28px 20px}}
+
+/* ============================== acabamento =================================
+   Detalhes pequenos que somam. Cada um tem motivo; nenhum é enfeite solto. */
+
+/* Título e texto curto não podem quebrar deixando uma palavra órfã na última
+   linha. `balance` nos títulos, `pretty` no texto de apoio. */
+h1,h2,.cartao-cab h2,.res .nome{text-wrap:balance}
+.sub,.nota,.res .nota,.entrada-marca p{text-wrap:pretty}
+
+/* Logo de transportadora vem de vinte sites diferentes, e várias têm fundo
+   branco: sem contorno, a borda da imagem se dissolve no cartão branco e o
+   logo parece flutuar torto. Preto transparente, nunca a cor da marca — o
+   contorno é para separar da superfície, não para tingir a imagem alheia. */
+.zap .marca,.tr img,.resposta img,.print{outline:1px solid rgba(0,0,0,.09);
+outline-offset:-1px}
+
+/* Botão afunda de verdade no clique. `translateY` sozinho lê como o cartão
+   subindo; `scale` lê como dedo apertando, que é o que o gesto é. */
+button:active{transform:scale(.97);box-shadow:var(--sombra-1)}
+
+/* Alvo de toque. A pastilha de período tinha 12px de altura de texto e quase
+   nada em volta: no monitor da empresa, com o mouse na mão o dia inteiro,
+   errar a pastilha e recarregar o painel no período errado é atrito real. */
+.periodo{min-height:40px;display:inline-flex;align-items:center}
+.menu a{display:inline-flex;align-items:center;min-height:40px}
+.lateral a{min-height:40px}
 """
 
 
@@ -438,6 +523,50 @@ def print_embutido(caminho: str | None) -> str:
     dados = base64.b64encode(Path(caminho).read_bytes()).decode()
     return (f'<img class="print" src="data:image/png;base64,{dados}" '
             f'alt="comprovante da cotacao">')
+
+
+def entrada(titulo: str, cartao: str, *, chamada: str, apoio: str,
+            provas: tuple[tuple[str, str], ...] = (), rodape: str = "") -> str:
+    """O casco das telas de entrada: a do vendedor e a do painel.
+
+    Casco próprio, e não `pagina()`, por dois motivos. A faixa do topo existe
+    para navegar, e quem ainda não entrou não tem para onde ir — ela aparecia
+    ali só mostrando a logo, e o cartão logo abaixo mostrava a MESMA logo de
+    novo, uma embaixo da outra. E é a única tela do sistema onde vale gastar
+    área com apresentação: vista uma vez por sessão, sem trabalho para
+    atrapalhar.
+
+    `provas` são pares (valor, rótulo) e vêm de quem chama porque os números
+    são do SISTEMA — `len(AUTOMATICAS)`, quantas transportadoras existem.
+    Fixos aqui, envelheceriam na primeira que entrasse, e uma tela de entrada
+    mentindo sobre o tamanho do próprio sistema é pior do que uma sem número
+    nenhum. `layout.py` também não pode importar `web.transportadoras` sem
+    correr atrás de import circular, e passar por parâmetro custa uma linha.
+
+    `cartao` entra CRU: é HTML montado por quem chama, com o formulário. Tudo
+    que vem de fora — chamada, apoio, provas, rodapé — passa por `e()`.
+    """
+    itens = "".join(f"<div><dt>{e(v)}</dt><dd>{e(r)}</dd></div>"
+                    for v, r in provas)
+    lista = f'<dl class="provas">{itens}</dl>' if itens else ""
+    fim = f'<p class="rodape">{e(rodape)}</p>' if rodape else ""
+    return f"""<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{e(titulo)} — Cotafrete</title><style>{CSS}</style></head><body>
+<div class="entrada">
+  <aside class="entrada-marca">
+    <img class="logo" src="data:image/png;base64,{LOGO}" alt="Ventura">
+    <div>
+      <h1>{e(chamada)}</h1>
+      <p>{e(apoio)}</p>
+    </div>
+    {lista}
+  </aside>
+  <main class="entrada-form">
+    <div>{cartao}{fim}</div>
+  </main>
+</div>
+</body></html>"""
 
 
 def pagina(titulo: str, corpo: str, usuario: str | None = None) -> str:

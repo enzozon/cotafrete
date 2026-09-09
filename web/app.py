@@ -60,7 +60,7 @@ from web.ficha_ui import (
     ficha_da_cotacao, kg as _kg, pagador_da_cotacao, peso_por_volume,
     quem_e as _quem,
 )
-from web.layout import LOGO, e, moeda, pagina, print_embutido as _img
+from web.layout import entrada, LOGO, e, moeda, pagina, print_embutido as _img
 from web.transportadoras import cota_por_volume
 from core.models import (
     CotacaoRequest, Local, Mercadoria, NotaFiscal, Parte, Servico,
@@ -469,22 +469,30 @@ def tela_erro(problemas: list[str], dados: dict, usuario: str | None) -> str:
 # ------------------------------------------------------------------- login
 @app.get("/login", response_class=HTMLResponse)
 def tela_login() -> str:
-    return pagina("Entrar", f"""
-<div class="login">
-  <img src="data:image/png;base64,{LOGO}" alt="Ventura">
-  <div class="cartao">
-    <h1>Cotafrete</h1>
-    <p class="sub">Digite seu nome para começar. Suas cotações ficam
-    separadas das dos outros.</p>
-    <form method="post" action="/login">
-      <input name="usuario" placeholder="Seu nome" autofocus required
-             style="margin-bottom:12px">
-      <button type="submit" style="width:100%">Entrar</button>
-    </form>
-  </div>
-  <p class="sub">Sem senha por enquanto — serve para separar o histórico,
-  não para proteger acesso.</p>
-</div>""")
+    """A porta da frente. Os números do hero saem das CONSTANTES do sistema,
+    não escritos à mão: a tela mentiria sobre o próprio tamanho na primeira
+    transportadora que entrasse ou saísse."""
+    cartao = """
+<div class="cartao">
+  <h1>Entrar</h1>
+  <p class="sub">Digite seu nome para começar. Suas cotações ficam separadas
+  das dos outros.</p>
+  <form method="post" action="/login">
+    <input name="usuario" placeholder="Seu nome" autofocus required
+           autocomplete="username" style="margin-bottom:12px">
+    <button type="submit" style="width:100%">Entrar</button>
+  </form>
+</div>"""
+    return entrada(
+        "Entrar", cartao,
+        chamada="Um formulário. Todas as transportadoras.",
+        apoio="Preencha os dados da carga uma vez. O sistema cota sozinho nas "
+              "automáticas e deixa a mensagem pronta para as demais.",
+        provas=((str(len(AUTOMATICAS)), "cotam sozinhas"),
+                (str(len(TODAS_AS_SLUGS)), "transportadoras"),
+                ("~2 min", "para o comparativo")),
+        rodape="Sem senha por enquanto — serve para separar o histórico, não "
+               "para proteger acesso.")
 
 
 @app.post("/login")
