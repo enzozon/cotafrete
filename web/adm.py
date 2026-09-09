@@ -761,17 +761,6 @@ def _tempos(c: dict) -> str:
 
 
 SCRIPT_COTACAO = """
-// Clique amplia o print. Na tela ele fica pequeno, e quem abriu esta pagina
-// veio justamente ler o que apareceu no site da transportadora.
-//
-// Delegacao no documento, e nao um onclick em cada print: os cartoes de
-// resposta sao substituidos conforme as transportadoras respondem, e um
-// ouvinte posto em cada imagem morreria na primeira atualizacao - o print da
-// transportadora que acabou de responder seria justamente o que nao ampliaria.
-document.addEventListener('click', ev => {
-  const print = ev.target.closest('.print');
-  if (print) print.classList.toggle('zoom');
-});
 
 // O mesmo ao vivo do painel, com a versao EXATA desta cotacao: aqui a pessoa
 // esta olhando a resposta chegar, e a Della Volpe leva ~110s.

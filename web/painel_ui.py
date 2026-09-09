@@ -23,7 +23,7 @@ from datetime import date
 from math import hypot, pi
 
 from core.painel import categoria
-from web.layout import CSS as CSS_BASE, LOGO, e
+from web.layout import CSS as CSS_BASE, LOGO, LUPA, e
 
 # `categoria` é a ÚNICA coisa que este arquivo importa de fora do desenho, e
 # é função pura. Vem de lá em vez de ser reescrita aqui porque é ela quem diz
@@ -622,6 +622,7 @@ def pagina_painel(titulo: str, corpo: str, *, base: str = "") -> str:
 <title>{e(titulo)} — Cotafrete</title>
 <style>{CSS_BASE}{CSS}</style></head><body>
 <div class="painel">{_lateral(base)}<main class="conteudo">{corpo}</main></div>
+{LUPA}
 </body></html>"""
 
 

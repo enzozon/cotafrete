@@ -30,8 +30,20 @@ def test_o_menu_so_aparece_com_usuario():
 
 
 def test_escapa_html_do_usuario():
-    """O nome vem de um formulário aberto. Sem escapar, vira XSS."""
-    assert "<script>" not in layout.pagina("t", "c", usuario="<script>x</script>")
+    """O nome vem de um formulário aberto. Sem escapar, vira XSS.
+
+    A asserção mudou em 09/09/2026, e para MAIS estrita. Ela era "a página não
+    contém <script>", o que só provava alguma coisa enquanto o casco não
+    tivesse script nenhum — a lupa do comprovante trouxe um, e a asserção
+    passou a falhar sem que nada de segurança tivesse mudado.
+
+    Agora confere as duas metades do que importa, e não um efeito colateral
+    delas: o que a pessoa digitou NÃO aparece cru, e aparece escapado. Isso
+    continua valendo por mais scripts que o casco venha a ter."""
+    html = layout.pagina("t", "c", usuario="<script>alert(1)</script>")
+
+    assert "<script>alert(1)</script>" not in html
+    assert "&lt;script&gt;alert(1)&lt;/script&gt;" in html
     assert layout.e("<b>&</b>") == "&lt;b&gt;&amp;&lt;/b&gt;"
 
 # ------------------------------------------------------- contraste da marca
@@ -130,3 +142,61 @@ def test_o_brilho_de_espera_casa_com_o_cartao_que_o_app_monta():
     assert ".res:has(.cotando)" in layout.CSS
     assert 'class="cotando"' in pathlib.Path(
         modulo.__file__).read_text(encoding="utf-8")
+
+
+# ------------------------------------------------------ lupa do comprovante
+#
+# O zoom do print ja quebrou duas vezes pelo mesmo motivo, e a segunda correcao
+# so consertou uma das telas. A causa e sempre a mesma: `position:fixed` se
+# ancora no ancestral mais proximo que tenha `transform`, e todo cartao carrega
+# um transform identidade deixado pela animacao de entrada (`fill-mode:both`).
+# Medido em 09/09/2026: o print abria dentro do cartao, no tamanho natural, por
+# cima do texto da pagina.
+
+def test_a_lupa_nao_usa_position_fixed():
+    """`position:fixed` na imagem e a raiz do bug, nao um detalhe da
+    implementacao. Qualquer volta a ele quebra de novo assim que a imagem
+    estiver dentro de um cartao - que e sempre."""
+    assert ".print.zoom" not in layout.CSS,         "o zoom por classe + position:fixed foi o que quebrou duas vezes"
+    assert "position:fixed" not in layout.CSS.split(".lupa{")[1].split("}")[0]
+
+
+def test_a_lupa_abre_na_camada_de_topo():
+    """`showModal()` e o que poe o dialogo na camada de topo do navegador:
+    acima de todo o documento, sem z-index, e imune a transform de ancestral.
+    Um `<dialog>` aberto com `show()` (nao-modal) NAO ganha isso."""
+    assert "showModal()" in layout.LUPA
+    assert "<dialog" in layout.LUPA
+    assert "::backdrop" in layout.CSS, "e o que escurece a pagina atras"
+
+
+def test_a_lupa_existe_nas_duas_telas_que_mostram_print():
+    """A correcao anterior consertou a tela do vendedor e deixou a do adm
+    quebrada, porque cada uma tinha a sua copia do mesmo codigo. As duas
+    montam o casco por funcoes diferentes - e as duas precisam da lupa."""
+    from web import painel_ui
+
+    assert "<dialog" in layout.pagina("t", "<p>x</p>")
+    assert "<dialog" in painel_ui.pagina_painel("t", "<p>x</p>")
+
+
+def test_existe_UMA_implementacao_da_lupa_e_nao_uma_por_tela():
+    """Eram tres copias de `classList.toggle('zoom')`, em dois arquivos. Foi
+    isso que deixou a correcao chegar numa tela so. Se voltar a haver copia,
+    volta a haver tela consertada pela metade."""
+    from web import adm, app as app_web
+
+    for modulo in (app_web, adm):
+        fonte = pathlib.Path(modulo.__file__).read_text(encoding="utf-8")
+        assert "toggle('zoom')" not in fonte and 'toggle("zoom")' not in fonte,             f"{modulo.__name__} voltou a ter a sua propria copia do zoom"
+
+
+def test_o_comprovante_abre_em_largura_de_leitura():
+    """O print e para ser LIDO: o vendedor explica a composicao do frete ao
+    cliente a partir dele. Encolher ate caber na altura da tela deixaria a
+    letra menor que na miniatura - por isso largura cheia e rolagem dentro do
+    dialogo, e nao `object-fit:contain`."""
+    regra = layout.CSS.split(".lupa{")[1].split("}")[0]
+
+    assert "overflow:auto" in regra
+    assert "object-fit" not in regra

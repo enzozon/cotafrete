@@ -1218,12 +1218,6 @@ def formulario_dellavolpe(cotacao_id: int,
 <a href="/email/{cotacao_id}/dellavolpe">Abrir e-mail pronto</a></p>
 
 <p><a class="botao2" href="/cotacao/{cotacao_id}">voltar para a cotação</a></p>
-<script>
-// Mesmo gesto das prints de resultado: clique amplia, porque os detalhes do
-// captcha e da barra de favoritos ficam pequenos demais para ler direto.
-document.querySelectorAll(".print").forEach(i =>
-  i.onclick = () => i.classList.toggle("zoom"));
-</script>
 """, usuario))
 
 
@@ -1505,11 +1499,6 @@ document.querySelectorAll(".zap").forEach(a => a.addEventListener("click", () =>
   const q = document.getElementById("quantas");
   q.textContent = String(Number(q.textContent) + 1);
 }}));
-
-// clique amplia o print: na tela ele fica pequeno, e o funcionario precisa
-// conseguir ler a composicao do frete para explicar ao cliente
-document.querySelectorAll(".print").forEach(i =>
-  i.onclick = () => i.classList.toggle("zoom"));
 </script>
 """, usuario))
 

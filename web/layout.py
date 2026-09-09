@@ -125,13 +125,6 @@ grid-template-columns:repeat(auto-fit,minmax(250px,1fr))}
 background:var(--papel);box-shadow:var(--sombra-1);
 transition:transform .18s var(--suave),box-shadow .18s var(--suave)}
 .res:hover{transform:translateY(-2px);box-shadow:var(--sombra-2)}
-/* `transform` em QUALQUER ancestral vira o container do `position:fixed` —
-   é a regra do CSS, não bug de navegador. Com o card subindo no hover, o
-   print clicado (.print.zoom, position:fixed) parava de cobrir a tela
-   inteira e ficava preso dentro do cartão. Sem o `transform` aqui, o zoom
-   volta a valer contra a janela, que é como .resposta (mesmo print, no
-   admin) sempre fez — aquele cartão nunca teve hover com transform. */
-.res:has(.print.zoom){transform:none}
 /* A mais barata ganha a borda verde E um filete no topo: cor de borda sozinha
    some numa tela cheia de cartões brancos vista de longe. */
 .res.melhor{border-color:var(--ok);box-shadow:0 0 0 1px var(--ok),
@@ -219,9 +212,30 @@ padding:11px 13px;font-size:13px;margin-bottom:14px}
 .print{width:100%;margin-top:10px;border:1px solid var(--borda);
 border-radius:var(--raio-p);cursor:zoom-in;transition:box-shadow .16s}
 .print:hover{box-shadow:var(--sombra-2)}
-.print.zoom{position:fixed;inset:16px;width:auto;height:auto;z-index:9;
-object-fit:contain;background:#fff;box-shadow:0 8px 40px rgba(0,0,0,.4);
-cursor:zoom-out}
+/* ---- lupa do comprovante ----
+   O diálogo modal vive na CAMADA DE TOPO do navegador: fica acima de todo o
+   documento sem precisar de z-index, e — o que importa aqui — não se ancora
+   em ancestral com `transform`. O zoom antigo era `position:fixed` na própria
+   imagem, e abria preso dentro do cartão, por cima do texto: todo cartão
+   carrega um `transform` identidade, deixado pela animação de entrada com
+   `fill-mode:both`. Ver o comentário de LUPA, mais abaixo neste arquivo.
+
+   Largura de leitura, e não "caber na tela": o comprovante é para ser LIDO —
+   o vendedor explica a composição do frete ao cliente a partir dele. Encolher
+   um print de 1100x1700 até caber em 900px de altura deixaria a letra menor
+   que na miniatura. Aqui ele abre na largura cheia e rola dentro do diálogo. */
+.lupa{border:0;padding:0;background:transparent;
+width:min(1180px,94vw);max-height:92vh;overflow:auto;overscroll-behavior:contain;
+border-radius:var(--raio);box-shadow:var(--sombra-3)}
+.lupa::backdrop{background:rgba(16,22,35,.72)}
+.lupa img{display:block;width:100%;height:auto;background:#fff;cursor:zoom-out}
+/* Entrada curta. O `::backdrop` escurece junto — sem isso o comprovante
+   aparece de estalo sobre a página clara e o olho perde onde ele nasceu.
+   A regra global de prefers-reduced-motion, lá no topo, desliga as duas. */
+@keyframes lupa-entra{from{opacity:0;transform:scale(.97)}to{opacity:1;transform:none}}
+@keyframes lupa-fundo{from{opacity:0}to{opacity:1}}
+.lupa[open]{animation:lupa-entra .18s var(--suave)}
+.lupa[open]::backdrop{animation:lupa-fundo .18s var(--suave)}
 .botao2{display:inline-block;background:var(--papel);color:var(--marca);
 border:1px solid var(--borda-forte);border-radius:var(--raio-p);
 padding:10px 17px;font-size:14px;font-weight:600;text-decoration:none;
@@ -352,6 +366,59 @@ def moeda(v: Decimal | None) -> str:
     return f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 
+# ------------------------------------------------------------------- lupa
+#
+# O comprovante ampliado. Vive aqui porque as QUATRO telas que mostram print
+# precisam dele: a cotação do vendedor, a do adm, a do bookmarklet da Della
+# Volpe e o e-mail pronto. Antes eram três cópias do mesmo `onclick`, e a
+# correção de uma não chegava nas outras.
+#
+# `<dialog>` aberto com `showModal()`, e não uma `<img>` com `position:fixed`:
+# é a única forma que NÃO quebra. `position:fixed` se ancora no ancestral mais
+# próximo que tenha `transform` — é a regra do CSS, não bug de navegador — e
+# TODO cartão do sistema carrega um. Não pelo `:hover`: a animação de entrada
+# usa `fill-mode:both`, então o `transform` da última keyframe fica resolvido
+# no elemento para sempre. `getComputedStyle` devolve `matrix(1,0,0,1,0,0)`
+# em vez de `none`, e identidade cria containing block igual.
+#
+# Medido em 09/09/2026, com a janela em 1400x900: o print de 1100x1700 abria
+# em 1102x1702 na posição (258, 281) — ou seja, dentro do cartão, no tamanho
+# natural, por cima do texto da página e por baixo do que viesse depois. Um
+# `:has(.print.zoom){transform:none}` no cartão consertaria ESTE caso e
+# voltaria a quebrar no próximo ancestral que ganhasse `transform`, `filter`
+# ou `will-change`.
+#
+# Diálogo modal vai para a CAMADA DE TOPO do navegador: acima de todo o
+# documento, sem z-index, imune a transform de ancestral. De brinde vêm o
+# `::backdrop` que escurece a página, o Esc que fecha e o foco preso dentro.
+LUPA = """<dialog class="lupa" aria-label="Comprovante ampliado">
+<img alt="Comprovante da cotação, ampliado"></dialog>
+<script>
+(() => {
+  const lupa = document.querySelector('.lupa');
+  if (!lupa) return;
+  const img = lupa.querySelector('img');
+
+  // Delegação no documento, e não um ouvinte por imagem: na tela do adm os
+  // cartões de resposta são trocados sozinhos conforme as transportadoras
+  // respondem, e ouvinte preso a uma imagem morre junto com ela.
+  document.addEventListener('click', ev => {
+    const print = ev.target.closest('.print');
+    if (!print) return;
+    img.src = print.src;
+    lupa.showModal();
+  });
+
+  // Clique em qualquer lugar fecha — na imagem ou no fundo escuro. O Esc já
+  // vem de graça com o showModal().
+  lupa.addEventListener('click', () => lupa.close());
+  // Devolve a rolagem ao topo entre um print e outro: sem isto, abrir o
+  // segundo comprovante mostra o meio dele.
+  lupa.addEventListener('close', () => { lupa.scrollTop = 0; });
+})();
+</script>"""
+
+
 def print_embutido(caminho: str | None) -> str:
     """Embute o print da transportadora na página, em base64.
 
@@ -385,4 +452,4 @@ def pagina(titulo: str, corpo: str, usuario: str | None = None) -> str:
 <title>{e(titulo)} — Cotafrete</title><style>{CSS}</style></head><body>
 <div class="topo"><img src="data:image/png;base64,{LOGO}" alt="Ventura">
 {quem}</div>
-<div class="wrap">{corpo}</div></body></html>"""
+<div class="wrap">{corpo}</div>{LUPA}</body></html>"""
