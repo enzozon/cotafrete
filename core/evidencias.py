@@ -10,8 +10,10 @@ continua no banco para sempre, só o print pesado expira.
 
 from __future__ import annotations
 
+import io
 import shutil
 import time
+import zipfile
 from pathlib import Path
 
 RAIZ_EVIDENCIAS = Path("teste_real")
@@ -36,6 +38,22 @@ def limpar_antigas(raiz: Path = RAIZ_EVIDENCIAS,
                 shutil.rmtree(run, ignore_errors=True)
                 apagadas += 1
     return apagadas
+
+
+def montar_zip_de_prints(resultados: list[dict]) -> bytes:
+    """O print final de cada transportadora que respondeu, num .zip só.
+
+    Usado tanto pela tela do vendedor quanto pelo painel adm — mesma regra
+    nos dois: só o print já mostrado na tela (não as etapas intermediárias,
+    que não têm registro no banco). Evidência apagada pela retenção é
+    ignorada, não erro: o zip sai só com o que ainda existe."""
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+        for r in resultados:
+            caminho = r["evidencia"]
+            if caminho and Path(caminho).exists():
+                zf.write(caminho, arcname=f'{r["transportadora"]}.png')
+    return buffer.getvalue()
 
 
 if __name__ == "__main__":

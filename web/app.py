@@ -35,8 +35,8 @@ from pathlib import Path
 from urllib.parse import quote
 
 from dotenv import load_dotenv
-from fastapi import Cookie, FastAPI, Form, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi import Cookie, FastAPI, Form, HTTPException, Request
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 load_dotenv(override=False)
@@ -51,7 +51,7 @@ from core import cep as buscador_cep
 from core import cnpj as buscador_cnpj
 from core import selecao
 from core.banco import Banco
-from core.evidencias import limpar_antigas
+from core.evidencias import limpar_antigas, montar_zip_de_prints
 from core.retentativa import (
     ESPERA_MAXIMA_S, SEM_REPETICAO, TENTATIVAS_MAXIMAS, cotar_com_retentativa,
 )
@@ -1451,6 +1451,14 @@ def ver_cotacao(cotacao_id: int,
             f'<span class="ir">Preencher formulário (rápido)</span>'
             f'<span class="jafoi">Aberta</span></a></div>')
 
+    # Só depois que todas responderam (ou desistiram): baixar no meio da
+    # espera daria um zip incompleto, com metade das transportadoras ainda
+    # sem print nenhum.
+    baixar_prints = (
+        f'<a class="botao2" style="margin-bottom:12px;display:inline-block"'
+        f' href="/cotacao/{cotacao_id}/evidencias.zip">Baixar prints</a>'
+        if cartoes and not faltam else "")
+
     return HTMLResponse(pagina(f"Cotação {cotacao_id}", f"""
 {recarrega}
 {cabecalho_espera}
@@ -1462,6 +1470,7 @@ def ver_cotacao(cotacao_id: int,
 
 <div class="cartao">
   <h2 style="font-size:15px;margin:0 0 12px">Cotadas automaticamente</h2>
+  {baixar_prints}
   <div class="resultados">{cartoes or '<p class="sub">Nenhum resultado.</p>'}</div>
 </div>
 
@@ -1503,6 +1512,25 @@ document.querySelectorAll(".print").forEach(i =>
   i.onclick = () => i.classList.toggle("zoom"));
 </script>
 """, usuario))
+
+
+@app.get("/cotacao/{cotacao_id}/evidencias.zip")
+def baixar_evidencias_zip(cotacao_id: int,
+                          usuario: str | None = Cookie(None, alias=COOKIE)):
+    """Todos os prints desta cotação num .zip só — mesma ideia do painel adm
+    (core.evidencias.montar_zip_de_prints), só que aqui filtrado pelo dono:
+    `banco.buscar_cotacao` é a mesma checagem que a tela usa para não abrir
+    a cotação de outro vendedor."""
+    if not usuario:
+        return RedirectResponse("/login", status_code=303)
+    c = banco.buscar_cotacao(cotacao_id, usuario)
+    if c is None:
+        raise HTTPException(404, "Cotação não encontrada")
+
+    return Response(
+        montar_zip_de_prints(c["resultados"]), media_type="application/zip",
+        headers={"Content-Disposition":
+                 f'attachment; filename="cotacao-{cotacao_id}-prints.zip"'})
 
 
 # ---------------------------------------------------------------- histórico

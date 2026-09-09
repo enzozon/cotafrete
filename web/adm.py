@@ -30,13 +30,10 @@ Três regras que não devem ser afrouxadas sem pensar:
 from __future__ import annotations
 
 import hmac
-import io
 import os
 import time
-import zipfile
 from contextlib import closing
 from itertools import groupby
-from pathlib import Path
 from urllib.parse import quote
 
 from fastapi import APIRouter, Cookie, Form, HTTPException
@@ -44,6 +41,7 @@ from fastapi.responses import (HTMLResponse, JSONResponse,
                                RedirectResponse, Response)
 
 from core.banco import Banco
+from core.evidencias import montar_zip_de_prints
 from core import painel as contas
 from web import painel_ui as ui, transportadoras
 from web.ficha_ui import ficha_da_cotacao, lugar, quando as _quando
@@ -952,14 +950,7 @@ def baixar_evidencias_zip(cotacao_id: int,
     if c is None:
         raise HTTPException(404, "Cotação não encontrada")
 
-    buffer = io.BytesIO()
-    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
-        for r in c["resultados"]:
-            caminho = r["evidencia"]
-            if caminho and Path(caminho).exists():
-                zf.write(caminho, arcname=f'{r["transportadora"]}.png')
-
     return Response(
-        buffer.getvalue(), media_type="application/zip",
+        montar_zip_de_prints(c["resultados"]), media_type="application/zip",
         headers={"Content-Disposition":
                  f'attachment; filename="cotacao-{cotacao_id}-prints.zip"'})

@@ -125,6 +125,13 @@ grid-template-columns:repeat(auto-fit,minmax(250px,1fr))}
 background:var(--papel);box-shadow:var(--sombra-1);
 transition:transform .18s var(--suave),box-shadow .18s var(--suave)}
 .res:hover{transform:translateY(-2px);box-shadow:var(--sombra-2)}
+/* `transform` em QUALQUER ancestral vira o container do `position:fixed` —
+   é a regra do CSS, não bug de navegador. Com o card subindo no hover, o
+   print clicado (.print.zoom, position:fixed) parava de cobrir a tela
+   inteira e ficava preso dentro do cartão. Sem o `transform` aqui, o zoom
+   volta a valer contra a janela, que é como .resposta (mesmo print, no
+   admin) sempre fez — aquele cartão nunca teve hover com transform. */
+.res:has(.print.zoom){transform:none}
 /* A mais barata ganha a borda verde E um filete no topo: cor de borda sozinha
    some numa tela cheia de cartões brancos vista de longe. */
 .res.melhor{border-color:var(--ok);box-shadow:0 0 0 1px var(--ok),
