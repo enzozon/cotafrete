@@ -135,7 +135,7 @@ def test_rosca_de_zero_mostra_zero():
     html = ui.rosca(0.0, "jadlog", "0 de 3 respostas")
 
     assert ">0%<" in html
-    assert "#bf2600" in html
+    assert ui.TOM["erro"][0] in html
 
 
 def test_rosca_cheia_nao_deixa_arco_faltando():
@@ -145,10 +145,17 @@ def test_rosca_cheia_nao_deixa_arco_faltando():
 
 def test_rosca_so_fica_verde_quando_e_bom_de_verdade():
     """Anel verde em 40% tranquiliza justamente quem deveria estar ligando
-    para a transportadora."""
-    assert "#00875a" in ui.rosca(0.9, "x")
-    assert "#00875a" not in ui.rosca(0.6, "x")
-    assert "#00875a" not in ui.rosca(0.4, "x")
+    para a transportadora.
+
+    O verde sai de `ui.TOM` e não de um hexadecimal colado aqui: o que este
+    teste guarda é QUANDO o anel fica verde, não qual verde é. Colado, ele
+    passava a acusar falha toda vez que alguém mexesse na paleta — foi o que
+    aconteceu quando o painel virou escuro."""
+    verde = ui.TOM["ok"][0]
+
+    assert verde in ui.rosca(0.9, "x")
+    assert verde not in ui.rosca(0.6, "x")
+    assert verde not in ui.rosca(0.4, "x")
 
 
 def test_nome_de_transportadora_e_escapado_na_rosca():

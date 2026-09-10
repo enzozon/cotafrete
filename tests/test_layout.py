@@ -147,6 +147,25 @@ def test_a_rota_da_entrada_nao_escapa_para_o_resto_do_sistema():
                 pytest.fail(f"seletor .rota sem escopo de entrada: {seletor!r}")
 
 
+def test_o_painel_e_a_unica_tela_que_troca_o_tema():
+    """O escuro do painel mora no CSS do painel, e o casco do vendedor nao o
+    carrega. Se um dia alguem empilhar o CSS do painel no `pagina()` para
+    reaproveitar um componente, o formulario do vendedor vira preto sem que
+    nenhum teste de tela reclame - eles olham texto, nao cor."""
+    from web import painel_ui
+
+    do_vendedor = layout.pagina("t", "<b>x</b>")
+
+    assert "--papel:#fff" in do_vendedor
+    assert "--papel:#161d33" not in do_vendedor
+    assert "color-scheme:dark" not in do_vendedor
+    # E no painel os dois entram, nesta ordem: o claro define, o escuro
+    # sobrescreve. Invertido, o painel voltaria a ser branco.
+    do_painel = painel_ui.pagina_painel("t", "<b>x</b>")
+    assert (do_painel.index("--papel:#fff")
+            < do_painel.index("--papel:#161d33"))
+
+
 def test_o_brilho_de_espera_casa_com_a_linha_que_o_app_monta():
     """O brilho da transportadora que ainda espera resposta e ligado por
     SELETOR, e nao por uma classe que alguem precisa lembrar de escrever.

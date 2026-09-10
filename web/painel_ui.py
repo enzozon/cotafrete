@@ -37,12 +37,32 @@ from web.layout import CSS as CSS_BASE, LOGO, LUPA, e
 #
 # Recusa NÃO é vermelha: a transportadora dizendo "não levo isso" está
 # funcionando. Vermelho é para o que quebrou.
+# Os tons do painel, num lugar só. Cada um traz o par que a tela usa: a cor
+# da tinta e a lavagem que vai atrás dela num chip. Estavam soltos em cinco
+# lugares — este dicionário, as quatro chamadas de `numero()` em `faixa()`,
+# quatro em web/adm.py e os três limiares de `rosca()` — e virar o painel do
+# claro para o escuro obrigava a reescrever cada um a mão, sem esquecer
+# nenhum. Esquecer um deixa um número com cor de tema claro no meio de um
+# quadro escuro, e ninguém percebe até alguém reclamar que "sumiu".
+#
+# São calculados contra o cartão (#161d33): o pior é o roxo, com 6.1:1. A
+# WCAG pede 3:1 para gráfico que carrega sentido (SC 1.4.11), e no tema claro
+# o vermelho de falha dava 2.8:1 sobre este fundo — não passava.
+TOM = {
+    "marca": ("#70c8e0", "#17273a"),
+    "ok": ("#3ecf8e", "#142b26"),
+    "atencao": ("#e5a54a", "#2b2618"),
+    "erro": ("#ff8f75", "#2d201f"),
+    "neutro": ("#98a1b8", "#1f2740"),
+    "roxo": ("#a78bfa", "#242847"),
+}
+
 CORES = {
-    "sucesso": "#00875a",
-    "recusa": "#d97706",
-    "falha": "#bf2600",
-    "nossa": "#8b93a3",
-    "inesperado": "#7c3aed",
+    "sucesso": TOM["ok"][0],
+    "recusa": TOM["atencao"][0],
+    "falha": TOM["erro"][0],
+    "nossa": TOM["neutro"][0],
+    "inesperado": TOM["roxo"][0],
 }
 
 ROTULOS = {
@@ -87,9 +107,49 @@ CSS = """
    Entra DEPOIS do CSS de web/layout.py, e por isso pode sobrescrevê-lo. O
    painel é a única tela com casco próprio: as outras são formulário e
    resultado, esta é um quadro de instrumentos. */
-:root{--fundo:#f4f6f9;--sombra:0 1px 2px rgba(16,24,40,.05),
-0 2px 8px rgba(16,24,40,.06);--sombra2:0 4px 20px rgba(16,24,40,.10)}
-body{background:var(--fundo)}
+/* O painel troca o SISTEMA DE CORES inteiro, e não uma regra aqui e outra
+   ali: os tokens de web/layout.py são redefinidos neste :root e valem só nas
+   páginas com casco de painel. As telas do vendedor continuam claras.
+
+   Por que só esta: quem opera o Cotafrete passa o dia DENTRO dela, muitas
+   vezes num segundo monitor, parada, enquanto trabalha noutra coisa. Tela
+   permanente cansa clara. E no escuro o print da transportadora — que é
+   branco — vira o ponto mais claro da tela, que é exatamente onde o olho
+   precisa cair quando alguém vem perguntar "de onde saiu esse preço?".
+
+   As razões de contraste foram calculadas com a fórmula da WCAG ANTES de a
+   regra ser escrita: 4.5:1 para texto, 3:1 para o que é gráfico e carrega
+   sentido (SC 1.4.11). O pior caso de cada grupo está anotado na frente. */
+:root{
+/* A marca no escuro é o CIANO da logo, não o azul. #2f3f88 sobre #161d33 dá
+   1.4:1 — a cor da marca estaria na tela e ninguém veria. O azul continua
+   sendo marca, mas como FUNDO: a lateral e o filete do topo. */
+--marca:#70c8e0;--marca-forte:#8ad6ea;--marca-viva:#4058a0;
+--lavagem:#1c2543;
+/* O que se escreve EM CIMA de um preenchimento da marca. Herdar o #fff do
+   tema claro daria 1.9:1 sobre o ciano: o botão sumiria por dentro. */
+--sobre-marca:#0b0f1c;
+/* neutros: 13.9:1, 9.1:1 e 6.7:1 sobre o cartão */
+--tinta:#e7eaf2;--tinta2:#b6c0d6;--fraco:#9aa4bd;
+--borda:#2e3a5e;--borda-forte:#465684;--fundo:#0b0f1c;--papel:#161d33;
+/* Semânticos: o SENTIDO é o mesmo, só a luminância sobe. Verde 8.4:1, âmbar
+   7.8:1, vermelho 7.5:1 sobre o cartão — contra 3.7, 5.2 e 2.8 que as cores
+   claras dariam aqui. O vermelho de falha, no escuro, era ilegível. */
+--ok:#3ecf8e;--erro:#ff8f75;--atencao:#e5a54a;
+/* No escuro sombra não separa nada: quem separa é o degrau de luminância
+   entre #0b0f1c e #161d33. A sombra fica só para dizer o que está POR CIMA
+   quando o cursor levanta um cartão. */
+--sombra:0 1px 2px rgba(0,0,0,.4);
+--sombra2:0 10px 28px -8px rgba(0,0,0,.6);
+--sombra-1:0 1px 2px rgba(0,0,0,.4);
+--sombra-2:0 10px 28px -8px rgba(0,0,0,.6);
+--sombra-3:0 20px 48px -12px rgba(0,0,0,.75);
+/* Diz ao NAVEGADOR que a página é escura, para ele pintar de escuro o que
+   desenha sozinho: barra de rolagem, cursor de texto, caixa de seleção. Sem
+   isto a barra branca do gráfico rolável era a coisa mais clara da tela,
+   competindo com o print — que é o que precisa chamar o olho. */
+color-scheme:dark}
+body{background:var(--fundo);color:var(--tinta)}
 /* Os links da lateral são âncoras para as seções da própria página; sem
    isto o salto é instantâneo e ninguém percebe para onde a tela foi. */
 html{scroll-behavior:smooth}
@@ -101,11 +161,12 @@ background:linear-gradient(175deg,#24305e 0%,#141a35 100%);color:#b6c2dd;
 display:flex;flex-direction:column;padding:20px 0 16px}
 .lateral .marca{display:flex;align-items:center;gap:10px;padding:0 20px 20px;
 border-bottom:1px solid rgba(255,255,255,.07);margin-bottom:14px}
-.lateral .marca img{height:30px;filter:brightness(0) invert(1);opacity:.92}
+.lateral .marca img{height:26px;width:auto;background:#fff;padding:5px 8px;
+border-radius:8px}
 .lateral .marca b{color:#fff;font-size:15px;letter-spacing:2.4px;
 text-transform:uppercase;font-weight:700}
 .lateral .secao{padding:14px 20px 6px;font-size:10px;letter-spacing:1.4px;
-text-transform:uppercase;color:#7280a6;font-weight:700}
+text-transform:uppercase;color:#95a2c6;font-weight:700}
 .lateral a{display:flex;align-items:center;gap:11px;padding:9px 20px;
 color:#b6c2dd;text-decoration:none;font-size:13.5px;
 border-left:3px solid transparent;
@@ -116,7 +177,7 @@ border-left-color:#70c8e0;font-weight:600}
 .lateral a svg{width:17px;height:17px;flex:none;opacity:.75}
 .lateral a.atual svg{opacity:1}
 .lateral .rodape{margin-top:auto;padding:12px 20px 0;font-size:11px;
-color:#606e94;border-top:1px solid rgba(255,255,255,.07)}
+color:#95a2c6;border-top:1px solid rgba(255,255,255,.07)}
 
 /* ---- área de conteúdo ---- */
 .conteudo{flex:1;min-width:0;padding:24px 28px 64px}
@@ -127,19 +188,19 @@ margin-bottom:18px}
 flex-wrap:wrap}
 .cabecalho .direita{margin-left:auto;display:flex;align-items:center;gap:10px}
 .aovivo{display:inline-flex;align-items:center;gap:7px;font-size:11.5px;
-color:var(--fraco);background:#fff;border:1px solid var(--borda);
+color:var(--fraco);background:var(--papel);border:1px solid var(--borda);
 border-radius:99px;padding:5px 12px}
 .aovivo i{width:7px;height:7px;border-radius:50%;background:var(--ok);
 animation:pisca 2.2s ease-in-out infinite}
 @keyframes pisca{50%{opacity:.2;transform:scale(.7)}}
 
 /* ---- seletor de período, agora em pastilhas ---- */
-.periodos{margin-left:auto;display:flex;gap:4px;background:#fff;
+.periodos{margin-left:auto;display:flex;gap:4px;background:var(--papel);
 border:1px solid var(--borda);border-radius:99px;padding:4px}
-.periodo{padding:6px 15px;border-radius:99px;font-size:12.5px;color:#5b6478;
+.periodo{padding:6px 15px;border-radius:99px;font-size:12.5px;color:var(--fraco);
 text-decoration:none;transition:background .15s,color .15s;white-space:nowrap}
 .periodo:hover{background:var(--fundo)}
-.periodo.atual{background:var(--marca);color:#fff;font-weight:600;
+.periodo.atual{background:var(--marca);color:var(--sobre-marca);font-weight:600;
 text-decoration:none}
 
 /* ---- grade de cartões ---- */
@@ -184,7 +245,7 @@ box-shadow:var(--sombra);transition:transform .18s,box-shadow .18s}
 background:var(--cor,var(--marca))}
 .numero .ico{position:absolute;right:14px;top:14px;width:34px;height:34px;
 border-radius:10px;display:grid;place-items:center;
-background:var(--fraca,#eef1fb)}
+background:var(--fraca,var(--lavagem))}
 .numero .ico svg{width:17px;height:17px}
 .numero b{display:block;font-size:36px;line-height:1.05;font-weight:700;
 letter-spacing:-1.4px;font-variant-numeric:tabular-nums;color:var(--tinta)}
@@ -199,9 +260,9 @@ letter-spacing:-1.4px;font-variant-numeric:tabular-nums;color:var(--tinta)}
    5px de altura, ilegível. Abaixo de .grafico ele para de encolher e passa a
    rolar de lado — o número continua do tamanho que dá para ler. */
 .grafico{overflow-x:auto}
-.eixo{font-size:10px;fill:#9aa2b1}
-.malha{stroke:#eceff4;stroke-width:1}
-.fantasma{fill:#f2f4f8}
+.eixo{font-size:10px;fill:var(--fraco)}
+.malha{stroke:var(--borda);stroke-width:1}
+.fantasma{fill:var(--lavagem)}
 .barra-g{fill:url(#tintaBarra);transform-box:fill-box;transform-origin:bottom;
 animation:sobe .65s cubic-bezier(.22,.9,.3,1) both}
 .barra-g:hover{filter:brightness(1.12)}
@@ -209,7 +270,7 @@ animation:sobe .65s cubic-bezier(.22,.9,.3,1) both}
 .linha-g{fill:none;stroke:var(--ok);stroke-width:2.4;stroke-linecap:round;
 stroke-linejoin:round;animation:traca 1.15s ease-out both}
 @keyframes traca{from{stroke-dashoffset:var(--comp)}to{stroke-dashoffset:0}}
-.ponto-g{fill:#fff;stroke:var(--ok);stroke-width:2;transform-box:fill-box;
+.ponto-g{fill:var(--papel);stroke:var(--ok);stroke-width:2;transform-box:fill-box;
 transform-origin:center;animation:surge .3s ease-out both}
 @keyframes surge{from{opacity:0;transform:scale(0)}
 to{opacity:1;transform:scale(1)}}
@@ -221,7 +282,7 @@ to{opacity:1;transform:scale(1)}}
 grid-template-columns:repeat(auto-fit,minmax(102px,1fr))}
 .rosca{text-align:center;padding:6px 2px}
 .rosca svg{width:100%;max-width:94px;height:auto}
-.rosca .trilho{fill:none;stroke:#edeff4;stroke-width:9}
+.rosca .trilho{fill:none;stroke:var(--borda);stroke-width:9}
 .rosca .arco{fill:none;stroke-width:9;stroke-linecap:round;
 transform:rotate(-90deg);transform-origin:50% 50%;
 animation:enche 1.05s cubic-bezier(.22,.9,.3,1) both}
@@ -229,7 +290,7 @@ animation:enche 1.05s cubic-bezier(.22,.9,.3,1) both}
 to{stroke-dashoffset:var(--cheio)}}
 .rosca .meio{font-size:19px;font-weight:700;fill:var(--tinta);
 font-variant-numeric:tabular-nums}
-.rosca .meio.sem{font-size:15px;fill:#a8aebc}
+.rosca .meio.sem{font-size:15px;fill:var(--fraco)}
 .rosca .quem{font-size:12px;margin:2px 0 0;font-weight:600;overflow:hidden;
 text-overflow:ellipsis;white-space:nowrap}
 .rosca .quanto{font-size:11px;color:var(--fraco);margin:0}
@@ -244,7 +305,7 @@ to{opacity:1;transform:none}}
 .pizza .fatia:hover{stroke-width:24}
 .pizza .total{font-size:26px;font-weight:700;fill:var(--tinta);
 font-variant-numeric:tabular-nums}
-.pizza .total-sub{font-size:9.5px;fill:#9aa2b1;letter-spacing:1px}
+.pizza .total-sub{font-size:9.5px;fill:var(--fraco);letter-spacing:1px}
 .tabela-legenda{flex:1;min-width:150px;border-collapse:collapse;
 font-size:12.5px}
 .painel .tabela-legenda td{padding:5px 0;border:0}
@@ -261,9 +322,9 @@ font-size:12.5px}
 font-weight:600}
 .rank .qtd{color:var(--fraco);font-variant-numeric:tabular-nums}
 .rank .trilho{grid-column:1/-1;height:8px;border-radius:99px;
-background:#eef0f5;overflow:hidden}
+background:var(--borda);overflow:hidden}
 .rank .trilho i{display:block;height:100%;border-radius:99px;
-background:linear-gradient(90deg,#384890,#70c8e0);
+background:linear-gradient(90deg,#4058a0,#70c8e0);
 animation:cresce .8s cubic-bezier(.22,.9,.3,1) both}
 @keyframes cresce{from{width:0}}
 
@@ -286,16 +347,16 @@ font-variant-numeric:tabular-nums;white-space:nowrap}
 .painel th{padding:8px;position:sticky;top:0;background:var(--papel);z-index:2}
 .painel td{padding:9px 8px;vertical-align:middle}
 .painel tbody tr{transition:background .12s}
-.painel tbody tr:hover td{background:#f7f9fc}
+.painel tbody tr:hover td{background:var(--lavagem)}
 .rolagem{max-height:540px;overflow:auto;margin:0 -20px -18px;
 padding:0 20px 6px}
 .saude td:nth-child(n+2){font-variant-numeric:tabular-nums}
-.barra{display:inline-block;width:74px;height:7px;background:#eef0f5;
+.barra{display:inline-block;width:74px;height:7px;background:var(--borda);
 border-radius:99px;vertical-align:middle;overflow:hidden}
 .barra i{display:block;height:100%;border-radius:99px;
-background:linear-gradient(90deg,#00a86b,#00875a);
+background:linear-gradient(90deg,#3ecf8e,#2bb078);
 animation:cresce .8s cubic-bezier(.22,.9,.3,1) both}
-.sem-dado{color:#a8aebc;font-size:11.5px;font-style:italic}
+.sem-dado{color:var(--fraco);font-size:11.5px;font-style:italic}
 
 /* ---- histórico ---- */
 .busca{position:relative}
@@ -303,16 +364,16 @@ animation:cresce .8s cubic-bezier(.22,.9,.3,1) both}
 font-size:12.5px}
 .busca svg{position:absolute;left:9px;top:50%;transform:translateY(-50%);
 width:14px;height:14px;opacity:.4;pointer-events:none}
-.historico td{border-bottom:1px solid #f2f4f7}
-.historico .dia td{background:#f7f9fc;font-size:10.5px;font-weight:700;
-letter-spacing:1.1px;text-transform:uppercase;color:#8b93a3;padding:7px 8px;
+.historico td{border-bottom:1px solid var(--borda)}
+.historico .dia td{background:var(--lavagem);font-size:10.5px;font-weight:700;
+letter-spacing:1.1px;text-transform:uppercase;color:var(--fraco);padding:7px 8px;
 border-bottom:1px solid var(--borda);position:sticky;top:31px;z-index:1}
 .historico .dia .conta{float:right;letter-spacing:0;text-transform:none}
-.historico .id{color:#a8aebc;font-variant-numeric:tabular-nums;width:1%;
+.historico .id{color:var(--fraco);font-variant-numeric:tabular-nums;width:1%;
 white-space:nowrap}
 .historico .hora{color:var(--fraco);font-variant-numeric:tabular-nums;
 width:1%;white-space:nowrap}
-.historico .rota{color:#4b5364}
+.historico .rota{color:var(--tinta2)}
 .historico .material{max-width:220px;overflow:hidden;text-overflow:ellipsis;
 white-space:nowrap}
 /* O preço é o número que o olho procura na linha: alinhado à direita, todas
@@ -320,7 +381,7 @@ white-space:nowrap}
    — não ter preço não é um preço bom. */
 .historico td:nth-child(6){text-align:right;font-weight:700;
 font-variant-numeric:tabular-nums;white-space:nowrap;color:var(--ok)}
-.historico tr.sem-preco td:nth-child(6){color:#c3c8d2;font-weight:400}
+.historico tr.sem-preco td:nth-child(6){color:var(--fraco);font-weight:400}
 .historico tr.sumiu,.historico tbody.sumiu{display:none}
 .nada{display:none;color:var(--fraco);font-size:13px;padding:22px 0;
 text-align:center}
@@ -332,36 +393,36 @@ text-align:center}
    que o alerta está lá. */
 .alertas{display:flex;flex-direction:column;gap:10px;margin:0}
 .alerta-linha{display:flex;gap:12px;align-items:flex-start;
-border:1px solid #ffd5cc;background:#fff6f4;border-radius:12px;
+border:1px solid #5c3128;background:#2a1a17;border-radius:12px;
 padding:12px 14px}
 .alerta-linha .sino{width:32px;height:32px;border-radius:9px;flex:none;
-display:grid;place-items:center;background:#fdece9;color:var(--erro)}
+display:grid;place-items:center;background:#3a221c;color:var(--erro)}
 .alerta-linha .sino svg{width:17px;height:17px}
 .alerta-linha .diz{min-width:0;flex:1}
 .alerta-linha b{font-size:13.5px}
 .alerta-linha .quando{font-size:11.5px;color:var(--fraco);margin:1px 0 0}
 /* O texto de erro é de programador e pode ser longo. Duas linhas dizem qual
    é o problema; o resto está na cotação, a um clique daqui. */
-.alerta-linha .porque{font-size:12px;color:#7a3b2e;margin:6px 0 0;
+.alerta-linha .porque{font-size:12px;color:#e0ab9c;margin:6px 0 0;
 display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;
 overflow:hidden}
 .alerta-linha .quais{margin-left:auto;display:flex;gap:5px;flex-wrap:wrap;
 justify-content:flex-end}
 .alerta-linha .quais a{font-size:11.5px;font-weight:700;text-decoration:none;
-color:var(--erro);background:#fdece9;border-radius:99px;padding:2px 9px;
+color:var(--erro);background:#3a221c;border-radius:99px;padding:2px 9px;
 white-space:nowrap}
-.alerta-linha .quais a:hover{background:#fbdcd6}
+.alerta-linha .quais a:hover{background:#4a2a22}
 
 /* ---- filtros do histórico ---- */
 .filtros{display:flex;align-items:center;gap:6px;flex-wrap:wrap;
 margin:0 0 12px}
 .filtros .rotulo{font-size:11px;text-transform:uppercase;letter-spacing:1px;
-color:#9aa2b1;font-weight:700;margin-right:2px}
-.filtro-p{padding:5px 12px;border-radius:99px;font-size:12px;color:#5b6478;
+color:var(--fraco);font-weight:700;margin-right:2px}
+.filtro-p{padding:5px 12px;border-radius:99px;font-size:12px;color:var(--fraco);
 text-decoration:none;border:1px solid var(--borda);background:var(--papel);
 white-space:nowrap;transition:background .15s,color .15s,border-color .15s}
 .filtro-p:hover{background:var(--fundo)}
-.filtro-p.atual{background:var(--marca);border-color:var(--marca);color:#fff;
+.filtro-p.atual{background:var(--marca);border-color:var(--marca);color:var(--sobre-marca);
 font-weight:600}
 .filtro-p.perigo.atual{background:var(--erro);border-color:var(--erro)}
 
@@ -371,9 +432,9 @@ font-weight:600}
    ao "abrir em nova aba" — coisas que um onclick sozinho tira de quem
    trabalha com o teclado o dia inteiro. */
 .historico tbody tr[data-abrir]{cursor:pointer}
-.historico .id a{color:#7b839a;text-decoration:none;font-weight:700}
+.historico .id a{color:var(--fraco);text-decoration:none;font-weight:700}
 .historico tbody tr:hover .id a{color:var(--marca);text-decoration:underline}
-.historico .seta{width:1%;color:#c7ccd8;text-align:right;padding-right:2px}
+.historico .seta{width:1%;color:var(--fraco);text-align:right;padding-right:2px}
 .historico tbody tr:hover .seta{color:var(--marca)}
 
 /* ---- tela de UMA cotação ---- */
@@ -410,10 +471,10 @@ letter-spacing:-1px;font-variant-numeric:tabular-nums;margin:2px 0}
    parecia mais barato que R$ 69,91 pela carga. Mesma regra da tela do
    vendedor (web/layout.py, .res .valor.incerto). */
 .resposta .preco.incerto{color:var(--fraco)}
-.resposta .sem{font-size:14px;font-weight:700;color:#9aa2b1;margin:2px 0}
+.resposta .sem{font-size:14px;font-weight:700;color:var(--fraco);margin:2px 0}
 .resposta .miudos{font-size:11.5px;color:var(--fraco);margin-top:8px;
 display:flex;gap:5px;flex-wrap:wrap}
-.resposta .miudos span:not(:last-child)::after{content:" ·";color:#c7ccd8}
+.resposta .miudos span:not(:last-child)::after{content:" ·";color:var(--borda-forte)}
 .resposta .alerta{font-size:11.5px}
 /* O texto técnico vem INTEIRO na tela do adm — é ela que existe para
    investigar, e cortar a mensagem no meio esconde justamente a linha que
@@ -421,9 +482,16 @@ display:flex;gap:5px;flex-wrap:wrap}
    empurraria o print e os miúdos para fora do campo de visão. */
 .resposta .erro-cru{margin-top:8px;max-height:150px;overflow:auto;
 font-family:ui-monospace,Consolas,monospace;font-size:11px;line-height:1.45;
-color:#5b6478;background:#f7f8fa;border:1px solid var(--borda);
+color:var(--tinta2);background:#0d1120;border:1px solid var(--borda);
 border-radius:8px;padding:8px 10px;white-space:pre-wrap;word-break:break-word}
-.resposta .print{margin-top:9px}
+/* O print no cartão é uma JANELA de altura fixa, não a imagem inteira. Os
+   prints chegam com 114px a 357px de altura, e como a grade alinha pelo topo
+   um cartão de 501px deixava 400px de vazio ao lado dele — num quadro que
+   existe para comparar cinco respostas de relance. Recortado pelo TOPO, que
+   é onde mora o cabeçalho da transportadora: é ele que diz de que site veio
+   a imagem. A prova inteira continua a um clique, na lupa. */
+.resposta .print{margin-top:9px;height:150px;object-fit:cover;
+object-position:top center}
 
 /* ---- tempos de resposta ---- */
 .tempos{display:flex;flex-direction:column;gap:11px;margin:0}
@@ -433,14 +501,14 @@ font-size:12.5px}
 font-weight:600}
 .tempos .quanto{color:var(--fraco);font-variant-numeric:tabular-nums}
 .tempos .trilho{grid-column:1/-1;height:8px;border-radius:99px;
-background:#eef0f5;overflow:hidden}
+background:var(--borda);overflow:hidden}
 .tempos .trilho i{display:block;height:100%;border-radius:99px;
 animation:cresce .8s cubic-bezier(.22,.9,.3,1) both}
 
 /* ---- lista de WhatsApp aberto ---- */
 .abertas{list-style:none;margin:0;padding:0;font-size:12.5px}
 .abertas li{display:flex;align-items:center;gap:8px;padding:7px 0;
-border-bottom:1px solid #f2f4f7}
+border-bottom:1px solid var(--borda)}
 .abertas li:last-child{border-bottom:0}
 .abertas svg{width:15px;height:15px;flex:none;color:var(--zap)}
 .abertas .hora{margin-left:auto;color:var(--fraco);
@@ -505,14 +573,14 @@ transition:transform .2s var(--suave),box-shadow .2s var(--suave)}
 .aovivo{border-color:var(--borda-forte)}
 .aovivo i{animation:pisca 2.2s ease-in-out infinite,halo 2.2s ease-out infinite}
 @keyframes halo{
-0%{box-shadow:0 0 0 0 rgba(0,120,90,.45)}
-70%{box-shadow:0 0 0 7px rgba(0,120,90,0)}
-100%{box-shadow:0 0 0 0 rgba(0,120,90,0)}}
+0%{box-shadow:0 0 0 0 rgba(62,207,142,.5)}
+70%{box-shadow:0 0 0 7px rgba(62,207,142,0)}
+100%{box-shadow:0 0 0 0 rgba(62,207,142,0)}}
 
 /* Pastilha de período: a escolhida ganha uma sombra baixa além do fundo, para
    o estado ler de longe. Antes era só troca de cor, e num monitor fraco as
    quatro pareciam iguais. */
-.periodo.atual{box-shadow:0 2px 6px -1px rgba(47,63,136,.45)}
+.periodo.atual{box-shadow:0 2px 10px -2px rgba(112,200,224,.55)}
 .periodo:hover{background:var(--lavagem);color:var(--marca)}
 
 /* Linha do histórico: o realce de hover passa a ser a lavagem da marca, e não
@@ -533,6 +601,41 @@ font-weight:700;letter-spacing:.2px}
 .lateral a.atual{border-left-color:var(--ciano-claro)}
 .lateral a:focus-visible{outline:2px solid var(--ciano-claro);
 outline-offset:-2px}
+
+/* ============ o que web/layout.py cravou em claro, e o escuro desfaz =======
+   O CSS do layout entra ANTES deste e traz alguns valores fixos que nasceram
+   claros: foram escritos quando o sistema inteiro era claro, e token nenhum
+   alcança um `#fffae6` escrito dentro de uma regra. São só estes, e ficam
+   juntos aqui para quem for mexer no tema achar num lugar só, em vez de
+   caçar um fundo branco perdido no meio de setecentas linhas de layout. */
+
+/* O aviso amarelo. No escuro ele herdava a tinta clara (--tinta, #e7eaf2)
+   dentro de um #fffae6: texto quase branco sobre papel quase branco. */
+.painel .alerta{background:#2c2413;border-color:#5c4a1c;color:#e8cf9a}
+.painel .alerta.email{background:var(--lavagem);color:var(--tinta2);
+border-color:var(--borda-forte)}
+
+/* Campo de digitar mais FUNDO que o cartão, não igual a ele. Herdando
+   `background:var(--papel)` o campo sumia dentro do cartão e só a borda
+   dizia onde clicar — é a busca do histórico, usada o dia todo. */
+.painel input{background:#0f1424}
+.painel input:hover{border-color:var(--borda-forte)}
+
+/* O selo do menor preço é escrito EM CIMA do verde, e o botão em cima do
+   ciano: 1.7:1 e 1.9:1 com o #fff que o layout usa. A tinta escura resolve
+   os dois — 9.6:1 e 10:1.
+
+   O texto do selo fica fora deste comentário de propósito: este CSS vai
+   INLINE na página, e o teste que conta quantas vezes o rótulo aparece no
+   HTML contaria o comentário junto. */
+.painel .selo{color:#08130f}
+.painel button{color:var(--sobre-marca)}
+
+/* Divisória de tabela e fundo da ficha: dois cinzas claros do layout. A
+   ficha fica um degrau ABAIXO do cartão que a contém, e não acima — ela é
+   conteúdo dentro do cartão, não um cartão em cima dele. */
+.painel td{border-bottom-color:var(--borda)}
+.painel fieldset{background:#12182b}
 """
 
 
@@ -688,16 +791,16 @@ def faixa(resumo: dict) -> str:
     de quem está tentando ler."""
     return (
         '<div class="faixa">'
-        + numero("cotações hoje", resumo["cotacoes"], "#384890", "#eef3fb",
+        + numero("cotações hoje", resumo["cotacoes"], *TOM["marca"],
                  "cotacoes", conta=True)
-        + numero("com preço", resumo["com_preco"], "#00875a", "#e6f4ee",
+        + numero("com preço", resumo["com_preco"], *TOM["ok"],
                  "preco", conta=True)
         # O número que mais importa: o vendedor ficou na mão.
-        + numero("sem nenhum preço", resumo["sem_nenhum_preco"], "#bf2600",
-                 "#fdecea", "alerta", conta=True,
+        + numero("sem nenhum preço", resumo["sem_nenhum_preco"], *TOM["erro"],
+                 "alerta", conta=True,
                  ruim=bool(resumo["sem_nenhum_preco"]))
-        + numero("cotando agora", resumo["em_andamento"], "#d97706",
-                 "#fdf3e3", "relogio", conta=True)
+        + numero("cotando agora", resumo["em_andamento"], *TOM["atencao"],
+                 "relogio", conta=True)
         + "</div>")
 
 
@@ -845,10 +948,10 @@ def grafico_periodo(pontos: list[dict], unidade: str) -> str:
 <defs>
 <linearGradient id="tintaBarra" x1="0" y1="0" x2="0" y2="1">
 <stop offset="0%" stop-color="#70c8e0"/>
-<stop offset="100%" stop-color="#384890"/></linearGradient>
+<stop offset="100%" stop-color="#4058a0"/></linearGradient>
 <linearGradient id="tintaArea" x1="0" y1="0" x2="0" y2="1">
-<stop offset="0%" stop-color="#00875a" stop-opacity=".18"/>
-<stop offset="100%" stop-color="#00875a" stop-opacity="0"/></linearGradient>
+<stop offset="0%" stop-color="#3ecf8e" stop-opacity=".22"/>
+<stop offset="100%" stop-color="#3ecf8e" stop-opacity="0"/></linearGradient>
 </defs>
 {malha}{barras}
 <path class="area-g" d="{area}"/>
@@ -875,8 +978,8 @@ def rosca(fracao: float | None, nome: str, detalhe: str = "") -> str:
         # Verde só quando é bom de verdade: anel verde em 40% de
         # aproveitamento tranquiliza justamente quem deveria estar ligando
         # para a transportadora.
-        cor = ("#00875a" if fracao >= 0.85 else
-               "#d97706" if fracao >= 0.5 else "#bf2600")
+        cor = (TOM["ok"][0] if fracao >= 0.85 else
+               TOM["atencao"][0] if fracao >= 0.5 else TOM["erro"][0])
         cheio = VOLTA * (1 - fracao)
         meio = (f'<text class="meio" x="50" y="56" text-anchor="middle">'
                 f'{fracao * 100:.0f}%</text>')

@@ -45,7 +45,7 @@ from core.evidencias import montar_zip_de_prints
 from core import painel as contas
 from web import painel_ui as ui, transportadoras
 from web.ficha_ui import ficha_da_cotacao, lugar, quando as _quando
-from web.layout import LOGO, e, entrada, moeda, pagina, print_embutido
+from web.layout import e, entrada, moeda, print_embutido
 
 # O banco chega por INJEÇÃO: `web/app.py` faz `adm.banco = banco` logo
 # depois de criar o dele. Importar `web.app` daqui seria circular —
@@ -102,12 +102,21 @@ def _exigir_montado() -> str:
 
 
 @router.get("/entrar", response_class=HTMLResponse)
-def tela_de_entrada():
+def tela_de_entrada(erro: str = ""):
+    """A porta do painel. `erro` preenchido é a MESMA tela, com o aviso e o
+    campo já em foco — e não uma segunda tela.
+
+    Antes a senha errada caía numa página com o casco claro do vendedor e um
+    link "Tentar de novo": a pessoa saía de uma tela escura, errava a senha e
+    aterrissava numa tela branca de outro sistema, tendo de clicar mais uma
+    vez para voltar ao campo que ela já ia digitar de novo."""
     _exigir_montado()
-    return HTMLResponse(entrada("Painel", """
+    aviso = f'<div class="alerta">{e(erro)}</div>' if erro else ""
+    return HTMLResponse(entrada("Painel", f"""
 <div class="cartao">
   <h1>Painel</h1>
   <p class="sub">As cotações de toda a empresa, num lugar só.</p>
+  {aviso}
   <form method="post" action="/adm/entrar">
     <input name="senha" type="password" placeholder="Senha do painel"
            autocomplete="current-password" autofocus required
@@ -133,12 +142,9 @@ def entrar(senha: str = Form(...)):
     if not hmac.compare_digest(senha.encode(), correta.encode()):
         time.sleep(PAUSA_SENHA_ERRADA_S)
         # Sem repetir o que foi digitado: nem na tela, nem em log.
-        return HTMLResponse(pagina("Painel", """
-<div class="login"><div class="cartao">
-  <h1>Painel</h1>
-  <div class="alerta">Senha incorreta.</div>
-  <p><a href="/adm/entrar">Tentar de novo</a></p>
-</div></div>"""), status_code=401)
+        resposta = tela_de_entrada("Senha incorreta.")
+        resposta.status_code = 401
+        return resposta
 
     r = RedirectResponse("/adm", status_code=303)
     r.set_cookie(COOKIE_ADM, token_de(correta), max_age=VALIDADE_S,
@@ -744,15 +750,15 @@ def _numeros_da_cotacao(c: dict) -> str:
         '<div class="faixa">'
         + ui.numero("melhor preço", moeda(min(comparaveis) if comparaveis
                                           else None),
-                    "#00875a", "#e6f4ee", "preco")
+                    *ui.TOM["ok"], "preco")
         + ui.numero("responderam com preço",
                     f'{com_preco} de {len(c["resultados"])}',
-                    "#384890", "#eef3fb", "cotacoes")
+                    *ui.TOM["marca"], "cotacoes")
         + ui.numero("entre a mais barata e a mais cara", moeda(espalhamento),
-                    "#d97706", "#fdf3e3", "balanca")
+                    *ui.TOM["atencao"], "balanca")
         + ui.numero("até a última resposta",
                     ui.segundos_por_extenso(max(tempos)) if tempos else "—",
-                    "#6b7280", "#eef0f4", "relogio")
+                    *ui.TOM["neutro"], "relogio")
         + "</div>")
 
 
