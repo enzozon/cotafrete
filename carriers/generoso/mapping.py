@@ -212,3 +212,52 @@ def empresa_alvo(req: CotacaoRequest) -> Empresa | None:
     ponta = (req.remetente if req.tipo_frete is TipoFrete.CIF
              else req.destinatario)
     return empresa_de(ponta.cnpj)
+
+
+def ponta_travada_sem_o_grupo(req: CotacaoRequest) -> str | None:
+    """A frase para quando a Ventura não está na ponta que a Generoso TRAVA.
+
+    O portal cota LOGADO e preenche cada ponta pelo CNPJ, nunca pelo CEP (ver
+    o cabeçalho do adapter). A ponta travada é sempre a da conta: no CIF a
+    origem, no FOB o destino. Sem a Ventura ali, o site escreve o endereço
+    DELA naquela ponta — e a cotação sai por outra rota, sem nada na tela
+    dizendo isso.
+
+    Medido na cotação #154 (10/09/2026), FOB, ADECIL COMERCIAL -> INSTITUTO
+    AMBIENTAL, com a Ventura em ponta nenhuma. A tela de conferência da
+    Generoso, no dry-run, mostrava:
+
+        origem   ADECIL,  CEP 13.211-377, Jundiaí/SP
+                 (a ficha diz São Paulo/SP, 05117-002)
+        destino  VENTURA, CEP 29.105-770, Vila Velha/ES
+                 (a ficha diz Linhares/ES, 29911-080)
+
+    Ou seja: o preço que voltaria dali é de Jundiaí -> Vila Velha, e o
+    vendedor mostraria ao cliente como se fosse São Paulo -> Linhares.
+
+    Quando a busca da ponta travada nem responde, o MESMO caso vira o
+    RuntimeError "a conta da Generoso nao trouxe o endereco de destino" —
+    classificado como ERRO, que a retentativa repete três vezes.
+
+    Barrar aqui não tira preço de ninguém, e isso foi conferido ANTES de
+    escrever a regra: nos 143 resultados da Generoso em produção (19/08 a
+    09/09/2026), as 83 que voltaram COM preço tinham todas o grupo na ponta
+    travada. Com o grupo fora dela nunca saiu preço — só 2 erros e 7
+    recusas.
+
+    Dispara SÓ com o grupo em ponta nenhuma. Grupo na ponta errada já tem
+    dono — `conflito_cif_fob`, que ainda diz qual marcar ("Marque FOB e cote
+    de novo"); duas regras acusando o mesmo engano dariam ao vendedor dois
+    parágrafos concorrentes para ler."""
+    if lado_do_grupo(req) is not None:
+        return None
+
+    lado, quem = (("origem", "remetente") if req.tipo_frete is TipoFrete.CIF
+                  else ("destino", "destinatário"))
+    return (
+        f"A Generoso cota logada na conta da Ventura, e o portal dela trava "
+        f"uma das pontas no CNPJ da conta: no CIF a origem, no FOB o destino. "
+        f"Nesta cotação o {quem} não é a Ventura, então o {lado} sairia com o "
+        f"endereço da Ventura no lugar do endereço real — o preço seria de "
+        f"outra rota. Cote esta carga com outra transportadora, ou corrija o "
+        f"CIF/FOB se a Ventura for mesmo uma das pontas.")

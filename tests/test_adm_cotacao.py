@@ -44,7 +44,14 @@ CARGA = {"cep_origem": "29105770", "cep_destino": "01310100",
 @pytest.fixture
 def cliente(monkeypatch, tmp_path):
     monkeypatch.setenv("COTAFRETE_ADM_SENHA", SENHA)
-    monkeypatch.setattr(adm, "banco", Banco(tmp_path / "t.db"))
+    # As DUAS pontas no MESMO banco de teste. Sem trocar o de web.app também,
+    # a tela do vendedor lia o cotafrete.db de verdade da máquina — e
+    # `test_o_vendedor_continua_sem_ver_a_do_colega` passava ou falhava
+    # conforme quem fosse o dono da cotação #1 no banco de quem rodasse. Aqui
+    # ela é do "enzo", o mesmo cookie do teste, e o 404 esperado vinha 200.
+    banco_de_teste = Banco(tmp_path / "t.db")
+    monkeypatch.setattr(adm, "banco", banco_de_teste)
+    monkeypatch.setattr(app_web, "banco", banco_de_teste)
     c = TestClient(app_web.app)
     c.cookies.set(adm.COOKIE_ADM, adm.token_de(SENHA))
     return c

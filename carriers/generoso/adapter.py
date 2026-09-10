@@ -65,8 +65,8 @@ from carriers.base import (
 )
 from carriers.generoso.mapping import (
     AVISO_CEP_NAO_ATENDIDO, AVISO_MESMO_CEP, cliente_nao_cadastrado,
-    conflito_cif_fob, empresa_alvo, empresa_de, recusa_cep_nao_atendido,
-    recusa_cliente_nao_cadastrado, recusa_mesmo_cep,
+    conflito_cif_fob, empresa_alvo, empresa_de, ponta_travada_sem_o_grupo,
+    recusa_cep_nao_atendido, recusa_cliente_nao_cadastrado, recusa_mesmo_cep,
 )
 from core.models import CotacaoRequest, StatusCotacao, TipoFrete, limpa_doc
 
@@ -78,6 +78,20 @@ URL_LOGIN = "https://cliente.generoso.com.br/login"
 # `_escolher_empresa` troca antes da etapa 1.
 CNPJ_CONTA = "08.310.365/0001-24"
 ESPERA_LOGIN_MS = 30_000
+
+# O portal é um SPA: `fill()` escreve no DOM e o React re-renderiza por cima
+# com o estado dele, que ainda está vazio — o campo volta a ficar em branco e
+# o "Entrar" envia um formulário vazio. Três vezes em produção (cotações #75,
+# #76 e #77, 28-31/08/2026), sempre com a MESMA assinatura: tela parada em
+# /login e o campo de senha vazio.
+#
+# Dormir mais tempo não conserta, só empurra o problema para a próxima
+# máquina lenta — e desde 10/09/2026 o sistema roda numa VM, que é
+# exatamente isso. Conferir o valor conserta. Números iguais aos da Jadlog
+# (carriers/jadlog/painel.py), medidos lá em 17/08/2026 pelo mesmo sintoma.
+TENTATIVAS_PREENCHIMENTO = 4     # cobre a hidratação chegando atrasada
+ESPERA_HIDRATACAO_MS = 800       # tempo para o React re-renderizar por cima
+CONFIRMACOES_SEGUIDAS = 3        # 3 x 800ms = 2,4s de campo intacto
 
 # A empresa "ativa" (Alterar empresa) é estado da CONTA na Generoso, não da
 # aba do navegador — o próprio site conta com isso: "a conta abre na empresa
@@ -442,6 +456,13 @@ class GenerosoAdapter:
         conflito = conflito_cif_fob(req)
         if conflito:
             erros.append(ErroValidacao("CIF/FOB", conflito))
+        # A irmã da de cima, e pela mesma razão: o site trava uma ponta no
+        # CNPJ da conta. Aquela pega o grupo na ponta ERRADA; esta pega o
+        # grupo em ponta NENHUMA — caso em que a ponta travada sai com o
+        # endereço da Ventura e o preço volta de outra rota (cotação #154).
+        fora = ponta_travada_sem_o_grupo(req)
+        if fora:
+            erros.append(ErroValidacao("CIF/FOB", fora))
         if not req.solicitante.whatsapp:
             erros.append(ErroValidacao("whatsapp", "O site exige WhatsApp."))
         v = req.volumes[0]
@@ -594,6 +615,43 @@ class GenerosoAdapter:
                 return t ? t.outerHTML : document.body.innerHTML.slice(0, 4000);
             }"""), encoding="utf-8")
 
+    def _preencher_login(self, page) -> None:
+        """Preenche e-mail e senha, e CONFERE que ficaram.
+
+        O `fill()` sozinho não basta num SPA: ele escreve no DOM, o React
+        re-renderiza por cima com o estado dele — vazio — e o campo volta a
+        ficar em branco. O clique em "Entrar" manda um formulário vazio, a
+        tela fica em /login, e é isso que `_falhar_login` relata como "o
+        campo de senha vazio, ou seja, o formulário nem chegou a ser
+        enviado" (cotações #75, #76 e #77 de produção).
+
+        Uma leitura só depois do `fill()` não prova nada: nesse instante o
+        valor SEMPRE está lá — quem apaga é a hidratação, que chega depois.
+        Por isso são CONFIRMACOES_SEGUIDAS leituras espaçadas, e a função sai
+        assim que o campo se mantém — em máquina rápida isso é o caso comum
+        e ela devolve no primeiro ciclo."""
+        email = page.locator('input[name="email"]').first
+        senha = page.locator('input[name="password"]').first
+        email.wait_for(state="visible")
+
+        def preenchido() -> bool:
+            return bool(email.input_value().strip() and senha.input_value())
+
+        for _ in range(TENTATIVAS_PREENCHIMENTO):
+            email.fill(self.usuario)
+            senha.fill(self.senha)
+            for confirmacao in range(1, CONFIRMACOES_SEGUIDAS + 1):
+                page.wait_for_timeout(ESPERA_HIDRATACAO_MS)
+                if not preenchido():
+                    break
+                if confirmacao == CONFIRMACOES_SEGUIDAS:
+                    return
+
+        raise RuntimeError(
+            "o formulário de login da Generoso apagou o que foi digitado em "
+            f"{TENTATIVAS_PREENCHIMENTO} tentativas — a página não terminou "
+            "de carregar. Costuma passar sozinho na tentativa seguinte.")
+
     def _entrar(self, page) -> None:
         """Login. Sem ele o site não mostra preço, só confirma o recebimento.
 
@@ -604,9 +662,7 @@ class GenerosoAdapter:
         saberia explicar."""
         page.goto(URL_LOGIN, wait_until="domcontentloaded")
         page.wait_for_selector('input[name="email"]')
-        page.wait_for_timeout(1_200)
-        page.fill('input[name="email"]', self.usuario)
-        page.fill('input[name="password"]', self.senha)
+        self._preencher_login(page)
         page.get_by_role("button", name="Entrar").click()
         try:
             page.wait_for_url("**/dashboard", timeout=ESPERA_LOGIN_MS)

@@ -105,8 +105,13 @@ def test_cliente_nao_cadastrado_vira_recusa_e_nao_repete(tmp_path, monkeypatch):
     # usuario/senha pelo construtor: o proprio __init__ diz que e para o
     # teste. Sem eles o adapter recusa antes de subir navegador, e o ramo
     # sob teste nem seria alcancado.
+    # Remetente do grupo: sem ele a cotacao para antes, na regra da ponta
+    # travada (test_generoso_ponta_travada.py), e o ramo sob teste — o do
+    # CNPJ que a Generoso nao conhece — nem seria alcancado.
+    from core.models import Parte
     res = GenerosoAdapter(workdir=str(tmp_path), usuario="teste",
-                          senha="teste").cotar(montar())
+                          senha="teste").cotar(
+        montar(remetente=Parte(cnpj="08.310.365/0001-24")))
 
     assert res.status is StatusCotacao.RECUSADO
     assert res.erro is None, "recusa não é erro; o cartão lê isso"

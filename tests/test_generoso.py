@@ -173,7 +173,12 @@ def test_sem_credenciais_recusa_sem_abrir_navegador(monkeypatch):
 
     monkeypatch.setattr("playwright.sync_api.sync_playwright", estourar)
 
-    res = GenerosoAdapter().cotar(montar())
+    # Remetente do grupo de propósito: sem ele a cotação para antes, na regra
+    # da ponta travada (ver test_generoso_ponta_travada.py), e este teste
+    # nunca chegaria a olhar a credencial — que é o que ele mede.
+    from core.models import Parte
+    res = GenerosoAdapter().cotar(
+        montar(remetente=Parte(cnpj="08.310.365/0001-24")))
 
     assert res.status is StatusCotacao.ERRO
     assert "GENEROSO_USUARIO" in (res.erro or "")

@@ -71,7 +71,11 @@ def test_cep_fora_de_area_vira_recusa_e_nao_repete(tmp_path):
                               senha="teste")
     adapter._entrar = recusar.__get__(adapter)
 
-    res = adapter.cotar(montar())
+    # Remetente do grupo: sem ele a cotação para antes, na regra da ponta
+    # travada (test_generoso_ponta_travada.py), e o ramo sob teste nem seria
+    # alcançado.
+    from core.models import Parte
+    res = adapter.cotar(montar(remetente=Parte(cnpj="08.310.365/0001-24")))
 
     assert res.status is StatusCotacao.RECUSADO
     assert res.erro is None, "recusa não é erro; o cartão lê isso"
