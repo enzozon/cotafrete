@@ -485,12 +485,12 @@ def tela_login() -> str:
 </div>"""
     return entrada(
         "Entrar", cartao,
-        chamada="Um formulário. Todas as transportadoras.",
+        chamada="Uma carga. Todas as transportadoras.",
         apoio="Preencha os dados da carga uma vez. O sistema cota sozinho nas "
               "automáticas e deixa a mensagem pronta para as demais.",
-        provas=((str(len(AUTOMATICAS)), "cotam sozinhas"),
-                (str(len(TODAS_AS_SLUGS)), "transportadoras"),
-                ("~2 min", "para o comparativo")),
+        paradas=("sua carga",
+                 f"{len(AUTOMATICAS)} cotam sozinhas",
+                 "o mais barato"),
         rodape="Sem senha por enquanto — serve para separar o histórico, não "
                "para proteger acesso.")
 

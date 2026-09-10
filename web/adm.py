@@ -116,6 +116,7 @@ def tela_de_entrada():
   </form>
 </div>""",
         chamada="O que a empresa inteira cotou.",
+        paradas=("as cotações", "cinco transportadoras", "o que deu certo"),
         apoio="Números por transportadora, tempo de resposta e o histórico "
               "completo — atualizado sozinho conforme as cotações chegam.",
         rodape="Esta tela junta CNPJ, valor de nota e print de cliente. "

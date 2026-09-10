@@ -346,65 +346,114 @@ box-shadow:0 0 0 3px rgba(112,200,224,.35)}
    selecionar exige um campo de verdade, e display:none não é selecionável. */
 .escondido{position:absolute;left:-9999px;width:1px;height:1px;opacity:0}
 
-/* ====================== a porta da frente: tela de entrada ==================
-   A única tela do sistema onde um hero cabe. É vista uma vez por sessão, não
-   tem trabalho para atrapalhar, e é a primeira impressão que a empresa tem do
-   sistema — as outras são formulário e resultado, onde área gasta com enfeite
-   é área tirada de quem está cotando.
+/* ================= a porta da frente: rota, em tema escuro =================
+   A única tela do sistema onde vale gastar área com apresentação. É vista uma
+   vez por sessão, não tem trabalho para atrapalhar, e é a primeira impressão
+   que a empresa tem do Cotafrete — as outras são formulário e resultado, onde
+   área gasta com enfeite é área tirada de quem está cotando.
 
-   Casco próprio (`entrada()`, em vez de `pagina()`) porque a faixa do topo não
-   faz sentido aqui: ela existe para navegar, e quem não entrou não tem para
-   onde ir. De quebra conserta a logo DUPLICADA — a faixa mostrava uma e o
-   cartão mostrava outra, uma embaixo da outra. */
-.entrada{min-height:100vh;display:grid;grid-template-columns:1.05fr .95fr}
-.entrada-marca{position:relative;overflow:hidden;padding:52px 48px;
-display:flex;flex-direction:column;gap:34px;justify-content:center;
-background:var(--marca-grad);color:#fff}
-/* O halo. O gradiente sozinho é uma parede chapada; um clarão fora de eixo dá
-   profundidade sem desenhar nada. `radial-gradient` e não imagem: o sistema
-   roda numa rede interna e não pode depender de arquivo que não chegou. */
-.entrada-marca::after{content:"";position:absolute;inset:-30% -20% auto auto;
-width:70%;aspect-ratio:1;border-radius:50%;
-background:radial-gradient(circle,rgba(255,255,255,.28),transparent 62%);
-pointer-events:none}
+   Escura, e só ela. O resto do sistema é claro de propósito: é lido o dia
+   inteiro, e tela escura para leitura contínua de tabela cansa mais. Aqui a
+   pessoa passa cinco segundos, então o contraste com o resto é uma VIRADA de
+   página, não uma inconsistência.
+
+   Casco próprio (`entrada()`) e não `pagina()`: a faixa do topo existe para
+   navegar, e quem ainda não entrou não tem para onde ir. Ela aparecia ali só
+   mostrando a logo — e o cartão logo abaixo mostrava a MESMA logo de novo.
+
+   Contraste medido com a fórmula do WCAG antes de escrever, não a olho. Os
+   nove pares da tela passam; os apertados estão travados em teste. */
+.entrada{min-height:100vh;display:grid;grid-template-columns:1.04fr .96fr;
+background:#0b0f1c;color:#e7eaf2}
+.entrada-marca{position:relative;overflow:hidden;
+padding:clamp(32px,4vw,56px);display:flex;flex-direction:column;
+justify-content:center;gap:clamp(26px,3.4vw,40px);
+background:linear-gradient(158deg,#1a2445 0%,#141c38 55%,#0f1424 100%)}
+/* Dois clarões fora de eixo. O índigo chapado é uma parede; os halos dão
+   profundidade sem desenhar nada e sem depender de arquivo de imagem — o
+   sistema roda em rede interna, e imagem que não chegou é buraco na tela. */
+.entrada-marca::before,.entrada-marca::after{content:"";position:absolute;
+border-radius:50%;pointer-events:none}
+.entrada-marca::before{inset:-26% auto auto -16%;width:52%;aspect-ratio:1;
+background:radial-gradient(circle,rgba(112,200,224,.22),transparent 66%)}
+.entrada-marca::after{inset:auto -18% -32% auto;width:56%;aspect-ratio:1;
+background:radial-gradient(circle,rgba(64,88,160,.38),transparent 68%)}
 .entrada-marca>*{position:relative;z-index:1}
 /* Em cores naturais, sobre uma pastilha branca. `brightness(0) invert(1)`
    pintaria o desenho inteiro de branco — e o "V" da marca é um RECORTE, já
-   branco: some contra a elipse e a logo vira um borrão. Passa despercebido
-   na lateral do painel, onde ela tem 30px; aqui tem 52px e é a primeira
-   coisa que a empresa vê. */
-.entrada-marca .logo{height:52px;width:auto;align-self:flex-start;
-background:#fff;padding:11px 15px;border-radius:14px;
-box-shadow:0 8px 24px -8px rgba(10,18,45,.5)}
-.entrada-marca h1{font-size:clamp(28px,3.4vw,40px);line-height:1.12;
-margin:0 0 12px;letter-spacing:-.8px;color:#fff;text-wrap:balance}
-.entrada-marca p{margin:0;max-width:38ch;font-size:15px;line-height:1.55;
-color:rgba(255,255,255,.88);text-wrap:pretty}
-/* As provas saem dos NÚMEROS REAIS do sistema (len(AUTOMATICAS) e afins),
-   passados por quem chama. Escritos à mão aqui, envelheceriam na primeira
-   transportadora que entrasse — e uma tela de entrada mentindo sobre o
-   tamanho do próprio sistema é pior do que uma tela sem número nenhum. */
-.provas{display:flex;flex-wrap:wrap;gap:14px 34px;margin:0;
-border-top:1px solid rgba(255,255,255,.22);padding-top:26px}
-.provas div{display:flex;flex-direction:column;gap:2px}
-.provas dt{font-size:27px;font-weight:700;letter-spacing:-.6px;line-height:1}
-.provas dd{margin:0;font-size:12px;color:rgba(255,255,255,.8);
-text-transform:uppercase;letter-spacing:.7px}
-.entrada-form{display:flex;align-items:center;justify-content:center;
-padding:40px 28px;background:var(--fundo)}
-.entrada-form .cartao{width:100%;max-width:380px;margin:0;padding:28px}
-.entrada-form .rodape{margin:14px 0 0;font-size:12px;color:var(--fraco);
-text-wrap:pretty}
-/* Numa tela estreita a coluna da marca vira uma faixa curta em cima: some o
-   texto longo, fica a logo. Empilhar o hero inteiro empurraria o campo de
-   digitar para fora da tela, que é a única coisa que a pessoa veio fazer. */
-@media(max-width:820px){
-.entrada{grid-template-columns:1fr;min-height:0}
-.entrada-marca{padding:26px 24px;gap:18px}
-.entrada-marca h1{font-size:23px;margin:0}
-.entrada-marca p,.provas{display:none}
-.entrada-form{padding:28px 20px}}
+   branco: some contra a elipse e a logo vira um borrão. Passa despercebido na
+   lateral do painel, onde ela tem 30px; aqui é a primeira coisa que se vê. */
+.entrada-marca .logo{height:46px;width:auto;align-self:flex-start;
+background:#fff;padding:10px 14px;border-radius:13px;
+box-shadow:0 10px 28px -10px rgba(0,0,0,.75)}
+.entrada-marca h1{font-size:clamp(28px,3.5vw,42px);line-height:1.1;
+margin:0 0 14px;letter-spacing:-.9px;color:#fff;text-wrap:balance}
+.entrada-marca p{margin:0;max-width:40ch;font-size:15px;line-height:1.55;
+color:rgba(255,255,255,.72);text-wrap:pretty}
 
+/* ---- a rota ----
+   Não é enfeite: é o que o sistema FAZ, desenhado. Uma carga entra, as
+   automáticas cotam, sai o melhor preço. O número de paradas do meio sai de
+   `len(AUTOMATICAS)`, passado por quem chama — escrito à mão, a tela passaria
+   a mentir sobre o tamanho do sistema na primeira transportadora que
+   entrasse.
+
+   Faixa própria embaixo do texto, e não um traçado atrás dele: fundo que
+   cruza o parágrafo briga com a leitura em alguma largura de tela, sempre. */
+.rota{display:flex;align-items:flex-start;gap:0;margin:0;padding-top:4px}
+.rota .parada{display:flex;flex-direction:column;gap:9px;flex:0 0 auto;
+max-width:14ch}
+.rota .ponto{width:13px;height:13px;border-radius:50%;background:#70c8e0;
+box-shadow:0 0 0 5px rgba(112,200,224,.18)}
+.rota .parada:last-child .ponto{background:transparent;
+border:2px solid rgba(255,255,255,.5);box-shadow:none}
+.rota .parada span{font-size:11.5px;line-height:1.35;
+text-transform:uppercase;letter-spacing:.9px;color:rgba(255,255,255,.72)}
+/* O trecho percorrido é sólido no ciano; o que falta é pontilhado. A carga
+   ainda não chegou — a linha inteira sólida diria que sim. */
+.rota .trecho{flex:1 1 auto;height:2px;margin:6px 12px 0;
+background:linear-gradient(90deg,#70c8e0,rgba(112,200,224,.45))}
+.rota .trecho.falta{background:none;
+border-top:2px dashed rgba(255,255,255,.26);height:0;margin-top:5px}
+
+/* ---- o lado do formulário ---- */
+.entrada-form{display:flex;align-items:center;justify-content:center;
+padding:40px 28px;background:#0b0f1c}
+.entrada-form .cartao{width:100%;max-width:392px;margin:0;padding:30px;
+background:#161d33;border:1px solid rgba(255,255,255,.09);
+box-shadow:0 26px 60px -24px rgba(0,0,0,.8)}
+.entrada-form h1{color:#fff;font-size:23px}
+.entrada-form .sub{color:#9aa4bd}
+.entrada-form label{color:#9aa4bd}
+.entrada-form input{background:#0f1424;border-color:rgba(255,255,255,.16);
+color:#e7eaf2}
+.entrada-form input::placeholder{color:#8b95ad}
+.entrada-form input:hover{border-color:rgba(255,255,255,.28)}
+.entrada-form input:focus{border-color:var(--ciano-claro);
+box-shadow:0 0 0 3px rgba(112,200,224,.24)}
+/* Ciano com tinta escura: o botão vira a coisa mais clara da tela, que é
+   exatamente onde o olho deve parar. Índigo sobre fundo índigo sumiria. */
+.entrada-form button{background:var(--ciano-claro);color:#0d1120;
+box-shadow:0 12px 30px -12px rgba(112,200,224,.65)}
+.entrada-form button:hover{background:#8ad6ea;
+box-shadow:0 16px 38px -12px rgba(112,200,224,.75)}
+.entrada-form .rodape{margin:14px 0 0;font-size:12px;color:#8b95ad;
+text-wrap:pretty}
+.entrada-form .alerta{background:rgba(192,52,29,.16);
+border-color:rgba(255,138,116,.42);color:#ffb4a4}
+.entrada-form a{color:var(--ciano-claro)}
+
+/* Numa tela estreita a coluna da marca vira uma faixa curta em cima: some o
+   texto longo e a rota, fica a logo e a chamada. Empilhar tudo empurraria o
+   campo de digitar para fora da tela — a única coisa que a pessoa veio
+   fazer. */
+@media(max-width:860px){
+.entrada{grid-template-columns:1fr;min-height:0}
+.entrada-marca{padding:26px 22px;gap:16px}
+.entrada-marca h1{font-size:22px;margin:0}
+.entrada-marca p,.rota{display:none}
+.entrada-marca .logo{height:34px;padding:8px 11px}
+.entrada-form{padding:30px 20px}}
 /* ============================== acabamento =================================
    Detalhes pequenos que somam. Cada um tem motivo; nenhum é enfeite solto. */
 
@@ -526,7 +575,7 @@ def print_embutido(caminho: str | None) -> str:
 
 
 def entrada(titulo: str, cartao: str, *, chamada: str, apoio: str,
-            provas: tuple[tuple[str, str], ...] = (), rodape: str = "") -> str:
+            paradas: tuple[str, ...] = (), rodape: str = "") -> str:
     """O casco das telas de entrada: a do vendedor e a do painel.
 
     Casco próprio, e não `pagina()`, por dois motivos. A faixa do topo existe
@@ -536,19 +585,30 @@ def entrada(titulo: str, cartao: str, *, chamada: str, apoio: str,
     área com apresentação: vista uma vez por sessão, sem trabalho para
     atrapalhar.
 
-    `provas` são pares (valor, rótulo) e vêm de quem chama porque os números
-    são do SISTEMA — `len(AUTOMATICAS)`, quantas transportadoras existem.
-    Fixos aqui, envelheceriam na primeira que entrasse, e uma tela de entrada
-    mentindo sobre o tamanho do próprio sistema é pior do que uma sem número
-    nenhum. `layout.py` também não pode importar `web.transportadoras` sem
-    correr atrás de import circular, e passar por parâmetro custa uma linha.
+    `paradas` desenha a rota: os pontos por onde a carga passa dentro do
+    sistema, do primeiro ao último. Vêm de quem chama porque o número do meio
+    é do SISTEMA — `len(AUTOMATICAS)`. Fixo aqui, envelheceria na primeira
+    transportadora que entrasse, e uma tela de entrada mentindo sobre o
+    tamanho do próprio sistema é pior do que uma sem número nenhum.
+    `layout.py` também não pode importar `web.transportadoras` sem correr
+    atrás de import circular, e passar por parâmetro custa uma linha.
+
+    O último ponto fica em aberto (só o contorno, e o trecho até ele
+    pontilhado): é o preço que ainda não chegou. Linha inteira sólida diria
+    que a cotação já acabou.
 
     `cartao` entra CRU: é HTML montado por quem chama, com o formulário. Tudo
     que vem de fora — chamada, apoio, provas, rodapé — passa por `e()`.
     """
-    itens = "".join(f"<div><dt>{e(v)}</dt><dd>{e(r)}</dd></div>"
-                    for v, r in provas)
-    lista = f'<dl class="provas">{itens}</dl>' if itens else ""
+    pontos = []
+    for n, parada in enumerate(paradas):
+        if n:
+            # O trecho até o ÚLTIMO ponto é o que falta percorrer.
+            falta = " falta" if n == len(paradas) - 1 else ""
+            pontos.append(f'<i class="trecho{falta}"></i>')
+        pontos.append('<div class="parada"><i class="ponto"></i>'
+                      f"<span>{e(parada)}</span></div>")
+    lista = f'<div class="rota">{"".join(pontos)}</div>' if pontos else ""
     fim = f'<p class="rodape">{e(rodape)}</p>' if rodape else ""
     return f"""<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">

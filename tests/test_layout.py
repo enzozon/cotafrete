@@ -218,12 +218,13 @@ def test_a_entrada_nao_repete_a_logo():
 
 def test_a_entrada_escapa_o_que_vem_de_fora():
     """`cartao` entra cru de proposito (e HTML montado por quem chama), mas
-    chamada, apoio, provas e rodape sao texto e passam por e()."""
+    chamada, apoio, paradas e rodape sao texto e passam por e()."""
     html = layout.entrada("t", "<div>ok</div>", chamada="<script>a</script>",
-                          apoio="<b>b</b>", provas=(("<i>1</i>", "<u>x</u>"),),
+                          apoio="<b>b</b>", paradas=("<i>1</i>", "<u>x</u>"),
                           rodape="<em>r</em>")
 
-    for cru in ("<script>a</script>", "<b>b</b>", "<i>1</i>", "<em>r</em>"):
+    for cru in ("<script>a</script>", "<b>b</b>", "<i>1</i>", "<u>x</u>",
+                "<em>r</em>"):
         assert cru not in html
     assert "&lt;script&gt;a&lt;/script&gt;" in html
 
@@ -249,13 +250,25 @@ def test_o_texto_das_telas_de_entrada_sai_acentuado(monkeypatch):
         assert palavra in painel, f"a tela do painel perdeu: {palavra}"
 
 
-def test_o_hero_conta_as_transportadoras_de_verdade():
-    """Os numeros do hero saem de len(AUTOMATICAS) e len(TODAS_AS_SLUGS).
-    Escritos a mao, a tela de entrada passaria a mentir sobre o tamanho do
-    proprio sistema na primeira transportadora que entrasse ou saisse."""
+def test_a_rota_conta_as_transportadoras_de_verdade():
+    """A parada do meio diz quantas cotam sozinhas, e o numero sai de
+    len(AUTOMATICAS). Escrito a mao, a tela de entrada passaria a mentir sobre
+    o tamanho do proprio sistema na primeira transportadora que entrasse ou
+    saisse - e ninguem olha a tela de login para conferir isso."""
     from web import app as app_web
 
     html = app_web.tela_login()
 
-    assert f"<dt>{len(app_web.AUTOMATICAS)}</dt>" in html
-    assert f"<dt>{len(app_web.TODAS_AS_SLUGS)}</dt>" in html
+    assert f"{len(app_web.AUTOMATICAS)} cotam sozinhas" in html
+
+
+def test_a_rota_deixa_o_ultimo_ponto_em_aberto():
+    """O ultimo trecho e pontilhado e o ultimo ponto e so contorno: e o preco
+    que ainda nao chegou. Linha inteira solida diria que a cotacao acabou -
+    numa tela onde ninguem nem entrou ainda."""
+    html = layout.entrada("t", "<div>x</div>", chamada="c", apoio="a",
+                          paradas=("um", "dois", "tres"))
+
+    assert html.count('class="ponto"') == 3
+    assert html.count('class="trecho"') == 1, "o do meio, percorrido"
+    assert html.count('class="trecho falta"') == 1, "o ultimo, em aberto"
