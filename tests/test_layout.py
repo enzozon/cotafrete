@@ -129,6 +129,24 @@ def test_o_movimento_respeita_quem_pediu_para_parar():
     assert "animation-duration:.01ms !important" in layout.CSS
 
 
+def test_a_rota_da_entrada_nao_escapa_para_o_resto_do_sistema():
+    """A rota e um COMPONENTE da tela de entrada, e precisa ficar la dentro.
+
+    Solta no global, `.rota{display:flex}` alcancava o `<td class="rota">` do
+    historico do painel - a coluna origem->destino. Um <td> em display:flex
+    sai do modelo de colunas da tabela: a celula parava de alinhar com o
+    proprio cabecalho, e nada quebrava o suficiente para alguem reparar.
+
+    O teste guarda a REGRA (nome de classe generico so vale escopado), e nao
+    o texto de um seletor: qualquer regra nova da rota que nasca fora de
+    .entrada-marca cai aqui."""
+    for regra in re.findall(r"[^{}]+\{", layout.CSS):
+        for seletor in regra.split(","):
+            seletor = seletor.strip()
+            if re.match(r"^\.rota\b", seletor):
+                pytest.fail(f"seletor .rota sem escopo de entrada: {seletor!r}")
+
+
 def test_o_brilho_de_espera_casa_com_a_linha_que_o_app_monta():
     """O brilho da transportadora que ainda espera resposta e ligado por
     SELETOR, e nao por uma classe que alguem precisa lembrar de escrever.

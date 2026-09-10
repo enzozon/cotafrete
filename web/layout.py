@@ -383,20 +383,20 @@ color:rgba(255,255,255,.72);text-wrap:pretty}
 
    Faixa própria embaixo do texto, e não um traçado atrás dele: fundo que
    cruza o parágrafo briga com a leitura em alguma largura de tela, sempre. */
-.rota{display:flex;align-items:flex-start;gap:0;margin:0;padding-top:4px}
-.rota .parada{display:flex;flex-direction:column;gap:9px;flex:0 0 auto;
+.entrada-marca .rota{display:flex;align-items:flex-start;gap:0;margin:0;padding-top:4px}
+.entrada-marca .rota .parada{display:flex;flex-direction:column;gap:9px;flex:0 0 auto;
 max-width:14ch}
-.rota .ponto{width:13px;height:13px;border-radius:50%;background:#70c8e0;
+.entrada-marca .rota .ponto{width:13px;height:13px;border-radius:50%;background:#70c8e0;
 box-shadow:0 0 0 5px rgba(112,200,224,.18)}
-.rota .parada:last-child .ponto{background:transparent;
+.entrada-marca .rota .parada:last-child .ponto{background:transparent;
 border:2px solid rgba(255,255,255,.5);box-shadow:none}
-.rota .parada span{font-size:11.5px;line-height:1.35;
+.entrada-marca .rota .parada span{font-size:11.5px;line-height:1.35;
 text-transform:uppercase;letter-spacing:.9px;color:rgba(255,255,255,.72)}
 /* O trecho percorrido é sólido no ciano; o que falta é pontilhado. A carga
    ainda não chegou — a linha inteira sólida diria que sim. */
-.rota .trecho{flex:1 1 auto;height:2px;margin:6px 12px 0;
+.entrada-marca .rota .trecho{flex:1 1 auto;height:2px;margin:6px 12px 0;
 background:linear-gradient(90deg,#70c8e0,rgba(112,200,224,.45))}
-.rota .trecho.falta{background:none;
+.entrada-marca .rota .trecho.falta{background:none;
 border-top:2px dashed rgba(255,255,255,.26);height:0;margin-top:5px}
 
 /* ---- o lado do formulário ---- */
@@ -434,7 +434,7 @@ border-color:rgba(255,138,116,.42);color:#ffb4a4}
 .entrada{grid-template-columns:1fr;min-height:0}
 .entrada-marca{padding:26px 22px;gap:16px}
 .entrada-marca h1{font-size:22px;margin:0}
-.entrada-marca p,.rota{display:none}
+.entrada-marca p,.entrada-marca .rota{display:none}
 .entrada-marca .logo{height:34px;padding:8px 11px}
 .entrada-form{padding:30px 20px}}
 /* ============================== acabamento =================================
