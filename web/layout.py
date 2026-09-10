@@ -119,26 +119,6 @@ button:active{transform:translateY(1px);box-shadow:var(--sombra-1)}
 button:focus-visible,a:focus-visible,summary:focus-visible{outline:2px solid
 var(--ciano);outline-offset:2px}
 
-.resultados{display:grid;gap:14px;
-grid-template-columns:repeat(auto-fit,minmax(250px,1fr))}
-.res{border:1px solid var(--borda);border-radius:var(--raio);padding:18px;
-background:var(--papel);box-shadow:var(--sombra-1);
-transition:transform .18s var(--suave),box-shadow .18s var(--suave)}
-.res:hover{transform:translateY(-2px);box-shadow:var(--sombra-2)}
-/* A mais barata ganha a borda verde E um filete no topo: cor de borda sozinha
-   some numa tela cheia de cartões brancos vista de longe. */
-.res.melhor{border-color:var(--ok);box-shadow:0 0 0 1px var(--ok),
-var(--sombra-2);position:relative;overflow:hidden}
-.res.melhor::before{content:"";position:absolute;left:0;right:0;top:0;
-height:3px;background:var(--ok)}
-.res .nome{font-weight:700;font-size:14px}
-.res .valor{font-size:30px;font-weight:700;color:var(--ok);margin:6px 0 2px;
-letter-spacing:-1px}
-/* Preço que não é da carga toda não pode usar o verde de "bom preço": o olho
-   compara os números grandes antes de ler qualquer aviso, e era exatamente
-   assim que R$ 33,29 por volume parecia mais barato que R$ 69,91 pela carga. */
-.res .valor.incerto{color:var(--fraco)}
-.res .nota{font-size:12px;color:var(--fraco)}
 .falhou{color:var(--erro);font-size:13px;font-weight:600}
 /* "Enviada" NAO pode usar o vermelho de falha nem o verde de preco: nao deu
    errado e nao ha numero para comparar. Fica na cor da marca, no tamanho que
@@ -200,11 +180,14 @@ font-size:13px}
 border-top-color:var(--ciano);border-radius:50%;
 animation:gira .8s linear infinite}
 @keyframes gira{to{transform:rotate(360deg)}}
-/* Enquanto a transportadora não respondeu, o cartão fica com um brilho que
+/* Enquanto a transportadora não respondeu, a LINHA fica com um brilho que
    atravessa devagar. Diz "vivo, esperando" sem ocupar espaço com texto — e a
-   Della Volpe leva ~110s, que é muito tempo olhando para um cartão parado. */
+   Della Volpe leva ~110s, que é muito tempo olhando para uma linha parada.
+
+   Ligado por `:has(.cotando)`, o estado que web/app.py já monta, e não por
+   uma classe que alguém precise lembrar de escrever. */
 @keyframes brilho{to{background-position:200% 0}}
-.res:has(.cotando){background:linear-gradient(100deg,var(--papel) 38%,
+tr.r:has(.cotando) td{background:linear-gradient(100deg,var(--papel) 38%,
 var(--lavagem) 50%,var(--papel) 62%);background-size:200% 100%;
 animation:brilho 2.2s var(--suave) infinite}
 .aviso{background:#fffae6;border:1px solid #ffe380;border-radius:var(--raio-p);
@@ -479,6 +462,109 @@ button:active{transform:scale(.97);box-shadow:var(--sombra-1)}
 .periodo{min-height:40px;display:inline-flex;align-items:center}
 .menu a{display:inline-flex;align-items:center;min-height:40px}
 .lateral a{min-height:40px}
+
+/* ================== resultado da cotação: a tabela de comparação ==========
+   Direção A. Era um cartão por transportadora, com o print em tamanho real
+   dentro: 300px de altura cada, e os dois preços que se comparam ficavam com
+   meia tela de distância um do outro. Pior no celular, onde o PRIMEIRO preço
+   visível era o mais caro, só por estar antes na ordem.
+
+   Agora é uma linha por transportadora. Comparar vira ler uma coluna. */
+.r-cab{display:flex;align-items:center;gap:14px;margin-bottom:12px}
+.r-cab h2{font-size:15px;margin:0}
+.r-cab .botao2{margin:0 0 0 auto}
+/* Só a tabela rola, nunca a página. */
+.rolagem-r{overflow-x:auto}
+/* `table-layout:fixed` e as larguras nas celulas do CABECALHO. Duas coisas
+   que so se descobrem medindo:
+
+   - sem layout fixo o navegador soma o conteudo de cada celula e a tabela
+     estoura o container (medido em 10/09/2026: 1323px dentro de 990px);
+   - com layout fixo quem define as colunas e a PRIMEIRA linha, que e o
+     `<thead>`. Larguras so nas celulas do corpo deixavam cabecalho e corpo
+     fora de registro, cada um pedindo um conjunto de colunas.
+
+   Somam exatamente 100%: sobrando, a tabela cresce e a rolagem volta. */
+table.resultados{width:100%;border-collapse:collapse;font-size:13.5px;
+table-layout:fixed}
+table.resultados .r-nome{width:22%}
+table.resultados .r-preco{width:14%}
+table.resultados .r-prazo{width:9%}
+table.resultados .r-nota{width:27%}
+table.resultados .r-estado{width:14%}
+table.resultados .r-print{width:14%}
+table.resultados th{font-size:10.5px;letter-spacing:1px;
+text-transform:uppercase;color:var(--fraco);font-weight:700;text-align:left;
+padding:0 14px;height:34px;background:#f8fafd;
+border-bottom:1px solid var(--borda);white-space:nowrap}
+table.resultados th.r-preco,table.resultados th.r-prazo,
+table.resultados th.r-print{text-align:right}
+table.resultados td{padding:0 14px;height:56px;
+border-bottom:1px solid var(--borda);vertical-align:middle}
+tr.r:hover td{background:var(--lavagem)}
+.r-nome{font-weight:500}
+.r-preco{text-align:right;white-space:nowrap}
+.r-prazo{text-align:right;color:var(--tinta2);white-space:nowrap}
+/* A unica coluna que QUEBRA. As outras sao numero ou rotulo curto; esta e
+   frase, e e ela que deve ceder quando a tela aperta. */
+.r-nota{color:var(--fraco);font-size:12.5px;line-height:1.35;
+text-wrap:pretty}
+.r-print{text-align:right;width:1%}
+
+/* A vencedora. Fundo mais filete à esquerda, e não só borda: numa tabela a
+   borda de uma linha se confunde com a divisória da linha de cima. */
+tr.r.melhor td{background:#f2f8f5}
+tr.r.melhor:hover td{background:#eaf4ef}
+tr.r.melhor .r-nome{font-weight:700;box-shadow:inset 3px 0 0 var(--ok)}
+tr.r.melhor .preco{font-size:19px}
+
+.resultados .preco{font-size:16px;font-weight:700;color:var(--ok)}
+/* Preço que não é da carga toda não pode usar o verde de "bom preço": o olho
+   compara os números grandes antes de ler qualquer aviso, e era exatamente
+   assim que R$ 33,29 por volume parecia mais barato que R$ 69,91 pela carga. */
+.resultados .preco.incerto{color:var(--fraco)}
+.resultados .sem{color:var(--fraco);font-size:13px}
+.resultados .cotando{font-size:12.5px}
+
+/* Pílula de estado. Cor semântica, separada da cor da marca: verde é "veio
+   preço", âmbar é "a transportadora disse não", vermelho é "não sabemos". */
+.estado-ok,.estado-aguardando,.estado-recusa,.estado-falha,.estado-cotando{
+display:inline-flex;align-items:center;height:22px;padding:0 9px;
+border-radius:99px;font-size:10.5px;font-weight:700;letter-spacing:.4px;
+white-space:nowrap}
+.estado-ok{background:#e6f4ef;color:var(--ok)}
+.estado-aguardando{background:var(--lavagem);color:var(--marca)}
+.estado-recusa{background:#fff4e2;color:var(--atencao)}
+.estado-falha{background:#fdece9;color:var(--erro)}
+.estado-cotando{background:var(--fundo);color:var(--fraco)}
+
+/* A MINIATURA do print, em toda transportadora que tenha — não só na mais
+   barata. O print é a prova de que aquele preço veio do site, e prova que só
+   a vencedora tem não prova nada sobre as outras. `object-position:top`
+   porque print de site é pesado em cima: o cabeçalho da transportadora é o
+   que identifica a imagem de relance. Clicar abre a lupa. */
+.mini{display:inline-block;line-height:0}
+.mini .print{width:76px;height:44px;margin:0;object-fit:cover;
+object-position:top center;border-radius:6px;cursor:zoom-in;
+transition:transform .16s var(--suave),box-shadow .16s var(--suave)}
+.mini .print:hover{transform:scale(1.06);box-shadow:var(--sombra-2)}
+.sem-print{color:var(--borda-forte)}
+
+/* A linha de detalhe: só existe quando há o que avisar, e atravessa a tabela
+   inteira. Aviso solto numa célula estreita vira duas palavras por linha. */
+tr.r-extra td{height:auto;padding:0 14px 12px;background:#fbfcfe;
+border-bottom:1px solid var(--borda)}
+tr.r-extra .alerta,tr.r-extra .nota{margin:0 0 6px}
+tr.r-extra>td>*:last-child{margin-bottom:0}
+
+/* Celular: some o que é explicação e fica o que é comparação. A coluna "o
+   que inclui" é a primeira a sair — é longa, e é justamente a que o vendedor
+   já sabe de cor. */
+@media(max-width:720px){
+  table.resultados .r-nota,table.resultados th:nth-child(4){display:none}
+  table.resultados td,table.resultados th{padding:0 10px}
+  .mini .print{width:56px;height:36px}
+}
 """
 
 

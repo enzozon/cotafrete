@@ -12,6 +12,8 @@ existe uma transportadora pendente.
 
 from __future__ import annotations
 
+import re
+
 from datetime import datetime, timedelta
 
 import pytest
@@ -85,6 +87,20 @@ def _criar(app_web, *, criado_em: str | None = None,
             con.execute("UPDATE cotacao SET criado_em = ? WHERE id = ?",
                         (criado_em, cotacao_id))
     return cotacao_id
+
+
+def linha_de(html: str, slug: str) -> str:
+    """O <tr> de UMA transportadora, pelo `data-t` que a tela carimba.
+
+    Substituiu `html.split("Jadlog")[1].split("</div></div>")[0]`, que era o
+    corte por fronteira de cartao. Quando o resultado virou tabela (10/09/2026)
+    aquele corte passou a devolver um pedaco que atravessava para a linha
+    seguinte - e o teste do selo "MAIS BARATO" acusou a Jadlog de estar com um
+    selo que era da Camilo. Ancorar no slug nao tem como escorregar de linha."""
+    achou = re.search(rf'<tr class="r[^"]*" data-t="{slug}">.*?</tr>', html,
+                      re.S)
+    assert achou, f"nenhuma linha de {slug} na tela"
+    return achou.group(0)
 
 
 def test_tela_abre_com_todas_as_transportadoras_ainda_cotando(app_web, cliente):
@@ -303,7 +319,7 @@ def test_jadlog_nao_leva_o_selo_de_mais_barato_com_varios_volumes(app_web,
                                    status="cotado", valor="69.91")
 
     html = cliente.get(f"/cotacao/{cotacao_id}").text
-    cartao_jadlog = html.split("Jadlog")[1].split("</div></div>")[0]
+    cartao_jadlog = linha_de(html, "jadlog")
 
     assert "MAIS BARATO" not in cartao_jadlog
     assert "MAIS BARATO" in html, "a Camilo devia ficar com o selo"
@@ -321,7 +337,7 @@ def test_com_um_volume_so_o_preco_da_jadlog_vale_e_disputa_normal(app_web,
                                    status="cotado", valor="69.91")
 
     html = cliente.get(f"/cotacao/{cotacao_id}").text
-    cartao_jadlog = html.split("Jadlog")[1].split("</div></div>")[0]
+    cartao_jadlog = linha_de(html, "jadlog")
 
     assert "MAIS BARATO" in cartao_jadlog
     assert "estimativa" not in cartao_jadlog.lower()
@@ -338,11 +354,11 @@ def test_preco_de_um_volume_perde_o_verde_de_bom_preco(app_web, cliente):
                                    status="cotado", valor="69.91")
 
     html = cliente.get(f"/cotacao/{cotacao_id}").text
-    jadlog = html.split("Jadlog")[1].split("</div></div>")[0]
-    camilo = html.split("Camilo")[1].split("</div></div>")[0]
+    jadlog = linha_de(html, "jadlog")
+    camilo = linha_de(html, "camilo")
 
-    assert 'class="valor incerto"' in jadlog
-    assert 'class="valor"' in camilo, "a Camilo cota a carga toda: segue verde"
+    assert 'class="preco incerto"' in jadlog
+    assert 'class="preco"' in camilo, "a Camilo cota a carga toda: segue verde"
 
 
 # ------------------------------------------------- WhatsApp: contagem de ABERTAS
@@ -871,3 +887,51 @@ def test_erro_sem_traducao_continua_aparecendo_inteiro(app_web, cliente):
     html = cliente.get(f"/cotacao/{cotacao_id}").text
 
     assert "sei lá o que aconteceu" in html
+
+
+def test_o_print_aparece_em_todas_as_transportadoras_que_tem(app_web, cliente):
+    """O print e a prova de que aquele preco veio do site. Prova que so a
+    vencedora tem nao prova nada sobre as outras - e foi assim que a primeira
+    versao da tabela saiu, com "ver print" em vez da imagem.
+
+    Miniatura, e nao tamanho real: 300px de print por transportadora era o que
+    deixava os dois precos que se comparam com meia tela de distancia."""
+    from decimal import Decimal
+    # Qualquer PNG que exista serve: `print_embutido` so precisa de um
+    # caminho legivel, e um logo do proprio repositorio evita inventar
+    # fixture nova para provar uma regra de tela.
+    prova = "web/logos/jadlog.png"
+
+    cid = app_web.banco.salvar_cotacao("enzo", CARGA)
+    app_web.banco.salvar_resultado(cid, "camilo", status="cotado",
+                                   valor=Decimal("321.45"),
+                                   evidencia=prova)
+    app_web.banco.salvar_resultado(cid, "jadlog", status="cotado",
+                                   valor=Decimal("189.90"),
+                                   evidencia=prova)
+    app_web.banco.salvar_resultado(cid, "generoso", status="erro",
+                                   erro="TimeoutError",
+                                   evidencia=prova)
+
+    html = cliente.get(f"/cotacao/{cid}").text
+
+    for slug in ("camilo", "jadlog", "generoso"):
+        assert '<span class="mini">' in linha_de(html, slug),             f"{slug} ficou sem miniatura do print"
+    # inclusive a que FALHOU: e nela que a tela do site mais importa, porque
+    # e onde se ve em que passo a coisa parou
+    assert 'class="print"' in linha_de(html, "generoso")
+
+
+def test_o_prazo_aparece_ao_lado_do_preco(app_web, cliente):
+    """O banco guarda `prazo` desde sempre e a tela do vendedor nunca mostrou:
+    `grep -c` por prazo em web/app.py devolvia 0. Sem ele a comparacao e so
+    preco - e frete se decide comparando preco CONTRA prazo."""
+    from decimal import Decimal
+
+    cid = app_web.banco.salvar_cotacao("enzo", CARGA)
+    app_web.banco.salvar_resultado(cid, "jadlog", status="cotado",
+                                   valor=Decimal("189.90"), prazo="4")
+
+    linha = linha_de(cliente.get(f"/cotacao/{cid}").text, "jadlog")
+
+    assert "4 dias" in linha

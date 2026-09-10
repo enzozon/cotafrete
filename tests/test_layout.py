@@ -129,17 +129,17 @@ def test_o_movimento_respeita_quem_pediu_para_parar():
     assert "animation-duration:.01ms !important" in layout.CSS
 
 
-def test_o_brilho_de_espera_casa_com_o_cartao_que_o_app_monta():
-    """O brilho do cartao que ainda espera resposta e ligado por SELETOR, e nao
-    por uma classe que alguem precisa lembrar de escrever no HTML.
+def test_o_brilho_de_espera_casa_com_a_linha_que_o_app_monta():
+    """O brilho da transportadora que ainda espera resposta e ligado por
+    SELETOR, e nao por uma classe que alguem precisa lembrar de escrever.
 
-    Isso so funciona enquanto o cartao pendente continuar sendo um `.res` com
-    um `.cotando` dentro (web/app.py:1364-1366). Se aquela marcacao mudar, a
-    regra para de casar em silencio - o cartao nao quebra, so volta a ficar
-    parado, e ninguem descobre olhando a tela."""
+    Era `.res:has(.cotando)`, do tempo dos cartoes; virou `tr.r:has(.cotando)`
+    quando o resultado passou a ser tabela (10/09/2026). Se a marcacao mudar de
+    novo, a regra para de casar EM SILENCIO - a tela nao quebra, so volta a
+    ficar parada, e ninguem descobre olhando."""
     from web import app as modulo
 
-    assert ".res:has(.cotando)" in layout.CSS
+    assert "tr.r:has(.cotando)" in layout.CSS
     assert 'class="cotando"' in pathlib.Path(
         modulo.__file__).read_text(encoding="utf-8")
 

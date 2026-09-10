@@ -1229,6 +1229,62 @@ def formulario_dellavolpe(cotacao_id: int,
 """, usuario))
 
 
+# Rótulo e classe de cada estado. Um lugar só: a linha e a pílula têm de
+# concordar, e quando cada uma decidia por conta a tela dizia "Cotou" ao lado
+# de um travessão.
+ESTADOS = {
+    "ok": ("Cotou", "estado-ok"),
+    "aguardando": ("Enviada", "estado-aguardando"),
+    "recusa": ("Recusou", "estado-recusa"),
+    "falha": ("Falhou", "estado-falha"),
+    "intervencao": ("Precisa de alguém", "estado-falha"),
+    "cotando": ("Cotando", "estado-cotando"),
+}
+
+
+def _linha_resultado(slug: str, principal: str, prazo: str, estado: str,
+                     selo: str, destaque: str, evidencia: str | None,
+                     avisos: str, nota: str = "") -> str:
+    """Uma transportadora, em duas linhas de tabela.
+
+    A de cima compara: nome, frete, prazo, o que inclui, estado, print. A de
+    baixo só existe quando há o que avisar, e aí atravessa a tabela inteira —
+    aviso solto numa célula estreita vira duas palavras por linha.
+
+    `nota` (a coluna "o que inclui") só vem quando houve PREÇO. Ela descreve
+    o que aquele preço cobre — sem preço não descreve nada, e a da Braspress
+    ainda cita o CNPJ da Ventura, que a tela não pode prometer numa linha que
+    não cotou (`test_a_tela_nao_promete_mais_um_cnpj_fixo_na_generoso`).
+
+    A MINIATURA aparece em TODA transportadora que tenha print, e não só na
+    mais barata: o print é a prova de que aquele preço veio do site, e prova
+    que só a vencedora tem não prova nada sobre as outras. O que o print não
+    pode é afastar os preços um do outro, e era isso que 300px por cartão
+    faziam — o olho comparava dois números com meia tela de distância.
+    Clicar abre a lupa, que já existe desde 09/09/2026.
+    """
+    rotulo, classe_estado = ESTADOS.get(estado, ("—", "estado-falha"))
+    mini = (f'<span class="mini">{_img(evidencia)}</span>'
+            if evidencia else '<span class="sem-print">—</span>')
+    detalhe = (f'<tr class="r-extra"><td colspan="6">{avisos}</td></tr>'
+               if avisos else "")
+    # `data-t` com o slug: e o que deixa o teste (e o JavaScript, se um dia
+    # precisar) achar a linha de UMA transportadora sem fatiar o HTML no
+    # olho. A versao anterior destes testes cortava a string em
+    # `</div></div>` e, quando o cartao virou linha de tabela, passou a
+    # medir o pedaco errado da tela sem falhar por isso.
+    return (
+        f'<tr class="r{destaque}" data-t="{e(slug)}">'
+        f'<td class="r-nome">{e(NOMES.get(slug, slug))} {selo}</td>'
+        f'<td class="r-preco">{principal}</td>'
+        f'<td class="r-prazo">{e(prazo)}</td>'
+        f'<td class="r-nota">{e(nota)}</td>'
+        f'<td class="r-estado"><span class="{classe_estado}">'
+        f'{e(rotulo)}</span></td>'
+        f'<td class="r-print">{mini}</td>'
+        f'</tr>{detalhe}')
+
+
 @app.get("/cotacao/{cotacao_id}", response_class=HTMLResponse)
 def ver_cotacao(cotacao_id: int,
                 usuario: str | None = Cookie(None, alias=COOKIE)):
@@ -1257,17 +1313,29 @@ def ver_cotacao(cotacao_id: int,
               and not cota_por_volume(r["transportadora"], qtd)]
     melhor = min(precos) if precos else None
 
-    cartoes = ""
+    linhas = ""
     for r in c["resultados"]:
         slug = r["transportadora"]
+        # `avisos` vai para a LINHA DE DETALHE, abaixo da linha da
+        # transportadora. Cada frase aqui e a mesma de quando isto era cartao:
+        # elas foram escritas em cima de cotacao real que deu errado, e trocar
+        # o desenho da tela nao e motivo para reescrever nenhuma.
+        avisos = ""
+        prazo = ""
         if r["valor"] is not None:
             destaque = " melhor" if r["valor"] == melhor else ""
             selo = '<span class="selo">MAIS BARATO</span>' if destaque else ""
             incerto = " incerto" if cota_por_volume(slug, qtd) else ""
-            corpo = (f'<div class="valor{incerto}">'
-                     f'{moeda(r["valor"])}</div>')
+            principal = (f'<span class="preco{incerto}">'
+                         f'{moeda(r["valor"])}</span>')
+            estado = "ok"
+            # O prazo estava no banco desde sempre e a tela nunca mostrou.
+            # Sem ele a comparacao e so preco - e frete se decide comparando
+            # preco CONTRA prazo.
+            if r["prazo"]:
+                prazo = f'{e(str(r["prazo"]))} dias'
             if cota_por_volume(slug, qtd):
-                corpo += (
+                avisos += (
                     f'<div class="alerta"><b>Preço de 1 volume, não da '
                     f'carga.</b> São {qtd} volumes: por estimativa, '
                     f'{moeda(r["valor"] * qtd)} no total. Por isso ela não '
@@ -1276,35 +1344,31 @@ def ver_cotacao(cotacao_id: int,
             # em área de risco", cotação #99 de 01/09/2026) — não é falha,
             # mas o vendedor precisa ler antes de fechar.
             if r["erro"]:
-                corpo += (f'<div class="alerta">'
-                          f'{e(r["erro"][:LIMITE_MENSAGEM_ERRO])}</div>')
-            corpo += f'<div class="nota">{e(NOTAS.get(slug, ""))}</div>'
+                avisos += (f'<div class="alerta">'
+                           f'{e(r["erro"][:LIMITE_MENSAGEM_ERRO])}</div>')
             if r["protocolo"]:
-                corpo += (f'<div class="nota">Cotação nº '
-                          f'{e(r["protocolo"])}</div>')
-            corpo += _img(r["evidencia"])
+                avisos += (f'<div class="nota">Cotação nº '
+                           f'{e(r["protocolo"])}</div>')
         elif r["status"] == StatusCotacao.INTERVENCAO_NECESSARIA.value:
             # Senha recusada. Diferente de um erro qualquer porque o vendedor
             # NÃO consegue resolver — e se ele repetir a cotação, cada
             # repetição é mais um login errado empurrando a conta da Ventura
-            # para o bloqueio. O cartão precisa dizer isso com todas as
+            # para o bloqueio. A linha precisa dizer isso com todas as
             # letras, senão repetir é exatamente o que ele vai fazer.
-            destaque, selo = "", ""
-            corpo = ('<div class="falhou">Precisa de alguém</div>'
-                     f'<div class="alerta email"><b>Repetir a cotação não '
-                     f'resolve.</b> A senha desta transportadora precisa ser '
-                     f'conferida no sistema. Avise quem cuida do Cotafrete e '
-                     f'siga pelo WhatsApp aqui embaixo.</div>'
-                     f'<div class="nota">'
-                     f'{e((r["erro"] or "")[:LIMITE_MENSAGEM_ERRO])}</div>')
+            destaque, selo, estado = "", "", "intervencao"
+            principal = '<span class="sem">Precisa de alguém</span>'
+            avisos = (f'<div class="alerta email"><b>Repetir a cotação não '
+                      f'resolve.</b> A senha desta transportadora precisa ser '
+                      f'conferida no sistema. Avise quem cuida do Cotafrete e '
+                      f'siga pelo WhatsApp aqui embaixo.</div>'
+                      f'<div class="nota">'
+                      f'{e((r["erro"] or "")[:LIMITE_MENSAGEM_ERRO])}</div>')
         elif r["status"] == StatusCotacao.AGUARDANDO_RETORNO.value:
             # Recebido, sem preço e sem falha. Precisa vir ANTES do ramo de
             # erro: lá embaixo tudo que não tem valor é tratado como problema.
-            destaque, selo = "", ""
-            # O print da tela "Recebemos seu pedido" é a prova de que o envio
-            # saiu. Sem ele o vendedor só tem a nossa palavra.
-            corpo = (cartao_resposta_por_email(c.get("email"), slug)
-                     + _img(r["evidencia"]))
+            destaque, selo, estado = "", "", "aguardando"
+            principal = '<span class="sem">preço por e-mail</span>'
+            avisos = cartao_resposta_por_email(c.get("email"), slug)
         elif r["status"] == StatusCotacao.RECUSADO.value:
             # Recusa NÃO é defeito. O site recebeu a carga inteira, entendeu,
             # e disse não — com estas palavras. Cotação #20 (25/08/2026): a
@@ -1312,34 +1376,28 @@ def ver_cotacao(cotacao_id: int,
             # e o vendedor leu "Não retornou preço", que é a frase de quando
             # ninguém sabe o que houve. Aí ele repete a cotação três vezes
             # atrás de um preço que nunca vai vir.
-            #
-            # O print entra junto: é a prova de que o "não" veio do site.
-            destaque, selo = "", ""
-            corpo = ('<div class="falhou">O site não cotou</div>'
-                     f'<div class="alerta">'
-                     f'{e((r["erro"] or "")[:LIMITE_MENSAGEM_ERRO])}</div>'
-                     + _img(r["evidencia"]))
+            destaque, selo, estado = "", "", "recusa"
+            principal = '<span class="sem">O site não cotou</span>'
+            avisos = (f'<div class="alerta">'
+                      f'{e((r["erro"] or "")[:LIMITE_MENSAGEM_ERRO])}</div>')
         else:
-            destaque, selo = "", ""
+            destaque, selo, estado = "", "", "falha"
             # Sempre dizer POR QUE não veio preço. "Não retornou preço" sozinho
             # manda o operador adivinhar — e foi status sem explicação que
             # escondeu, neste projeto, cinco envios que nunca saíram.
-            #
-            # O print faltava justamente aqui, no único ramo em que a tela do
-            # site é a informação que importa: é nela que se vê em que passo
-            # a coisa parou.
             motivo = r["erro"] or f"o site respondeu: {r['status']}"
             # A frase entra ANTES do texto técnico, nunca no lugar dele: o
             # vendedor lê a primeira linha e resolve; quem for investigar
             # continua tendo o original logo abaixo.
             frase = mensagem_amigavel(slug, r["erro"])
-            corpo = ('<div class="falhou">Não retornou preço</div>'
-                     + (f'<div class="alerta">{e(frase)}</div>' if frase else '')
-                     + f'<div class="nota">'
-                       f'{e(motivo[:LIMITE_MENSAGEM_ERRO])}</div>'
-                     + _img(r["evidencia"]))
-        cartoes += (f'<div class="res{destaque}"><div class="nome">'
-                    f'{e(NOMES.get(slug, slug))} {selo}</div>{corpo}</div>')
+            principal = '<span class="sem">Não retornou preço</span>'
+            avisos = ((f'<div class="alerta">{e(frase)}</div>' if frase else '')
+                      + f'<div class="nota">'
+                        f'{e(motivo[:LIMITE_MENSAGEM_ERRO])}</div>')
+        linhas += _linha_resultado(slug, principal, prazo, estado, selo,
+                                   destaque, r["evidencia"], avisos,
+                                   NOTAS.get(slug, "")
+                                   if r["valor"] is not None else "")
 
     # Quem ainda não respondeu ganha um cartão "cotando". Sem isso a
     # transportadora simplesmente não aparece, e o usuário não sabe se ela
@@ -1366,12 +1424,15 @@ def ver_cotacao(cotacao_id: int,
         tentativa = TENTATIVAS_EM_CURSO.get((cotacao_id, slug), 1)
         andamento = ('cotando…' if tentativa <= 1 else
                      f'tentando de novo ({tentativa} de {TENTATIVAS_MAXIMAS})')
-        dentro = ('<div class="falhou">Sem retorno</div>'
-                  if desistiu else
-                  f'<div class="cotando"><span class="girando"></span>'
-                  f'{andamento}</div>')
-        cartoes += (f'<div class="res"><div class="nome">'
-                    f'{e(NOMES.get(slug, slug))}</div>{dentro}</div>')
+        if desistiu:
+            estado = "falha"
+            principal = '<span class="sem">Sem retorno</span>'
+        else:
+            estado = "cotando"
+            principal = (f'<span class="cotando"><span class="girando">'
+                         f'</span>{e(andamento)}</span>')
+        linhas += _linha_resultado(slug, principal, "", estado, "", "",
+                                   None, "")
 
     # Recarrega sozinho de 3 em 3 segundos ENQUANTO faltar transportadora.
     # Quando todas responderem, para — recarregar uma página pronta faria a
@@ -1459,7 +1520,7 @@ def ver_cotacao(cotacao_id: int,
     baixar_prints = (
         f'<a class="botao2" style="margin-bottom:12px;display:inline-block"'
         f' href="/cotacao/{cotacao_id}/evidencias.zip">Baixar prints</a>'
-        if cartoes and not faltam else "")
+        if linhas and not faltam else "")
 
     return HTMLResponse(pagina(f"Cotação {cotacao_id}", f"""
 {recarrega}
@@ -1471,9 +1532,23 @@ def ver_cotacao(cotacao_id: int,
 · NF {moeda(c['valor_nf'])} · {e(c['material'])}</p>
 
 <div class="cartao">
-  <h2 style="font-size:15px;margin:0 0 12px">Cotadas automaticamente</h2>
-  {baixar_prints}
-  <div class="resultados">{cartoes or '<p class="sub">Nenhum resultado.</p>'}</div>
+  <div class="r-cab">
+    <h2>Cotadas automaticamente</h2>
+    {baixar_prints}
+  </div>
+  <div class="rolagem-r">
+    <table class="resultados">
+      <thead><tr>
+        <th class="r-nome">Transportadora</th>
+        <th class="r-preco">Frete</th>
+        <th class="r-prazo">Prazo</th>
+        <th class="r-nota">O que inclui</th>
+        <th class="r-estado">Estado</th>
+        <th class="r-print">Print</th>
+      </tr></thead>
+      <tbody>{linhas or '<tr><td colspan="6" class="sub">Nenhum resultado.</td></tr>'}</tbody>
+    </table>
+  </div>
 </div>
 
 {semiautomatica}
