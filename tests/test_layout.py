@@ -193,18 +193,47 @@ def test_a_marca_nao_vai_embutida_em_cada_pagina():
             f"a tela do {nome} voltou a embutir imagem no HTML")
 
 
-def test_a_marca_ganha_placa_so_no_tema_claro():
-    """As pecas tem letras PRATEADAS, feitas para fundo escuro.
+def test_cada_tema_recebe_a_arte_feita_para_ele():
+    """Duas artes da marca, e o tema escolhe. Nenhuma placa atras.
 
-    Sobre o #f3f6fb do tema claro elas somem — medido compondo a arte sobre o
-    fundo real. Por isso o claro poe uma placa marinha atras. E por isso o
-    ESCURO tem de tirar a placa: ali a peca ja e da cor da tela, e manter a
-    placa faria um retangulo mais escuro que o fundo — o mesmo defeito ao
-    contrario."""
+    As letras da marca sao PRATEADAS: sobre branco dao 1.1:1. A primeira
+    solucao foi uma placa quase preta atras da logo — resolvia a
+    legibilidade e cortava a pagina clara ao meio, que e remendo, nao
+    desenho.
+
+    Agora sao duas artes: a prateada para fundo escuro, e uma com o prateado
+    virado tinta escura para fundo claro.
+
+    A troca e por `background-image`, e nao por duas <img> com uma
+    escondida: o navegador baixa <img> mesmo com display:none, e seriam
+    90 KB que nunca aparecem na tela.
+    """
     css = layout.CSS
 
-    assert ".marca-placa{" in css, "o claro precisa da placa"
-    assert '[data-tema="escuro"] .marca-placa{background:none' in css,         "o escuro precisa tirar a placa"
+    assert layout.MARCA_COMPACTA_CLARA in css, "falta a arte do tema claro"
+    assert '[data-tema="escuro"] .marca-lockup{background-image:' in css, (
+        "o escuro precisa trocar para a arte prateada")
+    antes_da_faixa = css.split(".faixa-marca")[0]
+    assert "background:#0a1020" not in antes_da_faixa, (
+        "a placa escura atras da logo nao pode voltar")
+
+
+def test_a_faixa_do_inicio_acompanha_o_tema():
+    """Ela era um painel quase preto no alto de uma pagina branca.
+
+    Cortava a tela ao meio e nao combinava com nada em volta — foi essa a
+    queixa que gerou a mudanca. No claro ela passa a ser um cartao da casa;
+    no escuro continua painel, porque la o cartao claro e que seria o corpo
+    estranho.
+    """
+    css = layout.CSS
+
+    assert "linear-gradient(110deg,var(--lavagem)" in css, (
+        "no claro a faixa sai da lavagem da marca, e nao de um preto")
+    assert '[data-tema="escuro"] .faixa-marca{background:#0a1020' in css, (
+        "no escuro ela continua escura")
+    assert ".faixa-marca .diz{color:var(--tinta2)" in css, (
+        "o texto da faixa precisa seguir o tema, e nao ser fixo em claro")
 
 
 def test_os_tokens_da_marca_estao_na_matiz_da_marca():
@@ -406,7 +435,11 @@ def test_a_entrada_nao_repete_a_logo():
     html = layout.entrada("Entrar", "<div class='cartao'>x</div>",
                           chamada="c", apoio="a")
 
-    assert html.count(layout.MARCA_COMPACTA) == 1, \
+    # Conta o ELEMENTO, e nao o endereco do arquivo: desde que a marca virou
+    # background-image, o endereco aparece tambem no CSS — que vai inteiro
+    # dentro da pagina. Contar a string dava 3 e nao dizia nada sobre quantas
+    # marcas a pessoa ve.
+    assert html.count('class="logo marca-peca"') == 1, \
         "a marca tem que aparecer uma vez so"
     assert 'class="topo"' not in html
 

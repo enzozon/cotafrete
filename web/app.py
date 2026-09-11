@@ -60,7 +60,7 @@ from web.ficha_ui import (
     ficha_da_cotacao, kg as _kg, pagador_da_cotacao, peso_por_volume,
     quando as quando_humano, quem_e as _quem,
 )
-from web.layout import (MARCA_COMPACTA, entrada, e, moeda, pagina,
+from web.layout import (entrada, e, moeda, pagina,
                         print_embutido as _img)
 from web.transportadoras import cota_por_volume
 from core.models import (
@@ -690,7 +690,8 @@ def _render_formulario(v: dict, usuario: str, aviso: str) -> str:
     return pagina("Nova cotação", rf"""
 {aviso}
 <div class="faixa-marca">
-  <img src="{MARCA_COMPACTA}" alt="Ventura Comércio">
+  <span class="marca-peca marca-lockup" role="img"
+        aria-label="Ventura Comércio"></span>
   <span class="diz"><b>Todos os produtos num só lugar</b>
   Uma carga, todas as transportadoras: o Cotafrete preenche os sites por
   você e devolve os preços lado a lado.</span>
