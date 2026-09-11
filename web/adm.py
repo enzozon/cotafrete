@@ -475,6 +475,56 @@ if (secaoHistorico) secaoHistorico.addEventListener('click', ev => {
   location.href = tr.dataset.abrir;
 });
 
+// Troca a faixa REALCANDO so os numeros que mudaram de valor. O painel se
+// redesenha sozinho a cada 5s, e ate aqui fazia isso em silencio: quem estava
+// lendo e viu um numero diferente no canto do olho nao tinha como saber se
+// ele mudou agora ou se ja estava assim.
+//
+// Compara por POSICAO, e nao por rotulo: a faixa tem sempre os mesmos quatro
+// numeros, na mesma ordem, e casar por texto quebraria no dia em que alguem
+// corrigisse um acento no rotulo.
+function trocarFaixa(html) {
+  const alvo = document.getElementById('agora');
+  const antes = [...alvo.querySelectorAll('.numero b')]
+    .map(b => b.textContent.trim());
+  alvo.innerHTML = html;
+  [...alvo.querySelectorAll('.numero b')].forEach((b, i) => {
+    if (antes[i] !== undefined && antes[i] !== b.textContent.trim())
+      b.closest('.numero').classList.add('mudou');
+  });
+}
+
+// Troca a tabela marcando as cotacoes que ainda nao estavam nela. Sem isto a
+// linha nova aparece no meio das outras, identica, e a unica pista de que
+// entrou alguma coisa e a tabela ter ficado uma linha mais alta.
+//
+// `data-abrir` e a chave porque e o endereco da cotacao: unico por definicao,
+// e ja esta no HTML por outro motivo.
+function trocarTabela(html) {
+  const tabela = document.getElementById('tabela');
+  if (!tabela) return;
+  const antigas = new Set(
+    [...document.querySelectorAll('#historico tr[data-abrir]')]
+      .map(tr => tr.dataset.abrir));
+  tabela.outerHTML = html;
+  document.querySelectorAll('#historico tr[data-abrir]').forEach(tr => {
+    if (!antigas.has(tr.dataset.abrir)) tr.classList.add('nova');
+  });
+  aplicarBusca();
+}
+
+// A fatia da pizza e a linha da legenda acendem juntas. Delegacao no
+// documento, e nao ouvinte por elemento: a pizza e redesenhada a cada
+// atualizacao, e ouvinte preso a uma fatia morre junto com ela.
+document.addEventListener('mouseover', ev => {
+  const dono = ev.target.closest('[data-fatia]');
+  document.querySelectorAll('[data-fatia].realce')
+    .forEach(el => el.classList.remove('realce'));
+  if (!dono) return;
+  document.querySelectorAll('[data-fatia="' + dono.dataset.fatia + '"]')
+    .forEach(el => el.classList.add('realce'));
+});
+
 async function pulsar() {
   // Os filtros da tela vao junto: a tabela depende de dias/quem/falhas, e
   // location.search ja e exatamente isso.
@@ -490,10 +540,18 @@ async function pulsar() {
     if (r.status === 204 || !r.ok) return;   // 204 = nada mudou desde a ultima
     const d = await r.json();
     versao = d.v;
-    document.getElementById('agora').innerHTML = d.faixa;
-    const tabela = document.getElementById('tabela');
-    if (tabela) { tabela.outerHTML = d.tabela; aplicarBusca(); }
-  } catch (erro) { /* rede caiu; a proxima volta tenta de novo */ }
+    trocarFaixa(d.faixa);
+    trocarTabela(d.tabela);
+  } catch (erro) {
+    // Rede caiu: normal, a próxima volta tenta de novo, e encher o console
+    // a cada 5s num Wi-Fi instável não ajuda ninguém. `fetch` levanta
+    // TypeError quando não consegue sair.
+    //
+    // Qualquer OUTRO erro é defeito de código e precisa aparecer. Um catch
+    // mudo aqui já escondeu duas funções que existiam mas estavam fora de
+    // alcance: o painel parava de se atualizar sem deixar rastro nenhum.
+    if (!(erro instanceof TypeError)) console.error('[cotafrete]', erro);
+  }
 }
 setInterval(pulsar, PULSO_MS);
 
@@ -796,7 +854,16 @@ async function pulsar() {
     // tela logo abaixo.
     const nota = document.querySelector('#cartao-respostas .nota');
     if (nota) nota.textContent = d.nota;
-  } catch (erro) { /* rede caiu; a proxima volta tenta de novo */ }
+  } catch (erro) {
+    // Rede caiu: normal, a próxima volta tenta de novo, e encher o console
+    // a cada 5s num Wi-Fi instável não ajuda ninguém. `fetch` levanta
+    // TypeError quando não consegue sair.
+    //
+    // Qualquer OUTRO erro é defeito de código e precisa aparecer. Um catch
+    // mudo aqui já escondeu duas funções que existiam mas estavam fora de
+    // alcance: o painel parava de se atualizar sem deixar rastro nenhum.
+    if (!(erro instanceof TypeError)) console.error('[cotafrete]', erro);
+  }
 }
 setInterval(pulsar, PULSO_MS);
 """

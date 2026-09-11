@@ -524,6 +524,47 @@ flex-wrap:wrap;align-items:center;padding:12px 16px;gap:4px}
 .alerta-linha .quais{margin-left:42px;justify-content:flex-start}
 }
 
+/* ===================== o painel dizendo o que mudou =======================
+   A tela se redesenha sozinha a cada 5s. O que ela nunca fez foi avisar o
+   QUE mudou: a faixa e a tabela eram trocadas inteiras, em silêncio. Quem
+   estava lendo e viu um número diferente no canto do olho não tinha como
+   saber se ele mudou agora ou se já estava assim.
+
+   Tudo aqui morre sozinho com `prefers-reduced-motion`, pela regra global
+   que já existe mais acima neste arquivo. */
+
+/* O número que MUDOU pulsa. Os outros ficam parados — e é isso que faz o
+   pulso querer dizer alguma coisa. Um painel onde tudo pisca a cada volta é
+   um painel onde nada chama atenção. */
+@keyframes numero-mudou{
+0%{box-shadow:var(--sombra-1),0 0 0 0 var(--brilho-marca)}
+100%{box-shadow:var(--sombra-1),0 0 0 12px transparent}}
+@keyframes numero-subiu{
+from{transform:translateY(-7px);opacity:0}
+to{transform:none;opacity:1}}
+.numero.mudou{animation:numero-mudou 1.2s var(--suave)}
+.numero.mudou b{animation:numero-subiu .45s var(--mola) both}
+
+/* Cotação NOVA na tabela. Sem isto ela aparece no meio das outras, idêntica,
+   e a única pista é a tabela ter ficado uma linha mais alta. O realce some
+   sozinho: ele diz "esta chegou agora", e não "esta é diferente". */
+@keyframes linha-nova{
+0%{background:var(--lavagem)}
+100%{background:transparent}}
+#historico tr.nova td{animation:linha-nova 2.4s var(--suave)}
+#historico tr.nova .id a{animation:numero-subiu .5s var(--mola) both}
+
+/* A fatia e a linha da legenda acendem juntas. */
+.pizza .fatia.realce{stroke-width:26}
+.tabela-legenda tr{transition:background .16s var(--suave)}
+.tabela-legenda tr.realce{background:var(--lavagem)}
+.tabela-legenda tr.realce td:first-child{font-weight:700}
+
+/* A barra do gráfico ganha o fantasma inteiro como alvo do cursor: a dica
+   (<title>) já existia, mas só aparecia em cima da barra PINTADA — nos dias
+   de valor baixo isso é uma faixa de 3px, e a dica era inalcançável. */
+.grafico g:hover .fantasma{fill:var(--lavagem)}
+
 /* ==================== acabamento da identidade Ventura ======================
    Entra no fim do arquivo de propósito: são regras que ajustam o que já foi
    desenhado acima, e ficam juntas para quem for mexer na marca achar tudo num
@@ -891,11 +932,12 @@ def grafico_periodo(pontos: list[dict], unidade: str) -> str:
  role="img" aria-label="Cotações por {e(unidade)} no período">
 <defs>
 <linearGradient id="tintaBarra" x1="0" y1="0" x2="0" y2="1">
-<stop offset="0%" stop-color="#70c8e0"/>
-<stop offset="100%" stop-color="#4058a0"/></linearGradient>
+<stop offset="0%" style="stop-color:var(--ciano-claro)"/>
+<stop offset="100%" style="stop-color:var(--marca-viva)"/></linearGradient>
 <linearGradient id="tintaArea" x1="0" y1="0" x2="0" y2="1">
-<stop offset="0%" stop-color="#3ecf8e" stop-opacity=".22"/>
-<stop offset="100%" stop-color="#3ecf8e" stop-opacity="0"/></linearGradient>
+<stop offset="0%" style="stop-color:var(--tom-ok)" stop-opacity=".22"/>
+<stop offset="100%" style="stop-color:var(--tom-ok)" stop-opacity="0"/>
+</linearGradient>
 </defs>
 {malha}{barras}
 <path class="area-g" d="{area}"/>
@@ -985,15 +1027,21 @@ def pizza_de_status(linhas: list[dict]) -> str:
         # categoria com uma ocorrência sumia do desenho.
         risco = max(tamanho - min(1.2, tamanho / 2), 0.4)
         fatias += (
-            f'<circle class="fatia" cx="60" cy="60" r="{RAIO + 8}" '
+            f'<circle class="fatia" data-fatia="{chave}" '
+            f'cx="60" cy="60" r="{RAIO + 8}" '
             f'style="stroke:{cor}" '
             f'stroke-dasharray="{risco:.2f} {VOLTA * 1.5:.2f}" '
             f'stroke-dashoffset="{-percorrido:.2f}">'
             f'<title>{e(ROTULOS[chave])}: {n}</title></circle>')
         percorrido += tamanho
 
+    # `data-fatia` nos DOIS: a fatia e a linha da legenda são a mesma
+    # informação em dois lugares da tela, e sem o par o olho precisa casar a
+    # cor sozinho — que é justamente o trabalho que a legenda existe para
+    # poupar.
     linhas_legenda = "".join(
-        f'<tr><td><i style="background:{CORES[chave]}"></i>'
+        f'<tr data-fatia="{chave}">'
+        f'<td><i style="background:{CORES[chave]}"></i>'
         f'{e(ROTULOS[chave])}</td><td>{por_categoria[chave]}</td></tr>'
         for chave in CORES if por_categoria[chave])
 
@@ -1049,7 +1097,12 @@ def bola(nome: str) -> str:
     vendedor tem sempre a mesma cor, sem tabela de cor por pessoa para
     manter."""
     tom = sum(map(ord, nome)) * 47 % 360
-    return (f'<span class="bola" style="background:hsl({tom},42%,45%)">'
+    # 55%/30%, e nao 42%/45%: a inicial e escrita em BRANCO em cima desta
+    # cor, e a 45% de luminosidade o pior matiz (o amarelo, 60) dava 2.7:1.
+    # A conta foi feita nos 360 matizes — o pior caso agora e 4.75:1, porque
+    # o vendedor que cair no amarelo tem tanto direito de ler o proprio nome
+    # quanto o que cair no azul.
+    return (f'<span class="bola" style="background:hsl({tom},55%,30%)">'
             f'{e(nome[:1] or "?")}</span>')
 
 
