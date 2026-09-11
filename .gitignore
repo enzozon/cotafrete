@@ -26,6 +26,11 @@ htmlcov/
 # inteiro de uma vez.
 backup/
 
+# log do servidor da rede. Mesmo motivo de runs/ e backup/: o traceback de
+# uma transportadora que quebrou no meio da cotacao sai com o payload
+# junto — CNPJ do cliente, valor da nota, endereco de entrega.
+log/
+
 # so
 .DS_Store
 .cache/

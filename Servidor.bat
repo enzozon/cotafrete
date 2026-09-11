@@ -125,9 +125,41 @@ if defined IP (
 )
 echo   Nesta maquina tambem funciona:  http://localhost:8000
 echo.
+echo   Mensagens do servidor:          log\servidor.log
 echo   Para desligar: feche esta janela.
 echo  ====================================================================
 echo.
+
+REM ---------------------------------------------------------------------
+REM  O CONGELAMENTO POR CLIQUE, E POR QUE A SAIDA VAI PARA ARQUIVO
+REM
+REM  O console do Windows vem com "QuickEdit" ligado de fabrica. Com ele,
+REM  UM CLIQUE dentro desta janela ja poe o console em modo de selecao - e
+REM  enquanto ele estiver nesse modo, QUALQUER escrita na tela fica PARADA,
+REM  esperando um Enter ou Esc que ninguem sabe que precisa dar.
+REM
+REM  E nao para so a escrita: para o processo inteiro. O servidor continua
+REM  vivo, a porta continua LISTENING, o netstat mostra tudo certo - e
+REM  nenhuma pagina abre. E exatamente o "esta ligado porem nao esta
+REM  funcionando" que a empresa relatou.
+REM
+REM  Por que era INTERMITENTE: com --log-level warning este servidor quase
+REM  nao escreve. O clique ARMA a armadilha; ela so dispara na proxima
+REM  escrita, que pode vir horas depois - quando uma transportadora falhar.
+REM  Por isso nunca batia com "alguem mexeu na janela agora", e por isso
+REM  procurar no lugar obvio (rede, firewall, IP) nunca achava nada.
+REM
+REM  A CORRECAO: a saida vai para arquivo. Sem escrita na tela nao ha o que
+REM  travar, e a janela fica imune a clique mesmo com o QuickEdit ligado.
+REM
+REM  Desligar o QuickEdit tambem resolveria, mas nao daqui: e uma
+REM  configuracao do usuario do Windows, vale so para janelas abertas
+REM  DEPOIS de mudada, e um lancador nao deve mexer nisso pelas costas de
+REM  quem usa a maquina. Esta em docs\DEPLOY_SERVIDOR.md, como passo manual
+REM  de quem instala - e e cinto ALEM deste, nao no lugar dele.
+REM ---------------------------------------------------------------------
+if not exist "log" mkdir "log" >nul 2>&1
+if exist "log\servidor.log" move /y "log\servidor.log" "log\servidor-anterior.log" >nul 2>&1
 
 REM --host 0.0.0.0 e o que faz a diferenca: sem isso, so esta maquina enxerga.
 REM
@@ -135,8 +167,18 @@ REM Sem --reload de proposito. O reload reinicia o servidor a cada arquivo
 REM salvo, e um reinicio no meio de uma cotacao mata as threads das
 REM transportadoras - o cartao fica "cotando..." para sempre. Desenvolvimento
 REM se faz na OUTRA pasta.
-.venv\Scripts\python.exe -m uvicorn web.app:app --host 0.0.0.0 --port 8000 --log-level warning
+REM A saida vai para o arquivo pelo motivo explicado la em cima: escrita na
+REM tela e o que o QuickEdit consegue travar. Aqui vao tanto os avisos de
+REM partida (a Della Volpe travada, as cotacoes interrompidas) quanto o
+REM traceback de qualquer transportadora que quebrar no meio do dia.
+.venv\Scripts\python.exe -m uvicorn web.app:app --host 0.0.0.0 --port 8000 --log-level warning >> "log\servidor.log" 2>&1
 
 echo.
-echo  O servidor parou.
+echo  O servidor parou. Fim de log\servidor.log:
+echo.
+REM O rabo do log na tela porque, com a saida indo para arquivo, um erro de
+REM partida - porta ocupada, .env sem senha, dependencia faltando - deixaria
+REM a janela mostrando so "O servidor parou", sem uma pista do porque.
+powershell -NoProfile -Command "if (Test-Path 'log\servidor.log') { Get-Content 'log\servidor.log' -Tail 20 } else { '  (log vazio)' }"
+echo.
 pause

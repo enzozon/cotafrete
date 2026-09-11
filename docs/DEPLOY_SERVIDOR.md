@@ -214,9 +214,57 @@ o IP mudar, o endereço quebra para todo mundo de uma vez.
 | Reiniciar o sistema | feche a janela do `Servidor.bat` e abra de novo |
 | Atualizar o código | dentro da VM: feche o `Servidor.bat`, `git pull`, `pip install -r requirements.txt`, abra de novo. Fora do horário de expediente |
 | Ver quem está cotando | `Monitor.bat`, dentro da VM. Abre o banco em somente leitura, pode ficar aberto o dia todo |
+| Ver o que o servidor falou | `log\servidor.log`, na pasta de produção. O da execução anterior fica em `log\servidor-anterior.log` |
 
 **Nunca feche a janela do `Servidor.bat` durante o expediente** — ela é o
 sistema. Fechar desliga para a empresa inteira.
+
+---
+
+## O clique que congela o servidor (QuickEdit)
+
+Este é o defeito que fazia o sistema ficar **"ligado mas sem abrir"**: a
+janela do `Servidor.bat` aberta, a porta respondendo no `netstat`, e nenhuma
+página carregando para ninguém.
+
+**O que acontece.** O console do Windows vem de fábrica com o *QuickEdit*
+ligado. Com ele, um clique dentro da janela já coloca o console em modo de
+seleção — aquele retângulo que aparece ao arrastar o mouse para copiar texto.
+Enquanto o console está nesse modo, **qualquer escrita na tela fica parada**,
+esperando um Enter ou um Esc que ninguém sabe que precisa dar.
+
+E não para só a escrita: para o **processo inteiro**. O servidor continua
+vivo, a porta continua `LISTENING`, o Gerenciador de Tarefas mostra o Python
+rodando — e nenhuma requisição é respondida.
+
+**Por que era intermitente.** O servidor roda com `--log-level warning`, ou
+seja, quase não escreve nada. O clique *arma* a armadilha; ela só dispara na
+escrita seguinte, que pode vir horas depois, quando alguma transportadora
+falhar. Por isso nunca batia com "alguém mexeu na janela agora" — e por isso
+procurar no lugar óbvio (rede, firewall, IP) nunca achava nada.
+
+**Como está resolvido.** A saída do servidor vai para `log\servidor.log` em
+vez da tela. Sem escrita na tela não há o que travar: a janela pode ser
+clicada à vontade. Isso vale sozinho e não depende de ninguém configurar nada
+na máquina.
+
+**O cinto a mais (opcional, 30 segundos).** Vale desligar o QuickEdit da VM
+de qualquer forma, porque ele também congela o `Monitor.bat`:
+
+1. Botão direito na **barra de título** da janela do `Servidor.bat` →
+   **Propriedades**.
+2. Na aba **Opções**, desmarque **Modo de edição rápida**.
+3. **OK**. Vale para as janelas abertas daí em diante.
+
+Para aplicar de uma vez ao usuário da VM, num Prompt de Comando:
+
+```
+reg add "HKCU\Console" /v QuickEdit /t REG_DWORD /d 0 /f
+```
+
+O `Servidor.bat` **não** faz isso sozinho de propósito: é uma configuração do
+usuário do Windows, vale só para janelas abertas depois de mudada, e um
+lançador não deve mexer nisso pelas costas de quem usa a máquina.
 
 ---
 

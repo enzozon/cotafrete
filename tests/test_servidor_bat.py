@@ -79,3 +79,52 @@ def test_o_nome_da_pasta_nao_pega_maiuscula(tmp_path):
     proc = rodar_de(tmp_path / "COTAFRETE-PRODUCAO")
 
     assert "ESTA NAO E A PASTA DE PRODUCAO" not in saida(proc)
+
+
+# ------------------------------------------------- o congelamento por clique
+
+def test_a_saida_do_servidor_nao_vai_para_a_tela():
+    """A linha do uvicorn precisa redirecionar para arquivo.
+
+    O console do Windows vem com QuickEdit ligado: um clique dentro da janela
+    poe o console em modo de selecao, e enquanto ele estiver assim QUALQUER
+    escrita na tela fica parada esperando um Enter. Nao para so a escrita —
+    para o processo inteiro. O servidor continua vivo, a porta continua
+    LISTENING, e nenhuma pagina abre.
+
+    Era o "esta ligado porem nao esta funcionando" da empresa. Intermitente
+    porque, com --log-level warning, o servidor quase nao escreve: o clique
+    ARMA a armadilha e ela so dispara na escrita seguinte, que pode vir horas
+    depois.
+
+    Sem escrita na tela nao ha o que travar. Tirar este redirecionamento
+    devolve o defeito, e ele nao aparece em teste nenhum que olhe para o
+    HTML — por isso a guarda e aqui, no texto do lancador.
+    """
+    texto = SERVIDOR.read_text(encoding="utf-8", errors="replace")
+    linha = next(l for l in texto.splitlines() if "-m uvicorn" in l)
+
+    assert ">>" in linha and "2>&1" in linha, (
+        f"a saida do uvicorn precisa ir para arquivo, nao para a tela:\n"
+        f"  {linha.strip()}")
+
+
+def test_o_erro_de_partida_nao_fica_so_no_arquivo():
+    """Com a saida indo para o log, porta ocupada ou .env sem senha deixariam
+    a janela mostrando apenas "O servidor parou", sem uma pista do porque.
+
+    Quem liga o servidor de manha nao vai abrir um .log para descobrir que a
+    porta estava ocupada."""
+    texto = SERVIDOR.read_text(encoding="utf-8", errors="replace")
+
+    assert "-Tail" in texto, (
+        "o fim do log precisa aparecer na tela quando o servidor para")
+
+
+def test_o_log_do_servidor_nao_vai_para_o_git():
+    """O traceback de uma transportadora sai com o payload junto: CNPJ do
+    cliente, valor da nota, endereco de entrega. Mesmo motivo de runs/ e
+    backup/ ja estarem ignorados."""
+    ignorados = (RAIZ / ".gitignore").read_text(encoding="utf-8").split()
+
+    assert "log/" in ignorados
