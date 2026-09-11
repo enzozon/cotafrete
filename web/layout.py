@@ -32,38 +32,42 @@ ASSINATURA = "Todos os produtos num só lugar"
 
 CSS = """
 /* ============================ identidade Ventura =============================
-   ATENÇÃO, esta paleta está UM PASSO ATRÁS DA MARCA. Ela foi medida pixel a
-   pixel da logo ANTERIOR — a elipse ciano #70c8e0 → índigo #384890 — e é de
-   lá que vêm --marca, --ciano e o gradiente.
+   Toda cor sai da MARCA, medida pixel a pixel em web/marca/: matiz 218
+   graus, saturação 100%, de #002472 a #3096fc, com prateado #f0f0f0.
 
-   A marca nova (web/marca/) é outra coisa: azul #0040c0 mais saturado e
-   prateado, sem ciano nenhum. As telas não ficaram erradas, mas o acento
-   ciano do sistema não existe mais no desenho da empresa. Re-derivar a
-   paleta da marca nova é trabalho à parte, e não foi feito — quem for fazer
-   começa aqui e mexe nestes seis tokens, não em regra espalhada.
+   Os tons abaixo não são amostras soltas da imagem: são DERIVADOS nessa
+   matiz, com a luminosidade escolhida pelo contraste que cada um precisa ter
+   contra o fundo em que é usado. A conta vem antes da cor — foi escrevendo
+   primeiro e medindo depois que a versão anterior desta paleta deixou dois
+   pares abaixo do mínimo sem ninguém perceber.
+
+   Não há ciano nenhum. A paleta anterior vinha da logo velha (elipse ciano
+   #70c8e0 → índigo #384890, matiz 230 a 49% de saturação) e o ciano não
+   existe no desenho atual da empresa; os tokens que o guardavam chamam-se
+   agora --realce e --realce-claro.
 
    Neutros puxados para o azul de propósito. Cinza neutro (#6b7280) ao lado de
    um índigo saturado parece sujo; o mesmo cinza com um empurrão de azul lê
    como escolha. */
 :root{
 /* marca */
---marca:#2f3f88;--marca-forte:#243268;--marca-viva:#384890;
---ciano:#359fc0;--ciano-claro:#70c8e0;--lavagem:#eef3fb;
---marca-grad:linear-gradient(135deg,#70c8e0 0%,#4058a0 45%,#384890 100%);
+--marca:#0042b5;--marca-forte:#00328a;--marca-viva:#0450d2;
+--realce:#004bcc;--realce-claro:#317bfc;--lavagem:#eaf1fd;
+--marca-grad:linear-gradient(135deg,#317bfc 0%,#0450d2 45%,#0042b5 100%);
 /* neutros com viés azul */
---tinta:#101623;--tinta2:#3b455c;--fraco:#656f86;
---borda:#e2e8f2;--borda-forte:#ccd5e4;--fundo:#f3f6fb;--papel:#fff;
+--tinta:#0f1724;--tinta2:#3c485d;--fraco:#5e6b82;
+--borda:#dee3ed;--borda-forte:#c1cbdc;--fundo:#f5f7fb;--papel:#fff;
 /* semânticos: sentido, não marca — mudar estes muda o que a tela AFIRMA */
 --ok:#00785a;--erro:#c0341d;--atencao:#a15c00;--zap:#25d366;
 --ok-fraco:#e6f4ef;--erro-fraco:#fdece9;--atencao-fraco:#fffae6;
 --atencao-borda:#ffe380;--atencao-tinta:var(--tinta);
 --sobre-marca:#fff;--cova:#f7f9fc;
---brilho-marca:rgba(47,63,136,.45);
+--brilho-marca:rgba(0,66,181,.45);
 /* Os tons do quadro de instrumentos. Moram aqui, e não no CSS do
    painel, porque quem os ESCREVE é o Python (o número do topo sai com
    `style="--cor:..."`), e hexadecimal escrito pelo servidor não muda
    quando a pessoa clica no botão de tema. Token muda. */
---tom-marca:#384890;--tom-marca-fraco:#eef3fb;
+--tom-marca:#0042b5;--tom-marca-fraco:#eaf1fd;
 --tom-ok:#00785a;--tom-ok-fraco:#e6f4ee;
 --tom-atencao:#a15c00;--tom-atencao-fraco:#fdf3e3;
 --tom-erro:#bf2600;--tom-erro-fraco:#fdecea;
@@ -89,22 +93,23 @@ CSS = """
    escrita: 4.5:1 para texto, 3:1 para o que é gráfico e carrega sentido
    (SC 1.4.11). O pior caso de cada grupo está anotado na frente. */
 html[data-tema="escuro"]{
-/* A marca no escuro é o CIANO da logo, não o azul. #2f3f88 sobre #161d33 dá
-   1.4:1 — a cor da marca estaria na tela e ninguém veria. O azul continua
-   sendo marca, mas como FUNDO: a lateral do painel, o filete do topo. */
---marca:#70c8e0;--marca-forte:#8ad6ea;--marca-viva:#4058a0;
---ciano:#70c8e0;--lavagem:#1c2543;
+/* No escuro a marca é o azul CLARO — #5291ff, a ponta viva do gradiente do
+   "V" — e não o azul cheio: #0042b5 sobre #111e34 dá 1.9:1, e a cor da marca
+   estaria na tela sem ninguém ver. O azul cheio continua sendo marca, mas
+   como FUNDO: a lateral do painel, o filete do topo. */
+--marca:#5291ff;--marca-forte:#85b1ff;--marca-viva:#0450d2;
+--realce:#5291ff;--realce-claro:#70a5ff;--lavagem:#1c2940;
 /* O que se escreve EM CIMA de um preenchimento da marca. Herdar o #fff do
-   claro daria 1.9:1 sobre o ciano: o botão sumiria por dentro. */
---sobre-marca:#0b0f1c;
+   claro daria 2.6:1 sobre o azul claro: o botão sumiria por dentro. */
+--sobre-marca:#061021;
 /* neutros: 13.9:1, 9.1:1 e 6.7:1 sobre o cartão */
---tinta:#e7eaf2;--tinta2:#b6c0d6;--fraco:#9aa4bd;
---borda:#2e3a5e;--borda-forte:#465684;--fundo:#0b0f1c;--papel:#161d33;
+--tinta:#e6e9ef;--tinta2:#bcc4d2;--fraco:#99a4b8;
+--borda:#2d3f5c;--borda-forte:#475e85;--fundo:#061021;--papel:#111e34;
 /* Um degrau ABAIXO do papel, para o que é buraco e não cartão: campo de
    digitar, caixa de texto técnico, ficha dentro do cartão. No claro esse
    papel é o próprio branco e o buraco se faz com borda; no escuro é a
    luminância que separa, então o buraco precisa existir como cor. */
---cova:#0f1424;
+--cova:#0a1426;
 /* Semânticos: o SENTIDO é o mesmo, só a luminância sobe. Verde 8.4:1, âmbar
    7.8:1, vermelho 7.5:1 sobre o cartão — contra 3.7, 5.2 e 2.8 que as cores
    claras dariam aqui. O vermelho de falha, no escuro, era ilegível. */
@@ -112,11 +117,11 @@ html[data-tema="escuro"]{
 /* As lavagens de cada semântico: o fundo das pílulas e dos avisos. */
 --ok-fraco:#142b26;--erro-fraco:#2d201f;--atencao-fraco:#2c2413;
 --atencao-borda:#5c4a1c;--atencao-tinta:#e8cf9a;
---brilho-marca:rgba(112,200,224,.55);
+--brilho-marca:rgba(82,145,255,.55);
 /* Os mesmos tons, com a luminância que o fundo escuro exige. O pior é
    o roxo, com 6.1:1 sobre o cartão; no claro o vermelho de falha dava
    2.8:1 aqui e não passava nem como gráfico (SC 1.4.11). */
---tom-marca:#70c8e0;--tom-marca-fraco:#17273a;
+--tom-marca:#5291ff;--tom-marca-fraco:#18263f;
 --tom-ok:#3ecf8e;--tom-ok-fraco:#142b26;
 --tom-atencao:#e5a54a;--tom-atencao-fraco:#2b2618;
 --tom-erro:#ff8f75;--tom-erro-fraco:#2d201f;
@@ -159,7 +164,7 @@ border-color:var(--borda-forte);color:var(--tinta2)}
 border-color:var(--atencao-borda)}
 
 /* Texto escrito EM CIMA de um preenchimento: o #fff do claro dá 1.7:1 sobre
-   o verde e 1.9:1 sobre o ciano. */
+   o verde e 2.6:1 sobre o azul claro da marca. */
 [data-tema="escuro"] .selo{color:#08130f}
 /* `:not(.tema)` porque esta regra fala de texto sobre PREENCHIMENTO da
    marca, e o botão de tema não tem preenchimento nenhum — ele é um contorno
@@ -261,11 +266,11 @@ border-radius:var(--raio-p);font-size:14px;font-family:inherit;
 background:var(--papel);color:var(--tinta);
 transition:border-color .16s var(--suave),box-shadow .16s var(--suave)}
 input:hover{border-color:#b6c2d6}
-/* O ciano da logo finalmente usado: o anel de foco é a peça que mais aparece
+/* O azul de realce da marca: o anel de foco é a peça que mais aparece
    num sistema onde se digita o dia inteiro, e era o contorno cinza do
    navegador. */
-input:focus{outline:0;border-color:var(--ciano);
-box-shadow:0 0 0 3px rgba(112,200,224,.35)}
+input:focus{outline:0;border-color:var(--realce);
+box-shadow:0 0 0 3px rgba(82,145,255,.35)}
 button{font:inherit;cursor:pointer;border:0;border-radius:var(--raio-p);
 background:var(--marca);color:#fff;padding:13px 26px;font-weight:600;
 font-size:15px;box-shadow:var(--sombra-2);
@@ -278,7 +283,7 @@ box-shadow:var(--sombra-3)}
    primeira transportadora responder. */
 button:active{transform:translateY(1px);box-shadow:var(--sombra-1)}
 button:focus-visible,a:focus-visible,summary:focus-visible{outline:2px solid
-var(--ciano);outline-offset:2px}
+var(--realce);outline-offset:2px}
 
 .falhou{color:var(--erro);font-size:13px;font-weight:600}
 /* "Enviada" NAO pode usar o vermelho de falha nem o verde de preco: nao deu
@@ -338,7 +343,7 @@ tr:hover td{background:var(--lavagem)}
 .cotando{display:flex;align-items:center;gap:10px;color:var(--fraco);
 font-size:13px}
 .girando{width:16px;height:16px;border:2px solid var(--borda);
-border-top-color:var(--ciano);border-radius:50%;
+border-top-color:var(--realce);border-radius:50%;
 animation:gira .8s linear infinite}
 @keyframes gira{to{transform:rotate(360deg)}}
 /* Enquanto a transportadora não respondeu, a LINHA fica com um brilho que
@@ -484,8 +489,8 @@ box-shadow:0 0 0 1px var(--marca)}
         line-height:1.5;padding:13px;border:1px solid var(--borda-forte);
         border-radius:var(--raio-p);background:#fafbfe;color:#222;
         resize:vertical}
-.pronto:focus{outline:0;border-color:var(--ciano);
-box-shadow:0 0 0 3px rgba(112,200,224,.35)}
+.pronto:focus{outline:0;border-color:var(--realce);
+box-shadow:0 0 0 3px rgba(82,145,255,.35)}
 /* O campo do endereço existe só para o botão Copiar ter o que selecionar:
    selecionar exige um campo de verdade, e display:none não é selecionável. */
 .escondido{position:absolute;left:-9999px;width:1px;height:1px;opacity:0}
@@ -508,11 +513,11 @@ box-shadow:0 0 0 3px rgba(112,200,224,.35)}
    Contraste medido com a fórmula do WCAG antes de escrever, não a olho. Os
    nove pares da tela passam; os apertados estão travados em teste. */
 .entrada{min-height:100vh;display:grid;grid-template-columns:1.04fr .96fr;
-background:#0b0f1c;color:#e7eaf2}
+background:#061021;color:#e6e9ef}
 .entrada-marca{position:relative;overflow:hidden;
 padding:clamp(32px,4vw,56px);display:flex;flex-direction:column;
 justify-content:center;gap:clamp(26px,3.4vw,40px);
-background:linear-gradient(158deg,#1a2445 0%,#141c38 55%,#0f1424 100%)}
+background:linear-gradient(158deg,#112039 0%,#0a162b 55%,#050d1d 100%)}
 /* Dois clarões fora de eixo. O índigo chapado é uma parede; os halos dão
    profundidade sem desenhar nada e sem depender de arquivo de imagem — o
    sistema roda em rede interna, e imagem que não chegou é buraco na tela. */
@@ -559,45 +564,45 @@ color:rgba(255,255,255,.72);text-wrap:pretty}
 .entrada-marca .rota{display:flex;align-items:flex-start;gap:0;margin:0;padding-top:4px}
 .entrada-marca .rota .parada{display:flex;flex-direction:column;gap:9px;flex:0 0 auto;
 max-width:14ch}
-.entrada-marca .rota .ponto{width:13px;height:13px;border-radius:50%;background:#70c8e0;
-box-shadow:0 0 0 5px rgba(112,200,224,.18)}
+.entrada-marca .rota .ponto{width:13px;height:13px;border-radius:50%;background:#5291ff;
+box-shadow:0 0 0 5px rgba(82,145,255,.18)}
 .entrada-marca .rota .parada:last-child .ponto{background:transparent;
 border:2px solid rgba(255,255,255,.5);box-shadow:none}
 .entrada-marca .rota .parada span{font-size:11.5px;line-height:1.35;
 text-transform:uppercase;letter-spacing:.9px;color:rgba(255,255,255,.72)}
-/* O trecho percorrido é sólido no ciano; o que falta é pontilhado. A carga
+/* O trecho percorrido é sólido no azul; o que falta é pontilhado. A carga
    ainda não chegou — a linha inteira sólida diria que sim. */
 .entrada-marca .rota .trecho{flex:1 1 auto;height:2px;margin:6px 12px 0;
-background:linear-gradient(90deg,#70c8e0,rgba(112,200,224,.45))}
+background:linear-gradient(90deg,#5291ff,rgba(82,145,255,.45))}
 .entrada-marca .rota .trecho.falta{background:none;
 border-top:2px dashed rgba(255,255,255,.26);height:0;margin-top:5px}
 
 /* ---- o lado do formulário ---- */
 .entrada-form{display:flex;align-items:center;justify-content:center;
-padding:40px 28px;background:#0b0f1c}
+padding:40px 28px;background:#061021}
 .entrada-form .cartao{width:100%;max-width:392px;margin:0;padding:30px;
-background:#161d33;border:1px solid rgba(255,255,255,.09);
+background:#111e34;border:1px solid rgba(255,255,255,.09);
 box-shadow:0 26px 60px -24px rgba(0,0,0,.8)}
 .entrada-form h1{color:#fff;font-size:23px}
-.entrada-form .sub{color:#9aa4bd}
-.entrada-form label{color:#9aa4bd}
-.entrada-form input{background:#0f1424;border-color:rgba(255,255,255,.16);
-color:#e7eaf2}
-.entrada-form input::placeholder{color:#8b95ad}
+.entrada-form .sub{color:#99a4b8}
+.entrada-form label{color:#99a4b8}
+.entrada-form input{background:#0a1426;border-color:rgba(255,255,255,.16);
+color:#e6e9ef}
+.entrada-form input::placeholder{color:#8594ad}
 .entrada-form input:hover{border-color:rgba(255,255,255,.28)}
-.entrada-form input:focus{border-color:var(--ciano-claro);
+.entrada-form input:focus{border-color:var(--realce-claro);
 box-shadow:0 0 0 3px rgba(112,200,224,.24)}
 /* Ciano com tinta escura: o botão vira a coisa mais clara da tela, que é
    exatamente onde o olho deve parar. Índigo sobre fundo índigo sumiria. */
-.entrada-form button{background:var(--ciano-claro);color:#0d1120;
-box-shadow:0 12px 30px -12px rgba(112,200,224,.65)}
-.entrada-form button:hover{background:#8ad6ea;
-box-shadow:0 16px 38px -12px rgba(112,200,224,.75)}
-.entrada-form .rodape{margin:14px 0 0;font-size:12px;color:#8b95ad;
+.entrada-form button{background:var(--realce-claro);color:#0d1120;
+box-shadow:0 12px 30px -12px rgba(82,145,255,.65)}
+.entrada-form button:hover{background:#85b1ff;
+box-shadow:0 16px 38px -12px rgba(82,145,255,.75)}
+.entrada-form .rodape{margin:14px 0 0;font-size:12px;color:#8594ad;
 text-wrap:pretty}
 .entrada-form .alerta{background:rgba(192,52,29,.16);
 border-color:rgba(255,138,116,.42);color:#ffb4a4}
-.entrada-form a{color:var(--ciano-claro)}
+.entrada-form a{color:var(--realce-claro)}
 
 /* Numa tela estreita a coluna da marca vira uma faixa curta em cima: some o
    texto longo e a rota, fica a logo e a chamada. Empilhar tudo empurraria o

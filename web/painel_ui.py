@@ -129,7 +129,7 @@ html{scroll-behavior:smooth}
    meio. Como `.painel` é flex, a <nav> sem altura já estica sozinha até o
    fim do conteúdo — é o `height:100vh` que impedia. */
 .lateral{flex:0 0 236px;width:236px;
-background:linear-gradient(175deg,#24305e 0%,#141a35 100%);color:#b6c2dd}
+background:linear-gradient(175deg,#182c4e 0%,#0a1529 100%);color:#b9c3d4}
 .lateral-fixa{position:sticky;top:0;height:100vh;
 display:flex;flex-direction:column;padding:20px 0 16px}
 .lateral .marca{display:flex;align-items:center;gap:10px;padding:0 20px 20px;
@@ -138,18 +138,18 @@ border-bottom:1px solid rgba(255,255,255,.07);margin-bottom:14px}
 .lateral .marca b{color:#fff;font-size:15px;letter-spacing:2.4px;
 text-transform:uppercase;font-weight:700}
 .lateral .secao{padding:14px 20px 6px;font-size:10px;letter-spacing:1.4px;
-text-transform:uppercase;color:#95a2c6;font-weight:700}
+text-transform:uppercase;color:#95a3bb;font-weight:700}
 .lateral a{display:flex;align-items:center;gap:11px;padding:9px 20px;
-color:#b6c2dd;text-decoration:none;font-size:13.5px;
+color:#b9c3d4;text-decoration:none;font-size:13.5px;
 border-left:3px solid transparent;
 transition:background .16s,color .16s,border-color .16s}
 .lateral a:hover{background:rgba(255,255,255,.05);color:#fff}
-.lateral a.atual{background:rgba(112,200,224,.14);color:#fff;
-border-left-color:#70c8e0;font-weight:600}
+.lateral a.atual{background:rgba(82,145,255,.14);color:#fff;
+border-left-color:#5291ff;font-weight:600}
 .lateral a svg{width:17px;height:17px;flex:none;opacity:.75}
 .lateral a.atual svg{opacity:1}
 .lateral .rodape{margin-top:auto;padding:12px 20px 0;font-size:11px;
-color:#95a2c6;border-top:1px solid rgba(255,255,255,.07)}
+color:#95a3bb;border-top:1px solid rgba(255,255,255,.07)}
 
 /* ---- área de conteúdo ---- */
 .conteudo{flex:1;min-width:0;padding:24px 28px 64px}
@@ -296,7 +296,7 @@ font-weight:600}
 .rank .trilho{grid-column:1/-1;height:8px;border-radius:99px;
 background:var(--borda);overflow:hidden}
 .rank .trilho i{display:block;height:100%;border-radius:99px;
-background:linear-gradient(90deg,#4058a0,#70c8e0);
+background:linear-gradient(90deg,var(--marca-viva),var(--realce-claro));
 animation:cresce .8s cubic-bezier(.22,.9,.3,1) both}
 @keyframes cresce{from{width:0}}
 
@@ -614,10 +614,10 @@ transition:background .12s var(--suave)}
 #historico tr.dia td{background:var(--lavagem);color:var(--marca);
 font-weight:700;letter-spacing:.2px}
 
-/* A lateral marca o item atual com o ciano da logo. Era um violeta que não
+/* A lateral marca o item atual com o azul de realce. Era um violeta que não
    existe em lugar nenhum da marca — a única cor da tela sem origem. */
-.lateral a.atual{border-left-color:var(--ciano-claro)}
-.lateral a:focus-visible{outline:2px solid var(--ciano-claro);
+.lateral a.atual{border-left-color:var(--realce-claro)}
+.lateral a:focus-visible{outline:2px solid var(--realce-claro);
 outline-offset:-2px}
 
 """
@@ -930,7 +930,7 @@ def grafico_periodo(pontos: list[dict], unidade: str) -> str:
  role="img" aria-label="Cotações por {e(unidade)} no período">
 <defs>
 <linearGradient id="tintaBarra" x1="0" y1="0" x2="0" y2="1">
-<stop offset="0%" style="stop-color:var(--ciano-claro)"/>
+<stop offset="0%" style="stop-color:var(--realce-claro)"/>
 <stop offset="100%" style="stop-color:var(--marca-viva)"/></linearGradient>
 <linearGradient id="tintaArea" x1="0" y1="0" x2="0" y2="1">
 <stop offset="0%" style="stop-color:var(--tom-ok)" stop-opacity=".22"/>
