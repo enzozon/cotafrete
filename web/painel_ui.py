@@ -156,8 +156,15 @@ html{scroll-behavior:smooth}
 .painel{display:flex;min-height:100vh}
 
 /* ---- barra lateral ---- */
-.lateral{flex:0 0 236px;width:236px;position:sticky;top:0;height:100vh;
-background:linear-gradient(175deg,#24305e 0%,#141a35 100%);color:#b6c2dd;
+/* A COLUNA pinta a página inteira; quem gruda é o miolo dela. Antes a
+   própria <nav> era `position:sticky;height:100vh`, e numa página de 1500px
+   ela pintava só os primeiros 900: o resto da coluna virava um rasgo do
+   fundo da página ao lado da tabela, como se a navegação tivesse acabado no
+   meio. Como `.painel` é flex, a <nav> sem altura já estica sozinha até o
+   fim do conteúdo — é o `height:100vh` que impedia. */
+.lateral{flex:0 0 236px;width:236px;
+background:linear-gradient(175deg,#24305e 0%,#141a35 100%);color:#b6c2dd}
+.lateral-fixa{position:sticky;top:0;height:100vh;
 display:flex;flex-direction:column;padding:20px 0 16px}
 .lateral .marca{display:flex;align-items:center;gap:10px;padding:0 20px 20px;
 border-bottom:1px solid rgba(255,255,255,.07);margin-bottom:14px}
@@ -530,7 +537,8 @@ animation-iteration-count:1!important;transition-duration:.01ms!important}}
 
 @media(max-width:880px){
 .painel{display:block}
-.lateral{width:auto;height:auto;position:static;flex-direction:row;
+.lateral{width:auto}
+.lateral-fixa{height:auto;position:static;flex-direction:row;
 flex-wrap:wrap;align-items:center;padding:12px 16px;gap:4px}
 .lateral .marca{border:0;margin:0;padding:0 14px 0 0}
 .lateral .secao,.lateral .rodape{display:none}
@@ -705,14 +713,14 @@ def _lateral(base: str = "") -> str:
         f'<a href="{base}#{alvo}" data-secao="{alvo}">{_icone(ICONES[chave])}'
         f'<span>{e(rotulo)}</span></a>'
         for chave, rotulo, alvo in MENU)
-    return f"""<nav class="lateral">
+    return f"""<nav class="lateral"><div class="lateral-fixa">
   <div class="marca">{marca}<b>Painel</b></div>
   <div class="secao">Acompanhar</div>
   {itens}
   <div class="secao">Conta</div>
   <a href="/adm/sair">{_icone(ICONES["sair"])}<span>Sair do painel</span></a>
   <div class="rodape">Cotafrete · Ventura</div>
-</nav>"""
+</div></nav>"""
 
 
 def pagina_painel(titulo: str, corpo: str, *, base: str = "") -> str:
