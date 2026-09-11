@@ -58,7 +58,7 @@ from core.retentativa import (
 from web import adm, transportadoras
 from web.ficha_ui import (
     ficha_da_cotacao, kg as _kg, pagador_da_cotacao, peso_por_volume,
-    quem_e as _quem,
+    quando as quando_humano, quem_e as _quem,
 )
 from web.layout import entrada, LOGO, e, moeda, pagina, print_embutido as _img
 from web.transportadoras import cota_por_volume
@@ -1797,15 +1797,19 @@ def historico(usuario: str | None = Cookie(None, alias=COOKIE)):
         return RedirectResponse("/login", status_code=303)
     linhas = ""
     for c in banco.listar_cotacoes(usuario):
+        # Sem preço nenhum: o travessão perde o verde lá no CSS. Verde é
+        # "veio preço", e uma coluna inteira verde esconde justamente a
+        # cotação em que ninguém respondeu.
+        sem = "" if c["melhor_preco"] is not None else " vazio"
         linhas += (
             f"""<tr onclick="location='/cotacao/{c['id']}'" style="cursor:pointer">
             <td>#{c['id']}</td>
-            <td>{e(c['criado_em'].replace('T', ' '))}</td>
+            <td class="hora">{e(quando_humano(c['criado_em']))}</td>
             <td><b>{e(c['material'])}</b></td>
             <td>{e(c['cidade_origem'])}/{e(c['uf_origem'])} →
                 {e(c['cidade_destino'])}/{e(c['uf_destino'])}</td>
             <td>{e(c['peso_kg'])} kg</td>
-            <td><b>{moeda(c['melhor_preco'])}</b></td></tr>""")
+            <td class="melhor{sem}">{moeda(c['melhor_preco'])}</td></tr>""")
 
     return HTMLResponse(pagina("Histórico", f"""
 <h1>Histórico</h1>

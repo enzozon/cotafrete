@@ -23,7 +23,8 @@ from datetime import date
 from math import hypot, pi
 
 from core.painel import categoria
-from web.layout import CSS as CSS_BASE, LOGO, LUPA, e
+from web.layout import (BOTAO_TEMA, CSS as CSS_BASE, LOGO, LUPA,
+                        SCRIPT_TEMA, cabeca_do_tema, e)
 
 # `categoria` é a ÚNICA coisa que este arquivo importa de fora do desenho, e
 # é função pura. Vem de lá em vez de ser reescrita aqui porque é ela quem diz
@@ -37,33 +38,32 @@ from web.layout import CSS as CSS_BASE, LOGO, LUPA, e
 #
 # Recusa NÃO é vermelha: a transportadora dizendo "não levo isso" está
 # funcionando. Vermelho é para o que quebrou.
-# Os tons do painel, num lugar só. Cada um traz o par que a tela usa: a cor
-# da tinta e a lavagem que vai atrás dela num chip. Estavam soltos em cinco
-# lugares — este dicionário, as quatro chamadas de `numero()` em `faixa()`,
-# quatro em web/adm.py e os três limiares de `rosca()` — e virar o painel do
-# claro para o escuro obrigava a reescrever cada um a mão, sem esquecer
-# nenhum. Esquecer um deixa um número com cor de tema claro no meio de um
-# quadro escuro, e ninguém percebe até alguém reclamar que "sumiu".
+# Os tons do painel: o par que cada um usa na tela — a cor da tinta e a
+# lavagem que vai atrás dela num chip.
 #
-# São calculados contra o cartão (#161d33): o pior é o roxo, com 6.1:1. A
-# WCAG pede 3:1 para gráfico que carrega sentido (SC 1.4.11), e no tema claro
-# o vermelho de falha dava 2.8:1 sobre este fundo — não passava.
+# São TOKEN, e não hexadecimal, porque quem escreve estas cores é o Python:
+# elas saem em `style="--cor:..."` e em `style="stroke:..."`. Hexadecimal
+# escrito pelo servidor não muda quando a pessoa clica no botão de tema — a
+# rosca e a pizza ficariam com cor de tela escura numa tela clara. Os valores
+# dos dois temas moram em web/layout.py, encostados um no outro.
+#
+# Antes eram seis hexadecimais soltos em cinco lugares: este dicionário, três
+# limiares de `rosca()`, quatro chamadas em `faixa()` e quatro em adm.py.
 TOM = {
-    "marca": ("#70c8e0", "#17273a"),
-    "ok": ("#3ecf8e", "#142b26"),
-    "atencao": ("#e5a54a", "#2b2618"),
-    "erro": ("#ff8f75", "#2d201f"),
-    "neutro": ("#98a1b8", "#1f2740"),
-    "roxo": ("#a78bfa", "#242847"),
+    nome: (f"var(--tom-{nome})", f"var(--tom-{nome}-fraco)")
+    for nome in ("marca", "ok", "atencao", "erro", "neutro", "roxo")
 }
 
-CORES = {
-    "sucesso": TOM["ok"][0],
-    "recusa": TOM["atencao"][0],
-    "falha": TOM["erro"][0],
-    "nossa": TOM["neutro"][0],
-    "inesperado": TOM["roxo"][0],
+# Qual tom cada categoria de resposta usa.
+TOM_DA_CATEGORIA = {
+    "sucesso": "ok",
+    "recusa": "atencao",
+    "falha": "erro",
+    "nossa": "neutro",
+    "inesperado": "roxo",
 }
+
+CORES = {chave: TOM[tom][0] for chave, tom in TOM_DA_CATEGORIA.items()}
 
 ROTULOS = {
     "sucesso": "Sucessos",
@@ -107,48 +107,14 @@ CSS = """
    Entra DEPOIS do CSS de web/layout.py, e por isso pode sobrescrevê-lo. O
    painel é a única tela com casco próprio: as outras são formulário e
    resultado, esta é um quadro de instrumentos. */
-/* O painel troca o SISTEMA DE CORES inteiro, e não uma regra aqui e outra
-   ali: os tokens de web/layout.py são redefinidos neste :root e valem só nas
-   páginas com casco de painel. As telas do vendedor continuam claras.
+/* O painel NÃO tem mais sistema de cores próprio. Ele tinha: os tokens do
+   layout eram redefinidos aqui e valiam só nas páginas de painel. Com o
+   botão de tema isso deixou de servir — um :root escuro neste arquivo entra
+   DEPOIS do claro e ganha dele por ordem, e o botão não faria nada aqui.
 
-   Por que só esta: quem opera o Cotafrete passa o dia DENTRO dela, muitas
-   vezes num segundo monitor, parada, enquanto trabalha noutra coisa. Tela
-   permanente cansa clara. E no escuro o print da transportadora — que é
-   branco — vira o ponto mais claro da tela, que é exatamente onde o olho
-   precisa cair quando alguém vem perguntar "de onde saiu esse preço?".
-
-   As razões de contraste foram calculadas com a fórmula da WCAG ANTES de a
-   regra ser escrita: 4.5:1 para texto, 3:1 para o que é gráfico e carrega
-   sentido (SC 1.4.11). O pior caso de cada grupo está anotado na frente. */
-:root{
-/* A marca no escuro é o CIANO da logo, não o azul. #2f3f88 sobre #161d33 dá
-   1.4:1 — a cor da marca estaria na tela e ninguém veria. O azul continua
-   sendo marca, mas como FUNDO: a lateral e o filete do topo. */
---marca:#70c8e0;--marca-forte:#8ad6ea;--marca-viva:#4058a0;
---lavagem:#1c2543;
-/* O que se escreve EM CIMA de um preenchimento da marca. Herdar o #fff do
-   tema claro daria 1.9:1 sobre o ciano: o botão sumiria por dentro. */
---sobre-marca:#0b0f1c;
-/* neutros: 13.9:1, 9.1:1 e 6.7:1 sobre o cartão */
---tinta:#e7eaf2;--tinta2:#b6c0d6;--fraco:#9aa4bd;
---borda:#2e3a5e;--borda-forte:#465684;--fundo:#0b0f1c;--papel:#161d33;
-/* Semânticos: o SENTIDO é o mesmo, só a luminância sobe. Verde 8.4:1, âmbar
-   7.8:1, vermelho 7.5:1 sobre o cartão — contra 3.7, 5.2 e 2.8 que as cores
-   claras dariam aqui. O vermelho de falha, no escuro, era ilegível. */
---ok:#3ecf8e;--erro:#ff8f75;--atencao:#e5a54a;
-/* No escuro sombra não separa nada: quem separa é o degrau de luminância
-   entre #0b0f1c e #161d33. A sombra fica só para dizer o que está POR CIMA
-   quando o cursor levanta um cartão. */
---sombra:0 1px 2px rgba(0,0,0,.4);
---sombra2:0 10px 28px -8px rgba(0,0,0,.6);
---sombra-1:0 1px 2px rgba(0,0,0,.4);
---sombra-2:0 10px 28px -8px rgba(0,0,0,.6);
---sombra-3:0 20px 48px -12px rgba(0,0,0,.75);
-/* Diz ao NAVEGADOR que a página é escura, para ele pintar de escuro o que
-   desenha sozinho: barra de rolagem, cursor de texto, caixa de seleção. Sem
-   isto a barra branca do gráfico rolável era a coisa mais clara da tela,
-   competindo com o print — que é o que precisa chamar o olho. */
-color-scheme:dark}
+   O que sobrou é o que continua sendo só do painel: a lateral, a grade de
+   cartões, os gráficos. O tema mora em web/layout.py, com os dois conjuntos
+   encostados; o padrão escuro desta tela vem do casco, em pagina_painel. */
 body{background:var(--fundo);color:var(--tinta)}
 /* Os links da lateral são âncoras para as seções da própria página; sem
    isto o salto é instantâneo e ninguém percebe para onde a tela foi. */
@@ -381,6 +347,10 @@ white-space:nowrap}
 .historico .hora{color:var(--fraco);font-variant-numeric:tabular-nums;
 width:1%;white-space:nowrap}
 .historico .rota{color:var(--tinta2)}
+/* A seta entre origem e destino: mais fraca que os dois nomes, porque
+   ela é pontuação, mas ainda legível — era um cinza cravado no HTML,
+   com 1.9:1 sobre o branco. */
+.historico .ate{color:var(--fraco)}
 .historico .material{max-width:220px;overflow:hidden;text-overflow:ellipsis;
 white-space:nowrap}
 /* O preço é o número que o olho procura na linha: alinhado à direita, todas
@@ -400,25 +370,25 @@ text-align:center}
    que o alerta está lá. */
 .alertas{display:flex;flex-direction:column;gap:10px;margin:0}
 .alerta-linha{display:flex;gap:12px;align-items:flex-start;
-border:1px solid #5c3128;background:#2a1a17;border-radius:12px;
+border:1px solid var(--alerta-borda);background:var(--alerta-fundo);border-radius:12px;
 padding:12px 14px}
 .alerta-linha .sino{width:32px;height:32px;border-radius:9px;flex:none;
-display:grid;place-items:center;background:#3a221c;color:var(--erro)}
+display:grid;place-items:center;background:var(--erro-fraco);color:var(--erro)}
 .alerta-linha .sino svg{width:17px;height:17px}
 .alerta-linha .diz{min-width:0;flex:1}
 .alerta-linha b{font-size:13.5px}
 .alerta-linha .quando{font-size:11.5px;color:var(--fraco);margin:1px 0 0}
 /* O texto de erro é de programador e pode ser longo. Duas linhas dizem qual
    é o problema; o resto está na cotação, a um clique daqui. */
-.alerta-linha .porque{font-size:12px;color:#e0ab9c;margin:6px 0 0;
+.alerta-linha .porque{font-size:12px;color:var(--alerta-tinta);margin:6px 0 0;
 display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;
 overflow:hidden}
 .alerta-linha .quais{margin-left:auto;display:flex;gap:5px;flex-wrap:wrap;
 justify-content:flex-end}
 .alerta-linha .quais a{font-size:11.5px;font-weight:700;text-decoration:none;
-color:var(--erro);background:#3a221c;border-radius:99px;padding:2px 9px;
+color:var(--erro);background:var(--erro-fraco);border-radius:99px;padding:2px 9px;
 white-space:nowrap}
-.alerta-linha .quais a:hover{background:#4a2a22}
+.alerta-linha .quais a:hover{background:var(--alerta-borda)}
 
 /* ---- filtros do histórico ---- */
 .filtros{display:flex;align-items:center;gap:6px;flex-wrap:wrap;
@@ -489,7 +459,7 @@ display:flex;gap:5px;flex-wrap:wrap}
    empurraria o print e os miúdos para fora do campo de visão. */
 .resposta .erro-cru{margin-top:8px;max-height:150px;overflow:auto;
 font-family:ui-monospace,Consolas,monospace;font-size:11px;line-height:1.45;
-color:var(--tinta2);background:#0d1120;border:1px solid var(--borda);
+color:var(--tinta2);background:var(--cova);border:1px solid var(--borda);
 border-radius:8px;padding:8px 10px;white-space:pre-wrap;word-break:break-word}
 /* O print no cartão é uma JANELA de altura fixa, não a imagem inteira. Os
    prints chegam com 114px a 357px de altura, e como a grade alinha pelo topo
@@ -588,7 +558,7 @@ transition:transform .2s var(--suave),box-shadow .2s var(--suave)}
 /* Pastilha de período: a escolhida ganha uma sombra baixa além do fundo, para
    o estado ler de longe. Antes era só troca de cor, e num monitor fraco as
    quatro pareciam iguais. */
-.periodo.atual{box-shadow:0 2px 10px -2px rgba(112,200,224,.55)}
+.periodo.atual{box-shadow:0 2px 10px -2px var(--brilho-marca)}
 .periodo:hover{background:var(--lavagem);color:var(--marca)}
 
 /* Linha do histórico: o realce de hover passa a ser a lavagem da marca, e não
@@ -610,40 +580,6 @@ font-weight:700;letter-spacing:.2px}
 .lateral a:focus-visible{outline:2px solid var(--ciano-claro);
 outline-offset:-2px}
 
-/* ============ o que web/layout.py cravou em claro, e o escuro desfaz =======
-   O CSS do layout entra ANTES deste e traz alguns valores fixos que nasceram
-   claros: foram escritos quando o sistema inteiro era claro, e token nenhum
-   alcança um `#fffae6` escrito dentro de uma regra. São só estes, e ficam
-   juntos aqui para quem for mexer no tema achar num lugar só, em vez de
-   caçar um fundo branco perdido no meio de setecentas linhas de layout. */
-
-/* O aviso amarelo. No escuro ele herdava a tinta clara (--tinta, #e7eaf2)
-   dentro de um #fffae6: texto quase branco sobre papel quase branco. */
-.painel .alerta{background:#2c2413;border-color:#5c4a1c;color:#e8cf9a}
-.painel .alerta.email{background:var(--lavagem);color:var(--tinta2);
-border-color:var(--borda-forte)}
-
-/* Campo de digitar mais FUNDO que o cartão, não igual a ele. Herdando
-   `background:var(--papel)` o campo sumia dentro do cartão e só a borda
-   dizia onde clicar — é a busca do histórico, usada o dia todo. */
-.painel input{background:#0f1424}
-.painel input:hover{border-color:var(--borda-forte)}
-
-/* O selo do menor preço é escrito EM CIMA do verde, e o botão em cima do
-   ciano: 1.7:1 e 1.9:1 com o #fff que o layout usa. A tinta escura resolve
-   os dois — 9.6:1 e 10:1.
-
-   O texto do selo fica fora deste comentário de propósito: este CSS vai
-   INLINE na página, e o teste que conta quantas vezes o rótulo aparece no
-   HTML contaria o comentário junto. */
-.painel .selo{color:#08130f}
-.painel button{color:var(--sobre-marca)}
-
-/* Divisória de tabela e fundo da ficha: dois cinzas claros do layout. A
-   ficha fica um degrau ABAIXO do cartão que a contém, e não acima — ela é
-   conteúdo dentro do cartão, não um cartão em cima dele. */
-.painel td{border-bottom-color:var(--borda)}
-.painel fieldset{background:#12182b}
 """
 
 
@@ -730,10 +666,10 @@ def pagina_painel(titulo: str, corpo: str, *, base: str = "") -> str:
     que fica parada enquanto a tabela rola."""
     return f"""<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>{e(titulo)} — Cotafrete</title>
+<title>{e(titulo)} — Cotafrete</title>{cabeca_do_tema("escuro")}
 <style>{CSS_BASE}{CSS}</style></head><body>
 <div class="painel">{_lateral(base)}<main class="conteudo">{corpo}</main></div>
-{LUPA}
+{LUPA}{SCRIPT_TEMA}
 </body></html>"""
 
 
@@ -991,10 +927,13 @@ def rosca(fracao: float | None, nome: str, detalhe: str = "") -> str:
         cheio = VOLTA * (1 - fracao)
         meio = (f'<text class="meio" x="50" y="56" text-anchor="middle">'
                 f'{fracao * 100:.0f}%</text>')
+        # O `stroke` vai no `style`, e não como atributo: atributo de
+        # apresentação não passa pela cascata, e `stroke="var(--tom-ok)"`
+        # ficaria sem pintura nenhuma.
         arco = (f'<circle class="arco" cx="50" cy="50" r="{RAIO}" '
-                f'stroke="{cor}" stroke-dasharray="{VOLTA:.1f}" '
-                f'style="--vazio:{VOLTA:.1f};--cheio:{cheio:.1f};'
-                f'stroke-dashoffset:{cheio:.1f}"/>')
+                f'stroke-dasharray="{VOLTA:.1f}" '
+                f'style="stroke:{cor};--vazio:{VOLTA:.1f};'
+                f'--cheio:{cheio:.1f};stroke-dashoffset:{cheio:.1f}"/>')
         abaixo = f'<p class="quanto">{e(detalhe)}</p>'
     return (f'<div class="rosca"><svg viewBox="0 0 100 100" role="img" '
             f'aria-label="{e(nome)}">'
@@ -1047,7 +986,8 @@ def pizza_de_status(linhas: list[dict]) -> str:
         risco = max(tamanho - min(1.2, tamanho / 2), 0.4)
         fatias += (
             f'<circle class="fatia" cx="60" cy="60" r="{RAIO + 8}" '
-            f'stroke="{cor}" stroke-dasharray="{risco:.2f} {VOLTA * 1.5:.2f}" '
+            f'style="stroke:{cor}" '
+            f'stroke-dasharray="{risco:.2f} {VOLTA * 1.5:.2f}" '
             f'stroke-dashoffset="{-percorrido:.2f}">'
             f'<title>{e(ROTULOS[chave])}: {n}</title></circle>')
         percorrido += tamanho
@@ -1091,9 +1031,13 @@ def pilulas(contagem: dict) -> str:
     def diz(chave: str, quantas: int) -> str:
         return (SINGULAR[chave] if quantas == 1 else ROTULOS[chave].lower())
 
+    # A lavagem sai do PAR do tom, e não de um "1a" colado no fim do
+    # hexadecimal: com token, concatenar alfa no fim da cor não existe mais —
+    # e o par já era a forma certa, porque a lavagem de cada tema é medida,
+    # não derivada.
     partes = "".join(
-        f'<span class="pilula" style="color:{CORES[chave]};'
-        f'background:{CORES[chave]}1a">'
+        f'<span class="pilula" style="color:{TOM[TOM_DA_CATEGORIA[chave]][0]};'
+        f'background:{TOM[TOM_DA_CATEGORIA[chave]][1]}">'
         f'{contagem[chave]} {e(diz(chave, contagem[chave]))}</span>'
         for chave in CORES if contagem.get(chave))
     return (f'<div class="pilulas">{partes}</div>' if partes

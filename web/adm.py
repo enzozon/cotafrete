@@ -301,7 +301,7 @@ def _linha_historico(l: dict) -> str:
         f'<td class="hora">{e(l["criado_em"][11:16])}</td>'
         f'<td>{ui.avatar(l["usuario"])}</td>'
         f'<td class="rota">{e(origem)}'
-        f'<span style="color:#b6bcc9"> → </span>{e(destino)}</td>'
+        f'<span class="ate"> → </span>{e(destino)}</td>'
         f'<td class="material" title="{e(l["material"] or "")}">'
         f'{e(l["material"] or "—")}</td>'
         # Célula do preço SEM classe nem marcação: `moeda(None)` devolve o
@@ -624,6 +624,7 @@ def painel(adm: str | None = Cookie(None, alias=COOKIE_ADM),
   <p class="sub">As cotações de toda a empresa, {e(rotulo.lower())}.</p></div>
   <span class="aovivo"><i></i>ao vivo</span>
   {_seletor(dias, quem, so_falhas)}
+  {ui.BOTAO_TEMA}
 </div>
 <div id="agora" data-versao="{versao}">{_faixa(resumo)}</div>
 <div class="grade">{grade}</div>
@@ -835,7 +836,7 @@ def ver_cotacao(cotacao_id: int,
   {ui.voltar_para("/adm", "Painel")}
   <h1>Cotação #{cotacao_id}</h1>
   <p class="sub">Este número não existe no banco desta pasta.</p>
-</div></div>
+</div><div class="direita">{ui.BOTAO_TEMA}</div></div>
 <div class="grade">{ui.cartao("Não encontrada", '''
 <p class="vazio" style="text-align:left;padding:0">Ou o número está errado,
 ou esta cópia do sistema usa outro <code>cotafrete.db</code> — cada pasta
@@ -882,7 +883,7 @@ completo</a></p>''', classe="c8", atraso=0.05)}</div>""",
   <p class="sub">{ui.avatar(c["usuario"])} · {e(_quando(c["criado_em"]))}
   · {e(rota)} · {e(c["material"] or "sem material informado")}</p></div>
   <div class="direita"><div id="pilulas">{ui.pilulas(contagem)}</div>
-  {ui.baixar_evidencias(c["id"])}</div>
+  {ui.baixar_evidencias(c["id"])}{ui.BOTAO_TEMA}</div>
 </div>
 <div id="numeros" data-cotacao="{c["id"]}" data-versao="{versao}">{_numeros_da_cotacao(c)}</div>
 <div class="grade">{grade}</div>

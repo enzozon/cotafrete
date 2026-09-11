@@ -38,6 +38,21 @@ CSS = """
 --borda:#e2e8f2;--borda-forte:#ccd5e4;--fundo:#f3f6fb;--papel:#fff;
 /* semânticos: sentido, não marca — mudar estes muda o que a tela AFIRMA */
 --ok:#00785a;--erro:#c0341d;--atencao:#a15c00;--zap:#25d366;
+--ok-fraco:#e6f4ef;--erro-fraco:#fdece9;--atencao-fraco:#fffae6;
+--atencao-borda:#ffe380;--atencao-tinta:var(--tinta);
+--sobre-marca:#fff;--cova:#f7f9fc;
+--brilho-marca:rgba(47,63,136,.45);
+/* Os tons do quadro de instrumentos. Moram aqui, e não no CSS do
+   painel, porque quem os ESCREVE é o Python (o número do topo sai com
+   `style="--cor:..."`), e hexadecimal escrito pelo servidor não muda
+   quando a pessoa clica no botão de tema. Token muda. */
+--tom-marca:#384890;--tom-marca-fraco:#eef3fb;
+--tom-ok:#00785a;--tom-ok-fraco:#e6f4ee;
+--tom-atencao:#a15c00;--tom-atencao-fraco:#fdf3e3;
+--tom-erro:#bf2600;--tom-erro-fraco:#fdecea;
+--tom-neutro:#5f6675;--tom-neutro-fraco:#eef0f4;
+--tom-roxo:#7c3aed;--tom-roxo-fraco:#f1eafe;
+--alerta-fundo:#fff6f4;--alerta-borda:#ffd5cc;--alerta-tinta:#7a3b2e;
 /* elevação: três degraus, e não sombra solta por regra. Borda de 1px em tudo
    achata a hierarquia — quem precisa se destacar sobe, o resto fica no plano */
 --sombra-1:0 1px 2px rgba(20,32,66,.05),0 1px 3px rgba(20,32,66,.04);
@@ -45,6 +60,132 @@ CSS = """
 --sombra-3:0 18px 44px -12px rgba(20,32,66,.28);
 --raio:12px;--raio-p:8px;--raio-g:16px;
 --suave:cubic-bezier(.2,.6,.3,1);--mola:cubic-bezier(.34,1.32,.46,1)}
+/* ========================== o mesmo sistema, no escuro ======================
+   Segundo conjunto de tokens, ligado por um atributo no <html>. Não é um
+   tema "do painel": é do SISTEMA, e por isso mora aqui, junto do claro, e
+   não no CSS de uma tela só. Quem escolhe é a pessoa, no botão do cabeçalho.
+
+   O padrão de cada casco continua o que era: o vendedor abre claro, o painel
+   abre escuro. Quem nunca mexer no botão não vê diferença nenhuma.
+
+   As razões de contraste saíram da fórmula da WCAG ANTES de a regra ser
+   escrita: 4.5:1 para texto, 3:1 para o que é gráfico e carrega sentido
+   (SC 1.4.11). O pior caso de cada grupo está anotado na frente. */
+html[data-tema="escuro"]{
+/* A marca no escuro é o CIANO da logo, não o azul. #2f3f88 sobre #161d33 dá
+   1.4:1 — a cor da marca estaria na tela e ninguém veria. O azul continua
+   sendo marca, mas como FUNDO: a lateral do painel, o filete do topo. */
+--marca:#70c8e0;--marca-forte:#8ad6ea;--marca-viva:#4058a0;
+--ciano:#70c8e0;--lavagem:#1c2543;
+/* O que se escreve EM CIMA de um preenchimento da marca. Herdar o #fff do
+   claro daria 1.9:1 sobre o ciano: o botão sumiria por dentro. */
+--sobre-marca:#0b0f1c;
+/* neutros: 13.9:1, 9.1:1 e 6.7:1 sobre o cartão */
+--tinta:#e7eaf2;--tinta2:#b6c0d6;--fraco:#9aa4bd;
+--borda:#2e3a5e;--borda-forte:#465684;--fundo:#0b0f1c;--papel:#161d33;
+/* Um degrau ABAIXO do papel, para o que é buraco e não cartão: campo de
+   digitar, caixa de texto técnico, ficha dentro do cartão. No claro esse
+   papel é o próprio branco e o buraco se faz com borda; no escuro é a
+   luminância que separa, então o buraco precisa existir como cor. */
+--cova:#0f1424;
+/* Semânticos: o SENTIDO é o mesmo, só a luminância sobe. Verde 8.4:1, âmbar
+   7.8:1, vermelho 7.5:1 sobre o cartão — contra 3.7, 5.2 e 2.8 que as cores
+   claras dariam aqui. O vermelho de falha, no escuro, era ilegível. */
+--ok:#3ecf8e;--erro:#ff8f75;--atencao:#e5a54a;
+/* As lavagens de cada semântico: o fundo das pílulas e dos avisos. */
+--ok-fraco:#142b26;--erro-fraco:#2d201f;--atencao-fraco:#2c2413;
+--atencao-borda:#5c4a1c;--atencao-tinta:#e8cf9a;
+--brilho-marca:rgba(112,200,224,.55);
+/* Os mesmos tons, com a luminância que o fundo escuro exige. O pior é
+   o roxo, com 6.1:1 sobre o cartão; no claro o vermelho de falha dava
+   2.8:1 aqui e não passava nem como gráfico (SC 1.4.11). */
+--tom-marca:#70c8e0;--tom-marca-fraco:#17273a;
+--tom-ok:#3ecf8e;--tom-ok-fraco:#142b26;
+--tom-atencao:#e5a54a;--tom-atencao-fraco:#2b2618;
+--tom-erro:#ff8f75;--tom-erro-fraco:#2d201f;
+--tom-neutro:#98a1b8;--tom-neutro-fraco:#1f2740;
+--tom-roxo:#a78bfa;--tom-roxo-fraco:#242847;
+--alerta-fundo:#2a1a17;--alerta-borda:#5c3128;--alerta-tinta:#e0ab9c;
+/* No escuro sombra não separa nada: quem separa é o degrau de luminância
+   entre #0b0f1c e #161d33. A sombra fica só para dizer o que está POR CIMA
+   quando o cursor levanta um cartão. */
+--sombra-1:0 1px 2px rgba(0,0,0,.4);
+--sombra-2:0 10px 28px -8px rgba(0,0,0,.6);
+--sombra-3:0 20px 48px -12px rgba(0,0,0,.75);
+/* Diz ao NAVEGADOR que a página é escura, para ele pintar de escuro o que
+   desenha sozinho: barra de rolagem, cursor de texto, caixa de seleção. Sem
+   isto a barra de rolagem branca era a coisa mais clara da tela. */
+color-scheme:dark}
+
+/* ---- o que ficou cravado em claro quando o sistema só tinha um tema -------
+   Token nenhum alcança um `#fffae6` escrito dentro de uma regra. São estes,
+   e ficam juntos para quem for mexer no tema achar num lugar só, em vez de
+   caçar um fundo branco perdido no meio do arquivo. */
+[data-tema="escuro"] fieldset{background:#12182b}
+[data-tema="escuro"] input,[data-tema="escuro"] .pronto{
+background:var(--cova);color:var(--tinta)}
+[data-tema="escuro"] input:hover,[data-tema="escuro"] .opcao:hover{
+border-color:var(--borda-forte)}
+[data-tema="escuro"] .opcao:hover{background:var(--lavagem)}
+[data-tema="escuro"] td{border-bottom-color:var(--borda)}
+
+/* O aviso amarelo. No escuro ele herdava a tinta clara dentro de um #fffae6:
+   texto quase branco sobre papel quase branco. */
+[data-tema="escuro"] .alerta,[data-tema="escuro"] .aviso,
+[data-tema="escuro"] .filtro.parcial{background:var(--atencao-fraco);
+border-color:var(--atencao-borda);color:var(--atencao-tinta)}
+[data-tema="escuro"] .filtro.parcial>summary{color:var(--atencao-tinta)}
+[data-tema="escuro"] .filtro.parcial>summary:hover{background:#3a2f16}
+[data-tema="escuro"] .alerta.email{background:var(--lavagem);
+border-color:var(--borda-forte);color:var(--tinta2)}
+[data-tema="escuro"] .selo-obs{background:var(--atencao-fraco);
+border-color:var(--atencao-borda)}
+
+/* Texto escrito EM CIMA de um preenchimento: o #fff do claro dá 1.7:1 sobre
+   o verde e 1.9:1 sobre o ciano. */
+[data-tema="escuro"] .selo{color:#08130f}
+[data-tema="escuro"] button{color:var(--sobre-marca)}
+[data-tema="escuro"] .selo-zap{background:var(--ok-fraco)}
+[data-tema="escuro"] .zap.aberta{background:#131a2e;border-color:#25503a}
+
+/* A tabela do resultado. O verde da linha vencedora vira um verde de FUNDO
+   escuro: no claro ele é uma lavagem, e lavagem clara no escuro é um rasgo
+   branco no meio da tabela. */
+[data-tema="escuro"] table.resultados th{background:#12182b}
+[data-tema="escuro"] tr.r.melhor td{background:#132a24}
+[data-tema="escuro"] tr.r.melhor:hover td{background:#17332b}
+[data-tema="escuro"] tr.r-extra td{background:#12182b}
+[data-tema="escuro"] .estado-ok{background:var(--ok-fraco)}
+[data-tema="escuro"] .estado-recusa{background:var(--atencao-fraco)}
+[data-tema="escuro"] .estado-falha{background:var(--erro-fraco)}
+
+/* As logos ganham chip BRANCO no escuro — a da Ventura e as das
+   transportadoras. São arte desenhada para fundo claro, e a da Ventura tem o
+   "V" como RECORTE: sobre fundo escuro sobra o recorte e some a elipse, que
+   é o contrário do desenho. */
+[data-tema="escuro"] .topo img{background:#fff;padding:5px 9px;
+border-radius:9px;height:34px}
+
+/* ---- o botão que troca ---------------------------------------------------
+   Fica no cabeçalho das duas telas. Um botão, e não um seletor de três
+   opções com "seguir o sistema": quem quer trocar já sabe para onde, e um
+   terceiro estado é mais uma coisa para explicar num sistema usado por quem
+   está com pressa. */
+.tema{display:inline-flex;align-items:center;justify-content:center;
+width:34px;height:34px;padding:0;flex:none;border-radius:99px;
+background:var(--papel);color:var(--fraco);border:1px solid var(--borda);
+box-shadow:none;cursor:pointer;
+transition:color .16s var(--suave),border-color .16s var(--suave),
+background .16s var(--suave)}
+.tema:hover{color:var(--marca);border-color:var(--marca-forte);
+background:var(--lavagem);transform:none;box-shadow:none}
+.tema svg{width:17px;height:17px;display:block}
+/* Cada tema mostra o ícone do que a pessoa VAI receber, e não do que já tem:
+   um sol numa tela que já está clara não diz o que o botão faz. */
+.tema .p-sol{display:none}
+[data-tema="escuro"] .tema .p-sol{display:block}
+[data-tema="escuro"] .tema .p-lua{display:none}
+
 *{box-sizing:border-box}
 body{margin:0;background:var(--fundo);color:var(--tinta);line-height:1.45;
 font-family:system-ui,-apple-system,"Segoe UI",sans-serif;
@@ -153,7 +294,7 @@ font-size:13px;font-weight:600}
    e sem isto a CGB (359KB, quadrada) empurra a linha inteira para baixo. */
 .zap .marca{width:44px;height:44px;object-fit:contain;flex:0 0 auto;
   border-radius:var(--raio-p);background:#fff}
-.zap .ir{margin-left:auto;background:var(--zap);color:#fff;
+.zap .ir{margin-left:auto;background:var(--zap);color:#07301f;
 border-radius:var(--raio-p);padding:8px 13px;font-size:13px;font-weight:600}
 /* Especialidade da transportadora — cor diferente de tudo no cartão de
    propósito, para o olho parar aí antes de decidir para quem manda. */
@@ -548,7 +689,23 @@ white-space:nowrap}
 object-position:top center;border-radius:6px;cursor:zoom-in;
 transition:transform .16s var(--suave),box-shadow .16s var(--suave)}
 .mini .print:hover{transform:scale(1.06);box-shadow:var(--sombra-2)}
-.sem-print{color:var(--borda-forte)}
+.sem-print{color:var(--fraco)}
+
+/* ---- histórico do vendedor ----
+   A mesma tabela do painel, num corpo menor: aqui é a lista de UMA pessoa,
+   e ela abre a tela para conferir um preço que já cotou. */
+.hora{color:var(--fraco);font-variant-numeric:tabular-nums;white-space:nowrap;
+width:1%}
+/* O preço é o número que a linha existe para mostrar: alinhado à direita,
+   todas as vírgulas na mesma coluna. */
+.melhor{text-align:right;font-weight:700;color:var(--ok);white-space:nowrap;
+font-variant-numeric:tabular-nums}
+/* O travessão de "nenhuma transportadora cotou" NÃO herda o verde: não ter
+   preço não é um preço bom, e uma coluna toda verde faz o olho passar
+   direto pela linha que precisava de atenção. A classe vem do app, que é
+   quem sabe se houve preço — CSS não consegue perguntar isso. */
+.melhor.vazio{color:var(--fraco);font-weight:400;font-size:inherit;
+text-align:right;padding:0}
 
 /* A linha de detalhe: só existe quando há o que avisar, e atravessa a tabela
    inteira. Aviso solto numa célula estreita vira duas palavras por linha. */
@@ -639,6 +796,65 @@ LUPA = """<dialog class="lupa" aria-label="Comprovante ampliado">
 </script>"""
 
 
+# ------------------------------------------------------------------- tema
+
+def cabeca_do_tema(padrao: str) -> str:
+    """O <script> que decide o tema ANTES da primeira pintura.
+
+    É o único script do sistema que precisa estar no <head> e ser síncrono.
+    No fim do <body> ele também funcionaria, mas quem escolheu escuro veria a
+    página inteira clara por um quadro antes de escurecer — e essa piscada
+    branca na cara de quem pediu tela escura é pior do que não ter o botão.
+
+    `padrao` é o que a tela mostra para quem NUNCA mexeu no botão: claro no
+    vendedor, escuro no painel. É o que cada uma já era antes de existir
+    escolha, então ninguém chega amanhã numa tela diferente da de ontem.
+
+    O `try` não é cerimônia: `localStorage` LEVANTA exceção — não devolve
+    null — quando o navegador está com armazenamento bloqueado, e uma exceção
+    aqui, no <head>, antes de tudo, mataria a página inteira em vez de só o
+    botão.
+    """
+    return ("<script>try{document.documentElement.dataset.tema="
+            "localStorage.getItem('tema')||'" + padrao + "'}"
+            "catch(e){document.documentElement.dataset.tema='"
+            + padrao + "'}</script>")
+
+
+# Sol e lua no MESMO botão: cada tema mostra o ícone do que a pessoa vai
+# receber, e não do que já tem. Um sol numa tela que já está clara não diz o
+# que o botão faz.
+BOTAO_TEMA = """<button type="button" class="tema" data-tema-troca
+ title="Alternar entre tema claro e escuro"
+ aria-label="Alternar entre tema claro e escuro">
+<svg class="p-lua" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+ stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+ aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"/>
+</svg>
+<svg class="p-sol" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+ stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+ aria-hidden="true"><circle cx="12" cy="12" r="4"/>
+<path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>
+</svg></button>"""
+
+SCRIPT_TEMA = """<script>
+(() => {
+  // Delegação no documento: o painel troca pedaços da tela sozinho a cada
+  // 10s, e um ouvinte preso ao botão morre junto com o pedaço que o continha.
+  document.addEventListener('click', ev => {
+    if (!ev.target.closest('[data-tema-troca]')) return;
+    const raiz = document.documentElement;
+    const novo = raiz.dataset.tema === 'escuro' ? 'claro' : 'escuro';
+    raiz.dataset.tema = novo;
+    // Guardar pode falhar (navegador restrito). A troca na tela já
+    // aconteceu — o que se perde é só a memória. Engolir aqui é o certo:
+    // vale mais um tema que não lembra do que um botão que não faz nada.
+    try { localStorage.setItem('tema', novo); } catch (e) {}
+  });
+})();
+</script>"""
+
+
 def print_embutido(caminho: str | None) -> str:
     """Embute o print da transportadora na página, em base64.
 
@@ -724,7 +940,8 @@ def pagina(titulo: str, corpo: str, usuario: str | None = None) -> str:
                 f'<a href="/sair">Sair</a></span> <b>{e(usuario)}</b></span>')
     return f"""<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>{e(titulo)} — Cotafrete</title><style>{CSS}</style></head><body>
+<title>{e(titulo)} — Cotafrete</title>{cabeca_do_tema("claro")}
+<style>{CSS}</style></head><body>
 <div class="topo"><img src="data:image/png;base64,{LOGO}" alt="Ventura">
-{quem}</div>
-<div class="wrap">{corpo}</div>{LUPA}</body></html>"""
+{quem}{BOTAO_TEMA}</div>
+<div class="wrap">{corpo}</div>{LUPA}{SCRIPT_TEMA}</body></html>"""

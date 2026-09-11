@@ -147,23 +147,52 @@ def test_a_rota_da_entrada_nao_escapa_para_o_resto_do_sistema():
                 pytest.fail(f"seletor .rota sem escopo de entrada: {seletor!r}")
 
 
-def test_o_painel_e_a_unica_tela_que_troca_o_tema():
-    """O escuro do painel mora no CSS do painel, e o casco do vendedor nao o
-    carrega. Se um dia alguem empilhar o CSS do painel no `pagina()` para
-    reaproveitar um componente, o formulario do vendedor vira preto sem que
-    nenhum teste de tela reclame - eles olham texto, nao cor."""
+def test_cada_casco_abre_no_tema_que_ja_era_o_dele():
+    """Vendedor claro, painel escuro — para quem NUNCA mexeu no botao.
+
+    O padrao nao e detalhe: e a promessa de que ninguem chega amanha numa
+    tela diferente da de ontem so porque o sistema ganhou um botao."""
     from web import painel_ui
 
-    do_vendedor = layout.pagina("t", "<b>x</b>")
+    assert "||'claro'" in layout.pagina("t", "<b>x</b>")
+    assert "||'escuro'" in painel_ui.pagina_painel("t", "<b>x</b>")
 
-    assert "--papel:#fff" in do_vendedor
-    assert "--papel:#161d33" not in do_vendedor
-    assert "color-scheme:dark" not in do_vendedor
-    # E no painel os dois entram, nesta ordem: o claro define, o escuro
-    # sobrescreve. Invertido, o painel voltaria a ser branco.
-    do_painel = painel_ui.pagina_painel("t", "<b>x</b>")
-    assert (do_painel.index("--papel:#fff")
-            < do_painel.index("--papel:#161d33"))
+
+def test_o_tema_e_decidido_antes_da_primeira_pintura():
+    """O script do tema no <head> e ANTES do <style>, e sincrono.
+
+    Solto no fim do <body> ele tambem funcionaria - e quem escolheu escuro
+    veria a pagina inteira clara por um quadro antes de escurecer. Essa
+    piscada branca na cara de quem pediu tela escura e pior do que nao ter
+    o botao, e e o tipo de coisa que so aparece na maquina de quem usa."""
+    from web import painel_ui
+
+    for pagina in (layout.pagina("t", "<b>x</b>"),
+                   painel_ui.pagina_painel("t", "<b>x</b>")):
+        assert pagina.index("dataset.tema") < pagina.index("<style>")
+        # `defer`/`async` aqui devolveriam a piscada de graca.
+        assert "<script defer" not in pagina
+        assert "<script async" not in pagina
+
+
+def test_os_dois_conjuntos_de_token_cobrem_os_mesmos_nomes():
+    """Todo token redefinido no escuro precisa existir no claro.
+
+    Um nome so no escuro vira `var(--x)` sem valor no tema claro, e a
+    propriedade inteira e descartada: o texto fica preto no meio de um
+    cartao branco, ou o fundo some. E ninguem ve isso testando so o tema em
+    que estava trabalhando."""
+    def nomes(bloco: str) -> set[str]:
+        sem_comentario = re.sub(r"/\*.*?\*/", "", bloco, flags=re.S)
+        return set(re.findall(r"(--[a-z0-9-]+):", sem_comentario))
+
+    css = layout.CSS
+    claro = css[css.index(":root{"):css.index("*{box-sizing")]
+    abre = 'html[data-tema="escuro"]{'
+    escuro = css[css.index(abre):css.index("color-scheme:dark}")]
+    so_no_escuro = nomes(escuro) - nomes(claro)
+
+    assert not so_no_escuro, f"token sem par no claro: {sorted(so_no_escuro)}"
 
 
 def test_o_brilho_de_espera_casa_com_a_linha_que_o_app_monta():
