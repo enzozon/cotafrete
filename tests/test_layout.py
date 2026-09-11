@@ -109,6 +109,73 @@ def test_o_botao_tem_contraste_com_o_branco_escrito_nele():
     assert _contraste("#ffffff", _tokens()["--marca"]) >= 4.5
 
 
+def test_o_botao_de_tema_nao_e_pintado_como_botao_de_marca():
+    """O botão de tema é contorno, não preenchimento — e não pode herdar a
+    tinta de quem tem preenchimento.
+
+    A regra `[data-tema="escuro"] button{color:var(--sobre-marca)}` existe
+    porque o botão comum é ciano cheio e o #fff nele dá 1.9:1. Mas ela é um
+    seletor com atributo (0,1,1) e ganhava do `.tema` (0,1,0): o ícone do sol
+    saía pintado de #0b0f1c, que é a cor do FUNDO da página. Ficava desenhado
+    em preto sobre preto — presente na tela, com 17px de lado, e invisível
+    para quem olha.
+
+    Nenhum teste de HTML pega isso: o SVG está lá, o atributo está lá, a
+    página responde 200. Só a cor computada denuncia.
+
+    O `re.sub` do comentário não é detalhe: sem ele o teste lia o comentário
+    que explica a regra — e como ele cita `:not(.tema)`, passava sozinho, sem
+    nunca olhar para o seletor de verdade."""
+    css = re.sub(r"/\*.*?\*/", "", layout.CSS, flags=re.S)
+    # `button` no fim, com ou sem pseudo-classe atrás — é preciso casar as
+    # duas formas: a certa (`button:not(.tema)`) e a errada (`button` puro),
+    # senão o teste passa justamente quando o defeito volta.
+    alvo = re.compile(r"\bbutton(:[a-z-]+\([^)]*\))?$")
+    achados = [s.strip()
+               for regra in re.findall(r"([^{}]+)\{", css)
+               for s in regra.split(",")
+               if "data-tema" in s and alvo.search(s.strip())]
+
+    assert achados, "a regra de tinta sobre preenchimento sumiu do CSS"
+    for seletor in achados:
+        assert ":not(.tema)" in seletor, (
+            f"{seletor!r} alcança o botão de tema, que não tem preenchimento "
+            f"da marca — o ícone do sol sumiria dentro dele")
+
+
+def test_a_logo_tem_versao_para_fundo_escuro():
+    """Duas artes, e não um filtro.
+
+    A logo original é ciano→marinho com o "V" em BRANCO recortado contra o
+    marinho. Sobre #161d33 o marinho dá 1.6:1: a elipse se dissolve e a
+    palavra VENTURA some. E `filter:invert()` não salva — invertendo os dois
+    tons junto, o "V" branco vira preto e some contra a elipse invertida.
+
+    O curativo anterior era um chip branco atrás da logo: resolvia a
+    legibilidade e deixava um retângulo branco no meio de uma tela escura."""
+    assert layout.LOGO_ESCURO, "falta web/logo_escuro_b64.txt"
+    assert layout.LOGO_ESCURO != layout.LOGO, \
+        "a versão escura precisa ser outra arte, não a mesma"
+
+
+def test_nenhuma_tela_escura_poe_chip_branco_atras_da_logo():
+    """O chip existia porque faltava a arte certa. Com ela, some.
+
+    Guarda as três superfícies escuras: o topo do vendedor no tema escuro, a
+    lateral do painel (marinho nos dois temas) e a tela de entrada."""
+    from web import painel_ui
+
+    css = layout.CSS + painel_ui.CSS
+    for seletor, corpo in re.findall(r"([^{}]+)\{([^{}]*)\}", css):
+        alvo_de_logo = (".entrada-marca .logo" in seletor
+                        or ".lateral .marca img" in seletor
+                        or ".topo .marca-escura" in seletor
+                        or ".topo img" in seletor)
+        if alvo_de_logo and "background" in corpo:
+            assert "#fff" not in corpo, (
+                f"chip branco atrás da logo em {seletor.strip()!r}")
+
+
 def test_o_ciano_da_logo_esta_na_paleta():
     """A logo é um gradiente ciano -> índigo, e a versão anterior do sistema
     usava só a metade escura. Se o ciano sumir dos tokens, o rebranding foi

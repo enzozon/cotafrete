@@ -14,6 +14,19 @@ from pathlib import Path
 
 LOGO = (Path(__file__).parent / "logo_b64.txt").read_text(encoding="utf-8").strip()
 
+# A MESMA marca, desenhada para fundo escuro. Não é efeito de CSS: a logo
+# original é ciano→marinho com o "V" em branco, e sobre #161d33 o marinho dá
+# 1.6:1 — a elipse se dissolve no fundo e a palavra VENTURA some por
+# completo. `filter:invert()` não resolve: inverter os dois tons junto apaga
+# o "V" contra a própria elipse.
+#
+# Aqui a elipse clareia mantendo o matiz (o ciano continua ciano), o "V" é
+# VAZADO — o fundo da página aparece através dele, que é o que um recorte
+# deve fazer — e a palavra vira tinta clara. É a negativa da marca, o que
+# qualquer manual de identidade manda usar em fundo escuro.
+LOGO_ESCURO = (Path(__file__).parent / "logo_escuro_b64.txt").read_text(
+    encoding="utf-8").strip()
+
 
 CSS = """
 /* ============================ identidade Ventura =============================
@@ -144,7 +157,13 @@ border-color:var(--atencao-borda)}
 /* Texto escrito EM CIMA de um preenchimento: o #fff do claro dá 1.7:1 sobre
    o verde e 1.9:1 sobre o ciano. */
 [data-tema="escuro"] .selo{color:#08130f}
-[data-tema="escuro"] button{color:var(--sobre-marca)}
+/* `:not(.tema)` porque esta regra fala de texto sobre PREENCHIMENTO da
+   marca, e o botão de tema não tem preenchimento nenhum — ele é um contorno
+   sobre o papel. Sem o `:not`, o seletor com atributo (0,1,1) ganhava do
+   `.tema` (0,1,0) e pintava o ícone do sol de #0b0f1c, que é a cor do fundo
+   da página: o sol ficava desenhado em preto sobre preto, presente na tela e
+   invisível para quem olha. */
+[data-tema="escuro"] button:not(.tema){color:var(--sobre-marca)}
 [data-tema="escuro"] .selo-zap{background:var(--ok-fraco)}
 [data-tema="escuro"] .zap.aberta{background:#131a2e;border-color:#25503a}
 
@@ -159,12 +178,16 @@ border-color:var(--atencao-borda)}
 [data-tema="escuro"] .estado-recusa{background:var(--atencao-fraco)}
 [data-tema="escuro"] .estado-falha{background:var(--erro-fraco)}
 
-/* As logos ganham chip BRANCO no escuro — a da Ventura e as das
-   transportadoras. São arte desenhada para fundo claro, e a da Ventura tem o
-   "V" como RECORTE: sobre fundo escuro sobra o recorte e some a elipse, que
-   é o contrário do desenho. */
-[data-tema="escuro"] .topo img{background:#fff;padding:5px 9px;
-border-radius:9px;height:34px}
+/* A logo do topo tem duas versões, e o tema escolhe. A escura não é um
+   filtro: é outro desenho (web/layout.py, LOGO_ESCURO), porque a original
+   tem o "V" em branco recortado contra o marinho — inverter os dois junto
+   apagaria o "V" contra a própria elipse.
+
+   As logos das TRANSPORTADORAS continuam em chip branco nos dois temas:
+   são arte de terceiro, uma por transportadora, e não há negativa delas. */
+.topo .marca-escura{display:none}
+[data-tema="escuro"] .topo .marca-clara{display:none}
+[data-tema="escuro"] .topo .marca-escura{display:block}
 
 /* ---- o botão que troca ---------------------------------------------------
    Fica no cabeçalho das duas telas. Um botão, e não um seletor de três
@@ -507,9 +530,10 @@ background:radial-gradient(circle,rgba(64,88,160,.38),transparent 68%)}
    pintaria o desenho inteiro de branco — e o "V" da marca é um RECORTE, já
    branco: some contra a elipse e a logo vira um borrão. Passa despercebido na
    lateral do painel, onde ela tem 30px; aqui é a primeira coisa que se vê. */
-.entrada-marca .logo{height:46px;width:auto;align-self:flex-start;
-background:#fff;padding:10px 14px;border-radius:13px;
-box-shadow:0 10px 28px -10px rgba(0,0,0,.75)}
+/* Sem chip branco atrás: a logo da entrada é a NEGATIVA da marca
+   (web/layout.py, LOGO_ESCURO), então ela se apoia no próprio fundo da tela.
+   O chip era o curativo de quando só existia a versão para fundo claro. */
+.entrada-marca .logo{height:52px;width:auto;align-self:flex-start}
 .entrada-marca h1{font-size:clamp(28px,3.5vw,42px);line-height:1.1;
 margin:0 0 14px;letter-spacing:-.9px;color:#fff;text-wrap:balance}
 .entrada-marca p{margin:0;max-width:40ch;font-size:15px;line-height:1.55;
@@ -576,7 +600,7 @@ border-color:rgba(255,138,116,.42);color:#ffb4a4}
 .entrada-marca{padding:26px 22px;gap:16px}
 .entrada-marca h1{font-size:22px;margin:0}
 .entrada-marca p,.entrada-marca .rota{display:none}
-.entrada-marca .logo{height:34px;padding:8px 11px}
+.entrada-marca .logo{height:38px}
 .entrada-form{padding:30px 20px}}
 /* ============================== acabamento =================================
    Detalhes pequenos que somam. Cada um tem motivo; nenhum é enfeite solto. */
@@ -917,7 +941,8 @@ def entrada(titulo: str, cartao: str, *, chamada: str, apoio: str,
 <title>{e(titulo)} — Cotafrete</title><style>{CSS}</style></head><body>
 <div class="entrada">
   <aside class="entrada-marca">
-    <img class="logo" src="data:image/png;base64,{LOGO}" alt="Ventura">
+    <img class="logo" src="data:image/png;base64,{LOGO_ESCURO}"
+         alt="Ventura">
     <div>
       <h1>{e(chamada)}</h1>
       <p>{e(apoio)}</p>
@@ -942,6 +967,6 @@ def pagina(titulo: str, corpo: str, usuario: str | None = None) -> str:
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{e(titulo)} — Cotafrete</title>{cabeca_do_tema("claro")}
 <style>{CSS}</style></head><body>
-<div class="topo"><img src="data:image/png;base64,{LOGO}" alt="Ventura">
+<div class="topo"><img class="marca-clara" src="data:image/png;base64,{LOGO}" alt="Ventura"><img class="marca-escura" src="data:image/png;base64,{LOGO_ESCURO}" alt="Ventura">
 {quem}{BOTAO_TEMA}</div>
 <div class="wrap">{corpo}</div>{LUPA}{SCRIPT_TEMA}</body></html>"""
