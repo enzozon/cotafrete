@@ -23,7 +23,7 @@ from datetime import date
 from math import hypot, pi
 
 from core.painel import categoria
-from web.layout import (BOTAO_TEMA, CSS as CSS_BASE, LOGO_ESCURO, LUPA,
+from web.layout import (BOTAO_TEMA, CSS as CSS_BASE, LUPA, MARCA_SIMBOLO,
                         SCRIPT_TEMA, cabeca_do_tema, e)
 
 # `categoria` é a ÚNICA coisa que este arquivo importa de fora do desenho, e
@@ -134,7 +134,7 @@ background:linear-gradient(175deg,#24305e 0%,#141a35 100%);color:#b6c2dd}
 display:flex;flex-direction:column;padding:20px 0 16px}
 .lateral .marca{display:flex;align-items:center;gap:10px;padding:0 20px 20px;
 border-bottom:1px solid rgba(255,255,255,.07);margin-bottom:14px}
-.lateral .marca img{height:30px;width:auto}
+.lateral .marca img{height:34px;width:auto}
 .lateral .marca b{color:#fff;font-size:15px;letter-spacing:2.4px;
 text-transform:uppercase;font-weight:700}
 .lateral .secao{padding:14px 20px 6px;font-size:10px;letter-spacing:1.4px;
@@ -680,13 +680,10 @@ def _lateral(base: str = "") -> str:
     âncoras da própria página. Na tela de UMA cotação ele vale "/adm": ali as
     seções não existem, e um `href="#movimento"` que não sai do lugar deixa o
     menu inteiro parecendo quebrado."""
-    # `if LOGO`: web/logo_b64.txt pode estar vazio numa pasta recém-clonada, e
-    # um src="data:image/png;base64," vira ícone de imagem quebrada bem no
-    # canto mais visível da tela.
-    # A NEGATIVA da marca, e não a original: esta coluna é marinho nos
-    # dois temas, e a logo para fundo claro some dentro dela.
-    marca = (f'<img src="data:image/png;base64,{LOGO_ESCURO}" alt="Ventura">'
-             if LOGO_ESCURO else "")
+    # Só o SÍMBOLO: a coluna tem 236px de largura, e o lockup inteiro
+    # aqui sairia com a palavra VENTURA em cinco pixels de altura. O nome da
+    # empresa já está no rodapé e no cabeçalho de todas as telas do vendedor.
+    marca = f'<img src="{MARCA_SIMBOLO}" alt="Ventura Comércio">'
     itens = "".join(
         f'<a href="{base}#{alvo}" data-secao="{alvo}">{_icone(ICONES[chave])}'
         f'<span>{e(rotulo)}</span></a>'

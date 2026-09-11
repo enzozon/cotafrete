@@ -143,37 +143,62 @@ def test_o_botao_de_tema_nao_e_pintado_como_botao_de_marca():
             f"da marca — o ícone do sol sumiria dentro dele")
 
 
-def test_a_logo_tem_versao_para_fundo_escuro():
-    """Duas artes, e não um filtro.
+def test_cada_peca_da_marca_vai_onde_cabe():
+    """Tres pecas, tres trabalhos — e cada uma no lugar em que e legivel.
 
-    A logo original é ciano→marinho com o "V" em BRANCO recortado contra o
-    marinho. Sobre #161d33 o marinho dá 1.6:1: a elipse se dissolve e a
-    palavra VENTURA some. E `filter:invert()` não salva — invertendo os dois
-    tons junto, o "V" branco vira preto e some contra a elipse invertida.
+    O lockup inteiro tem tres niveis de texto e a assinatura ocupa 6px de
+    120: num cabecalho de 36px isso vira 1.8px de mingau. Por isso o
+    cabecalho usa a peca COMPACTA (sem assinatura) e o lockup inteiro fica na
+    entrada e na faixa do inicio, onde ha altura para le-lo.
 
-    O curativo anterior era um chip branco atrás da logo: resolvia a
-    legibilidade e deixava um retângulo branco no meio de uma tela escura."""
-    assert layout.LOGO_ESCURO, "falta web/logo_escuro_b64.txt"
-    assert layout.LOGO_ESCURO != layout.LOGO, \
-        "a versão escura precisa ser outra arte, não a mesma"
-
-
-def test_nenhuma_tela_escura_poe_chip_branco_atras_da_logo():
-    """O chip existia porque faltava a arte certa. Com ela, some.
-
-    Guarda as três superfícies escuras: o topo do vendedor no tema escuro, a
-    lateral do painel (marinho nos dois temas) e a tela de entrada."""
+    A lateral do painel tem 236px de largura: so o SIMBOLO cabe ali."""
     from web import painel_ui
 
-    css = layout.CSS + painel_ui.CSS
-    for seletor, corpo in re.findall(r"([^{}]+)\{([^{}]*)\}", css):
-        alvo_de_logo = (".entrada-marca .logo" in seletor
-                        or ".lateral .marca img" in seletor
-                        or ".topo .marca-escura" in seletor
-                        or ".topo img" in seletor)
-        if alvo_de_logo and "background" in corpo:
-            assert "#fff" not in corpo, (
-                f"chip branco atrás da logo em {seletor.strip()!r}")
+    do_vendedor = layout.pagina("t", "<b>x</b>", "enzo")
+    entrada = layout.entrada("t", "<b>x</b>", chamada="c", apoio="a")
+    painel = painel_ui.pagina_painel("t", "<b>x</b>")
+
+    assert layout.MARCA_COMPACTA in do_vendedor, "cabecalho do vendedor"
+    assert layout.MARCA_COMPACTA in entrada, "a entrada usa a mesma peca"
+    assert layout.MARCA_SIMBOLO in painel, "a lateral so cabe o simbolo"
+    assert layout.MARCA_SIMBOLO not in do_vendedor, \
+        "no vendedor a marca vem por extenso, e nao so o simbolo"
+
+    # A assinatura e TEXTO em toda parte: dentro do raster ela tem 6px de
+    # 120, e so se le a partir de ~180px de altura da peca inteira — altura
+    # que tela nenhuma do sistema tem.
+    assert layout.ASSINATURA in entrada
+    assert layout.ASSINATURA in do_vendedor
+
+
+def test_a_marca_nao_vai_embutida_em_cada_pagina():
+    """As pecas sao ARQUIVO, e nao base64 dentro do HTML.
+
+    A logo antiga tinha 26 KB e cabia embutida. As tres pecas novas somam
+    ~110 KB, e 110 KB em toda resposta e peso que o navegador ja sabe evitar
+    sozinho: servidas por /marca, ele busca uma vez e guarda."""
+    from web import painel_ui
+
+    for nome, html in (("vendedor", layout.pagina("t", "<b>x</b>", "enzo")),
+                       ("entrada", layout.entrada("t", "<b>x</b>",
+                                                  chamada="c", apoio="a")),
+                       ("painel", painel_ui.pagina_painel("t", "<b>x</b>"))):
+        assert "base64," not in html, (
+            f"a tela do {nome} voltou a embutir imagem no HTML")
+
+
+def test_a_marca_ganha_placa_so_no_tema_claro():
+    """As pecas tem letras PRATEADAS, feitas para fundo escuro.
+
+    Sobre o #f3f6fb do tema claro elas somem — medido compondo a arte sobre o
+    fundo real. Por isso o claro poe uma placa marinha atras. E por isso o
+    ESCURO tem de tirar a placa: ali a peca ja e da cor da tela, e manter a
+    placa faria um retangulo mais escuro que o fundo — o mesmo defeito ao
+    contrario."""
+    css = layout.CSS
+
+    assert ".marca-placa{" in css, "o claro precisa da placa"
+    assert '[data-tema="escuro"] .marca-placa{background:none' in css,         "o escuro precisa tirar a placa"
 
 
 def test_o_ciano_da_logo_esta_na_paleta():
@@ -345,7 +370,8 @@ def test_a_entrada_nao_repete_a_logo():
     html = layout.entrada("Entrar", "<div class='cartao'>x</div>",
                           chamada="c", apoio="a")
 
-    assert html.count("base64,") == 1, "a logo tem que aparecer uma vez so"
+    assert html.count(layout.MARCA_COMPACTA) == 1, \
+        "a marca tem que aparecer uma vez so"
     assert 'class="topo"' not in html
 
 

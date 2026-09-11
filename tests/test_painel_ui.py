@@ -285,12 +285,26 @@ def test_data_torta_nao_derruba_a_tela():
 def test_a_pagina_do_painel_nao_puxa_nada_da_internet():
     """O Servidor.bat sobe numa máquina da empresa e a tela precisa abrir com
     a internet caída. Um <script src> de CDN viraria página em branco
-    justamente no dia em que alguém quer olhar o painel."""
+    justamente no dia em que alguém quer olhar o painel.
+
+    A asserção mudou em 11/09/2026, e o que ela guarda continua o mesmo. Era
+    "nenhum src que não seja data:", o que só valia enquanto TUDO estava
+    embutido no HTML. As peças da marca passaram a ser servidas por /marca,
+    pelo próprio servidor: caminho relativo abre com a internet caída
+    exatamente como um data: abre, e sem repetir 110 KB em cada página.
+
+    O que não pode voltar é src apontando para OUTRA máquina — e é isso que a
+    regra diz agora, em vez de um efeito colateral dela."""
+    import re
+
     html = ui.pagina_painel("Painel", "<p>oi</p>")
 
     assert "http://" not in html
     assert "https://" not in html
-    assert "src=" not in html.replace('src="data:image', "")
+    for endereco in re.findall(r'(?:src|href)="([^"]*)"', html):
+        assert endereco.startswith(("/", "data:", "#")), (
+            f"{endereco!r} sai desta máquina — a tela precisa abrir com a "
+            f"internet caída")
 
 
 def test_todo_item_do_menu_aponta_para_uma_secao_que_existe():

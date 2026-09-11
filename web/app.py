@@ -60,7 +60,8 @@ from web.ficha_ui import (
     ficha_da_cotacao, kg as _kg, pagador_da_cotacao, peso_por_volume,
     quando as quando_humano, quem_e as _quem,
 )
-from web.layout import entrada, LOGO, e, moeda, pagina, print_embutido as _img
+from web.layout import (MARCA_COMPACTA, entrada, e, moeda, pagina,
+                        print_embutido as _img)
 from web.transportadoras import cota_por_volume
 from core.models import (
     CotacaoRequest, Local, Mercadoria, NotaFiscal, Parte, Servico,
@@ -110,6 +111,13 @@ app.mount("/logos", StaticFiles(directory=transportadoras.PASTA_LOGOS),
 # tests/test_transportadoras.py) — misturar quebraria essa checagem.
 PASTA_AJUDA = Path(__file__).parent / "ajuda"
 app.mount("/ajuda", StaticFiles(directory=PASTA_AJUDA), name="ajuda")
+
+# As peças da marca. Servidas como ARQUIVO, e não embutidas em base64 como a
+# logo antiga: aquela tinha 26 KB e cabia dentro de cada página; estas somam
+# ~110 KB, e 110 KB em toda resposta não cabe. Assim o navegador busca uma
+# vez e guarda — que é o que /logos já faz com as transportadoras.
+PASTA_MARCA = Path(__file__).parent / "marca"
+app.mount("/marca", StaticFiles(directory=PASTA_MARCA), name="marca")
 
 # Limites que precisam aparecer ANTES de cotar. A Della Volpe recusa abaixo
 # de 1 kg; deixar o usuario esperar 2 minutos para receber "peso invalido" e
@@ -681,6 +689,12 @@ def _render_formulario(v: dict, usuario: str, aviso: str) -> str:
     # e numa versão futura recusa o arquivo — servidor que não sobe.
     return pagina("Nova cotação", rf"""
 {aviso}
+<div class="faixa-marca">
+  <img src="{MARCA_COMPACTA}" alt="Ventura Comércio">
+  <span class="diz"><b>Todos os produtos num só lugar</b>
+  Uma carga, todas as transportadoras: o Cotafrete preenche os sites por
+  você e devolve os preços lado a lado.</span>
+</div>
 <h1>Nova cotação</h1>
 <p class="sub">Preencha uma vez. Cotamos sozinhos em {len(AUTOMATICAS)}
 transportadoras e deixamos a mensagem pronta para as

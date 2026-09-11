@@ -12,31 +12,35 @@ import html
 from decimal import Decimal
 from pathlib import Path
 
-LOGO = (Path(__file__).parent / "logo_b64.txt").read_text(encoding="utf-8").strip()
-
-# A MESMA marca, desenhada para fundo escuro. Não é efeito de CSS: a logo
-# original é ciano→marinho com o "V" em branco, e sobre #161d33 o marinho dá
-# 1.6:1 — a elipse se dissolve no fundo e a palavra VENTURA some por
-# completo. `filter:invert()` não resolve: inverter os dois tons junto apaga
-# o "V" contra a própria elipse.
+# As peças da marca, servidas por /marca (montado em web/app.py). Endereço, e
+# não base64: as três somam ~110 KB e não cabem dentro de cada página, como
+# cabiam os 26 KB da logo antiga.
 #
-# Aqui a elipse clareia mantendo o matiz (o ciano continua ciano), o "V" é
-# VAZADO — o fundo da página aparece através dele, que é o que um recorte
-# deve fazer — e a palavra vira tinta clara. É a negativa da marca, o que
-# qualquer manual de identidade manda usar em fundo escuro.
-LOGO_ESCURO = (Path(__file__).parent / "logo_escuro_b64.txt").read_text(
-    encoding="utf-8").strip()
+# Todas têm o fundo VAZADO e letras PRATEADAS — feitas para fundo escuro. No
+# claro as letras somem, e é por isso que o CSS põe a placa marinha atrás
+# (`.marca-placa`). Ver o bloco "a marca" no CSS.
+MARCA_COMPACTA = "/marca/lockup-compacto.png"   # cabeçalho, rodapé, entrada
+MARCA_SIMBOLO = "/marca/simbolo-web.png"        # lateral do painel
+
+# A assinatura ("todos os produtos num só lugar") NÃO vem em imagem em lugar
+# nenhum: dentro do lockup ela ocupa 6px de 120, e só fica legível a partir
+# de ~180px de altura da peça inteira — altura que tela nenhuma do sistema
+# tem. Onde ela aparece, aparece como TEXTO: legível em qualquer tamanho,
+# selecionável, e acompanha o tema.
+ASSINATURA = "Todos os produtos num só lugar"
 
 
 CSS = """
 /* ============================ identidade Ventura =============================
-   As cores saem da LOGO, medida pixel a pixel em web/logo_b64.txt: a elipse é
-   um gradiente que vai de um ciano #70c8e0 na ponta esquerda até o índigo
-   #384890 da marca-palavra, que sozinho ocupa mais da metade do desenho.
+   ATENÇÃO, esta paleta está UM PASSO ATRÁS DA MARCA. Ela foi medida pixel a
+   pixel da logo ANTERIOR — a elipse ciano #70c8e0 → índigo #384890 — e é de
+   lá que vêm --marca, --ciano e o gradiente.
 
-   O sistema antigo usava só a metade escura (#3b4a9c) e o ciano não aparecia
-   em lugar nenhum — a cor mais distintiva da marca ficava de fora da tela
-   inteira. Agora ele é o acento: foco, estado ativo, o filete do topo.
+   A marca nova (web/marca/) é outra coisa: azul #0040c0 mais saturado e
+   prateado, sem ciano nenhum. As telas não ficaram erradas, mas o acento
+   ciano do sistema não existe mais no desenho da empresa. Re-derivar a
+   paleta da marca nova é trabalho à parte, e não foi feito — quem for fazer
+   começa aqui e mexe nestes seis tokens, não em regra espalhada.
 
    Neutros puxados para o azul de propósito. Cinza neutro (#6b7280) ao lado de
    um índigo saturado parece sujo; o mesmo cinza com um empurrão de azul lê
@@ -178,16 +182,9 @@ border-color:var(--atencao-borda)}
 [data-tema="escuro"] .estado-recusa{background:var(--atencao-fraco)}
 [data-tema="escuro"] .estado-falha{background:var(--erro-fraco)}
 
-/* A logo do topo tem duas versões, e o tema escolhe. A escura não é um
-   filtro: é outro desenho (web/layout.py, LOGO_ESCURO), porque a original
-   tem o "V" em branco recortado contra o marinho — inverter os dois junto
-   apagaria o "V" contra a própria elipse.
-
-   As logos das TRANSPORTADORAS continuam em chip branco nos dois temas:
-   são arte de terceiro, uma por transportadora, e não há negativa delas. */
-.topo .marca-escura{display:none}
-[data-tema="escuro"] .topo .marca-clara{display:none}
-[data-tema="escuro"] .topo .marca-escura{display:block}
+/* As logos das TRANSPORTADORAS continuam em chip branco nos dois temas:
+   são arte de terceiro, uma por transportadora, e não há negativa delas.
+   A da Ventura resolve-se com a placa — ver o bloco "a marca". */
 
 /* ---- o botão que troca ---------------------------------------------------
    Fica no cabeçalho das duas telas. Um botão, e não um seletor de três
@@ -530,10 +527,21 @@ background:radial-gradient(circle,rgba(64,88,160,.38),transparent 68%)}
    pintaria o desenho inteiro de branco — e o "V" da marca é um RECORTE, já
    branco: some contra a elipse e a logo vira um borrão. Passa despercebido na
    lateral do painel, onde ela tem 30px; aqui é a primeira coisa que se vê. */
-/* Sem chip branco atrás: a logo da entrada é a NEGATIVA da marca
-   (web/layout.py, LOGO_ESCURO), então ela se apoia no próprio fundo da tela.
-   O chip era o curativo de quando só existia a versão para fundo claro. */
-.entrada-marca .logo{height:52px;width:auto;align-self:flex-start}
+/* Sem placa atrás: esta tela é escura por desenho, e a peça da marca tem
+   fundo vazado — ela se apoia no próprio fundo da tela. */
+.marca-entrada{align-self:flex-start}
+.entrada-marca .logo{height:68px;width:auto;display:block}
+/* A assinatura da marca, em TEXTO: dentro do lockup ela tem 6px de 120 e só
+   se lê a partir de ~180px de altura da peça inteira. Aqui ela acompanha a
+   largura da logo e fica legível em qualquer tela. */
+.entrada-marca .assinatura{margin:9px 0 0;font-size:11px;letter-spacing:2.4px;
+text-transform:uppercase;color:rgba(255,255,255,.62);font-weight:600;
+white-space:nowrap}
+/* Numa tela estreita a entrelinha larga faria a frase estourar a coluna:
+   ela aperta em vez de quebrar no meio de "SÓ LUGAR". */
+@media(max-width:520px){
+.entrada-marca .assinatura{letter-spacing:1.4px;font-size:10px}
+}
 .entrada-marca h1{font-size:clamp(28px,3.5vw,42px);line-height:1.1;
 margin:0 0 14px;letter-spacing:-.9px;color:#fff;text-wrap:balance}
 .entrada-marca p{margin:0;max-width:40ch;font-size:15px;line-height:1.55;
@@ -600,8 +608,73 @@ border-color:rgba(255,138,116,.42);color:#ffb4a4}
 .entrada-marca{padding:26px 22px;gap:16px}
 .entrada-marca h1{font-size:22px;margin:0}
 .entrada-marca p,.entrada-marca .rota{display:none}
-.entrada-marca .logo{height:38px}
+.entrada-marca .logo{height:48px}
 .entrada-form{padding:30px 20px}}
+/* ================================ a marca ==================================
+   Tres pecas, tres trabalhos — ver web/layout.py, MARCA_*.
+
+   Todas tem fundo VAZADO e letras prateadas, feitas para fundo escuro. No
+   escuro elas se apoiam direto na pagina: sem retangulo, sem diferenca de
+   tom. No CLARO as letras prateadas somem — medido, o lockup sobre #f3f6fb
+   fica ilegivel — e por isso vem a PLACA.
+
+   A placa nao e curativo: o arquivo original ja vinha com esse marinho
+   cravado. A diferenca e que agora ele e escolha de quem desenha a tela, e
+   nao efeito colateral do PNG. */
+.marca-placa{display:inline-flex;align-items:center;background:#0a1020;
+border-radius:var(--raio-p);padding:6px 12px;flex:none;
+box-shadow:inset 0 0 0 1px rgba(255,255,255,.06)}
+/* No escuro a placa some: a peca ja e da cor da tela. Deixa-la faria um
+   retangulo mais escuro que o fundo, que e o defeito ao contrario. */
+[data-tema="escuro"] .marca-placa{background:none;padding:0;box-shadow:none}
+.marca-placa img{display:block;height:38px;width:auto}
+
+/* ---- rodape ----
+   Nao existia rodape em tela nenhuma do vendedor. Ele fecha a pagina e e o
+   lugar natural da assinatura da marca, que no cabecalho nao cabe legivel. */
+/* O rodape encosta no fim da JANELA quando a pagina e curta, e no fim do
+   CONTEUDO quando e longa. Sem isto o historico com tres linhas deixava o
+   rodape boiando no meio da tela, com 300px de vazio embaixo dele. */
+body{min-height:100vh;display:flex;flex-direction:column}
+body>.wrap{flex:1 0 auto}
+.rodape-site{border-top:1px solid var(--borda);margin-top:40px;
+background:var(--papel);flex:none}
+.rodape-site .dentro{max-width:1080px;margin:0 auto;padding:22px 20px 26px;
+display:flex;align-items:center;gap:18px;flex-wrap:wrap}
+.rodape-site .marca-placa img{height:28px}
+.rodape-site .diz{font-size:11.5px;color:var(--fraco);line-height:1.5}
+.rodape-site .diz b{display:block;font-size:12px;color:var(--tinta2);
+letter-spacing:.6px;text-transform:uppercase;font-weight:700}
+.rodape-site .links{margin-left:auto;display:flex;gap:16px;font-size:12.5px;
+flex-wrap:wrap}
+@media(max-width:620px){
+.rodape-site .links{margin-left:0;width:100%}
+}
+
+/* ---- a faixa da pagina inicial ----
+   O lockup INTEIRO, com a assinatura, que o cabecalho nao consegue mostrar.
+   Ela e a unica tela onde a marca ganha area de proposito: e a primeira
+   coisa que o vendedor ve ao entrar para trabalhar.
+
+   Contida a 92px de altura: a pagina inicial e onde se trabalha o dia
+   inteiro, e faixa alta empurra o formulario para fora da dobra. */
+.faixa-marca{display:flex;align-items:center;gap:20px;flex-wrap:wrap;
+background:#0a1020;border-radius:var(--raio-g);padding:20px 24px;
+margin:0 0 20px;position:relative;overflow:hidden}
+/* O filete da marca no alto, o mesmo da faixa do vendedor e da lateral do
+   painel: e o que amarra as tres telas como um sistema so. */
+.faixa-marca::before{content:"";position:absolute;left:0;right:0;top:0;
+height:3px;background:var(--marca-grad)}
+.faixa-marca img{display:block;height:52px;width:auto;flex:none}
+.faixa-marca .diz{color:#c8d2e8;font-size:12.5px;line-height:1.55;
+max-width:42ch}
+.faixa-marca .diz b{display:block;color:#fff;font-size:15px;
+margin-bottom:2px}
+@media(max-width:620px){
+.faixa-marca{padding:16px}
+.faixa-marca img{height:40px}
+}
+
 /* ============================== acabamento =================================
    Detalhes pequenos que somam. Cada um tem motivo; nenhum é enfeite solto. */
 
@@ -941,8 +1014,10 @@ def entrada(titulo: str, cartao: str, *, chamada: str, apoio: str,
 <title>{e(titulo)} — Cotafrete</title><style>{CSS}</style></head><body>
 <div class="entrada">
   <aside class="entrada-marca">
-    <img class="logo" src="data:image/png;base64,{LOGO_ESCURO}"
-         alt="Ventura">
+    <div class="marca-entrada">
+      <img class="logo" src="{MARCA_COMPACTA}" alt="Ventura Comércio">
+      <p class="assinatura">{ASSINATURA}</p>
+    </div>
     <div>
       <h1>{e(chamada)}</h1>
       <p>{e(apoio)}</p>
@@ -956,6 +1031,39 @@ def entrada(titulo: str, cartao: str, *, chamada: str, apoio: str,
 </body></html>"""
 
 
+# O rodapé. Não existia em tela nenhuma do vendedor — a página simplesmente
+# acabava. Ele fecha o documento e é o lugar natural da assinatura da marca,
+# que no cabeçalho não caberia legível: no lockup ela tem 6px de 120, e numa
+# barra de 36px isso vira 1.8px.
+#
+# `/documentacao` está aqui além do menu do topo de propósito: quem trava no
+# meio de uma cotação rola a página atrás de ajuda, e não volta ao topo.
+def rodape_do_site(usuario: str | None = None) -> str:
+    """O rodapé. Não existia em tela nenhuma do vendedor — a página
+    simplesmente acabava.
+
+    Ele fecha o documento e é o lugar natural da ASSINATURA da marca, que no
+    cabeçalho não cabe legível: no lockup ela tem 6px de 120, e numa barra de
+    36px isso vira 1.8px.
+
+    Os links só existem com sessão, pela mesma regra do menu do topo — e não
+    por simetria: `/documentacao` e `/historico` redirecionam para `/login`
+    sem cookie, então oferecê-los a quem não entrou é oferecer um caminho que
+    devolve a pessoa para onde ela já estava."""
+    links = ""
+    if usuario:
+        links = ('<span class="links">'
+                 '<a href="/documentacao">Como usar</a>'
+                 '<a href="/historico">Histórico</a></span>')
+    return f"""<footer class="rodape-site"><div class="dentro">
+  <span class="marca-placa"><img src="{MARCA_COMPACTA}"
+        alt="Ventura Comércio"></span>
+  <span class="diz"><b>{ASSINATURA}</b>
+  Cotafrete — sistema interno de cotação de frete.</span>
+  {links}
+</div></footer>"""
+
+
 def pagina(titulo: str, corpo: str, usuario: str | None = None) -> str:
     quem = ""
     if usuario:
@@ -967,6 +1075,7 @@ def pagina(titulo: str, corpo: str, usuario: str | None = None) -> str:
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{e(titulo)} — Cotafrete</title>{cabeca_do_tema("claro")}
 <style>{CSS}</style></head><body>
-<div class="topo"><img class="marca-clara" src="data:image/png;base64,{LOGO}" alt="Ventura"><img class="marca-escura" src="data:image/png;base64,{LOGO_ESCURO}" alt="Ventura">
+<div class="topo"><a class="marca-placa" href="/" aria-label="Ventura Comércio — início"><img src="{MARCA_COMPACTA}" alt="Ventura Comércio"></a>
 {quem}{BOTAO_TEMA}</div>
-<div class="wrap">{corpo}</div>{LUPA}{SCRIPT_TEMA}</body></html>"""
+<div class="wrap">{corpo}</div>
+{rodape_do_site(usuario)}{LUPA}{SCRIPT_TEMA}</body></html>"""
