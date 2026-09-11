@@ -19,7 +19,11 @@ from pathlib import Path
 # Todas têm o fundo VAZADO e letras PRATEADAS — feitas para fundo escuro. No
 # claro as letras somem, e é por isso que o CSS põe a placa marinha atrás
 # (`.marca-placa`). Ver o bloco "a marca" no CSS.
-MARCA_COMPACTA = "/marca/lockup-compacto.png"   # cabeçalho, rodapé, entrada
+MARCA_COMPACTA = "/marca/lockup-compacto.png"        # fundo escuro
+# A MESMA peça com o prateado virado tinta escura. Duas artes, e não um
+# filtro: sobre branco o prateado #f0f0f0 dá 1.1:1, e a placa preta que
+# resolvia isso cortava a página clara ao meio.
+MARCA_COMPACTA_CLARA = "/marca/lockup-compacto-claro.png"
 MARCA_SIMBOLO = "/marca/simbolo-web.png"        # lateral do painel
 
 # A assinatura ("todos os produtos num só lugar") NÃO vem em imagem em lugar
@@ -535,7 +539,10 @@ background:radial-gradient(circle,rgba(64,88,160,.38),transparent 68%)}
 /* Sem placa atrás: esta tela é escura por desenho, e a peça da marca tem
    fundo vazado — ela se apoia no próprio fundo da tela. */
 .marca-entrada{align-self:flex-start}
-.entrada-marca .logo{height:68px;width:auto;display:block}
+/* A entrada é escura por desenho: sempre a peça prateada, sem o par
+   claro que o resto do sistema tem. */
+.entrada-marca .logo{height:68px;aspect-ratio:469/120;
+background-image:url({MARCA_COMPACTA})}
 /* A assinatura da marca, em TEXTO: dentro do lockup ela tem 6px de 120 e só
    se lê a partir de ~180px de altura da peça inteira. Aqui ela acompanha a
    largura da logo e fica legível em qualquer tela. */
@@ -626,13 +633,17 @@ border-color:rgba(255,138,116,.42);color:#ffb4a4}
    A placa nao e curativo: o arquivo original ja vinha com esse marinho
    cravado. A diferenca e que agora ele e escolha de quem desenha a tela, e
    nao efeito colateral do PNG. */
-.marca-placa{display:inline-flex;align-items:center;background:#0a1020;
-border-radius:var(--raio-p);padding:6px 12px;flex:none;
-box-shadow:inset 0 0 0 1px rgba(255,255,255,.06)}
-/* No escuro a placa some: a peca ja e da cor da tela. Deixa-la faria um
-   retangulo mais escuro que o fundo, que e o defeito ao contrario. */
-[data-tema="escuro"] .marca-placa{background:none;padding:0;box-shadow:none}
-.marca-placa img{display:block;height:38px;width:auto}
+.marca-placa{display:inline-flex;align-items:center;flex:none}
+/* A peça entra como BACKGROUND, e não como <img>: são duas artes — prateada
+   para fundo escuro, tinta escura para fundo claro — e o navegador baixa só
+   a da regra que vale. Com duas <img> e uma escondida ele baixaria as duas,
+   90 KB que nunca aparecem na tela. O nome acessível vem do aria-label no
+   elemento, que é como se faz quando a imagem é desenhada pelo CSS. */
+.marca-peca{display:block;background-repeat:no-repeat;
+background-position:left center;background-size:contain}
+.marca-lockup{height:38px;aspect-ratio:469/120;
+background-image:url({MARCA_COMPACTA_CLARA})}
+[data-tema="escuro"] .marca-lockup{background-image:url({MARCA_COMPACTA})}
 
 /* ---- rodape ----
    Nao existia rodape em tela nenhuma do vendedor. Ele fecha a pagina e e o
@@ -646,7 +657,7 @@ body>.wrap{flex:1 0 auto}
 background:var(--papel);flex:none}
 .rodape-site .dentro{max-width:1080px;margin:0 auto;padding:22px 20px 26px;
 display:flex;align-items:center;gap:18px;flex-wrap:wrap}
-.rodape-site .marca-placa img{height:28px}
+.rodape-site .marca-lockup{height:28px}
 .rodape-site .diz{font-size:11.5px;color:var(--fraco);line-height:1.5}
 .rodape-site .diz b{display:block;font-size:12px;color:var(--tinta2);
 letter-spacing:.6px;text-transform:uppercase;font-weight:700}
@@ -663,21 +674,33 @@ flex-wrap:wrap}
 
    Contida a 92px de altura: a pagina inicial e onde se trabalha o dia
    inteiro, e faixa alta empurra o formulario para fora da dobra. */
+/* No claro a faixa é CLARA. Ela era um painel quase preto no alto de uma
+   página branca: cortava a tela ao meio e não combinava com nada em volta.
+   Agora é um cartão da casa, com a lavagem da marca subindo da esquerda —
+   presença de marca sem brigar com o formulário logo abaixo, que é onde a
+   pessoa veio trabalhar. */
 .faixa-marca{display:flex;align-items:center;gap:20px;flex-wrap:wrap;
-background:#0a1020;border-radius:var(--raio-g);padding:20px 24px;
+background:linear-gradient(110deg,var(--lavagem) 0%,var(--papel) 62%);
+border:1px solid var(--borda);border-radius:var(--raio-g);padding:20px 24px;
 margin:0 0 20px;position:relative;overflow:hidden}
+/* No escuro ela continua sendo o painel fundo: ali o cartão claro é que
+   seria o corpo estranho. */
+[data-tema="escuro"] .faixa-marca{background:#0a1020;
+border-color:transparent}
 /* O filete da marca no alto, o mesmo da faixa do vendedor e da lateral do
    painel: e o que amarra as tres telas como um sistema so. */
 .faixa-marca::before{content:"";position:absolute;left:0;right:0;top:0;
 height:3px;background:var(--marca-grad)}
-.faixa-marca img{display:block;height:52px;width:auto;flex:none}
-.faixa-marca .diz{color:#c8d2e8;font-size:12.5px;line-height:1.55;
+.faixa-marca .marca-lockup{height:52px}
+.faixa-marca .diz{color:var(--tinta2);font-size:12.5px;line-height:1.55;
 max-width:42ch}
-.faixa-marca .diz b{display:block;color:#fff;font-size:15px;
+.faixa-marca .diz b{display:block;color:var(--tinta);font-size:15px;
 margin-bottom:2px}
+[data-tema="escuro"] .faixa-marca .diz{color:#c8d2e8}
+[data-tema="escuro"] .faixa-marca .diz b{color:#fff}
 @media(max-width:620px){
 .faixa-marca{padding:16px}
-.faixa-marca img{height:40px}
+.faixa-marca .marca-lockup{height:40px}
 }
 
 /* ============================== acabamento =================================
@@ -825,6 +848,14 @@ tr.r-extra>td>*:last-child{margin-bottom:0}
   .mini .print{width:56px;height:36px}
 }
 """
+
+# O endereço das peças da marca entra AQUI, e não por f-string lá em cima:
+# `CSS` é cheio de chaves — cada regra é um `{...}` — e transformá-lo em
+# f-string obrigaria a dobrar todas elas, estragando o arquivo inteiro para
+# resolver dois endereços. Duas linhas de `replace` custam menos e deixam os
+# caminhos numa fonte só, no topo do módulo.
+CSS = (CSS.replace("{MARCA_COMPACTA_CLARA}", MARCA_COMPACTA_CLARA)
+          .replace("{MARCA_COMPACTA}", MARCA_COMPACTA))
 
 
 def e(v) -> str:
@@ -1020,7 +1051,8 @@ def entrada(titulo: str, cartao: str, *, chamada: str, apoio: str,
 <div class="entrada">
   <aside class="entrada-marca">
     <div class="marca-entrada">
-      <img class="logo" src="{MARCA_COMPACTA}" alt="Ventura Comércio">
+      <span class="logo marca-peca" role="img"
+          aria-label="Ventura Comércio"></span>
       <p class="assinatura">{ASSINATURA}</p>
     </div>
     <div>
@@ -1061,8 +1093,8 @@ def rodape_do_site(usuario: str | None = None) -> str:
                  '<a href="/documentacao">Como usar</a>'
                  '<a href="/historico">Histórico</a></span>')
     return f"""<footer class="rodape-site"><div class="dentro">
-  <span class="marca-placa"><img src="{MARCA_COMPACTA}"
-        alt="Ventura Comércio"></span>
+  <span class="marca-placa"><span class="marca-peca marca-lockup"
+        role="img" aria-label="Ventura Comércio"></span></span>
   <span class="diz"><b>{ASSINATURA}</b>
   Cotafrete — sistema interno de cotação de frete.</span>
   {links}
@@ -1080,7 +1112,7 @@ def pagina(titulo: str, corpo: str, usuario: str | None = None) -> str:
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{e(titulo)} — Cotafrete</title>{cabeca_do_tema("claro")}
 <style>{CSS}</style></head><body>
-<div class="topo"><a class="marca-placa" href="/" aria-label="Ventura Comércio — início"><img src="{MARCA_COMPACTA}" alt="Ventura Comércio"></a>
+<div class="topo"><a class="marca-placa" href="/" aria-label="Ventura Comércio — início"><span class="marca-peca marca-lockup" role="img"></span></a>
 {quem}{BOTAO_TEMA}</div>
 <div class="wrap">{corpo}</div>
 {rodape_do_site(usuario)}{LUPA}{SCRIPT_TEMA}</body></html>"""
