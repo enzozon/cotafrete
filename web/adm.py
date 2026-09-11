@@ -652,7 +652,7 @@ def painel(adm: str | None = Cookie(None, alias=COOKIE_ADM),
         + ui.cartao(
             "Movimento", ui.grafico_periodo(serie["pontos"], serie["unidade"]),
             ident="movimento", nota=f"por {serie['unidade']} · {rotulo}",
-            direita=ui.legenda((("#384890", "cotações"),
+            direita=ui.legenda((("var(--tom-marca)", "cotações"),
                                 ("#00875a", "com preço"))),
             classe="c8", atraso=0.05)
         + ui.cartao("Como as transportadoras responderam",

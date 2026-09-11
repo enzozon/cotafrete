@@ -67,7 +67,11 @@ def _tokens() -> dict[str, str]:
     hex em pares — sem expandir, o token mais usado da paleta ficava de fora
     da checagem inteira, e o teste passava sem conferir o branco."""
     bloco = re.search(r":root\{(.*?)\}", layout.CSS, re.S).group(1)
-    achados = re.findall(r"(--[a-z-]+):(#(?:[0-9a-fA-F]{3}){1,2})", bloco)
+    # `[a-z0-9-]`, e não `[a-z-]`: com a classe só de letras, TODO token com
+    # dígito no nome ficava invisível para estes testes. `--tinta2` é texto
+    # de verdade na tela e nunca tinha sido conferido — o teste passava
+    # porque nem chegava a olhar para ele.
+    achados = re.findall(r"(--[a-z0-9-]+):(#(?:[0-9a-fA-F]{3}){1,2})", bloco)
     return {nome: cor if len(cor) == 7 else "#" + "".join(c * 2 for c in cor[1:])
             for nome, cor in achados}
 
@@ -92,7 +96,9 @@ def _contraste(frente: str, fundo: str) -> float:
     ("--marca", "--lavagem", 4.5, "link sobre a lavagem da marca"),
     ("--ok", "--papel", 4.5, "preço"),
     ("--erro", "--papel", 4.5, "falha"),
-    ("--ciano", "--papel", 3.0, "anel de foco (WCAG 1.4.11)"),
+    ("--realce", "--papel", 3.0, "anel de foco (WCAG 1.4.11)"),
+    ("--tinta2", "--papel", 4.5, "texto secundário"),
+    ("--tom-marca", "--tom-marca-fraco", 3.0, "ícone do número, no painel"),
 ])
 def test_a_paleta_da_marca_e_legivel(frente, fundo, minimo, onde):
     t = _tokens()
@@ -201,16 +207,46 @@ def test_a_marca_ganha_placa_so_no_tema_claro():
     assert '[data-tema="escuro"] .marca-placa{background:none' in css,         "o escuro precisa tirar a placa"
 
 
-def test_o_ciano_da_logo_esta_na_paleta():
-    """A logo é um gradiente ciano -> índigo, e a versão anterior do sistema
-    usava só a metade escura. Se o ciano sumir dos tokens, o rebranding foi
-    desfeito pela metade sem ninguém perceber — a tela continua funcionando,
-    só volta a não parecer da Ventura."""
-    t = _tokens()
+def test_os_tokens_da_marca_estao_na_matiz_da_marca():
+    """Todo token de marca nasce da MATIZ medida em web/marca/: 218 graus.
 
-    assert t["--ciano-claro"].lower() == "#70c8e0", \
-        "é o ciano medido na ponta esquerda da elipse da logo"
-    assert "70c8e0" in layout.CSS, "o gradiente da marca precisa dele"
+    Não confere o valor exato de cada um — a luminosidade de cada tom é
+    escolhida pelo contraste que ele precisa ter, e os testes acima já
+    guardam isso. O que se guarda aqui é a FAMÍLIA: um azul de outra matiz
+    colado no meio da paleta não quebra contraste nenhum e mesmo assim faz a
+    tela parar de parecer da Ventura, que é o defeito mais difícil de ver
+    olhando um token por vez.
+
+    A tolerância de 12 graus é a folga de arredondar hexadecimal: derivar
+    #0042b5 da matiz 218 e ler de volta dá 217.6."""
+    import colorsys
+
+    for nome in ("--marca", "--marca-forte", "--marca-viva",
+                 "--realce", "--realce-claro", "--tom-marca"):
+        cor = _tokens()[nome]
+        r, g, b = (int(cor[i:i + 2], 16) / 255 for i in (1, 3, 5))
+        matiz = colorsys.rgb_to_hls(r, g, b)[0] * 360
+
+        assert abs(matiz - 218) <= 12, (
+            f"{nome} ({cor}) está na matiz {matiz:.0f}, e a marca é 218 — "
+            f"medida pixel a pixel em web/marca/")
+
+
+def test_a_paleta_nao_guarda_mais_o_ciano_da_logo_antiga():
+    """O ciano #70c8e0 vinha da logo ANTERIOR e não existe no desenho atual.
+
+    Ele sobreviveria calado: nenhum contraste quebra por causa dele, e a tela
+    continua funcionando — só volta a não parecer da empresa. Um hexadecimal
+    esquecido numa regra é exatamente como isso acontece."""
+    codigo = layout.CSS
+    from web import painel_ui
+
+    for antigo in ("70c8e0", "384890", "2f3f88", "359fc0", "4058a0"):
+        # No comentário que conta a história ele pode aparecer; em REGRA não.
+        sem_comentario = re.sub(r"/\*.*?\*/", "", codigo + painel_ui.CSS,
+                                flags=re.S)
+        assert antigo not in sem_comentario, (
+            f"#{antigo} é da marca anterior e sobrou numa regra")
 
 
 def test_o_movimento_respeita_quem_pediu_para_parar():
