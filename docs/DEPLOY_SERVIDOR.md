@@ -165,30 +165,44 @@ O Cotafrete precisa de uma sessão **logada** para ter área de trabalho. Se a
 VM reiniciar e parar na tela de login, o sistema fica fora do ar até alguém
 digitar a senha.
 
-Dentro da VM, PowerShell como administrador — trocando usuário, senha e
-domínio pelos reais:
-
-```powershell
-$k = "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon"
-Set-ItemProperty $k AutoAdminLogon  "1"
-Set-ItemProperty $k DefaultUserName "cotafrete"
-Set-ItemProperty $k DefaultPassword "a-senha-real"
-Set-ItemProperty $k DefaultDomainName "NOME-DA-VM"
-```
-
-A senha fica **em texto puro no registro**. É o preço do login automático.
-Por isso: use uma conta local criada só para isso, sem acesso a mais nada da
-rede, e não reaproveite uma senha usada em outro lugar.
-
-Depois, coloque um atalho do `Servidor.bat` na pasta de inicialização:
+Dentro da VM:
 
 ```
-C:\Users\cotafrete\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Startup
+netplwiz
 ```
+
+Desmarque **"Os usuários devem digitar um nome de usuário e senha"** e
+confirme com a senha da conta.
+
+> Havia aqui um método pelo registro (`AutoAdminLogon` + `DefaultPassword`).
+> Ele **gravava a senha em texto puro**, legível por qualquer processo da
+> máquina. O `netplwiz` chega ao mesmo resultado guardando em segredo do LSA,
+> cifrado — use este.
+
+De qualquer forma: use uma conta **local**, criada só para isso, sem acesso a
+mais nada da rede, com senha que não se repete em lugar nenhum.
+
+Depois, um **atalho** do `Servidor.bat` na pasta de inicialização
+(`Win+R` → `shell:startup`), com o parâmetro do modo desatendido:
+
+```
+C:\cotafrete-producao\Servidor.bat /auto
+```
+
+**Atalho, e não cópia:** a trava da pasta de produção olha de onde o arquivo
+foi aberto, e uma cópia no Startup está fora dela. E o `/auto` importa — sem
+ele, se a porta 8000 já estiver ocupada, o arquivo pergunta se deve encerrar
+o processo e fica esperando uma tecla que ninguém vai apertar no boot.
 
 E no servidor (host), nas configurações da VM → **Automatic Start Action** →
 *Always start this virtual machine automatically*. Assim, quando o servidor
 liga: sobe a VM, a VM loga sozinha, o `Servidor.bat` abre.
+
+> **Publicando na internet?** Se o sistema vai sair da rede local — por túnel
+> da Cloudflare ou qualquer outro caminho — siga o
+> [`CONFIGURAR_NA_EMPRESA.md`](CONFIGURAR_NA_EMPRESA.md). Ele cobre o túnel
+> como serviço e, antes de tudo, **fechar o acesso**: a tela de entrada do
+> vendedor aceita qualquer nome digitado e não protege nada.
 
 ---
 

@@ -18,7 +18,9 @@ from __future__ import annotations
 
 import os
 import shutil
+import socket
 import subprocess
+from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
@@ -29,18 +31,40 @@ SERVIDOR = RAIZ / "Servidor.bat"
 so_windows = pytest.mark.skipif(os.name != "nt", reason="lançador .bat é do Windows")
 
 
-def rodar_de(pasta: Path) -> subprocess.CompletedProcess:
+def rodar_de(pasta: Path, *args: str,
+             com_venv: bool = False) -> subprocess.CompletedProcess:
     """Copia o .bat para `pasta` e roda de la.
 
     stdin fechado por causa do `pause`: sem isso o teste ficaria esperando
     uma tecla que ninguem vai apertar.
+
+    `com_venv` planta um .venv de mentira. A checagem do ambiente vem ANTES
+    da checagem de porta, entao sem ele o arquivo para no aviso de ambiente
+    e o teste nunca chega na parte que quer medir.
     """
     pasta.mkdir(parents=True, exist_ok=True)
     copia = pasta / "Servidor.bat"
     shutil.copy2(SERVIDOR, copia)
+    if com_venv:
+        scripts = pasta / ".venv" / "Scripts"
+        scripts.mkdir(parents=True, exist_ok=True)
+        (scripts / "python.exe").write_bytes(b"nao e python de verdade")
     return subprocess.run(
-        ["cmd", "/c", str(copia)],
+        ["cmd", "/c", str(copia), *args],
         capture_output=True, stdin=subprocess.DEVNULL, timeout=60)
+
+
+@contextmanager
+def porta_ocupada(numero: int):
+    """Segura a porta, para o .bat achar o que acharia num boot repetido."""
+    s = socket.socket()
+    s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    s.bind(("0.0.0.0", numero))
+    s.listen(1)
+    try:
+        yield
+    finally:
+        s.close()
 
 
 def saida(proc: subprocess.CompletedProcess) -> str:
@@ -119,6 +143,66 @@ def test_o_erro_de_partida_nao_fica_so_no_arquivo():
 
     assert "-Tail" in texto, (
         "o fim do log precisa aparecer na tela quando o servidor para")
+
+
+# ------------------------------------------------- o boot desatendido
+
+@so_windows
+def test_no_boot_a_porta_ocupada_nao_para_esperando_tecla(tmp_path):
+    """`/auto` e o que o atalho do Startup usa, e nao pode perguntar nada.
+
+    Com a porta ocupada, o arquivo PERGUNTA se deve encerrar o processo e
+    espera uma tecla. No boot nao ha ninguem para apertar: a janela ficava
+    parada com a pergunta na tela e o servidor nunca subia. De fora, isso e
+    mais um caso de "esta ligado e nao abre" — indistinguivel dos outros,
+    e por isso dificil de achar.
+
+    Sem timeout no subprocess este teste travaria em vez de falhar, que e
+    exatamente o que a maquina da empresa fazia.
+    """
+    with porta_ocupada(8000):
+        proc = rodar_de(tmp_path / "cotafrete-producao", "/auto",
+                        com_venv=True)
+
+    assert proc.returncode == 0
+    assert "Encerrar o processo" not in saida(proc), \
+        "no boot nao pode haver pergunta"
+    assert "ja esta no ar" in saida(proc)
+
+
+@so_windows
+def test_no_boot_ele_nao_derruba_o_servidor_que_ja_esta_no_ar(tmp_path):
+    """Porta ocupada no boot quer dizer "ja subiu" — nao "limpe o caminho".
+
+    Encerrar o processo para subir outro igual tiraria a empresa do ar
+    para chegar exatamente onde ja estava. Pior: se o Startup disparar duas
+    vezes, o segundo mataria o primeiro no meio de uma cotacao.
+    """
+    with porta_ocupada(8000) as _:
+        proc = rodar_de(tmp_path / "cotafrete-producao", "/auto",
+                        com_venv=True)
+
+        assert "taskkill" not in saida(proc).lower()
+        # A porta continua de pe: o .bat nao encostou em quem a segura.
+        conferir = socket.socket()
+        try:
+            conferir.bind(("0.0.0.0", 8000))
+            pytest.fail("o .bat derrubou quem estava na porta")
+        except OSError:
+            pass
+        finally:
+            conferir.close()
+
+
+@so_windows
+def test_sem_auto_a_pergunta_continua_para_quem_clicou(tmp_path):
+    """O outro sentido. A pergunta existe por um bom motivo quando ha gente
+    olhando: a janela da porta 8000 PODE ser a producao que alguem quer
+    manter, e decidir por ela seria pior do que perguntar."""
+    with porta_ocupada(8000):
+        proc = rodar_de(tmp_path / "cotafrete-producao", com_venv=True)
+
+    assert "Encerrar o processo" in saida(proc)
 
 
 def test_o_log_do_servidor_nao_vai_para_o_git():

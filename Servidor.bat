@@ -23,6 +23,25 @@ set PYTHONIOENCODING=utf-8
 cd /d "%~dp0"
 
 REM ---------------------------------------------------------------------
+REM  MODO DESATENDIDO:  Servidor.bat /auto
+REM
+REM  E o que o atalho do Startup usa. A diferenca esta na porta ocupada,
+REM  mais abaixo: sem /auto este arquivo PERGUNTA se deve encerrar o
+REM  processo que esta na 8000, e espera uma tecla.
+REM
+REM  No boot nao ha ninguem para apertar tecla nenhuma. A janela ficava
+REM  parada com a pergunta na tela e o servidor nunca subia — o sistema
+REM  parecia "ligado e sem abrir" pelo motivo de sempre: alguma coisa
+REM  esperando gente.
+REM
+REM  Com /auto ele nao pergunta e tambem NAO encerra nada. Porta ocupada
+REM  no boot quer dizer que o servidor ja esta no ar; matar o processo
+REM  para subir outro igual seria derrubar a empresa para nao mudar nada.
+REM ---------------------------------------------------------------------
+set AUTO=
+if /i "%~1"=="/auto" set AUTO=1
+
+REM ---------------------------------------------------------------------
 REM  SO SOBE DA PASTA DE PRODUCAO.
 REM
 REM  Em 25/08/2026 este arquivo foi aberto pela pasta de desenvolvimento.
@@ -82,6 +101,17 @@ REM  que fazer.
 REM ---------------------------------------------------------------------
 set OCUPADA=
 for /f "tokens=5" %%p in ('netstat -ano ^| findstr /r /c:"TCP.*:8000 .*LISTENING"') do set OCUPADA=%%p
+
+if defined OCUPADA if defined AUTO (
+    echo.
+    echo  A porta 8000 ja esta em uso pelo processo %OCUPADA% - o Cotafrete
+    echo  ja esta no ar. Nada a fazer.
+    echo.
+    REM  Sem pergunta e sem taskkill: no boot, porta ocupada quer dizer
+    REM  "ja subiu", e derrubar para subir de novo tiraria a empresa do ar
+    REM  para chegar exatamente onde ja estava.
+    exit /b 0
+)
 
 if defined OCUPADA (
     echo.
