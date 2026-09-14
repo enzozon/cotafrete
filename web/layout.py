@@ -67,6 +67,34 @@ CSS = """
 --atencao-borda:#ffe380;--atencao-tinta:var(--tinta);
 --sobre-marca:#fff;--cova:#f7f9fc;
 --brilho-marca:rgba(0,66,181,.45);
+/* ---- rebranding 2026: a escala ----
+   Antes cada regra escolhia o próprio espaço (14px aqui, 11px ali, 26px
+   acolá) e o resultado era uma tela sem respiração: tudo à mesma distância
+   de tudo. A escala é geométrica (×1.4 arredondado), e o salto entre dois
+   degraus é grande o bastante para o olho LER a hierarquia. */
+--e1:4px;--e2:8px;--e3:12px;--e4:18px;--e5:26px;--e6:38px;--e7:56px;
+/* Tipografia com pilha de TÍTULO separada da de texto. Não é webfont: o
+   sistema roda em rede interna e fonte que não chegou é uma tela inteira em
+   Times. É a pilha do próprio sistema operacional, com as variantes de
+   DISPLAY pedidas pelo nome — no Windows da empresa isso é a Segoe UI
+   Variable Display, que tem o desenho apertado que título grande pede. */
+--fonte:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+--fonte-tit:"Segoe UI Variable Display","Segoe UI Semibold",system-ui,
+-apple-system,"Segoe UI",Roboto,sans-serif;
+/* A superfície de vidro do cabeçalho grudado. */
+--vidro:rgba(255,255,255,.82);
+/* Fio de 1px mais fraco que --borda: separa sem desenhar caixa. */
+--linha:rgba(15,23,36,.08);
+/* O gradiente da marca em versão LAVADA, para fundo de área grande. O
+   `--marca-grad` cheio é filete de 3px; esticado num painel ele vira
+   parede. */
+--marca-lavado:linear-gradient(135deg,#eaf1fd 0%,#f5f8fe 52%,#fff 100%);
+/* O gradiente do BOTÃO é parente do `--marca-grad`, mas não é ele. A ponta
+   viva do filete (#317bfc) dá 3.91:1 com o branco escrito em cima — e o
+   filete não tem nada escrito em cima. Aqui a ponta clara sobe só até onde
+   o texto ainda se lê: #2a6ef0, 4.58:1, matiz 219. Medido antes de escrever,
+   e travado em teste. */
+--grad-botao:linear-gradient(135deg,#2a6ef0 0%,#0450d2 52%,#0042b5 100%);
 /* Os tons do quadro de instrumentos. Moram aqui, e não no CSS do
    painel, porque quem os ESCREVE é o Python (o número do topo sai com
    `style="--cor:..."`), e hexadecimal escrito pelo servidor não muda
@@ -80,11 +108,17 @@ CSS = """
 --alerta-fundo:#fff6f4;--alerta-borda:#ffd5cc;--alerta-tinta:#7a3b2e;
 /* elevação: três degraus, e não sombra solta por regra. Borda de 1px em tudo
    achata a hierarquia — quem precisa se destacar sobe, o resto fica no plano */
---sombra-1:0 1px 2px rgba(20,32,66,.05),0 1px 3px rgba(20,32,66,.04);
---sombra-2:0 2px 4px rgba(20,32,66,.04),0 10px 22px -8px rgba(20,32,66,.14);
---sombra-3:0 18px 44px -12px rgba(20,32,66,.28);
---raio:12px;--raio-p:8px;--raio-g:16px;
---suave:cubic-bezier(.2,.6,.3,1);--mola:cubic-bezier(.34,1.32,.46,1)}
+--sombra-1:0 1px 2px rgba(20,32,66,.04),0 2px 6px -2px rgba(20,32,66,.06);
+--sombra-2:0 2px 4px rgba(20,32,66,.04),0 14px 30px -12px rgba(20,32,66,.16);
+--sombra-3:0 24px 60px -16px rgba(20,32,66,.3);
+/* Raios maiores. O 12px de antes lia como "caixa de diálogo de 2015"; o
+   sistema todo sobe um degrau e as pastilhas viram cápsula de verdade. */
+--raio:16px;--raio-p:11px;--raio-g:22px;--raio-pill:999px;
+--suave:cubic-bezier(.2,.6,.3,1);--mola:cubic-bezier(.34,1.32,.46,1);
+/* Curva longa, para o que ATRAVESSA a tela (rota, barra, traçado). A
+   `--suave` é de microinteração: aplicada a um percurso de 2s ela chega no
+   fim e para seco. */
+--curso:cubic-bezier(.65,.02,.2,1)}
 /* ========================== o mesmo sistema, no escuro ======================
    Segundo conjunto de tokens, ligado por um atributo no <html>. Não é um
    tema "do painel": é do SISTEMA, e por isso mora aqui, junto do claro, e
@@ -132,6 +166,17 @@ html[data-tema="escuro"]{
 --tom-neutro:#98a1b8;--tom-neutro-fraco:#1f2740;
 --tom-roxo:#a78bfa;--tom-roxo-fraco:#242847;
 --alerta-fundo:#2a1a17;--alerta-borda:#5c3128;--alerta-tinta:#e0ab9c;
+/* Os pares escuros do rebranding. A escala de espaço e as pilhas de fonte
+   NÃO se repetem aqui de propósito: distância e desenho de letra não mudam
+   com a luz da sala, e um segundo valor seria um segundo lugar para alguém
+   mexer pela metade. O que muda é o que depende do fundo. */
+--vidro:rgba(17,30,52,.82);
+--linha:rgba(255,255,255,.08);
+--marca-lavado:linear-gradient(135deg,#16263f 0%,#101b30 52%,#0b1426 100%);
+/* No escuro o botão é CLARO e o texto dentro dele é escuro (--sobre-marca).
+   Herdar o gradiente do claro deixaria tinta #061021 sobre azul quase preto:
+   o botão apagaria por dentro. O pior par aqui é #3f82fb, com 5.25:1. */
+--grad-botao:linear-gradient(135deg,#85b1ff 0%,#5291ff 55%,#3f82fb 100%);
 /* No escuro sombra não separa nada: quem separa é o degrau de luminância
    entre #0b0f1c e #161d33. A sombra fica só para dizer o que está POR CIMA
    quando o cursor levanta um cartão. */
@@ -216,13 +261,36 @@ background:var(--lavagem);transform:none;box-shadow:none}
 [data-tema="escuro"] .tema .p-lua{display:none}
 
 *{box-sizing:border-box}
-body{margin:0;background:var(--fundo);color:var(--tinta);line-height:1.45;
-font-family:system-ui,-apple-system,"Segoe UI",sans-serif;
+body{margin:0;background:var(--fundo);color:var(--tinta);line-height:1.5;
+font-family:var(--fonte);font-size:15px;
 -webkit-font-smoothing:antialiased;
 /* O sistema é uma tela de números: peso, cubagem, preço. Dígito de largura
    fixa faz as colunas de dinheiro alinharem sem tabela e sem monoespaçada. */
 font-variant-numeric:tabular-nums}
+/* O fundo da página deixa de ser um cinza chapado: ganha uma lavagem da
+   marca descendo do topo. É a única cor de marca que aparece em TODA tela do
+   sistema, e custa uma linha — o gradiente para em 520px e o resto da página
+   continua sendo o mesmo --fundo de sempre. */
+body::before{content:"";position:fixed;inset:0 0 auto;height:520px;
+pointer-events:none;z-index:-1;
+background:linear-gradient(180deg,var(--lavagem) 0%,transparent 100%);
+opacity:.55}
 a{color:var(--marca)}
+
+/* ---- a pilha de títulos ----
+   Título e texto passam a ter DESENHO diferente, e não só tamanho
+   diferente. Era tudo system-ui em pesos variados: uma tela sem voz. */
+h1,h2,h3,.olho,.numero b,.preco{font-family:var(--fonte-tit)}
+
+/* O "olho" (eyebrow): a micro-etiqueta acima do título, que diz em que
+   parte do sistema a pessoa está. É a peça que amarra as onze telas — todas
+   passam a abrir do mesmo jeito, e nenhuma precisa de um cabeçalho gigante
+   para se identificar. O fio antes do texto é o gradiente da marca. */
+.olho{display:inline-flex;align-items:center;gap:var(--e2);margin:0 0 var(--e2);
+font-size:10.5px;font-weight:700;letter-spacing:1.8px;text-transform:uppercase;
+color:var(--marca)}
+.olho::before{content:"";width:22px;height:2px;border-radius:2px;
+background:var(--marca-grad)}
 
 /* Movimento é enfeite até virar obstáculo. Quem pediu para o sistema parar de
    se mexer não pode receber um formulário que entra deslizando. Uma regra, no
@@ -233,17 +301,52 @@ a{color:var(--marca)}
 animation-iteration-count:1 !important;transition-duration:.01ms !important;
 scroll-behavior:auto !important}}
 
-/* ---- faixa do topo ---- */
-.topo{background:var(--papel);border-bottom:1px solid var(--borda);
-padding:12px 24px;display:flex;align-items:center;gap:16px;position:relative}
+/* ---- faixa do topo ----
+   Passa a GRUDAR no alto e a ser de vidro. Numa tela de resultado com dez
+   transportadoras a barra saía do campo de visão junto com a navegação: para
+   trocar de tela era rolar até em cima primeiro. O desfoque atrás existe para
+   a tabela que passa por baixo não virar tinta sólida no meio do nome da
+   empresa. */
+.topo{background:var(--vidro);backdrop-filter:saturate(1.6) blur(14px);
+-webkit-backdrop-filter:saturate(1.6) blur(14px);
+border-bottom:1px solid var(--linha);
+padding:var(--e3) var(--e5);display:flex;align-items:center;gap:var(--e4);
+position:sticky;top:0;z-index:30}
 /* O filete do gradiente da logo, atravessando a tela inteira. É a assinatura
    da marca no lugar mais barato possível: 3px que nenhuma outra tela de
    sistema interno tem, e que ninguém precisa ler para reconhecer. */
 .topo::before{content:"";position:absolute;left:0;right:0;top:0;height:3px;
 background:var(--marca-grad)}
 .topo img{height:38px}
-.topo .quem{margin-left:auto;font-size:13px;color:var(--fraco)}
-.wrap{max-width:1080px;margin:24px auto;padding:0 24px}
+.topo .quem{margin-left:auto;font-size:13px;color:var(--fraco);
+display:flex;align-items:center;gap:var(--e3)}
+/* O nome de quem está logado vira pastilha, e não texto solto no canto: no
+   claro ele encostava no botão de tema e os dois liam como uma coisa só. */
+.topo .quem>b{background:var(--lavagem);color:var(--marca);font-weight:700;
+border-radius:var(--raio-pill);padding:5px 12px;font-size:12px;
+white-space:nowrap}
+/* A coluna cresce de 1080 para 1180: a tabela de resultado tem seis colunas e
+   vinha com o texto de "o que inclui" quebrando em três linhas. */
+.wrap{max-width:1180px;margin:var(--e6) auto var(--e5);padding:0 var(--e5)}
+
+/* ---- cabeçalho de página ----
+   A peça que abre TODA tela utilitária: olho, título, apoio, e o que se pode
+   fazer ali à direita. Compacto de propósito — histórico, documentação e
+   e-mail pronto são trabalho, e um hero na frente de cada tarefa é área
+   roubada de quem veio fazer a tarefa. O hero de verdade fica na entrada,
+   que é vista uma vez por sessão. */
+.cabecalho-pag{display:flex;align-items:flex-end;gap:var(--e4);flex-wrap:wrap;
+margin:0 0 var(--e5);padding-bottom:var(--e4);
+border-bottom:1px solid var(--linha)}
+.cabecalho-pag .diz{min-width:0;flex:1 1 380px}
+.cabecalho-pag h1{margin:0}
+.cabecalho-pag .sub{margin:var(--e2) 0 0}
+.cabecalho-pag .acoes{display:flex;align-items:center;gap:var(--e2);
+flex-wrap:wrap}
+@media(max-width:620px){
+.cabecalho-pag{gap:var(--e3)}
+.cabecalho-pag .acoes{width:100%}
+}
 
 /* Entrada em cascata. O formulário tem cinco blocos; todos aparecendo no
    mesmo quadro é um susto, escalonados o olho acompanha de cima para baixo. */
@@ -254,40 +357,84 @@ background:var(--marca-grad)}
 @keyframes sobe-bloco{from{opacity:0;transform:translateY(10px)}
 to{opacity:1;transform:none}}
 .cartao{background:var(--papel);border:1px solid var(--borda);
-border-radius:var(--raio);padding:20px;margin-bottom:16px;
-box-shadow:var(--sombra-1);animation:sobe-bloco .42s var(--suave) both}
-h1{font-size:24px;margin:0 0 4px;letter-spacing:-.5px;font-weight:700}
-.sub{color:var(--fraco);font-size:13px;margin:0 0 18px}
-fieldset{border:1px solid var(--borda);border-radius:var(--raio-p);
-margin:0 0 14px;padding:14px 16px;background:#fcfdff}
-legend{font-size:10.5px;font-weight:700;color:var(--marca);padding:0 7px;
-text-transform:uppercase;letter-spacing:1px}
-.grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
-label{display:block;font-size:11px;color:var(--fraco);margin-bottom:4px;
-font-weight:500}
-input{width:100%;padding:10px 12px;border:1px solid var(--borda-forte);
-border-radius:var(--raio-p);font-size:14px;font-family:inherit;
+border-radius:var(--raio);padding:var(--e5);margin-bottom:var(--e4);
+box-shadow:var(--sombra-1);animation:sobe-bloco .42s var(--suave) both;
+position:relative}
+/* Um brilho de 1px no alto do cartão, por dentro da borda. É o que faz a
+   superfície parecer PAPEL levantado em vez de retângulo desenhado — e é
+   invisível de propósito: some assim que alguém procura por ele. */
+.cartao::after{content:"";position:absolute;inset:0 0 auto;height:1px;
+border-radius:var(--raio) var(--raio) 0 0;pointer-events:none;
+background:linear-gradient(90deg,transparent,rgba(255,255,255,.9) 22%,
+rgba(255,255,255,.9) 78%,transparent)}
+[data-tema="escuro"] .cartao::after{
+background:linear-gradient(90deg,transparent,rgba(255,255,255,.1) 22%,
+rgba(255,255,255,.1) 78%,transparent)}
+/* Título grande e apertado. O 24px de peso 700 lia como subtítulo de outra
+   coisa; aqui ele é a primeira voz da tela. `clamp` porque a mesma regra
+   serve ao celular de 390px e ao monitor de 1440. */
+h1{font-size:clamp(25px,2.6vw,33px);margin:0 0 var(--e1);
+letter-spacing:-1.1px;font-weight:800;line-height:1.12}
+h2{letter-spacing:-.3px}
+.sub{color:var(--tinta2);font-size:14px;margin:0 0 var(--e5);max-width:72ch;
+line-height:1.55}
+fieldset{border:1px solid var(--borda);border-radius:var(--raio);
+margin:0 0 var(--e3);padding:var(--e4) var(--e4) var(--e4);
+background:var(--cova)}
+/* A legenda vira o mesmo "olho" do resto do sistema, com o ponto da marca na
+   frente. Antes era um rótulo maiúsculo solto na borda da caixa — a única
+   peça da tela com esse desenho. */
+legend{font-size:10.5px;font-weight:700;color:var(--marca);padding:0 var(--e2);
+text-transform:uppercase;letter-spacing:1.6px;
+display:inline-flex;align-items:center;gap:7px}
+legend::before{content:"";width:6px;height:6px;border-radius:50%;
+background:var(--marca-grad)}
+.grid{display:grid;gap:var(--e3);
+grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
+label{display:block;font-size:11.5px;color:var(--fraco);
+margin-bottom:var(--e1);font-weight:600;letter-spacing:.2px}
+input{width:100%;padding:11px 13px;border:1px solid var(--borda-forte);
+border-radius:var(--raio-p);font-size:14.5px;font-family:inherit;
 background:var(--papel);color:var(--tinta);
 transition:border-color .16s var(--suave),box-shadow .16s var(--suave)}
-input:hover{border-color:#b6c2d6}
+input:hover{border-color:var(--marca-forte)}
 /* O azul de realce da marca: o anel de foco é a peça que mais aparece
    num sistema onde se digita o dia inteiro, e era o contorno cinza do
    navegador. */
 input:focus{outline:0;border-color:var(--realce);
 box-shadow:0 0 0 3px rgba(82,145,255,.35)}
-button{font:inherit;cursor:pointer;border:0;border-radius:var(--raio-p);
-background:var(--marca);color:#fff;padding:13px 26px;font-weight:600;
+/* O botão deixa de ser um retângulo de cor chapada e passa a ser CÁPSULA com
+   o gradiente da marca — o mesmo filete de 3px do topo, agora em tamanho de
+   apertar. `background-size:140%` com a posição deslizando no hover: o
+   gradiente ANDA em vez de trocar de cor, que é a diferença entre um botão
+   que responde e um botão que pisca. */
+button{font:inherit;font-family:var(--fonte-tit);cursor:pointer;border:0;
+border-radius:var(--raio-pill);background:var(--grad-botao);
+background-size:180% 100%;background-position:0 0;
+color:#fff;padding:13px 28px;font-weight:700;letter-spacing:.2px;
 font-size:15px;box-shadow:var(--sombra-2);
 transition:transform .16s var(--mola),box-shadow .16s var(--suave),
-background .16s var(--suave)}
-button:hover{background:var(--marca-forte);transform:translateY(-1px);
+background-position .32s var(--suave)}
+button:hover{background-position:100% 0;transform:translateY(-1px);
 box-shadow:var(--sombra-3)}
 /* Afunda no clique. Num formulário que dispara cinco navegadores e leva dois
    minutos, o retorno imediato do botão é o que diz "recebi" antes de a
    primeira transportadora responder. */
 button:active{transform:translateY(1px);box-shadow:var(--sombra-1)}
-button:focus-visible,a:focus-visible,summary:focus-visible{outline:2px solid
-var(--realce);outline-offset:2px}
+/* O anel de foco passa a valer para TUDO que recebe teclado, e não só para
+   botão, link e summary. Faltavam a caixa de seleção do filtro, o radio de
+   tipo de frete e a área de texto do e-mail pronto — três coisas que se
+   alcançam com Tab e que, focadas, não diziam nada na tela.
+   O halo de fora é o que faz o anel sobreviver em cima de fundo escuro:
+   contorno sozinho, azul sobre azul, some. */
+button:focus-visible,a:focus-visible,summary:focus-visible,
+input:focus-visible,textarea:focus-visible,select:focus-visible,
+[tabindex]:focus-visible{outline:2px solid var(--realce);outline-offset:2px;
+box-shadow:0 0 0 5px var(--brilho-marca);border-radius:var(--raio-p)}
+/* Cápsula mantém cápsula: o anel quadrado em volta de um botão redondo é a
+   coisa mais feia que a navegação por teclado consegue produzir. */
+button:focus-visible,.botao2:focus-visible,.menu a:focus-visible,
+.periodo:focus-visible{border-radius:var(--raio-pill)}
 
 .falhou{color:var(--erro);font-size:13px;font-weight:600}
 /* "Enviada" NAO pode usar o vermelho de falha nem o verde de preco: nao deu
@@ -389,22 +536,31 @@ border-radius:var(--raio);box-shadow:var(--sombra-3)}
 @keyframes lupa-fundo{from{opacity:0}to{opacity:1}}
 .lupa[open]{animation:lupa-entra .18s var(--suave)}
 .lupa[open]::backdrop{animation:lupa-fundo .18s var(--suave)}
-.botao2{display:inline-block;background:var(--papel);color:var(--marca);
-border:1px solid var(--borda-forte);border-radius:var(--raio-p);
-padding:10px 17px;font-size:14px;font-weight:600;text-decoration:none;
-transition:border-color .16s var(--suave),background .16s var(--suave)}
-.botao2:hover{border-color:var(--marca);background:var(--lavagem)}
+/* O botão secundário também vira cápsula, para os dois lerem como a mesma
+   família: um preenchido, um vazado. Antes era um retângulo de 8px ao lado de
+   um retângulo de 8px, e a diferença entre "ação principal" e "ação
+   secundária" era só a cor de fundo. */
+.botao2{display:inline-flex;align-items:center;gap:7px;min-height:40px;
+background:var(--papel);color:var(--marca);
+border:1px solid var(--borda-forte);border-radius:var(--raio-pill);
+padding:9px 18px;font-size:14px;font-weight:600;text-decoration:none;
+font-family:var(--fonte-tit);
+transition:border-color .16s var(--suave),background .16s var(--suave),
+transform .16s var(--suave)}
+.botao2:hover{border-color:var(--marca);background:var(--lavagem);
+transform:translateY(-1px)}
 .login{max-width:380px;margin:70px auto;text-align:center;
 animation:sobe-bloco .5s var(--suave) both}
 .login img{height:64px;margin-bottom:18px}
-.menu a{margin-right:14px;font-size:13px;text-decoration:none;
-position:relative;padding-bottom:2px}
-/* Sublinhado que cresce do centro. É a única decoração de navegação do
-   sistema, e cabe em duas linhas. */
-.menu a::after{content:"";position:absolute;left:50%;right:50%;bottom:0;
-height:2px;background:var(--marca-grad);border-radius:2px;
-transition:left .2s var(--suave),right .2s var(--suave)}
-.menu a:hover::after{left:0;right:0}
+/* A navegação do topo vira PASTILHA, e não link sublinhado. Com a barra
+   grudada no alto, o menu fica sobre conteúdo que passa por baixo — e link
+   solto sobre tabela em movimento perde a borda o tempo todo. A pastilha tem
+   corpo próprio e não depende do que está atrás. */
+.menu{display:flex;align-items:center;gap:var(--e1);flex-wrap:wrap}
+.menu a{font-size:13px;font-weight:600;text-decoration:none;color:var(--tinta2);
+padding:7px 13px;border-radius:var(--raio-pill);
+transition:background .16s var(--suave),color .16s var(--suave)}
+.menu a:hover{background:var(--lavagem);color:var(--marca)}
 /* Aviso DENTRO do cartão, colado no preço que ele qualifica. Numa faixa no
    topo da página ele seria lido antes do número e esquecido depois. */
 /* Aba de Documentacao. Escopo proprio: o resto do sistema quase nao usa
@@ -516,22 +672,63 @@ box-shadow:0 0 0 3px rgba(82,145,255,.35)}
 
    Contraste medido com a fórmula do WCAG antes de escrever, não a olho. Os
    nove pares da tela passam; os apertados estão travados em teste. */
-.entrada{min-height:100vh;display:grid;grid-template-columns:1.04fr .96fr;
+.entrada{min-height:100vh;display:grid;grid-template-columns:1.12fr .88fr;
 background:#061021;color:#e6e9ef}
 .entrada-marca{position:relative;overflow:hidden;
-padding:clamp(32px,4vw,56px);display:flex;flex-direction:column;
-justify-content:center;gap:clamp(26px,3.4vw,40px);
+padding:clamp(34px,4.4vw,68px);display:flex;flex-direction:column;
+justify-content:center;gap:clamp(26px,3.2vw,38px);
 background:linear-gradient(158deg,#112039 0%,#0a162b 55%,#050d1d 100%)}
 /* Dois clarões fora de eixo. O índigo chapado é uma parede; os halos dão
    profundidade sem desenhar nada e sem depender de arquivo de imagem — o
-   sistema roda em rede interna, e imagem que não chegou é buraco na tela. */
+   sistema roda em rede interna, e imagem que não chegou é buraco na tela.
+   Os dois estão na MATIZ da marca: o de cima era um ciano da logo anterior,
+   escrito em rgb() e por isso invisível para o teste que caça o hexadecimal
+   velho — a única cor da tela sem origem na empresa. */
 .entrada-marca::before,.entrada-marca::after{content:"";position:absolute;
 border-radius:50%;pointer-events:none}
-.entrada-marca::before{inset:-26% auto auto -16%;width:52%;aspect-ratio:1;
-background:radial-gradient(circle,rgba(112,200,224,.22),transparent 66%)}
-.entrada-marca::after{inset:auto -18% -32% auto;width:56%;aspect-ratio:1;
-background:radial-gradient(circle,rgba(64,88,160,.38),transparent 68%)}
+.entrada-marca::before{inset:-26% auto auto -16%;width:56%;aspect-ratio:1;
+background:radial-gradient(circle,rgba(82,145,255,.26),transparent 66%);
+/* Deriva lenta e FINITA: duas voltas de 9s e para. O halo é profundidade,
+   não sinal — piscando para sempre ele vira um segundo elemento da tela
+   disputando atenção com o campo de digitar. */
+animation:halo-deriva 9s var(--suave) 2 alternate}
+.entrada-marca::after{inset:auto -18% -32% auto;width:60%;aspect-ratio:1;
+background:radial-gradient(circle,rgba(4,80,210,.42),transparent 68%);
+animation:halo-deriva 11s var(--suave) 2 alternate-reverse}
+@keyframes halo-deriva{
+from{transform:translate3d(0,0,0) scale(1);opacity:.75}
+to{transform:translate3d(3%,-4%,0) scale(1.1);opacity:1}}
 .entrada-marca>*{position:relative;z-index:1}
+
+/* ---- a malha do fundo: o corredor -------------------------------------
+   O desenho original do hero. É uma grade de perspectiva em SVG — as linhas
+   convergem para um ponto de fuga à direita, que é para onde a carga vai — e
+   três arcos pontilhados que se DESENHAM uma vez, do ponto de origem até o
+   de destino.
+   SVG embutido e CSS, sem biblioteca nenhuma: é traço e `stroke-dashoffset`,
+   e uma dependência de animação para isto seria peso novo numa rede interna
+   para fazer o que duas @keyframes já fazem.
+   Fica atrás de tudo, a 1px de traço e opacidade baixa: é textura, e no
+   momento em que alguém a NOTA ela já falhou no trabalho dela. */
+.corredor{position:absolute;inset:0;width:100%;height:100%;z-index:0;
+pointer-events:none;opacity:.5}
+.corredor .malha-linha{stroke:rgba(82,145,255,.22);stroke-width:1;fill:none}
+.corredor .arco{fill:none;stroke:rgba(82,145,255,.55);stroke-width:1.6;
+stroke-linecap:round;stroke-dasharray:5 7;
+/* O comprimento do traçado entra por `--comp`, escrito no próprio elemento:
+   é a única medida que o CSS não consegue calcular sozinho. Uma única
+   passada (`both`), e o arco fica desenhado — não é um carrossel. */
+stroke-dashoffset:var(--comp);
+animation:corredor-traca 2.6s var(--curso) both}
+@keyframes corredor-traca{to{stroke-dashoffset:0}}
+/* Os três saem escalonados, de cima para baixo: lidos juntos são um borrão,
+   escalonados o olho segue a direção do percurso. */
+.corredor .arco:nth-child(2){animation-delay:.25s}
+.corredor .arco:nth-child(3){animation-delay:.5s}
+/* O ponto de fuga acende no fim do traçado — é o destino chegando. */
+.corredor .fuga{fill:rgba(82,145,255,.9);
+animation:corredor-acende 1.1s var(--suave) 2.4s both}
+@keyframes corredor-acende{from{opacity:0;r:1}to{opacity:1;r:4}}
 /* Em cores naturais, sobre uma pastilha branca. `brightness(0) invert(1)`
    pintaria o desenho inteiro de branco — e o "V" da marca é um RECORTE, já
    branco: some contra a elipse e a logo vira um borrão. Passa despercebido na
@@ -554,10 +751,36 @@ white-space:nowrap}
 @media(max-width:520px){
 .entrada-marca .assinatura{letter-spacing:1.4px;font-size:10px}
 }
-.entrada-marca h1{font-size:clamp(28px,3.5vw,42px);line-height:1.1;
-margin:0 0 14px;letter-spacing:-.9px;color:#fff;text-wrap:balance}
-.entrada-marca p{margin:0;max-width:40ch;font-size:15px;line-height:1.55;
-color:rgba(255,255,255,.72);text-wrap:pretty}
+/* O título do hero. Sobe de 42 para 56px no monitor grande e aperta o
+   entreletra: título de apresentação não se lê palavra a palavra, se lê de
+   relance, e nesse tamanho a folga entre letras é o que faz a frase parecer
+   desmontada. */
+.entrada-marca h1{font-family:var(--fonte-tit);
+font-size:clamp(30px,4.2vw,56px);line-height:1.04;
+margin:0 0 var(--e4);letter-spacing:-2px;color:#fff;text-wrap:balance;
+font-weight:800}
+/* A segunda frase do título ganha o gradiente da marca como TINTA. É o único
+   lugar do sistema onde a marca pinta letra — e por isso funciona: usado
+   duas vezes, vira maneirismo.
+   O `color` antes do recorte não é enfeite de código: navegador que não
+   suporta `background-clip:text` descarta as três linhas seguintes e fica
+   com o branco, em vez de um título invisível. */
+.entrada-marca h1 .viva{color:#fff;
+background:linear-gradient(100deg,#85b1ff 0%,#5291ff 55%,#317bfc 100%);
+-webkit-background-clip:text;background-clip:text;
+-webkit-text-fill-color:transparent}
+.entrada-marca p{margin:0;max-width:44ch;font-size:16.5px;line-height:1.6;
+color:rgba(255,255,255,.76);text-wrap:pretty}
+/* Entrada em cascata do hero: olho, título, apoio e rota sobem um atrás do
+   outro. Uma passada só, `both`, e a regra global de prefers-reduced-motion
+   lá em cima desliga as quatro de uma vez. */
+.entrada-marca>*{animation:sobe-bloco .6s var(--suave) both}
+.entrada-marca>*:nth-child(2){animation-delay:.08s}
+.entrada-marca>*:nth-child(3){animation-delay:.16s}
+.entrada-marca>*:nth-child(4){animation-delay:.24s}
+/* A malha do fundo NÃO entra na cascata: ela tem a animação dela, e duas
+   camadas de movimento no mesmo elemento brigam. */
+.entrada-marca>.corredor{animation:none}
 
 /* ---- a rota ----
    Não é enfeite: é o que o sistema FAZ, desenhado. Uma carga entra, as
@@ -568,21 +791,59 @@ color:rgba(255,255,255,.72);text-wrap:pretty}
 
    Faixa própria embaixo do texto, e não um traçado atrás dele: fundo que
    cruza o parágrafo briga com a leitura em alguma largura de tela, sempre. */
-.entrada-marca .rota{display:flex;align-items:flex-start;gap:0;margin:0;padding-top:4px}
-.entrada-marca .rota .parada{display:flex;flex-direction:column;gap:9px;flex:0 0 auto;
-max-width:14ch}
-.entrada-marca .rota .ponto{width:13px;height:13px;border-radius:50%;background:#5291ff;
-box-shadow:0 0 0 5px rgba(82,145,255,.18)}
+.entrada-marca .rota{display:flex;align-items:flex-start;gap:0;margin:0;
+padding:var(--e4) 0 0;
+/* A rota inteira ganha corpo: fica sobre uma faixa de vidro, encostada no
+   fundo. Solta, ela lia como uma legenda perdida embaixo do parágrafo; com
+   superfície própria ela lê como o DIAGRAMA que é. */
+border-top:1px solid rgba(255,255,255,.1)}
+.entrada-marca .rota .parada{display:flex;flex-direction:column;gap:11px;
+flex:0 0 auto;max-width:15ch}
+.entrada-marca .rota .ponto{width:13px;height:13px;border-radius:50%;
+background:#5291ff;box-shadow:0 0 0 5px rgba(82,145,255,.18);
+/* Cada parada acende quando o trecho até ela termina de correr. Os atrasos
+   abaixo são os mesmos do traçado — é isso que faz o desenho ler como um
+   percurso e não como três bolinhas piscando fora de hora. */
+animation:parada-acende .5s var(--mola) both}
+.entrada-marca .rota .parada:nth-child(3) .ponto{animation-delay:.9s}
+.entrada-marca .rota .parada:nth-child(5) .ponto{animation-delay:1.8s}
+@keyframes parada-acende{from{opacity:0;transform:scale(.2)}
+to{opacity:1;transform:none}}
+/* A última parada é o preço que ainda não chegou: só contorno, e um pulso
+   FINITO de três batidas para dizer "é aqui que termina". Três, e não
+   infinito: numa tela de login um ponto pulsando para sempre é um alarme. */
 .entrada-marca .rota .parada:last-child .ponto{background:transparent;
-border:2px solid rgba(255,255,255,.5);box-shadow:none}
-.entrada-marca .rota .parada span{font-size:11.5px;line-height:1.35;
-text-transform:uppercase;letter-spacing:.9px;color:rgba(255,255,255,.72)}
+border:2px solid rgba(255,255,255,.5);
+box-shadow:0 0 0 0 rgba(82,145,255,.5);
+animation:parada-acende .5s var(--mola) 1.8s both,
+          parada-pulsa 1.6s var(--suave) 2.2s 3}
+@keyframes parada-pulsa{
+0%{box-shadow:0 0 0 0 rgba(82,145,255,.5)}
+70%{box-shadow:0 0 0 11px rgba(82,145,255,0)}
+100%{box-shadow:0 0 0 0 rgba(82,145,255,0)}}
+.entrada-marca .rota .parada span{font-size:11.5px;line-height:1.4;
+text-transform:uppercase;letter-spacing:1.2px;font-weight:600;
+color:rgba(255,255,255,.74)}
 /* O trecho percorrido é sólido no azul; o que falta é pontilhado. A carga
-   ainda não chegou — a linha inteira sólida diria que sim. */
-.entrada-marca .rota .trecho{flex:1 1 auto;height:2px;margin:6px 12px 0;
-background:linear-gradient(90deg,#5291ff,rgba(82,145,255,.45))}
-.entrada-marca .rota .trecho.falta{background:none;
-border-top:2px dashed rgba(255,255,255,.26);height:0;margin-top:5px}
+   ainda não chegou — a linha inteira sólida diria que sim.
+   O sólido CORRE da esquerda para a direita quando a tela abre: é a carga
+   entrando no sistema, e é a única peça do hero que conta uma história em
+   vez de decorar. Uma passada, `both`, e fica. */
+.entrada-marca .rota .trecho{flex:1 1 auto;height:3px;border-radius:99px;
+margin:7px var(--e3) 0;transform-origin:left center;
+background:linear-gradient(90deg,#5291ff,rgba(82,145,255,.45));
+animation:trecho-corre .9s var(--curso) .3s both}
+@keyframes trecho-corre{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+/* O que falta é pontilhado, e o pontilhado ANDA: devagar, para frente, três
+   voltas. É a diferença visível entre "já passou" e "está a caminho" — e
+   para sozinho, sem precisar de botão para pausar. */
+.entrada-marca .rota .trecho.falta{background:repeating-linear-gradient(90deg,
+rgba(255,255,255,.34) 0 7px,transparent 7px 15px);
+background-size:15px 2px;background-repeat:repeat-x;
+background-position-y:center;border:0;height:3px;
+animation:trecho-corre .9s var(--curso) 1.2s both,
+          trecho-anda 1.4s linear 2.1s 3}
+@keyframes trecho-anda{to{background-position-x:15px}}
 
 /* ---- o lado do formulário ---- */
 .entrada-form{display:flex;align-items:center;justify-content:center;
