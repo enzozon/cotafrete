@@ -323,8 +323,12 @@ Dois roteiros cobrem a instalação, nesta ordem:
   acesso**: a tela de entrada do vendedor aceita qualquer nome digitado e não
   protege nada, então na internet pública ela precisa do Access na frente.
 
-> **Ainda em aberto: não existe backup do `cotafrete.db`.** Todo o histórico
-> de cotações vive num arquivo só, dentro da VM.
+O backup do banco é o `Backup.bat`, agendado na VM para rodar todo dia — ver
+[`docs/CONFIGURAR_NA_EMPRESA.md`](docs/CONFIGURAR_NA_EMPRESA.md), passo 8.
+Ele **não** copia o arquivo: o banco roda em WAL, e nesse modo o `.db` sozinho
+está atrasado — uma cópia crua sai sem as cotações mais recentes, sem erro
+nenhum. O `core/backup.py` usa a API de backup online do SQLite, que lê
+através do WAL com o servidor no ar, e confere a cópia depois de gravar.
 
 ---
 

@@ -382,10 +382,10 @@ lançador não deve mexer nisso pelas costas de quem usa a máquina.
 
 ## O que ainda está em aberto
 
-- **Não existe backup do banco.** Todo o histórico de cotações vive em
-  `C:\cotafrete-producao\cotafrete.db`, dentro da VM. Antes de considerar a
-  instalação concluída, defina uma cópia periódica desse arquivo (e da pasta
-  `runs\`, que guarda as evidências) para fora da VM.
+- **A pasta `runs\` não tem cópia.** O banco já tem (`Backup.bat`, agendado no
+  passo 8 do `CONFIGURAR_NA_EMPRESA.md`), mas as evidências — os prints de
+  cada cotação — continuam só na VM. Elas expiram em 30 dias por desenho, o
+  que reduz o tamanho do prejuízo, não o prejuízo.
 - **A VM não recebe atualização de segurança** se for Windows 10 — o suporte
   terminou em outubro de 2025. O Chrome continua funcionando até ~2028. Se a
   empresa tiver licença de Server 2019 ou 2022, prefira, que continua

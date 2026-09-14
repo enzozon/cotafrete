@@ -387,7 +387,96 @@ Vale para as janelas abertas daí em diante.
 
 ---
 
-## 8. Conferir tudo
+## 8. Backup do banco, todo dia
+
+Todo o histórico da empresa — quem cotou, para onde, por quanto, o que cada
+transportadora respondeu — vive num arquivo só: `cotafrete.db`. Se a VM se
+perder, não há de onde tirar de volta.
+
+**Não copie o arquivo na mão.** O banco roda em WAL (`journal_mode = WAL`), e
+nesse modo o que acabou de ser gravado ainda está no `cotafrete.db-wal`. Um
+`copy cotafrete.db` com o servidor no ar produz um arquivo que **abre
+normalmente e parece íntegro**, só que sem as cotações recentes. É a pior
+forma de falhar: silenciosa, e descoberta só no dia de restaurar.
+
+O `Backup.bat` faz o certo — usa a API de backup online do SQLite, que lê
+através do WAL, se entende com quem está escrevendo e entrega um arquivo
+consistente. **Não precisa parar o servidor.**
+
+### 8a. Escolher onde a cópia cai
+
+Fora da VM. Cópia no mesmo disco não protege contra o que mais acontece: o
+disco ou a VM se perderem. Num Prompt de Comando **como administrador**, na
+VM:
+
+```
+setx /M COTAFRETE_BACKUP_DIR "\\SERVIDOR\backups\cotafrete"
+```
+
+Troque pelo compartilhamento real. Se não configurar nada, a cópia cai em
+`C:\enzo\cotafrete-producao\backup\` e o próprio script avisa, toda vez, que ela
+está na mesma máquina do banco.
+
+O `/M` grava para a máquina inteira, não só para o usuário logado — o
+Agendador roda com o ambiente dele, não com o seu. Feche e reabra o Prompt
+depois, que `setx` não vale na janela onde foi digitado.
+
+### 8b. Testar à mão, uma vez
+
+Duplo clique no `Backup.bat`. Deve sair algo assim:
+
+```
+  Copia:    \\SERVIDOR\backups\cotafrete\cotafrete-20260914-2200.db
+  Conteudo: 412 cotacoes, 0.4 MB
+```
+
+O número de cotações é a prova de que o WAL entrou. Se aparecer o aviso
+`ATENCAO: a copia esta na MESMA maquina`, o passo 8a não pegou.
+
+### 8c. Agendar
+
+Agendador de Tarefas → **Criar Tarefa** (não "Tarefa Básica", que não tem as
+opções abaixo):
+
+| aba | campo | valor |
+|---|---|---|
+| Geral | Nome | `Cotafrete - Backup` |
+| Geral | — | **Executar estando o usuário conectado ou não** |
+| Geral | — | marcar **Executar com privilégios mais altos** |
+| Disparadores | Novo → Diariamente | `22:00` |
+| Ações | Programa | `C:\enzo\cotafrete-producao\Backup.bat` |
+| Ações | Argumentos | `/auto` |
+| Ações | Iniciar em | `C:\enzo\cotafrete-producao` |
+| Condições | — | **desmarcar** "Iniciar a tarefa somente se o computador estiver ligado na energia" |
+
+Três detalhes que quebram a tarefa se passarem batido:
+
+- **`/auto`** tira o `pause` do fim. Sem ele a janela fica aberta esperando
+  uma tecla que ninguém vai apertar — e a tarefa fica "em execução" para
+  sempre, sem rodar no dia seguinte.
+- **Iniciar em** precisa estar preenchido. O `.bat` se vira sozinho (`cd /d
+  "%~dp0"`), mas o Agendador reclama de ação sem pasta de trabalho.
+- **Executar estando o usuário conectado ou não** exige a senha da conta e faz
+  a tarefa rodar sem sessão gráfica. É o que se quer: o backup não depende de
+  ninguém estar logado.
+
+Depois de criar, clique com o botão direito → **Executar**, e confira em
+*Resultado da última execução*: `0x0` é sucesso. Qualquer outra coisa,
+o motivo está na janela do `Backup.bat` rodado à mão.
+
+### 8d. O que guardar, e restaurar
+
+A faxina mantém as **14 cópias mais novas** e apaga o resto, para o backup não
+virar o motivo de o disco encher. Só apaga arquivos com o nome que ela mesma
+gera (`cotafrete-AAAAMMDD-HHMM.db`) — qualquer outra coisa na pasta fica.
+
+Restaurar é copiar a cópia por cima do `cotafrete.db`, **com o servidor
+parado**, e apagar o `cotafrete.db-wal` e o `cotafrete.db-shm` que estiverem
+do lado — senão o SQLite tenta aplicar um WAL antigo sobre um banco novo.
+
+---
+
+## 9. Conferir tudo
 
 Reinicie o servidor inteiro. Deve dar certo sem ninguém tocar em nada.
 
@@ -422,8 +511,8 @@ login automático — porque é a única que precisa de navegador com janela.
 
 ## O que continua em aberto
 
-- **Não existe backup do `cotafrete.db`.** Todo o histórico vive num arquivo
-  só, dentro da VM. Continua sendo o item mais urgente da lista — e agora
-  mais ainda: com o sistema no ar o dia inteiro, há mais a perder.
+- A pasta `runs\` continua sem cópia. O banco já tem (passo 8); as evidências
+  não. Elas expiram em 30 dias sozinhas, então o que se perde é limitado —
+  mas é o print que prova o preço para o cliente.
 - O `Monitor.bat` ainda escreve na tela. O passo 7 contorna; o conserto de
   verdade é mandar a saída dele para arquivo, como o `Servidor.bat` já faz.
