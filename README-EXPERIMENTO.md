@@ -8,12 +8,14 @@ configurações (tudo ligado × ECC e Superpowers desligados, como manda o
 `GUIA-CONTEXTO-CODEX-CLAUDE.md`, seção 3). O objetivo não era a tela bonita:
 era medir o que cada configuração cobra pelo mesmo trabalho.
 
-> **Leia isto antes dos números:** nenhum dos quatro braços terminou a tarefa.
-> Os dois do Codex morreram com erro de infraestrutura; os dois do Claude
-> foram cortados por limite de uso da conta (HTTP 429) aos ~3,2 minutos. O que
-> está medido abaixo é **trabalho por tempo e por dinheiro gastos**, não
-> "quanto custa concluir o rebranding". Os números são reais e reproduzíveis;
-> a conclusão que eles sustentam é mais estreita do que a pergunta original.
+> **Leia isto antes dos números:** três dos quatro braços não terminaram. Só o
+> Codex com a configuração atual chegou ao fim (exit 0), e só na segunda
+> tentativa, retomando a thread. O Codex com o guia falhou duas vezes; os dois
+> do Claude foram cortados por limite de uso da conta (HTTP 429) aos ~3,2
+> minutos. O que está medido abaixo é **trabalho por tempo e por dinheiro
+> gastos**, não "quanto custa concluir o rebranding". Os números são reais e
+> reproduzíveis; a conclusão que eles sustentam é mais estreita do que a
+> pergunta original.
 
 ## O que o guia manda, e o que foi aplicado aqui
 
@@ -115,18 +117,42 @@ fez), enquanto esta foi para `Edit` (16 contra 4). O outro braço também levou
 
 ## Os dois braços do Codex
 
-Não foram tocados por este trabalho, a pedido. Ambos falharam:
+Não foram tocados por este trabalho, a pedido — as branches ficaram como
+estavam. Os números abaixo são de leitura do rollout das threads
+(`codex_usage.py`), acumulando a primeira corrida e a retomada.
 
-| braço | branch | saída | turnos | uso registrado |
-|---|---|---|---|---|
-| Codex + config atual | `rebranding/skills-atuais` | exit 1 | 0 | nenhum |
-| Codex + guia | `rebranding/contexto-enxuto` | exit 1 | 0 | nenhum |
+A primeira tentativa morreu nos dois braços às 14:11, com 1 segundo de
+diferença — o de skills após 7 minutos, o enxuto após 2, `exit 1`, zero turnos
+completos, `usage` nulo. O stderr traz
+`failed to record rollout items: thread ... not found`. Às 18:04 as duas
+threads foram retomadas: **a de skills terminou (exit 0)**, a do guia falhou
+de novo (exit 1).
 
-Morreram às 14:11, com 1 segundo de diferença entre si — o de skills após 7
-minutos, o enxuto após 2. O stderr do primeiro traz
-`failed to record rollout items: thread ... not found`. Como nenhum turno
-completou, o campo `usage` ficou nulo nos dois: **não existe número de token do
-lado Codex.** Sobrou trabalho parcial não commitado na branch `skills-atuais`.
+| | Codex + config atual | Codex + guia |
+|---|---|---|
+| resultado final | **exit 0** | exit 1 |
+| total de tokens | 2.427.804 | 1.757.641 |
+| entrada | 2.409.372 | 1.744.400 |
+| entrada em cache | 2.211.328 | 1.562.240 |
+| saída | 18.432 (2.222 de raciocínio) | 13.241 (1.869) |
+| contexto da 1ª requisição | 25.689 | 23.552 |
+| arquivos alterados | 6 (+59 −18) | 5 (+64 −19) |
+| CSS novo | 113 linhas | 148 linhas |
+| evidência em `docs/rebranding/` | IMPLEMENTACAO.md + 8 telas em HTML | `qa-comum`, `validar.py` |
+
+**Um achado importante para quem for aplicar o guia:** do lado Codex, desligar
+os plugins quase não mexeu no contexto inicial — 25.689 → 23.552 tokens, só
+**−8,3%**, contra os −41,8% medidos no Claude nesta mesma branch. O arnês do
+Codex tem uma tentativa anterior registrada como `tentativa-invalida-*` e uma
+rotina `--diagnose --skills-filter` no `run_experiment.py`, sinal de que fazer
+a desativação valer de fato foi difícil ali. **O guia não rende igual nas duas
+ferramentas** — o que ele promete se confirma no Claude e quase não aparece no
+Codex.
+
+Não há comparação em dólar entre Codex e Claude: o rollout do Codex registra
+tokens, não custo, e os modelos são de fornecedores diferentes com tabelas
+diferentes. Somar ou dividir esses números entre as duas ferramentas daria um
+número inventado.
 
 ## O que está commitado aqui
 
