@@ -23,7 +23,7 @@ Tempo estimado: 1h30, boa parte esperando propagação de DNS.
 | acesso ao repositório `allan-max/nova-ventura` | GitHub |
 | Hyper-V Manager | no servidor (host) |
 | a senha do usuário da VM | — |
-| `git pull` já feito na VM | `C:\cotafrete-producao` |
+| `git pull` já feito na VM | `C:\enzo\cotafrete-producao` |
 
 Comece pelo `git pull` na VM: o `Servidor.bat` mudou e o roteiro conta com a
 versão nova.
@@ -57,6 +57,36 @@ Teste numa aba anônima: deve pedir e-mail antes de mostrar qualquer coisa.
 
 > O plano gratuito cobre até 50 usuários. Não mexe numa linha do sistema — é
 > a Cloudflare barrando antes de a requisição chegar na VM.
+
+### Confira o relógio da VM antes de confiar no Access
+
+O Access trabalha com tokens de validade curta (minutos). Com o relógio fora
+do lugar, o token que a Cloudflare emite nasce "expirado" ou "do futuro" para
+a VM, e o login passa a falhar de forma intermitente e sem mensagem que
+ajude. Na VM da empresa ele estava **4 horas atrasado** em 14/09/2026.
+
+```powershell
+Get-TimeZone
+Get-Date
+
+Set-TimeZone -Id "E. South America Standard Time"
+Set-Service w32time -StartupType Automatic
+Start-Service w32time
+w32tm /resync /force
+```
+
+Se o `resync` reclamar, aponte um servidor explicitamente:
+
+```powershell
+w32tm /config /manualpeerlist:"pool.ntp.br,0x8" /syncfromflags:manual /update
+Restart-Service w32time
+w32tm /resync /force
+```
+
+Se mesmo assim voltar errado, o horário está vindo do host pela integração do
+Hyper-V — aí quem precisa acertar é o **servidor**, não a VM. De quebra, isso
+também deixa os logs legíveis: com o relógio torto, os horários do Visualizador
+de Eventos não batem com o que você acabou de fazer.
 
 ---
 
@@ -124,6 +154,20 @@ rotas que mudam raramente, não pesa.
    (a do `sitenovo` sai — agora é o Pages)
 3. Copie o **token** do conector
 
+**Onde fica o token:** no próprio túnel, em **Configure** → ambiente
+**Windows**. A Cloudflare mostra o comando pronto, e o token é a string longa
+(começa com `eyJ`) depois de `service install` — dá para copiar o comando
+inteiro. Pela linha de comando, na VM, também serve:
+
+```powershell
+cloudflared tunnel token tunel-cotafrete
+```
+
+O token é **segredo**: autoriza qualquer máquina a se conectar como esse
+túnel. Não cole em chamado, e-mail ou print. E ele só existe depois da
+migração — enquanto o túnel for *locally-managed* (com `config.yml` e arquivo
+de credenciais), não há token para copiar.
+
 ### 3b. Instalar o serviço
 
 Na VM, PowerShell **como administrador**:
@@ -136,6 +180,88 @@ Get-Service cloudflared
 ```
 
 Deve aparecer `Running`.
+
+> Escreva **`sc.exe`** nos comandos mais abaixo, nunca `sc`. No PowerShell,
+> `sc` é apelido de `Set-Content` — você acha que configurou o serviço e na
+> verdade tentou escrever um arquivo.
+
+#### Se a instalação disser que a chave de registro já existe
+
+```
+cannot install event logger: SYSTEM\CurrentControlSet\Services\EventLog\
+Application\Cloudflared registry key already exists
+```
+
+É sobra de uma instalação anterior. O instalador não sobrescreve, para no
+meio, e o serviço **não fica registrado** — o `Get-Service` responde *"cannot
+find any service"* logo depois de a tela dizer "is installed". Feche o
+`services.msc` (ele segura o registro) e refaça limpo:
+
+```powershell
+cloudflared service uninstall
+Remove-Item "HKLM:\SYSTEM\CurrentControlSet\Services\EventLog\Application\Cloudflared" `
+  -Recurse -Force -ErrorAction SilentlyContinue
+sc.exe delete cloudflared
+cloudflared service install <TOKEN>
+Start-Service Cloudflared
+```
+
+Essa chave é só o registro do `cloudflared` como fonte de eventos; apagá-la
+não afeta nada, e o instalador a recria. Se o `sc.exe delete` disser *"marked
+for deletion"*, reinicie a VM antes de reinstalar.
+
+### 3b-bis. O serviço sobe à mão mas não sobe no boot
+
+Este é o segundo tropeço, e ele **não dá erro nenhum na instalação**: depois
+de reiniciar, o `Get-Service` mostra `Stopped`; você inicia à mão e funciona.
+
+No log de Sistema aparece o motivo:
+
+```
+Id 7009 — A timeout was reached (45000 milliseconds) while waiting for the
+Cloudflared service to connect.
+```
+
+O `cloudflared` só avisa ao Windows "estou pronto" depois de alcançar a borda
+da Cloudflare. No boot a rede ainda está subindo, ele fica tentando, passa
+dos 45 segundos que o Gerenciador de Serviços espera, e o Windows desiste e o
+deixa parado. Como `Automatic` não repete, ele fica parado o dia inteiro.
+
+```powershell
+sc.exe config cloudflared start= delayed-auto
+sc.exe failure cloudflared reset= 86400 actions= restart/5000/restart/10000/restart/30000
+```
+
+O **espaço depois do `=` é obrigatório** (`start= delayed-auto`).
+
+O primeiro comando faz o serviço subir depois da rede. O segundo manda o
+Windows reerguê-lo se cair (5s, 10s, 30s) — é o que cumpre a promessa de
+"reinicia sozinho"; sem ele, um tropeço deixa o túnel fora do ar até alguém
+perceber. Confira com `sc.exe qc cloudflared`, que deve mostrar
+`START_TYPE : 2  AUTO_START (DELAYED)`.
+
+Medido em 14/09/2026: com `delayed-auto` o serviço volta `Running` sozinho
+depois do reboot — demora um pouco mais para aparecer, que é justamente o
+atraso fazendo efeito.
+
+#### Como olhar os logs sem se enganar
+
+```powershell
+# tudo que o cloudflared escreveu (NAO use -MaxEvents: ele corta antes de filtrar)
+Get-WinEvent -FilterHashtable @{
+    LogName='Application'; ProviderName='Cloudflared'; StartTime=(Get-Date).AddDays(-2)
+} | Sort-Object TimeCreated | Format-List TimeCreated, Id, Message
+
+# e o que o Gerenciador de Servicos disse — e aqui que aparece falha de partida
+Get-WinEvent -FilterHashtable @{
+    LogName='System'; StartTime=(Get-Date).AddDays(-2)
+    Id=7000,7001,7009,7011,7023,7024,7031,7034
+} | Format-List TimeCreated, Id, Message
+```
+
+Filtrar com `-MaxEvents 20 | Where-Object {...}` engana: ele pega os 20 mais
+recentes do log INTEIRO e só depois filtra, então os registros do boot ficam
+de fora e parece que o serviço nunca tentou subir.
 
 ### 3c. Aposentar o .bat do túnel
 
@@ -157,6 +283,19 @@ que reprova navegador automatizado. Serviço do Windows e Agendador "sem
 logon" rodam na sessão 0, sem tela — não servem para ele.
 
 Ou seja: aqui o login automático é requisito, não comodidade.
+
+> **Antes de tudo: remova o PIN.** Não existe "PIN automático" — o logon
+> automático guarda a **senha** e a digita no boot; o PIN é o Windows Hello e
+> **impede** o processo. Enquanto houver PIN, o `netplwiz` não tem efeito e a
+> VM continua parando na tela de login. Configurações → Contas → **Opções de
+> entrada** → **PIN (Windows Hello)** → **Remover**.
+>
+> **Se a conta estiver vinculada a uma conta Microsoft**, remover o PIN e
+> trocar a senha exigem a senha dessa conta Microsoft. Sem ela, o caminho é
+> criar uma conta **local dedicada** — foi o que a instalação de 14/09/2026
+> precisou fazer. A receita completa (criar a conta, permissão na pasta,
+> reinstalar os navegadores do Playwright para o novo usuário) está no
+> [`DEPLOY_SERVIDOR.md`](DEPLOY_SERVIDOR.md), no passo do login automático.
 
 Use o `netplwiz`, e **não** o registro:
 
@@ -191,11 +330,16 @@ pode travar — o porquê está logo abaixo.
 
 1. `Win+R` → `shell:startup`
 2. Botão direito → **Novo** → **Atalho**
-3. No destino, com o `/auto` no fim:
+3. No destino, com o `/auto` no fim — **use o caminho real da instalação**,
+   que na empresa é `C:\enzo\cotafrete-producao`:
    ```
-   C:\cotafrete-producao\Servidor.bat /auto
+   C:\enzo\cotafrete-producao\Servidor.bat /auto
    ```
 4. Nome: `Cotafrete`
+
+> A trava de pasta continua satisfeita com esse caminho: ela procura
+> `cotafrete-producao\` **dentro** do caminho, então o que vem antes não
+> importa — só o nome da pasta.
 
 > **Atalho, não cópia.** Copiar o `.bat` para a pasta do Startup é o que fazia
 > aparecer *"esta não é a pasta de produção"*: a trava olha de onde o arquivo

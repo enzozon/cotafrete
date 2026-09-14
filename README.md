@@ -68,6 +68,9 @@ centímetros; quem sabe o resto é o código, e cada regra tem teste.
 
 ### Primeira vez
 
+Python **3.13 ou 3.14** (o 3.14 está em produção e é o da máquina de
+desenvolvimento):
+
 ```bash
 python -m venv .venv
 .venv\Scripts\python.exe -m pip install -r requirements.txt
@@ -75,6 +78,13 @@ python -m venv .venv
 ```
 
 Copie o `.env` (nunca vai pelo Git — tem senhas) para a raiz do projeto.
+
+⚠ **Rode esses comandos na máquina onde o sistema vai rodar — não copie a
+`.venv` pronta de outro lugar.** Ela guarda o caminho absoluto do Python que
+a criou (`.venv\pyvenv.cfg`), e numa máquina diferente o `Servidor.bat` morre
+com *"did not find executable at ..."*, citando um usuário que nem existe ali.
+O mesmo vale para os navegadores: o `playwright install` grava em
+`%USERPROFILE%`, ou seja, **por usuário do Windows**.
 
 ### No dia a dia
 
@@ -280,10 +290,41 @@ o preço que a Generoso e a Della Volpe mandam por e-mail.
 
 ### Onde rodar
 
-Hoje roda na máquina do Enzo. O servidor da empresa é **Windows 8.1**, onde
-o Python 3.12 funciona mas o Chromium do Playwright **não** — o Chrome 109,
-de janeiro de 2023, foi o último a suportar esse sistema. Guia de
-verificação em `TESTE_NO_SERVIDOR.txt`.
+Desde **14/09/2026** o sistema roda numa **máquina virtual Windows 10 dentro
+do servidor da empresa**, publicada na internet por um túnel da Cloudflare em
+`cotafrete.ventura.inf.br`.
+
+A VM existe porque o servidor é **Windows Server 2012 R2**, e o Chromium
+parou de suportar esse sistema na versão 110 (fev/2023) — as páginas
+simplesmente não carregam. Como cinco das seis transportadoras cotam abrindo
+navegador de verdade (e duas exigem **janela**, por causa do checkpoint da
+Vercel na Generoso e do reCAPTCHA da Della Volpe), Chromium atual é
+requisito — e Chromium atual pede Windows 10 ou mais novo.
+
+| | |
+|---|---|
+| VM | Windows 10, **4 vCPU**, 8 GB — pasta `C:\enzo\cotafrete-producao` |
+| Host | Xeon E3-1270 v2 (4 núcleos / 8 lógicos), 32 GB |
+| Python | **3.14** em produção; 3.13 também serve |
+| Acesso | túnel da Cloudflare + **Cloudflare Access** (código por e-mail) |
+| Tempo de resposta | ~135 s com um vendedor; ~180 s com dois ao mesmo tempo |
+
+Os **4 vCPU** não são luxo: com 1 vCPU a hidratação do SPA da Generoso
+chegava depois do preenchimento e apagava os campos de login, derrubando
+cotações (as #75, #76 e #77). O código hoje tolera isso, mas a máquina era a
+causa.
+
+Dois roteiros cobrem a instalação, nesta ordem:
+
+- [`docs/DEPLOY_SERVIDOR.md`](docs/DEPLOY_SERVIDOR.md) — criar a VM e
+  instalar o Cotafrete nela.
+- [`docs/CONFIGURAR_NA_EMPRESA.md`](docs/CONFIGURAR_NA_EMPRESA.md) — deixar
+  tudo subindo sozinho e publicar na internet. Ele começa **fechando o
+  acesso**: a tela de entrada do vendedor aceita qualquer nome digitado e não
+  protege nada, então na internet pública ela precisa do Access na frente.
+
+> **Ainda em aberto: não existe backup do `cotafrete.db`.** Todo o histórico
+> de cotações vive num arquivo só, dentro da VM.
 
 ---
 

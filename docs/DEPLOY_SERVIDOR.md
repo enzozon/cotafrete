@@ -105,8 +105,10 @@ Sessão 0, que não tem área de trabalho nenhuma.
 
 ## 4. Instalar o Cotafrete dentro da VM
 
-Dentro da VM, com o Python 3.12 ou 3.13 instalado (marque *"Add Python to
-PATH"* no instalador):
+Dentro da VM, com o Python instalado (marque *"Add Python to PATH"* no
+instalador). **3.13 ou 3.14** — o 3.14 está em produção na VM desde
+14/09/2026, e é o mesmo da máquina de desenvolvimento, onde a suíte inteira
+passa.
 
 ```
 git clone <url-do-repositorio> C:\cotafrete-producao
@@ -116,6 +118,25 @@ python -m venv .venv
 .venv\Scripts\python.exe -m playwright install chromium
 ```
 
+> **`git clone` na VM — nunca copiar a pasta de outra máquina.** Um ambiente
+> virtual **não é portátil**: o `.venv\Scripts\python.exe` é um lançador que
+> guarda o caminho ABSOLUTO do Python que o criou (veja `.venv\pyvenv.cfg`).
+> Copiado para outra máquina, ele procura um caminho que não existe:
+>
+> ```
+> did not find executable at 'C:\Users\<outro-usuario>\...\python.exe':
+> The system cannot find the path specified.
+> ```
+>
+> Como o `Servidor.bat` sobe o uvicorn por esse lançador, nada sobe — e a
+> mensagem cita um usuário que nem existe na VM, o que manda quem está
+> diagnosticando para o lado errado. Aconteceu na instalação de 14/09/2026.
+> Se a pasta já veio copiada: apague o `.venv` e refaça os três comandos.
+
+O `-m` não é enfeite: `python.exe -m pip` roda o *módulo* pip. Sem ele
+(`python.exe pip install ...`) o Python entende `pip` como nome de ARQUIVO e
+responde `can't open file '...\pip'`.
+
 Não tem `.venv\Scripts\activate` de propósito. No Windows o `activate` é um
 script do PowerShell, e a política de execução padrão recusa scripts —
 "running scripts is disabled on this system". Chamar o `python.exe` da venv
@@ -124,7 +145,23 @@ direto passa por cima disso sem mexer em política de segurança do servidor, e
 
 **A pasta precisa se chamar `cotafrete-producao`.** O `Servidor.bat` se recusa
 a subir de qualquer outra — é a trava que existe desde 25/08/2026, quando
-quatro cotações reais foram parar no banco de desenvolvimento.
+quatro cotações reais foram parar no banco de desenvolvimento. O que está
+ACIMA dela não importa: a instalação da empresa vive em
+`C:\enzo\cotafrete-producao`, e a trava se dá por satisfeita porque procura
+`cotafrete-producao\` no caminho.
+
+**Os navegadores do Playwright são POR USUÁRIO do Windows.** Eles ficam em
+`%USERPROFILE%\AppData\Local\ms-playwright`, e o projeto não define
+`PLAYWRIGHT_BROWSERS_PATH` para mudar isso. Ou seja: se o sistema passar a
+rodar sob outra conta — e o passo 6 faz exatamente isso —, essa conta precisa
+rodar o `playwright install chromium` de novo. Sem isso as transportadoras
+falham com *"executable doesn't exist"* numa instalação que, por todo o
+resto, parece pronta.
+
+**Antes de mexer no `.venv`, feche o `Servidor.bat`.** Arquivo de biblioteca
+carregado por um processo vivo não pode ser apagado, e o Windows relata isso
+como *"Access to the path ... is denied"* — o que parece problema de
+permissão e é, na verdade, arquivo em uso.
 
 Depois copie o `.env` de produção para dentro de `C:\cotafrete-producao`. Ele
 não vem no Git. As chaves esperadas:
@@ -179,8 +216,69 @@ confirme com a senha da conta.
 > máquina. O `netplwiz` chega ao mesmo resultado guardando em segredo do LSA,
 > cifrado — use este.
 
-De qualquer forma: use uma conta **local**, criada só para isso, sem acesso a
-mais nada da rede, com senha que não se repete em lugar nenhum.
+### O PIN impede o login automático
+
+Não existe "PIN automático": o logon automático guarda a **senha** e a digita
+no boot. O PIN é o Windows Hello, e enquanto ele estiver configurado o
+`netplwiz` não tem efeito — a VM para na tela de login e o sistema fica fora
+do ar até alguém digitar algo.
+
+Remova o PIN em Configurações → Contas → **Opções de entrada** → **PIN
+(Windows Hello)** → **Remover**. Se aparecer o interruptor *"Exigir entrada
+do Windows Hello"*, desligue antes.
+
+Se a caixa do `netplwiz` não aparecer (do Windows 10 2004 em diante ela vem
+escondida), rode como administrador e reabra:
+
+```powershell
+$k = "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\PasswordLess\Device"
+Set-ItemProperty $k DevicePasswordLessBuildVersion 0
+```
+
+### Use uma conta local dedicada — e por que isso não é preciosismo
+
+Conta **local**, criada só para isso, sem acesso a mais nada da rede, com
+senha que não se repete em lugar nenhum.
+
+Na instalação de 14/09/2026 a VM tinha uma conta local **vinculada a uma
+conta Microsoft** (aparecia no `Get-LocalUser`, com foto e nome de uma
+pessoa na tela de login). Sem a senha da conta Microsoft não era possível
+remover o PIN nem trocar a senha — e sem remover o PIN, não havia login
+automático. A saída foi criar a conta dedicada.
+
+Para saber com o que você está lidando:
+
+```powershell
+whoami                 # MAQUINA\usuario = local
+whoami /upn            # devolve e-mail? entao esta ligada a conta Microsoft
+dsregcmd /status | Select-String "AzureAdJoined|DomainJoined"
+Get-LocalUser | Format-Table Name, Enabled, PasswordExpires
+```
+
+Criando a conta (PowerShell **como administrador**):
+
+```powershell
+$senha = Read-Host -AsSecureString "Senha da nova conta"
+New-LocalUser -Name "cotafrete" -Password $senha -FullName "Cotafrete" `
+  -Description "Conta dedicada ao sistema de cotacoes" -PasswordNeverExpires
+Add-LocalGroupMember -Group "Users" -Member "cotafrete"
+
+# a pasta foi criada por OUTRO usuario; sem isto a conta nova nao escreve nela
+# (ajuste o caminho — na empresa e C:\enzo\cotafrete-producao)
+icacls "C:\cotafrete-producao" /grant "cotafrete:(OI)(CI)M" /T
+```
+
+`-PasswordNeverExpires` não é preguiça: a política padrão expira a senha em
+42 dias, e no dia em que isso acontecer o login automático para — o sistema
+some do ar parecendo mais um "está ligado e não abre".
+
+Depois entre na conta nova, **recuse configurar PIN**, rode o
+`playwright install chromium` (os navegadores são por usuário, ver passo 4) e
+teste o `Servidor.bat` à mão antes de automatizar. Por fim, apague o atalho
+do Startup da conta antiga: duas contas tentando subir o servidor deixam
+você sem saber qual instância está no ar.
+
+Não apague a conta antiga — ela é a porta de entrada administrativa da VM.
 
 Depois, um **atalho** do `Servidor.bat` na pasta de inicialização
 (`Win+R` → `shell:startup`), com o parâmetro do modo desatendido:
