@@ -60,7 +60,7 @@ from web.ficha_ui import (
     ficha_da_cotacao, kg as _kg, pagador_da_cotacao, peso_por_volume,
     quando as quando_humano, quem_e as _quem,
 )
-from web.layout import (entrada, e, moeda, pagina,
+from web.layout import (MALHA_CORREDORES, cabecalho, entrada, e, moeda, pagina,
                         print_embutido as _img)
 from web.transportadoras import cota_por_volume
 from core.models import (
@@ -690,16 +690,18 @@ def _render_formulario(v: dict, usuario: str, aviso: str) -> str:
     return pagina("Nova cotação", rf"""
 {aviso}
 <div class="faixa-marca">
+  {MALHA_CORREDORES}
   <span class="marca-peca marca-lockup" role="img"
         aria-label="Ventura Comércio"></span>
   <span class="diz"><b>Todos os produtos num só lugar</b>
   Uma carga, todas as transportadoras: o Cotafrete preenche os sites por
   você e devolve os preços lado a lado.</span>
 </div>
-<h1>Nova cotação</h1>
-<p class="sub">Preencha uma vez. Cotamos sozinhos em {len(AUTOMATICAS)}
-transportadoras e deixamos a mensagem pronta para as
-{len(transportadoras.com_whatsapp())} que atendem por WhatsApp.</p>
+{cabecalho("Nova cotação", tarja="Cotar",
+           sub=f"Preencha uma vez. Cotamos sozinhos em {len(AUTOMATICAS)} "
+               f"transportadoras e deixamos a mensagem pronta para as "
+               f"{len(transportadoras.com_whatsapp())} que atendem por "
+               f"WhatsApp.")}
 <form method="post" action="/cotar" class="cartao">
   <fieldset><legend>Rota</legend><div class="grid">
     {campo("cep_origem", "CEP de origem", v)}
@@ -1110,9 +1112,12 @@ def preparar_email(cotacao_id: int, slug: str,
     texto = mensagem_whatsapp(c)
 
     return HTMLResponse(pagina(f"Cotação {cotacao_id} — {reg.nome}", f"""
-<h1>{e(reg.nome)}</h1>
-<p class="sub">Cotação #{cotacao_id} · {e(c['cidade_origem'])}/{e(c['uf_origem'])}
-→ {e(c['cidade_destino'])}/{e(c['uf_destino'])}</p>
+{cabecalho(reg.nome, tarja="E-mail pronto",
+           contexto=(("rota", f"{c['cidade_origem']}/{c['uf_origem']} → "
+                              f"{c['cidade_destino']}/{c['uf_destino']}"),
+                     ("cotação", f"#{cotacao_id}")),
+           acoes=f'<a class="botao2" href="/cotacao/{cotacao_id}">'
+                 f'Voltar para a cotação</a>')}
 
 <div class="cartao">
   <div class="alerta email"><b>Esta é a única que você envia à mão.</b>
@@ -1135,7 +1140,6 @@ def preparar_email(cotacao_id: int, slug: str,
   enviadas.</p>
 </div>
 
-<p><a class="botao2" href="/cotacao/{cotacao_id}">voltar para a cotação</a></p>
 <script>
 function copiar(id) {{
   const campo = document.getElementById(id);
@@ -1180,9 +1184,12 @@ def formulario_dellavolpe(cotacao_id: int,
     href_favorito = dv_bookmarklet.href_bookmarklet()
 
     return HTMLResponse(pagina(f"Cotação {cotacao_id} — Della Volpe", f"""
-<h1>Della Volpe</h1>
-<p class="sub">Cotação #{cotacao_id} · {e(c['cidade_origem'])}/{e(c['uf_origem'])}
-→ {e(c['cidade_destino'])}/{e(c['uf_destino'])}</p>
+{cabecalho("Della Volpe", tarja="Fluxo assistido",
+           contexto=(("rota", f"{c['cidade_origem']}/{c['uf_origem']} → "
+                              f"{c['cidade_destino']}/{c['uf_destino']}"),
+                     ("cotação", f"#{cotacao_id}")),
+           acoes=f'<a class="botao2" href="/cotacao/{cotacao_id}">'
+                 f'Voltar para a cotação</a>')}
 
 <div class="cartao">
   <div class="alerta email"><b>Esta é a via rápida: responde em 2 a 5
@@ -1190,8 +1197,8 @@ def formulario_dellavolpe(cotacao_id: int,
   OFICIAL deles — o preenchimento só poupa a digitação, quem resolve o
   captcha e clica em enviar é você.</div>
 
-  <p><b>Passo 1 — só na primeira vez:</b> arraste este link para a barra de
-  favoritos do navegador.</p>
+  <div class="passo-n" data-n="1"><b>Só na primeira vez:</b> arraste este
+  link para a barra de favoritos do navegador.</div>
   <p><a class="botao2" href="{href_favorito}"
   onclick="return confirm('Não clique — ARRASTE este link para a barra de favoritos.')"
   >📋 Preencher cotação (Cotafrete)</a></p>
@@ -1202,13 +1209,15 @@ def formulario_dellavolpe(cotacao_id: int,
   (Cotafrete)" fica salvo na barra do navegador (seta na imagem) — é nele que
   você vai clicar no Passo 3, sempre na aba NOVA da Della Volpe.</p>
 
-  <p><b>Passo 2:</b> abra o formulário da Della Volpe nesta aba nova.</p>
+  <div class="passo-n" data-n="2">Abra o formulário da Della Volpe nesta
+  aba nova.</div>
   <p><a class="botao2" href="{e(url)}" target="_blank" rel="noopener"
   >Abrir formulário da Della Volpe</a></p>
 
-  <p><b>Passo 3:</b> NA ABA NOVA, clique no favorito "Preencher cotação
-  (Cotafrete)" que você salvou no passo 1. Os campos enchem sozinhos, e
-  aparece um aviso do navegador confirmando — é só clicar OK.</p>
+  <div class="passo-n" data-n="3"><b>Na aba nova</b>, clique no favorito
+  "Preencher cotação (Cotafrete)" que você salvou no passo 1. Os campos
+  enchem sozinhos, e aparece um aviso do navegador confirmando — é só
+  clicar OK.</div>
 
   <img class="print" src="/ajuda/passo3_alerta_preenchido.png"
   alt="Print: aviso do navegador dizendo que o Cotafrete preencheu os campos">
@@ -1216,10 +1225,10 @@ def formulario_dellavolpe(cotacao_id: int,
   preencheu os campos. Confira, resolva o captcha e clique em 'Pedir
   orçamento'." Clique OK e siga para o Passo 4.</p>
 
-  <p><b>Passo 4:</b> confira os dados preenchidos e resolva o captcha da
+  <div class="passo-n" data-n="4">Confira os dados preenchidos e resolva o captcha da
   Della Volpe ("confirme que é humano") — quando ele validar, aparece um
   quadradinho verde escrito <b>"Sucesso!"</b>. Só depois clique em
-  "Pedir orçamento". Isso o sistema não faz por você — nem deveria.</p>
+  "Pedir orçamento". Isso o sistema não faz por você — nem deveria.</div>
 
   <img class="print" src="/ajuda/passo4_captcha_sucesso.png"
   alt="Print: captcha da Della Volpe resolvido, mostrando Sucesso em verde">
@@ -1237,10 +1246,9 @@ def formulario_dellavolpe(cotacao_id: int,
   carga precisar.</p>
 </div>
 
-<p class="sub">Prefere continuar mandando por e-mail (mais lento)?
-<a href="/email/{cotacao_id}/dellavolpe">Abrir e-mail pronto</a></p>
-
-<p><a class="botao2" href="/cotacao/{cotacao_id}">voltar para a cotação</a></p>
+<p class="sub" style="margin-top:24px">Prefere continuar mandando por e-mail
+(mais lento)? <a href="/email/{cotacao_id}/dellavolpe">Abrir e-mail pronto</a>
+</p>
 """, usuario))
 
 
@@ -1533,23 +1541,35 @@ def ver_cotacao(cotacao_id: int,
     # espera daria um zip incompleto, com metade das transportadoras ainda
     # sem print nenhum.
     baixar_prints = (
-        f'<a class="botao2" style="margin-bottom:12px;display:inline-block"'
+        f'<a class="botao2"'
         f' href="/cotacao/{cotacao_id}/evidencias.zip">Baixar prints</a>'
         if linhas and not faltam else "")
+
+    # A mesma frase corrida de seis campos que ficava embaixo do título, agora
+    # em pastilhas: rótulo em versalete, valor na monoespaçada. Nenhum campo
+    # saiu nem entrou — só pararam de disputar a mesma linha de texto.
+    ficha_curta = (
+        ("rota", f"{c['cidade_origem']}/{c['uf_origem']} → "
+                 f"{c['cidade_destino']}/{c['uf_destino']}"),
+        ("volumes", str(c["quantidade"])),
+        ("peso", f"{_kg(c['peso_kg'])} kg"),
+        ("caixa", f"{c['comprimento_cm']}×{c['largura_cm']}"
+                  f"×{c['altura_cm']} cm"),
+        ("nota fiscal", moeda(c["valor_nf"])),
+        ("material", str(c["material"] or "—")),
+    )
 
     return HTMLResponse(pagina(f"Cotação {cotacao_id}", f"""
 {recarrega}
 {cabecalho_espera}
-<h1>Cotação #{cotacao_id}</h1>
-<p class="sub">{e(c['cidade_origem'])}/{e(c['uf_origem'])} →
-{e(c['cidade_destino'])}/{e(c['uf_destino'])} · {e(c['quantidade'])} volume(s)
-· {_kg(c['peso_kg'])} kg · {e(c['comprimento_cm'])}×{e(c['largura_cm'])}×{e(c['altura_cm'])} cm
-· NF {moeda(c['valor_nf'])} · {e(c['material'])}</p>
+{cabecalho(f"Cotação #{cotacao_id}", tarja="Resultado",
+           contexto=ficha_curta,
+           acoes=f'<a class="botao2" href="/?repetir={cotacao_id}">'
+                 f'Repetir esta cotação</a>{baixar_prints}')}
 
 <div class="cartao">
   <div class="r-cab">
     <h2>Cotadas automaticamente</h2>
-    {baixar_prints}
   </div>
   <div class="rolagem-r">
     <table class="resultados">
@@ -1580,9 +1600,8 @@ def ver_cotacao(cotacao_id: int,
 
 {ficha_da_cotacao(c)}
 
-<p><a class="botao2" href="/?repetir={cotacao_id}">Repetir esta cotação</a>
-&nbsp;&nbsp; <a href="/">nova cotação</a> &nbsp;·&nbsp;
-<a href="/historico">histórico</a></p>
+<p class="sub" style="margin-top:24px"><a href="/">← nova cotação</a>
+&nbsp;·&nbsp; <a href="/historico">histórico</a></p>
 <script>
 // O link abre em outra aba; ESTA pagina fica parada. Sem marcar na hora, o
 // vendedor volta e ve a lista igualzinha, sem saber onde parou. O servidor ja
@@ -1650,10 +1669,12 @@ def pagina_documentacao() -> str:
                 f"{'entram' if len(nas_duas) > 1 else 'entra'} nas duas "
                 f"listas, por isso a soma não bate." if nas_duas else "")
     return f"""
-<h1>Como usar o Cotafrete</h1>
-<p class="sub">Você preenche a carga uma vez. O sistema cota sozinho em
-{len(AUTOMATICAS)} transportadoras e deixa a mensagem do WhatsApp pronta para
-{zap}. São {len(TODAS_AS_SLUGS)} no total.{repetida}</p>
+{cabecalho("Como usar o Cotafrete", tarja="Documentação",
+           sub=f"Você preenche a carga uma vez. O sistema cota sozinho em "
+               f"{len(AUTOMATICAS)} transportadoras e deixa a mensagem do "
+               f"WhatsApp pronta para {zap}. São {len(TODAS_AS_SLUGS)} no "
+               f"total.{repetida}",
+           acoes='<a class="botao2" href="/">Nova cotação</a>')}
 
 <div class="cartao doc">
 <h2>O caminho normal</h2>
@@ -1816,9 +1837,14 @@ def historico(usuario: str | None = Cookie(None, alias=COOKIE)):
         # "veio preço", e uma coluna inteira verde esconde justamente a
         # cotação em que ninguém respondeu.
         sem = "" if c["melhor_preco"] is not None else " vazio"
+        # A linha inteira leva (o JavaScript no fim da página), mas o número é
+        # um <a> DE VERDADE: é ele que responde ao teclado, ao botão do meio e
+        # ao "abrir em nova aba". O `onclick` sozinho tirava a tela inteira de
+        # quem trabalha sem mouse — o painel do adm já resolvia assim, e o
+        # histórico do vendedor tinha ficado para trás.
         linhas += (
-            f"""<tr onclick="location='/cotacao/{c['id']}'" style="cursor:pointer">
-            <td>#{c['id']}</td>
+            f"""<tr data-abrir="/cotacao/{c['id']}">
+            <td class="id-l"><a href="/cotacao/{c['id']}">#{c['id']}</a></td>
             <td class="hora">{e(quando_humano(c['criado_em']))}</td>
             <td><b>{e(c['material'])}</b></td>
             <td>{e(c['cidade_origem'])}/{e(c['uf_origem'])} →
@@ -1827,12 +1853,23 @@ def historico(usuario: str | None = Cookie(None, alias=COOKIE)):
             <td class="melhor{sem}">{moeda(c['melhor_preco'])}</td></tr>""")
 
     return HTMLResponse(pagina("Histórico", f"""
-<h1>Histórico</h1>
-<p class="sub">Suas cotações. Clique numa linha para ver o preço de cada
-transportadora.</p>
-<div class="cartao"><table>
-<tr><th>#</th><th>quando</th><th>material</th><th>rota</th><th>peso</th>
-<th>melhor preço</th></tr>
+{cabecalho("Histórico", tarja="Suas cotações",
+           sub="Clique numa linha para ver o preço de cada transportadora.",
+           acoes='<a class="botao2" href="/">Nova cotação</a>')}
+<div class="cartao"><div class="rolagem-r"><table>
+<thead><tr><th>#</th><th>quando</th><th>material</th><th>rota</th><th>peso</th>
+<th style="text-align:right">melhor preço</th></tr></thead>
+<tbody>
 {linhas or '<tr><td colspan="6" class="sub">Nenhuma cotação ainda.</td></tr>'}
-</table></div>
-<p><a href="/">← nova cotação</a></p>""", usuario))
+</tbody></table></div></div>
+<script>
+// A linha inteira leva para a cotação. O <a> do número continua sendo quem
+// atende o teclado; isto aqui só amplia o alvo do mouse para a linha toda.
+// `closest("a")` porque clicar no próprio link já navega — sem isso o clique
+// contaria duas vezes e o "abrir em nova aba" perderia o Ctrl.
+document.querySelectorAll("tr[data-abrir]").forEach(tr =>
+  tr.addEventListener("click", ev => {{
+    if (ev.target.closest("a")) return;
+    location = tr.dataset.abrir;
+  }}));
+</script>""", usuario))
