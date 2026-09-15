@@ -84,52 +84,7 @@ CSS = """
 --sombra-2:0 2px 4px rgba(20,32,66,.04),0 10px 22px -8px rgba(20,32,66,.14);
 --sombra-3:0 18px 44px -12px rgba(20,32,66,.28);
 --raio:12px;--raio-p:8px;--raio-g:16px;
---suave:cubic-bezier(.2,.6,.3,1);--mola:cubic-bezier(.34,1.32,.46,1);
-/* ---- o que o rebranding de 14/09/2026 acrescentou -----------------------
-   Ate aqui a paleta existia e o RESTO nao: tamanho de letra, espaco e raio
-   eram numero solto escrito dentro de cada regra. Dezessete tamanhos de
-   fonte diferentes, todos plausiveis, nenhum derivado de nada — e assim que
-   uma tela fica "quase certa" sem ninguem conseguir dizer onde.
-
-   Tres escalas, uma fonte de verdade cada.
-
-   ESPACO, base 4. Tudo o que separa duas coisas sai daqui. A regua e o que
-   faz um cartao do vendedor e um cartao do painel respirarem igual mesmo
-   tendo nascido em arquivos diferentes. */
---e1:4px;--e2:8px;--e3:12px;--e4:16px;--e5:20px;--e6:28px;--e7:40px;
---e8:56px;--e9:80px;
-/* LETRA. Escala de razao ~1.15 embaixo e ~1.3 em cima, e os tres degraus
-   maiores fluidos: a mesma tela e lida num notebook de 1366 e num monitor
-   de 27 polegadas, e titulo travado em pixel fica pequeno num e enorme no
-   outro.
-
-   `--t0` nao e "o menor tamanho", e um PAPEL: o rotulo de caixa alta —
-   legenda de fieldset, cabecalho de tabela, olho de cabecalho. Ele tem
-   espacejamento proprio porque caixa alta apertada nao se le. */
---t0:11px;--t1:12px;--t2:13px;--t3:14px;--t4:15.5px;--t5:17px;
---t6:clamp(20px,.6vw + 17px,23px);
---t7:clamp(25px,1.3vw + 19px,32px);
---t8:clamp(31px,3.1vw + 19px,49px);
-/* Espacejamento por TAMANHO, e nao por gosto: letra grande precisa de
-   tracking negativo para nao parecer solta, e letra pequena em caixa alta
-   precisa de positivo para nao virar mancha. */
---tr-display:-.028em;--tr-titulo:-.014em;--tr-rotulo:.12em;
-/* FAMILIA. Nada de webfont: o sistema roda em rede interna e fonte que nao
-   chegou e texto pulando na cara de quem esta cotando. A variavel da Segoe
-   (Windows 11) tem corte de TEXTO e corte de DISPLAY separados — onde ela
-   existe o titulo ganha o desenho feito para tamanho grande, e onde nao
-   existe cai na Segoe comum sem buraco nenhum. */
---f-corpo:"Segoe UI Variable Text",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
---f-titulo:"Segoe UI Variable Display",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
---f-num:ui-monospace,"Cascadia Mono",Consolas,monospace;
-/* SUPERFICIE. O sistema tinha duas (papel e fundo) e pedia uma terceira em
-   toda tela: a barra do topo precisa se separar do fundo sem virar cartao,
-   e o cabecalho de tabela precisa se separar do cartao sem virar borda.
-   `--filete` e a divisoria de dentro do cartao — mais fraca que --borda,
-   que e a divisoria entre cartao e pagina. */
---crosta:#e8eef8;--filete:rgba(15,23,36,.07);
-/* A largura da coluna de leitura, que era 1080px cravado em tres lugares. */
---coluna:1160px;--goteira:clamp(16px,3vw,32px)}
+--suave:cubic-bezier(.2,.6,.3,1);--mola:cubic-bezier(.34,1.32,.46,1)}
 /* ========================== o mesmo sistema, no escuro ======================
    Segundo conjunto de tokens, ligado por um atributo no <html>. Não é um
    tema "do painel": é do SISTEMA, e por isso mora aqui, junto do claro, e
@@ -177,12 +132,6 @@ html[data-tema="escuro"]{
 --tom-neutro:#98a1b8;--tom-neutro-fraco:#1f2740;
 --tom-roxo:#a78bfa;--tom-roxo-fraco:#242847;
 --alerta-fundo:#2a1a17;--alerta-borda:#5c3128;--alerta-tinta:#e0ab9c;
-/* A terceira superfície, no escuro. No claro `--crosta` é um cinza-azul um
-   degrau ABAIXO do fundo da página; aqui ela é um degrau ACIMA do cartão —
-   é a luminância que separa, e no escuro ela só tem para onde subir. E o
-   filete de dentro do cartão vira branco transparente: preto sobre um
-   cartão quase preto não desenha divisória nenhuma. */
---crosta:#18243c;--filete:rgba(255,255,255,.08);
 /* No escuro sombra não separa nada: quem separa é o degrau de luminância
    entre #0b0f1c e #161d33. A sombra fica só para dizer o que está POR CIMA
    quando o cursor levanta um cartão. */
@@ -267,32 +216,13 @@ background:var(--lavagem);transform:none;box-shadow:none}
 [data-tema="escuro"] .tema .p-lua{display:none}
 
 *{box-sizing:border-box}
-body{margin:0;background:var(--fundo);color:var(--tinta);line-height:1.55;
-font-family:var(--f-corpo);font-size:var(--t3);
--webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;
+body{margin:0;background:var(--fundo);color:var(--tinta);line-height:1.45;
+font-family:system-ui,-apple-system,"Segoe UI",sans-serif;
+-webkit-font-smoothing:antialiased;
 /* O sistema é uma tela de números: peso, cubagem, preço. Dígito de largura
    fixa faz as colunas de dinheiro alinharem sem tabela e sem monoespaçada. */
 font-variant-numeric:tabular-nums}
-/* Entrelinha 1.55 no corpo e 1.2 no título. Era 1.45 para os dois, e é a
-   diferença entre um parágrafo que se lê e um título que parece afastado
-   de si mesmo. */
-h1,h2,h3,.numero b,.preco{font-family:var(--f-titulo);line-height:1.18;
-letter-spacing:var(--tr-titulo)}
-a{color:var(--marca);text-underline-offset:2px}
-
-/* ---- o rótulo de caixa alta -------------------------------------------
-   Um PAPEL, não um tamanho. É a legenda do fieldset, o cabeçalho da
-   tabela, o olho do cabeçalho de página e o rótulo do filtro — quatro
-   coisas que já existiam escritas quatro vezes, cada uma com o seu
-   espacejamento. `.olho` é a versão que se usa como elemento. */
-.olho{display:inline-flex;align-items:center;gap:var(--e2);
-font-size:var(--t0);font-weight:700;text-transform:uppercase;
-letter-spacing:var(--tr-rotulo);color:var(--marca);margin:0 0 var(--e2)}
-/* O tracinho antes do texto. É o único enfeite do olho, e é ele que amarra
-   cabeçalho de página, legenda de campo e título de cartão como um sistema
-   só — 18px de gradiente da marca, repetidos em toda tela. */
-.olho::before{content:"";width:18px;height:2px;border-radius:2px;
-background:var(--marca-grad);flex:none}
+a{color:var(--marca)}
 
 /* Movimento é enfeite até virar obstáculo. Quem pediu para o sistema parar de
    se mexer não pode receber um formulário que entra deslizando. Uma regra, no
