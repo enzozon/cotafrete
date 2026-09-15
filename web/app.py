@@ -60,7 +60,7 @@ from web.ficha_ui import (
     ficha_da_cotacao, kg as _kg, pagador_da_cotacao, peso_por_volume,
     quando as quando_humano, quem_e as _quem,
 )
-from web.layout import (entrada, e, moeda, pagina,
+from web.layout import (TRILHO, entrada, e, moeda, pagina,
                         print_embutido as _img)
 from web.transportadoras import cota_por_volume
 from core.models import (
@@ -493,6 +493,7 @@ def tela_login() -> str:
 </div>"""
     return entrada(
         "Entrar", cartao,
+        olho="Cotafrete · Ventura Comércio",
         chamada="Uma carga. Todas as transportadoras.",
         apoio="Preencha os dados da carga uma vez. O sistema cota sozinho nas "
               "automáticas e deixa a mensagem pronta para as demais.",
@@ -690,16 +691,26 @@ def _render_formulario(v: dict, usuario: str, aviso: str) -> str:
     return pagina("Nova cotação", rf"""
 {aviso}
 <div class="faixa-marca">
-  <span class="marca-peca marca-lockup" role="img"
-        aria-label="Ventura Comércio"></span>
-  <span class="diz"><b>Todos os produtos num só lugar</b>
-  Uma carga, todas as transportadoras: o Cotafrete preenche os sites por
-  você e devolve os preços lado a lado.</span>
+  <div>
+    <span class="marca-peca marca-lockup" role="img"
+          aria-label="Ventura Comércio"></span>
+    <span class="diz"><b>Todos os produtos num só lugar</b>
+    Uma carga, todas as transportadoras: o Cotafrete preenche os sites por
+    você e devolve os preços lado a lado.</span>
+  </div>
+  {TRILHO}
 </div>
-<h1>Nova cotação</h1>
-<p class="sub">Preencha uma vez. Cotamos sozinhos em {len(AUTOMATICAS)}
-transportadoras e deixamos a mensagem pronta para as
-{len(transportadoras.com_whatsapp())} que atendem por WhatsApp.</p>
+<div class="cabeca">
+  <div>
+    <p class="olho">Nova cotação</p>
+    <h1>Os dados da carga</h1>
+    <p class="sub">Preencha uma vez. Cotamos sozinhos em {len(AUTOMATICAS)}
+    transportadoras e deixamos a mensagem pronta para as
+    {len(transportadoras.com_whatsapp())} que atendem por WhatsApp.</p>
+  </div>
+  <span class="acoes"><a class="botao2" href="/historico">Ver histórico</a>
+  </span>
+</div>
 <form method="post" action="/cotar" class="cartao">
   <fieldset><legend>Rota</legend><div class="grid">
     {campo("cep_origem", "CEP de origem", v)}
@@ -1110,9 +1121,17 @@ def preparar_email(cotacao_id: int, slug: str,
     texto = mensagem_whatsapp(c)
 
     return HTMLResponse(pagina(f"Cotação {cotacao_id} — {reg.nome}", f"""
-<h1>{e(reg.nome)}</h1>
-<p class="sub">Cotação #{cotacao_id} · {e(c['cidade_origem'])}/{e(c['uf_origem'])}
-→ {e(c['cidade_destino'])}/{e(c['uf_destino'])}</p>
+<div class="cabeca">
+  <div>
+    <p class="olho">Enviar por e-mail</p>
+    <h1>{e(reg.nome)}</h1>
+    <p class="sub">Cotação #{cotacao_id} ·
+    {e(c['cidade_origem'])}/{e(c['uf_origem'])}
+    → {e(c['cidade_destino'])}/{e(c['uf_destino'])}</p>
+  </div>
+  <span class="acoes"><a class="botao2" href="/cotacao/{cotacao_id}">Voltar
+  para a cotação</a></span>
+</div>
 
 <div class="cartao">
   <div class="alerta email"><b>Esta é a única que você envia à mão.</b>
@@ -1134,8 +1153,6 @@ def preparar_email(cotacao_id: int, slug: str,
   mensagem saiu — por isso o contador da cotação diz <b>abertas</b>, e nunca
   enviadas.</p>
 </div>
-
-<p><a class="botao2" href="/cotacao/{cotacao_id}">voltar para a cotação</a></p>
 <script>
 function copiar(id) {{
   const campo = document.getElementById(id);
@@ -1180,57 +1197,75 @@ def formulario_dellavolpe(cotacao_id: int,
     href_favorito = dv_bookmarklet.href_bookmarklet()
 
     return HTMLResponse(pagina(f"Cotação {cotacao_id} — Della Volpe", f"""
-<h1>Della Volpe</h1>
-<p class="sub">Cotação #{cotacao_id} · {e(c['cidade_origem'])}/{e(c['uf_origem'])}
-→ {e(c['cidade_destino'])}/{e(c['uf_destino'])}</p>
+<div class="cabeca">
+  <div>
+    <p class="olho">Fluxo assistido · 4 passos</p>
+    <h1>Della Volpe</h1>
+    <p class="sub">Cotação #{cotacao_id} ·
+    {e(c['cidade_origem'])}/{e(c['uf_origem'])}
+    → {e(c['cidade_destino'])}/{e(c['uf_destino'])}</p>
+  </div>
+  <span class="acoes"><a class="botao2" href="/cotacao/{cotacao_id}">Voltar
+  para a cotação</a></span>
+</div>
 
-<div class="cartao">
+<div class="cartao passos">
   <div class="alerta email"><b>Esta é a via rápida: responde em 2 a 5
   minutos</b>, contra 10 a 12 horas do e-mail avulso. É o formulário
   OFICIAL deles — o preenchimento só poupa a digitação, quem resolve o
   captcha e clica em enviar é você.</div>
 
-  <p><b>Passo 1 — só na primeira vez:</b> arraste este link para a barra de
-  favoritos do navegador.</p>
-  <p><a class="botao2" href="{href_favorito}"
-  onclick="return confirm('Não clique — ARRASTE este link para a barra de favoritos.')"
-  >📋 Preencher cotação (Cotafrete)</a></p>
+  <ol class="passos-lista">
+    <li>
+      <h2>Arraste o favorito <span class="so-uma-vez">só na primeira
+      vez</span></h2>
+      <p>Arraste este link para a barra de favoritos do navegador.</p>
+      <p><a class="botao2" href="{href_favorito}"
+      onclick="return confirm('Não clique — ARRASTE este link para a barra de favoritos.')"
+      >📋 Preencher cotação (Cotafrete)</a></p>
+      <img class="print" src="/ajuda/passo1_barra_favoritos.png"
+      alt="Print: o favorito salvo na barra do navegador, com uma seta apontando para ele">
+      <p class="sub">Depois de arrastar, o favorito "Preencher cotação
+      (Cotafrete)" fica salvo na barra do navegador (seta na imagem) — é nele
+      que você vai clicar no passo 3, sempre na aba NOVA da Della Volpe.</p>
+    </li>
 
-  <img class="print" src="/ajuda/passo1_barra_favoritos.png"
-  alt="Print: o favorito salvo na barra do navegador, com uma seta apontando para ele">
-  <p class="sub">Depois de arrastar, o favorito "Preencher cotação
-  (Cotafrete)" fica salvo na barra do navegador (seta na imagem) — é nele que
-  você vai clicar no Passo 3, sempre na aba NOVA da Della Volpe.</p>
+    <li>
+      <h2>Abra o formulário deles</h2>
+      <p>Abra o formulário da Della Volpe nesta aba nova.</p>
+      <p><a class="botao2" href="{e(url)}" target="_blank" rel="noopener"
+      >Abrir formulário da Della Volpe</a></p>
+    </li>
 
-  <p><b>Passo 2:</b> abra o formulário da Della Volpe nesta aba nova.</p>
-  <p><a class="botao2" href="{e(url)}" target="_blank" rel="noopener"
-  >Abrir formulário da Della Volpe</a></p>
+    <li>
+      <h2>Clique no favorito, na aba nova</h2>
+      <p>NA ABA NOVA, clique no favorito "Preencher cotação (Cotafrete)" que
+      você salvou no passo 1. Os campos enchem sozinhos, e aparece um aviso
+      do navegador confirmando — é só clicar OK.</p>
+      <img class="print" src="/ajuda/passo3_alerta_preenchido.png"
+      alt="Print: aviso do navegador dizendo que o Cotafrete preencheu os campos">
+      <p class="sub">É este o aviso que aparece depois do clique: "Cotafrete
+      preencheu os campos. Confira, resolva o captcha e clique em 'Pedir
+      orçamento'." Clique OK e siga para o passo 4.</p>
+    </li>
 
-  <p><b>Passo 3:</b> NA ABA NOVA, clique no favorito "Preencher cotação
-  (Cotafrete)" que você salvou no passo 1. Os campos enchem sozinhos, e
-  aparece um aviso do navegador confirmando — é só clicar OK.</p>
-
-  <img class="print" src="/ajuda/passo3_alerta_preenchido.png"
-  alt="Print: aviso do navegador dizendo que o Cotafrete preencheu os campos">
-  <p class="sub">É este o aviso que aparece depois do clique: "Cotafrete
-  preencheu os campos. Confira, resolva o captcha e clique em 'Pedir
-  orçamento'." Clique OK e siga para o Passo 4.</p>
-
-  <p><b>Passo 4:</b> confira os dados preenchidos e resolva o captcha da
-  Della Volpe ("confirme que é humano") — quando ele validar, aparece um
-  quadradinho verde escrito <b>"Sucesso!"</b>. Só depois clique em
-  "Pedir orçamento". Isso o sistema não faz por você — nem deveria.</p>
-
-  <img class="print" src="/ajuda/passo4_captcha_sucesso.png"
-  alt="Print: captcha da Della Volpe resolvido, mostrando Sucesso em verde">
-  <p class="sub">É este quadradinho verde que confirma que o captcha foi
-  resolvido. Só depois dele aparecer o clique em "Pedir orçamento" envia de
-  verdade.</p>
-
-  <div class="alerta"><b>É normal o primeiro clique em "Pedir orçamento"
-  parecer que não fez nada.</b> Enquanto o captcha não terminar de validar
-  (o "Sucesso!" verde acima), o formulário não envia de verdade. Confira se o
-  "Sucesso!" apareceu e clique em "Pedir orçamento" outra vez.</div>
+    <li>
+      <h2>Resolva o captcha e envie</h2>
+      <p>Confira os dados preenchidos e resolva o captcha da Della Volpe
+      ("confirme que é humano") — quando ele validar, aparece um quadradinho
+      verde escrito <b>"Sucesso!"</b>. Só depois clique em "Pedir orçamento".
+      Isso o sistema não faz por você — nem deveria.</p>
+      <img class="print" src="/ajuda/passo4_captcha_sucesso.png"
+      alt="Print: captcha da Della Volpe resolvido, mostrando Sucesso em verde">
+      <p class="sub">É este quadradinho verde que confirma que o captcha foi
+      resolvido. Só depois dele aparecer o clique em "Pedir orçamento" envia
+      de verdade.</p>
+      <div class="alerta"><b>É normal o primeiro clique em "Pedir orçamento"
+      parecer que não fez nada.</b> Enquanto o captcha não terminar de validar
+      (o "Sucesso!" verde acima), o formulário não envia de verdade. Confira
+      se o "Sucesso!" apareceu e clique em "Pedir orçamento" outra vez.</div>
+    </li>
+  </ol>
 
   <p class="sub">Anexo de planilha ou FISPQ não entra sozinho — o navegador
   não permite preencher esse tipo de campo por segurança. Anexe à mão se a
@@ -1239,8 +1274,6 @@ def formulario_dellavolpe(cotacao_id: int,
 
 <p class="sub">Prefere continuar mandando por e-mail (mais lento)?
 <a href="/email/{cotacao_id}/dellavolpe">Abrir e-mail pronto</a></p>
-
-<p><a class="botao2" href="/cotacao/{cotacao_id}">voltar para a cotação</a></p>
 """, usuario))
 
 
@@ -1650,10 +1683,16 @@ def pagina_documentacao() -> str:
                 f"{'entram' if len(nas_duas) > 1 else 'entra'} nas duas "
                 f"listas, por isso a soma não bate." if nas_duas else "")
     return f"""
-<h1>Como usar o Cotafrete</h1>
-<p class="sub">Você preenche a carga uma vez. O sistema cota sozinho em
-{len(AUTOMATICAS)} transportadoras e deixa a mensagem do WhatsApp pronta para
-{zap}. São {len(TODAS_AS_SLUGS)} no total.{repetida}</p>
+<div class="cabeca">
+  <div>
+    <p class="olho">Ajuda</p>
+    <h1>Como usar o Cotafrete</h1>
+    <p class="sub">Você preenche a carga uma vez. O sistema cota sozinho em
+    {len(AUTOMATICAS)} transportadoras e deixa a mensagem do WhatsApp pronta
+    para {zap}. São {len(TODAS_AS_SLUGS)} no total.{repetida}</p>
+  </div>
+  <span class="acoes"><a class="botao2" href="/">Nova cotação</a></span>
+</div>
 
 <div class="cartao doc">
 <h2>O caminho normal</h2>
@@ -1816,9 +1855,14 @@ def historico(usuario: str | None = Cookie(None, alias=COOKIE)):
         # "veio preço", e uma coluna inteira verde esconde justamente a
         # cotação em que ninguém respondeu.
         sem = "" if c["melhor_preco"] is not None else " vazio"
+        # A linha inteira continua clicável no mouse (o `onclick`), mas o
+        # número virou LINK de verdade. Com só o onclick, quem navega por
+        # teclado não tinha como abrir cotação nenhuma a partir daqui: <tr>
+        # não recebe foco, e a tabela era um beco sem saída.
         linhas += (
-            f"""<tr onclick="location='/cotacao/{c['id']}'" style="cursor:pointer">
-            <td>#{c['id']}</td>
+            f"""<tr onclick="location='/cotacao/{c['id']}'" class="clicavel">
+            <td><a class="num-cot" href="/cotacao/{c['id']}"
+                >#{c['id']}</a></td>
             <td class="hora">{e(quando_humano(c['criado_em']))}</td>
             <td><b>{e(c['material'])}</b></td>
             <td>{e(c['cidade_origem'])}/{e(c['uf_origem'])} →
@@ -1827,12 +1871,19 @@ def historico(usuario: str | None = Cookie(None, alias=COOKIE)):
             <td class="melhor{sem}">{moeda(c['melhor_preco'])}</td></tr>""")
 
     return HTMLResponse(pagina("Histórico", f"""
-<h1>Histórico</h1>
-<p class="sub">Suas cotações. Clique numa linha para ver o preço de cada
-transportadora.</p>
-<div class="cartao"><table>
-<tr><th>#</th><th>quando</th><th>material</th><th>rota</th><th>peso</th>
-<th>melhor preço</th></tr>
+<div class="cabeca">
+  <div>
+    <p class="olho">Suas cotações</p>
+    <h1>Histórico</h1>
+    <p class="sub">Clique numa linha para ver o preço de cada
+    transportadora.</p>
+  </div>
+  <span class="acoes"><a class="botao2" href="/">Nova cotação</a></span>
+</div>
+<div class="cartao"><div class="rolagem-r"><table>
+<thead><tr><th>#</th><th>quando</th><th>material</th><th>rota</th>
+<th>peso</th><th class="col-num">melhor preço</th></tr></thead>
+<tbody>
 {linhas or '<tr><td colspan="6" class="sub">Nenhuma cotação ainda.</td></tr>'}
-</table></div>
-<p><a href="/">← nova cotação</a></p>""", usuario))
+</tbody>
+</table></div></div>""", usuario))

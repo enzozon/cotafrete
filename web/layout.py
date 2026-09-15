@@ -54,37 +54,80 @@ CSS = """
    um índigo saturado parece sujo; o mesmo cinza com um empurrão de azul lê
    como escolha. */
 :root{
-/* marca */
---marca:#0042b5;--marca-forte:#00328a;--marca-viva:#0450d2;
---realce:#004bcc;--realce-claro:#317bfc;--lavagem:#eaf1fd;
---marca-grad:linear-gradient(135deg,#317bfc 0%,#0450d2 45%,#0042b5 100%);
-/* neutros com viés azul */
---tinta:#0f1724;--tinta2:#3c485d;--fraco:#5e6b82;
---borda:#dee3ed;--borda-forte:#c1cbdc;--fundo:#f5f7fb;--papel:#fff;
+/* marca — mesma matiz 218, um degrau mais FUNDA que a de antes. O azul
+   anterior (#0042b5) era azul de meio-tom: bonito e sem peso. Este é tinta
+   de impressão, e é o que faz o prateado do lockup parecer prata em vez de
+   cinza. Matiz lida de volta do hexadecimal: 219 graus, dentro da folga. */
+--marca:#00379e;--marca-forte:#002a7a;--marca-viva:#0a57d6;
+--realce:#0046c8;--realce-claro:#2f7cff;--lavagem:#e8eefc;
+--marca-grad:linear-gradient(118deg,#2f7cff 0%,#0a57d6 42%,#00379e 100%);
+/* O contraponto QUENTE. A paleta era azul sobre azul sobre azul, e tela sem
+   nenhum ponto de calor lê como planilha em vez de produto. O cobre NÃO é
+   semântico e nunca diz estado: ele marca a sobrancelha das telas, os pontos
+   do corredor e o rastro que atravessa a faixa. Fora da matiz da marca de
+   propósito — é o único token que pode estar, e por isso está sozinho. */
+--cobre:#9a5216;--cobre-claro:#c4762e;--cobre-lavagem:#fbf1e6;
+/* neutros com viés azul, agora mais fundos nas duas pontas: a tinta era
+   #0f1724 e o fundo #f5f7fb, e pouca distância entre os extremos empurra
+   tudo para o meio — nada parece à frente nem atrás de nada. */
+--tinta:#0b1220;--tinta2:#3a4a5f;--fraco:#5a6880;
+--borda:#dbe1ec;--borda-forte:#bcc6d8;--fundo:#eef2f9;--papel:#fff;
+/* A hairline. Borda cheia de 1px em TUDO achata a hierarquia; esta separa
+   sem desenhar — linha de tabela e divisória interna de cartão, onde a
+   borda cheia era barulho e não informação. */
+--linha:#e7ebf3;
 /* semânticos: sentido, não marca — mudar estes muda o que a tela AFIRMA */
---ok:#00785a;--erro:#c0341d;--atencao:#a15c00;--zap:#25d366;
---ok-fraco:#e6f4ef;--erro-fraco:#fdece9;--atencao-fraco:#fffae6;
---atencao-borda:#ffe380;--atencao-tinta:var(--tinta);
---sobre-marca:#fff;--cova:#f7f9fc;
---brilho-marca:rgba(0,66,181,.45);
+--ok:#0a6b4f;--erro:#b52d18;--atencao:#8f5100;--zap:#1fb457;
+--ok-fraco:#e4f3ed;--erro-fraco:#fdeae6;--atencao-fraco:#fdf4e3;
+--atencao-borda:#f0d49a;--atencao-tinta:var(--tinta);
+--sobre-marca:#fff;--cova:#f6f8fc;
+--brilho-marca:rgba(0,55,158,.42);
 /* Os tons do quadro de instrumentos. Moram aqui, e não no CSS do
    painel, porque quem os ESCREVE é o Python (o número do topo sai com
    `style="--cor:..."`), e hexadecimal escrito pelo servidor não muda
    quando a pessoa clica no botão de tema. Token muda. */
---tom-marca:#0042b5;--tom-marca-fraco:#eaf1fd;
---tom-ok:#00785a;--tom-ok-fraco:#e6f4ee;
---tom-atencao:#a15c00;--tom-atencao-fraco:#fdf3e3;
---tom-erro:#bf2600;--tom-erro-fraco:#fdecea;
---tom-neutro:#5f6675;--tom-neutro-fraco:#eef0f4;
---tom-roxo:#7c3aed;--tom-roxo-fraco:#f1eafe;
---alerta-fundo:#fff6f4;--alerta-borda:#ffd5cc;--alerta-tinta:#7a3b2e;
-/* elevação: três degraus, e não sombra solta por regra. Borda de 1px em tudo
-   achata a hierarquia — quem precisa se destacar sobe, o resto fica no plano */
---sombra-1:0 1px 2px rgba(20,32,66,.05),0 1px 3px rgba(20,32,66,.04);
---sombra-2:0 2px 4px rgba(20,32,66,.04),0 10px 22px -8px rgba(20,32,66,.14);
---sombra-3:0 18px 44px -12px rgba(20,32,66,.28);
---raio:12px;--raio-p:8px;--raio-g:16px;
---suave:cubic-bezier(.2,.6,.3,1);--mola:cubic-bezier(.34,1.32,.46,1)}
+--tom-marca:#00379e;--tom-marca-fraco:#e8eefc;
+--tom-ok:#0a6b4f;--tom-ok-fraco:#e4f3ed;
+--tom-atencao:#8f5100;--tom-atencao-fraco:#fdf4e3;
+--tom-erro:#b52d18;--tom-erro-fraco:#fdeae6;
+--tom-neutro:#55607a;--tom-neutro-fraco:#edf0f6;
+--tom-roxo:#6d34d6;--tom-roxo-fraco:#efe8fd;
+--alerta-fundo:#fdf3f0;--alerta-borda:#f3cdc2;--alerta-tinta:#6e3427;
+/* elevação: quatro degraus, e não sombra solta por regra. A rampa antiga
+   tinha três e pulava do quase-nada (1px) para o modal (44px); o degrau que
+   faltava é justamente o do cartão que está SOB o cursor. Todas com dois
+   raios — um curto que cola a peça na superfície e um longo e difuso que
+   dá a distância. Tinta de sombra puxada para o azul da marca, e não preta:
+   preto sobre papel azulado lê como sujeira. */
+--sombra-0:0 1px 1px rgba(11,18,32,.04);
+--sombra-1:0 1px 2px rgba(11,18,32,.05),0 2px 6px -2px rgba(11,18,32,.06);
+--sombra-2:0 2px 4px rgba(11,18,32,.04),0 12px 26px -10px rgba(11,18,32,.16);
+--sombra-3:0 20px 50px -14px rgba(11,18,32,.30);
+/* raios um degrau maiores em toda a escala: 8/12/16 lia como painel de
+   administração de 2015. A pílula ganhou token — estava escrita `99px` em
+   onze lugares, e onze lugares é onde uma escala começa a divergir. */
+--raio:14px;--raio-p:10px;--raio-g:22px;--raio-pill:999px;
+/* ---- escala de espaço ----
+   Não existia: cada regra escolhia 6, 7, 9, 11, 13, 14, 16, 18, 20, 22, 24
+   e 26px, e o resultado é uma tela sem ritmo nenhum — nada alinha com nada
+   porque não há grade a que alinhar. Base 4, que é o menor passo que a
+   tipografia deste sistema ainda percebe. */
+--e1:4px;--e2:8px;--e3:12px;--e4:16px;--e5:24px;--e6:32px;--e7:48px;--e8:72px;
+/* ---- escala tipográfica ----
+   Razão ~1.2 embaixo (onde mora a interface) e aberta no topo (onde mora o
+   título). Os dois maiores são fluidos: o display de hero precisa encolher
+   num celular de 390px sem virar três linhas órfãs. O TRACKING acompanha o
+   tamanho — é o que a tela não tinha: 24px e 42px estavam os dois com
+   -.5px, e tracking fixo numa escala larga faz o título grande parecer
+   solto e o pequeno parecer apertado. */
+--t1:11px;--t2:12.5px;--t3:14px;--t4:15px;--t5:17px;--t6:20px;
+--t7:clamp(23px,2.2vw,28px);--t8:clamp(30px,4.4vw,46px);
+--tr6:-.2px;--tr7:-.5px;--tr8:-1.4px;
+/* A sobrancelha: versalete de 10.5px com 1.6px de entreletra. Um estilo, e
+   não onze cópias de `text-transform:uppercase;letter-spacing:1px`. */
+--t-olho:10.5px;--tr-olho:1.6px;
+--suave:cubic-bezier(.2,.6,.3,1);--mola:cubic-bezier(.34,1.32,.46,1);
+--calmo:cubic-bezier(.22,.9,.3,1)}
 /* ========================== o mesmo sistema, no escuro ======================
    Segundo conjunto de tokens, ligado por um atributo no <html>. Não é um
    tema "do painel": é do SISTEMA, e por isso mora aqui, junto do claro, e
@@ -101,43 +144,50 @@ html[data-tema="escuro"]{
    "V" — e não o azul cheio: #0042b5 sobre #111e34 dá 1.9:1, e a cor da marca
    estaria na tela sem ninguém ver. O azul cheio continua sendo marca, mas
    como FUNDO: a lateral do painel, o filete do topo. */
---marca:#5291ff;--marca-forte:#85b1ff;--marca-viva:#0450d2;
---realce:#5291ff;--realce-claro:#70a5ff;--lavagem:#1c2940;
+--marca:#6ba2ff;--marca-forte:#9cc0ff;--marca-viva:#0a57d6;
+--realce:#6ba2ff;--realce-claro:#8ab5ff;--lavagem:#18243d;
+/* O cobre, no escuro, é o mesmo papel com a luminância que o fundo exige:
+   #9a5216 sobre o cartão escuro dá 1.6:1 e sumiria. 7.9:1 aqui. */
+--cobre:#e8a06a;--cobre-claro:#f0b98c;--cobre-lavagem:#2b1f14;
 /* O que se escreve EM CIMA de um preenchimento da marca. Herdar o #fff do
    claro daria 2.6:1 sobre o azul claro: o botão sumiria por dentro. */
 --sobre-marca:#061021;
-/* neutros: 13.9:1, 9.1:1 e 6.7:1 sobre o cartão */
---tinta:#e6e9ef;--tinta2:#bcc4d2;--fraco:#99a4b8;
---borda:#2d3f5c;--borda-forte:#475e85;--fundo:#061021;--papel:#111e34;
+/* neutros: 14.7:1, 10.2:1 e 6.7:1 sobre o cartão */
+--tinta:#e9edf5;--tinta2:#bfc8d8;--fraco:#95a2b9;
+--borda:#28374f;--borda-forte:#42587c;--fundo:#04101f;--papel:#0e1b30;
+/* A hairline do escuro é mais FRACA que a borda, não mais forte: aqui quem
+   separa é o degrau de luminância, e a linha só o confirma. */
+--linha:#1d2a41;
 /* Um degrau ABAIXO do papel, para o que é buraco e não cartão: campo de
    digitar, caixa de texto técnico, ficha dentro do cartão. No claro esse
    papel é o próprio branco e o buraco se faz com borda; no escuro é a
    luminância que separa, então o buraco precisa existir como cor. */
---cova:#0a1426;
-/* Semânticos: o SENTIDO é o mesmo, só a luminância sobe. Verde 8.4:1, âmbar
-   7.8:1, vermelho 7.5:1 sobre o cartão — contra 3.7, 5.2 e 2.8 que as cores
+--cova:#081426;
+/* Semânticos: o SENTIDO é o mesmo, só a luminância sobe. Verde 9.3:1, âmbar
+   8.4:1, vermelho 7.9:1 sobre o cartão — contra 3.7, 5.2 e 2.8 que as cores
    claras dariam aqui. O vermelho de falha, no escuro, era ilegível. */
---ok:#3ecf8e;--erro:#ff8f75;--atencao:#e5a54a;
+--ok:#3ed69a;--erro:#ff9179;--atencao:#e8a94e;
 /* As lavagens de cada semântico: o fundo das pílulas e dos avisos. */
---ok-fraco:#142b26;--erro-fraco:#2d201f;--atencao-fraco:#2c2413;
---atencao-borda:#5c4a1c;--atencao-tinta:#e8cf9a;
---brilho-marca:rgba(82,145,255,.55);
+--ok-fraco:#0f2a22;--erro-fraco:#2c1e1c;--atencao-fraco:#2a2314;
+--atencao-borda:#5a4820;--atencao-tinta:#ecd3a2;
+--brilho-marca:rgba(107,162,255,.55);
 /* Os mesmos tons, com a luminância que o fundo escuro exige. O pior é
    o roxo, com 6.1:1 sobre o cartão; no claro o vermelho de falha dava
    2.8:1 aqui e não passava nem como gráfico (SC 1.4.11). */
---tom-marca:#5291ff;--tom-marca-fraco:#18263f;
---tom-ok:#3ecf8e;--tom-ok-fraco:#142b26;
---tom-atencao:#e5a54a;--tom-atencao-fraco:#2b2618;
---tom-erro:#ff8f75;--tom-erro-fraco:#2d201f;
---tom-neutro:#98a1b8;--tom-neutro-fraco:#1f2740;
---tom-roxo:#a78bfa;--tom-roxo-fraco:#242847;
---alerta-fundo:#2a1a17;--alerta-borda:#5c3128;--alerta-tinta:#e0ab9c;
+--tom-marca:#6ba2ff;--tom-marca-fraco:#16233c;
+--tom-ok:#3ed69a;--tom-ok-fraco:#0f2a22;
+--tom-atencao:#e8a94e;--tom-atencao-fraco:#2a2314;
+--tom-erro:#ff9179;--tom-erro-fraco:#2c1e1c;
+--tom-neutro:#95a2b9;--tom-neutro-fraco:#1c2440;
+--tom-roxo:#ac92fb;--tom-roxo-fraco:#212645;
+--alerta-fundo:#281815;--alerta-borda:#582f26;--alerta-tinta:#e3ae9f;
 /* No escuro sombra não separa nada: quem separa é o degrau de luminância
-   entre #0b0f1c e #161d33. A sombra fica só para dizer o que está POR CIMA
+   entre o fundo e o papel. A sombra fica só para dizer o que está POR CIMA
    quando o cursor levanta um cartão. */
---sombra-1:0 1px 2px rgba(0,0,0,.4);
---sombra-2:0 10px 28px -8px rgba(0,0,0,.6);
---sombra-3:0 20px 48px -12px rgba(0,0,0,.75);
+--sombra-0:0 1px 1px rgba(0,0,0,.35);
+--sombra-1:0 1px 2px rgba(0,0,0,.42);
+--sombra-2:0 12px 30px -10px rgba(0,0,0,.62);
+--sombra-3:0 22px 52px -14px rgba(0,0,0,.78);
 /* Diz ao NAVEGADOR que a página é escura, para ele pintar de escuro o que
    desenha sozinho: barra de rolagem, cursor de texto, caixa de seleção. Sem
    isto a barra de rolagem branca era a coisa mais clara da tela. */
@@ -147,7 +197,7 @@ color-scheme:dark}
    Token nenhum alcança um `#fffae6` escrito dentro de uma regra. São estes,
    e ficam juntos para quem for mexer no tema achar num lugar só, em vez de
    caçar um fundo branco perdido no meio do arquivo. */
-[data-tema="escuro"] fieldset{background:#12182b}
+[data-tema="escuro"] fieldset{background:#0b1728}
 [data-tema="escuro"] input,[data-tema="escuro"] .pronto{
 background:var(--cova);color:var(--tinta)}
 [data-tema="escuro"] input:hover,[data-tema="escuro"] .opcao:hover{
@@ -161,7 +211,7 @@ border-color:var(--borda-forte)}
 [data-tema="escuro"] .filtro.parcial{background:var(--atencao-fraco);
 border-color:var(--atencao-borda);color:var(--atencao-tinta)}
 [data-tema="escuro"] .filtro.parcial>summary{color:var(--atencao-tinta)}
-[data-tema="escuro"] .filtro.parcial>summary:hover{background:#3a2f16}
+[data-tema="escuro"] .filtro.parcial>summary:hover{background:#352c15}
 [data-tema="escuro"] .alerta.email{background:var(--lavagem);
 border-color:var(--borda-forte);color:var(--tinta2)}
 [data-tema="escuro"] .selo-obs{background:var(--atencao-fraco);
@@ -169,7 +219,7 @@ border-color:var(--atencao-borda)}
 
 /* Texto escrito EM CIMA de um preenchimento: o #fff do claro dá 1.7:1 sobre
    o verde e 2.6:1 sobre o azul claro da marca. */
-[data-tema="escuro"] .selo{color:#08130f}
+[data-tema="escuro"] .selo{color:#06110d}
 /* `:not(.tema)` porque esta regra fala de texto sobre PREENCHIMENTO da
    marca, e o botão de tema não tem preenchimento nenhum — ele é um contorno
    sobre o papel. Sem o `:not`, o seletor com atributo (0,1,1) ganhava do
@@ -178,15 +228,15 @@ border-color:var(--atencao-borda)}
    invisível para quem olha. */
 [data-tema="escuro"] button:not(.tema){color:var(--sobre-marca)}
 [data-tema="escuro"] .selo-zap{background:var(--ok-fraco)}
-[data-tema="escuro"] .zap.aberta{background:#131a2e;border-color:#25503a}
+[data-tema="escuro"] .zap.aberta{background:#0b1728;border-color:#1e4a35}
 
 /* A tabela do resultado. O verde da linha vencedora vira um verde de FUNDO
    escuro: no claro ele é uma lavagem, e lavagem clara no escuro é um rasgo
    branco no meio da tabela. */
-[data-tema="escuro"] table.resultados th{background:#12182b}
-[data-tema="escuro"] tr.r.melhor td{background:#132a24}
-[data-tema="escuro"] tr.r.melhor:hover td{background:#17332b}
-[data-tema="escuro"] tr.r-extra td{background:#12182b}
+[data-tema="escuro"] table.resultados th{background:#0b1728}
+[data-tema="escuro"] tr.r.melhor td{background:#102a22}
+[data-tema="escuro"] tr.r.melhor:hover td{background:#14332a}
+[data-tema="escuro"] tr.r-extra td{background:#0b1728}
 [data-tema="escuro"] .estado-ok{background:var(--ok-fraco)}
 [data-tema="escuro"] .estado-recusa{background:var(--atencao-fraco)}
 [data-tema="escuro"] .estado-falha{background:var(--erro-fraco)}
@@ -200,8 +250,10 @@ border-color:var(--atencao-borda)}
    opções com "seguir o sistema": quem quer trocar já sabe para onde, e um
    terceiro estado é mais uma coisa para explicar num sistema usado por quem
    está com pressa. */
+/* 38px, e não 34: o alvo mínimo confortável de toque num sistema usado
+   também no celular. E sem sombra — ele é contorno, não peça elevada. */
 .tema{display:inline-flex;align-items:center;justify-content:center;
-width:34px;height:34px;padding:0;flex:none;border-radius:99px;
+width:38px;height:38px;padding:0;flex:none;border-radius:var(--raio-pill);
 background:var(--papel);color:var(--fraco);border:1px solid var(--borda);
 box-shadow:none;cursor:pointer;
 transition:color .16s var(--suave),border-color .16s var(--suave),
@@ -216,13 +268,64 @@ background:var(--lavagem);transform:none;box-shadow:none}
 [data-tema="escuro"] .tema .p-lua{display:none}
 
 *{box-sizing:border-box}
-body{margin:0;background:var(--fundo);color:var(--tinta);line-height:1.45;
-font-family:system-ui,-apple-system,"Segoe UI",sans-serif;
--webkit-font-smoothing:antialiased;
+/* ---- as duas famílias ----
+   Nenhuma fonte baixada: o sistema roda em rede interna e fonte que não
+   chegou é texto pulando na cara de quem já começou a ler. O que muda é que
+   agora são DUAS pilhas com trabalhos diferentes, e não uma só para tudo.
+
+   A de TÍTULO pede primeiro os cortes de display que o Windows e o macOS já
+   têm instalados ("Segoe UI Variable Display", "SF Pro Display"): eles têm
+   o desenho mais fechado e a haste mais firme que um título de 46px precisa.
+   Onde não existirem, cai na mesma system-ui do corpo — e aí quem separa
+   título de texto é o tamanho, o peso e o tracking, que é o grosso do
+   trabalho de qualquer jeito. */
+:root{
+--fonte:system-ui,-apple-system,"Segoe UI Variable Text","Segoe UI",
+  Roboto,"Helvetica Neue",sans-serif;
+--fonte-titulo:"Segoe UI Variable Display","SF Pro Display",system-ui,
+  -apple-system,"Segoe UI",Roboto,sans-serif;
+--fonte-num:ui-monospace,"Cascadia Mono",Consolas,"SF Mono",monospace}
+body{margin:0;background:var(--fundo);color:var(--tinta);line-height:1.55;
+font-family:var(--fonte);font-size:var(--t4);
+-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;
 /* O sistema é uma tela de números: peso, cubagem, preço. Dígito de largura
    fixa faz as colunas de dinheiro alinharem sem tabela e sem monoespaçada. */
 font-variant-numeric:tabular-nums}
-a{color:var(--marca)}
+/* Entrelinha 1.55 no corpo é leitura; num TÍTULO ela vira um buraco entre as
+   duas linhas. Cada degrau da escala tem a sua, e a dos grandes é apertada. */
+h1,h2,h3{font-family:var(--fonte-titulo);line-height:1.18;margin:0;
+font-weight:700}
+a{color:var(--marca);text-underline-offset:3px}
+a:hover{color:var(--marca-forte)}
+
+/* ---- a sobrancelha ----
+   O rótulo curto que vem ACIMA do título e diz de que parte do sistema a
+   tela é. Existe porque cada página começava com um <h1> solto e mais nada:
+   sem o degrau de cima, o título tem de carregar sozinho o contexto inteiro
+   e acaba comprido demais para o tamanho em que está escrito.
+
+   É onde o cobre trabalha. Um traço curto antes do texto, e não uma pílula:
+   pílula pesa igual a um selo de estado, e isto não afirma estado nenhum. */
+.olho{display:flex;align-items:center;gap:var(--e2);margin:0 0 var(--e2);
+font-size:var(--t-olho);letter-spacing:var(--tr-olho);text-transform:uppercase;
+font-weight:700;color:var(--cobre);font-family:var(--fonte)}
+.olho::before{content:"";width:18px;height:2px;border-radius:2px;
+background:currentColor;flex:none}
+
+/* ---- pular para o conteúdo ----
+   Quem navega por teclado batia nas quatro abas do topo em TODA página antes
+   de chegar na tabela que veio ver. Escondido fora da tela até receber foco,
+   e aí ele aparece por cima da barra — que gruda, e taparia o link se ele
+   só "voltasse para o fluxo". */
+.pular{position:fixed;left:var(--e4);top:-100px;z-index:50;
+background:var(--marca);color:#fff;padding:var(--e3) var(--e4);
+border-radius:var(--raio-p);font-size:var(--t3);font-weight:600;
+text-decoration:none;box-shadow:var(--sombra-3);
+transition:top .18s var(--suave)}
+.pular:focus{top:var(--e3);color:#fff}
+/* A âncora do <main>: sem isto o salto encosta o conteúdo na borda de cima e
+   a barra grudada cobre a primeira linha do que a pessoa acabou de pedir. */
+#conteudo{scroll-margin-top:84px}
 
 /* Movimento é enfeite até virar obstáculo. Quem pediu para o sistema parar de
    se mexer não pode receber um formulário que entra deslizando. Uma regra, no
@@ -233,17 +336,47 @@ a{color:var(--marca)}
 animation-iteration-count:1 !important;transition-duration:.01ms !important;
 scroll-behavior:auto !important}}
 
-/* ---- faixa do topo ---- */
-.topo{background:var(--papel);border-bottom:1px solid var(--borda);
-padding:12px 24px;display:flex;align-items:center;gap:16px;position:relative}
+/* ---- faixa do topo ----
+   Passou a GRUDAR. A página da cotação tem sete cartões e o histórico cresce
+   sem teto: sair de onde se está para trocar de aba exigia rolar de volta ao
+   começo. Grudada, a navegação existe o tempo todo e a tela deixa de ter um
+   "topo" ao qual se precisa voltar.
+
+   Fundo translúcido com `backdrop-filter`: por baixo dela passa conteúdo, e
+   um branco chapado apagaria a informação de que há mais coisa acima. Onde o
+   navegador não tiver o filtro, o `--papel` do fallback cobre — a barra fica
+   opaca, que é o pior caso aceitável. */
+.topo{background:color-mix(in srgb,var(--papel) 82%,transparent);
+backdrop-filter:saturate(1.6) blur(14px);
+-webkit-backdrop-filter:saturate(1.6) blur(14px);
+border-bottom:1px solid var(--linha);
+padding:var(--e3) var(--e5);display:flex;align-items:center;gap:var(--e4);
+position:sticky;top:0;z-index:20}
+@supports not (backdrop-filter:blur(1px)){.topo{background:var(--papel)}}
 /* O filete do gradiente da logo, atravessando a tela inteira. É a assinatura
    da marca no lugar mais barato possível: 3px que nenhuma outra tela de
    sistema interno tem, e que ninguém precisa ler para reconhecer. */
 .topo::before{content:"";position:absolute;left:0;right:0;top:0;height:3px;
 background:var(--marca-grad)}
-.topo img{height:38px}
-.topo .quem{margin-left:auto;font-size:13px;color:var(--fraco)}
-.wrap{max-width:1080px;margin:24px auto;padding:0 24px}
+.topo img{height:36px}
+.topo .quem{margin-left:auto;font-size:var(--t2);color:var(--fraco);
+display:flex;align-items:center;gap:var(--e3)}
+/* O nome de quem está logado, em pastilha. Solto, ele era texto cinza no
+   meio de mais texto cinza — e é a única coisa da barra que responde
+   "quem sou eu aqui". */
+.topo .quem>b{background:var(--lavagem);color:var(--marca-forte);
+border-radius:var(--raio-pill);padding:5px var(--e3);font-size:var(--t2);
+font-weight:700;white-space:nowrap}
+[data-tema="escuro"] .topo .quem>b{color:var(--marca-forte)}
+/* Mais larga (era 1080) e com respiro maior em cima. A tabela de resultados
+   tem seis colunas e vivia espremida; 1140 dá a coluna "o que inclui" de
+   volta sem que a linha de texto passe do confortável. */
+.wrap{width:100%;max-width:1140px;margin:var(--e6) auto var(--e5);
+padding:0 var(--e5)}
+@media(max-width:620px){
+.topo{padding:var(--e2) var(--e4);gap:var(--e2)}
+.wrap{margin-top:var(--e5);padding:0 var(--e4)}
+}
 
 /* Entrada em cascata. O formulário tem cinco blocos; todos aparecendo no
    mesmo quadro é um susto, escalonados o olho acompanha de cima para baixo. */
@@ -253,41 +386,79 @@ background:var(--marca-grad)}
    ganha em silencio. */
 @keyframes sobe-bloco{from{opacity:0;transform:translateY(10px)}
 to{opacity:1;transform:none}}
+/* O cartão. Mais ar por dentro (era 20px em volta de tudo), raio maior, e a
+   sombra rasa do primeiro degrau — a borda continua sendo quem desenha o
+   limite, a sombra só o descola do fundo. */
 .cartao{background:var(--papel);border:1px solid var(--borda);
-border-radius:var(--raio);padding:20px;margin-bottom:16px;
+border-radius:var(--raio);padding:var(--e5);margin-bottom:var(--e4);
 box-shadow:var(--sombra-1);animation:sobe-bloco .42s var(--suave) both}
-h1{font-size:24px;margin:0 0 4px;letter-spacing:-.5px;font-weight:700}
-.sub{color:var(--fraco);font-size:13px;margin:0 0 18px}
+@media(max-width:620px){.cartao{padding:var(--e4)}}
+/* Título maior e com o tracking da própria faixa da escala. Ele era 24px com
+   -.5px em toda tela, do login à ficha — um tamanho só para sete telas de
+   densidade diferente. */
+h1{font-size:var(--t7);margin:0 0 var(--e1);letter-spacing:var(--tr7)}
+h2{font-size:var(--t6);letter-spacing:var(--tr6)}
+.sub{color:var(--fraco);font-size:var(--t3);margin:0 0 var(--e5);
+max-width:72ch}
+/* ---- cabeçalho de página ----
+   Sobrancelha, título, apoio e ações numa peça só. Existe porque sete telas
+   montavam isso à mão, cada uma com a sua margem, e a diferença aparecia ao
+   trocar de aba: o título pulava alguns pixels para o lado e para baixo.
+
+   COMPACTO de propósito. O hero grande é da entrada e do início; tela de
+   trabalho não pode gastar a primeira dobra se apresentando — quem chega no
+   histórico veio ler uma linha da tabela. */
+.cabeca{display:flex;align-items:flex-end;gap:var(--e4);flex-wrap:wrap;
+margin:0 0 var(--e5);padding-bottom:var(--e4);
+border-bottom:1px solid var(--linha)}
+.cabeca>div:first-child{min-width:0;flex:1 1 320px}
+.cabeca h1{margin:0}
+.cabeca .sub{margin:var(--e2) 0 0}
+.cabeca .acoes{margin-left:auto;display:flex;align-items:center;
+gap:var(--e2);flex-wrap:wrap}
+@media(max-width:620px){
+.cabeca{gap:var(--e3)}
+.cabeca .acoes{margin-left:0;width:100%}
+}
 fieldset{border:1px solid var(--borda);border-radius:var(--raio-p);
-margin:0 0 14px;padding:14px 16px;background:#fcfdff}
-legend{font-size:10.5px;font-weight:700;color:var(--marca);padding:0 7px;
-text-transform:uppercase;letter-spacing:1px}
-.grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
-label{display:block;font-size:11px;color:var(--fraco);margin-bottom:4px;
-font-weight:500}
-input{width:100%;padding:10px 12px;border:1px solid var(--borda-forte);
-border-radius:var(--raio-p);font-size:14px;font-family:inherit;
+margin:0 0 var(--e4);padding:var(--e4) var(--e4) var(--e4);
+background:var(--cova)}
+legend{font-size:var(--t-olho);font-weight:700;color:var(--marca);
+padding:0 var(--e2);text-transform:uppercase;
+letter-spacing:var(--tr-olho)}
+.grid{display:grid;gap:var(--e3);
+grid-template-columns:repeat(auto-fit,minmax(158px,1fr))}
+label{display:block;font-size:var(--t1);color:var(--tinta2);
+margin-bottom:var(--e1);font-weight:600;letter-spacing:.2px}
+input{width:100%;padding:11px var(--e3);border:1px solid var(--borda-forte);
+border-radius:var(--raio-p);font-size:var(--t4);font-family:inherit;
 background:var(--papel);color:var(--tinta);
 transition:border-color .16s var(--suave),box-shadow .16s var(--suave)}
-input:hover{border-color:#b6c2d6}
+input:hover{border-color:var(--fraco)}
 /* O azul de realce da marca: o anel de foco é a peça que mais aparece
    num sistema onde se digita o dia inteiro, e era o contorno cinza do
-   navegador. */
+   navegador. O anel sai do TOKEN da marca, e não de um rgba escrito à mão —
+   era o mesmo `rgba(82,145,255,.35)` em quatro regras, e o azul dele já não
+   é o azul da marca desde que a paleta ficou mais funda. */
 input:focus{outline:0;border-color:var(--realce);
-box-shadow:0 0 0 3px rgba(82,145,255,.35)}
+box-shadow:0 0 0 3px var(--brilho-marca)}
 button{font:inherit;cursor:pointer;border:0;border-radius:var(--raio-p);
-background:var(--marca);color:#fff;padding:13px 26px;font-weight:600;
-font-size:15px;box-shadow:var(--sombra-2);
+background:var(--marca);color:#fff;padding:12px var(--e5);font-weight:600;
+font-size:var(--t4);letter-spacing:.1px;box-shadow:var(--sombra-1);
 transition:transform .16s var(--mola),box-shadow .16s var(--suave),
 background .16s var(--suave)}
 button:hover{background:var(--marca-forte);transform:translateY(-1px);
-box-shadow:var(--sombra-3)}
+box-shadow:var(--sombra-2)}
 /* Afunda no clique. Num formulário que dispara cinco navegadores e leva dois
    minutos, o retorno imediato do botão é o que diz "recebi" antes de a
    primeira transportadora responder. */
 button:active{transform:translateY(1px);box-shadow:var(--sombra-1)}
-button:focus-visible,a:focus-visible,summary:focus-visible{outline:2px solid
-var(--realce);outline-offset:2px}
+/* Anel de foco em DUAS camadas: um vazio da cor da superfície e o traço da
+   marca por fora. Um anel só encosta na borda do elemento e, sobre um botão
+   preenchido da mesma família de cor, some dentro dele. */
+button:focus-visible,a:focus-visible,summary:focus-visible,
+input:focus-visible,[tabindex]:focus-visible{outline:2px solid var(--realce);
+outline-offset:2px;box-shadow:0 0 0 2px var(--papel)}
 
 .falhou{color:var(--erro);font-size:13px;font-weight:600}
 /* "Enviada" NAO pode usar o vermelho de falha nem o verde de preco: nao deu
@@ -296,7 +467,8 @@ var(--realce);outline-offset:2px}
    grande, e precisa parar aqui em vez de saltar. */
 .enviada{color:var(--marca);font-size:20px;font-weight:700;margin:6px 0 2px}
 .selo{display:inline-block;font-size:10px;font-weight:700;color:#fff;
-background:var(--ok);border-radius:99px;padding:3px 9px;letter-spacing:.4px}
+background:var(--ok);border-radius:var(--raio-pill);padding:3px 9px;
+letter-spacing:.6px;text-transform:uppercase;vertical-align:middle}
 .zap{display:flex;align-items:center;gap:10px;border:1px solid var(--borda);
 border-radius:var(--raio-p);padding:11px 13px;text-decoration:none;
 color:inherit;margin-bottom:8px;background:var(--papel);
@@ -306,7 +478,7 @@ box-shadow .16s var(--suave)}
 box-shadow:var(--sombra-1)}
 /* Já aberta: fica apagada para o olho cair na próxima da lista sozinho, sem
    precisar de seta nem de "next". O visto verde diz que passou por ali. */
-.zap.aberta{background:#f7f9fb;border-color:#d6ecdc}
+.zap.aberta{background:var(--cova);border-color:var(--ok-fraco)}
 .zap.aberta:hover{transform:none}
 .zap.aberta b{color:var(--fraco);font-weight:600}
 .zap.aberta .marca{opacity:.5}
@@ -328,20 +500,28 @@ border-radius:var(--raio-p);padding:8px 13px;font-size:13px;font-weight:600}
 /* Especialidade da transportadora — cor diferente de tudo no cartão de
    propósito, para o olho parar aí antes de decidir para quem manda. */
 .selo-obs{display:inline-block;font-size:10px;font-weight:700;
-color:var(--atencao);background:#fff4e2;border:1px solid #ffd699;
-border-radius:99px;padding:2px 9px;letter-spacing:.2px;margin-left:4px}
+color:var(--atencao);background:var(--atencao-fraco);
+border:1px solid var(--atencao-borda);
+border-radius:var(--raio-pill);padding:2px 9px;letter-spacing:.2px;
+margin-left:4px}
 /* A Della Volpe fica sozinha no cartão "Semiautomática", e o botão maior é o
    que diz "comece por aqui" sem precisar de mais nenhuma frase. */
 .zap-dv{padding:16px 18px;margin-bottom:0;border-color:var(--zap)}
 .zap-dv .marca{width:60px;height:60px}
 .zap-dv b{font-size:16px}
 .zap-dv .ir{font-size:14px;padding:11px 19px}
-table{width:100%;border-collapse:collapse;font-size:13px}
-th{text-align:left;font-size:10.5px;color:var(--fraco);text-transform:uppercase;
-letter-spacing:.8px;padding:8px;border-bottom:1px solid var(--borda);
-font-weight:700}
-td{padding:9px 8px;border-bottom:1px solid #f0f3f8}
+table{width:100%;border-collapse:collapse;font-size:var(--t3)}
+th{text-align:left;font-size:var(--t-olho);color:var(--fraco);
+text-transform:uppercase;letter-spacing:var(--tr-olho);
+padding:var(--e2) var(--e3);border-bottom:1px solid var(--borda);
+font-weight:700;white-space:nowrap}
+td{padding:var(--e3);border-bottom:1px solid var(--linha)}
+/* A linha sob o cursor ganha um filete da marca à ESQUERDA, além do fundo.
+   Só o fundo lavado some numa tabela de dez linhas vistas de relance; o
+   filete diz qual linha responde ao clique — e no histórico a linha
+   inteira é clicável. `inset` e não borda: borda empurraria a coluna. */
 tr:hover td{background:var(--lavagem)}
+tr:hover td:first-child{box-shadow:inset 2px 0 0 var(--marca)}
 .listaerro{margin:0 0 16px;padding-left:20px;font-size:14px}
 .listaerro li{margin-bottom:6px}
 .cotando{display:flex;align-items:center;gap:10px;color:var(--fraco);
@@ -360,8 +540,13 @@ animation:gira .8s linear infinite}
 tr.r:has(.cotando) td{background:linear-gradient(100deg,var(--papel) 38%,
 var(--lavagem) 50%,var(--papel) 62%);background-size:200% 100%;
 animation:brilho 2.2s var(--suave) infinite}
-.aviso{background:#fffae6;border:1px solid #ffe380;border-radius:var(--raio-p);
-padding:11px 13px;font-size:13px;margin-bottom:14px}
+/* Aviso e alerta saem dos TOKENS do âmbar, e não de um #fffae6 cravado: era
+   por isso que o bloco "o que ficou em claro" lá em cima precisava existir —
+   nenhum token alcançava um hexadecimal escrito dentro da regra. */
+.aviso{background:var(--atencao-fraco);border:1px solid var(--atencao-borda);
+border-left:3px solid var(--atencao);border-radius:var(--raio-p);
+padding:var(--e3) var(--e4);font-size:var(--t3);margin-bottom:var(--e4);
+color:var(--atencao-tinta)}
 .print{width:100%;margin-top:10px;border:1px solid var(--borda);
 border-radius:var(--raio-p);cursor:zoom-in;transition:box-shadow .16s}
 .print:hover{box-shadow:var(--sombra-2)}
@@ -389,43 +574,115 @@ border-radius:var(--raio);box-shadow:var(--sombra-3)}
 @keyframes lupa-fundo{from{opacity:0}to{opacity:1}}
 .lupa[open]{animation:lupa-entra .18s var(--suave)}
 .lupa[open]::backdrop{animation:lupa-fundo .18s var(--suave)}
-.botao2{display:inline-block;background:var(--papel);color:var(--marca);
+.botao2{display:inline-flex;align-items:center;gap:var(--e2);
+background:var(--papel);color:var(--marca);
 border:1px solid var(--borda-forte);border-radius:var(--raio-p);
-padding:10px 17px;font-size:14px;font-weight:600;text-decoration:none;
-transition:border-color .16s var(--suave),background .16s var(--suave)}
-.botao2:hover{border-color:var(--marca);background:var(--lavagem)}
+padding:10px var(--e4);font-size:var(--t3);font-weight:600;
+text-decoration:none;box-shadow:var(--sombra-0);
+transition:border-color .16s var(--suave),background .16s var(--suave),
+transform .16s var(--suave),box-shadow .16s var(--suave)}
+.botao2:hover{border-color:var(--marca);background:var(--lavagem);
+transform:translateY(-1px);box-shadow:var(--sombra-1);color:var(--marca-forte)}
+.botao2:active{transform:translateY(0);box-shadow:none}
 .login{max-width:380px;margin:70px auto;text-align:center;
 animation:sobe-bloco .5s var(--suave) both}
 .login img{height:64px;margin-bottom:18px}
-.menu a{margin-right:14px;font-size:13px;text-decoration:none;
-position:relative;padding-bottom:2px}
-/* Sublinhado que cresce do centro. É a única decoração de navegação do
-   sistema, e cabe em duas linhas. */
-.menu a::after{content:"";position:absolute;left:50%;right:50%;bottom:0;
-height:2px;background:var(--marca-grad);border-radius:2px;
-transition:left .2s var(--suave),right .2s var(--suave)}
-.menu a:hover::after{left:0;right:0}
+/* ---- o menu do topo, agora em abas ----
+   Eram quatro links soltos com um sublinhado que crescia do centro no hover:
+   bonito, e sem dizer NUNCA em que aba a pessoa está. Como pastilha, o
+   estado de repouso já carrega a informação que o hover carregava — e o
+   alvo de clique passa dos 13px de altura da letra para a pastilha inteira.
+
+   Sem `.atual` no HTML: o casco não sabe qual rota está aberta, e inventar
+   um parâmetro para isso mudaria a assinatura de `pagina()` em sete telas.
+   O que a pastilha resolve é o alvo e o peso; a página já diz onde está pelo
+   próprio <h1>. */
+.menu{display:flex;align-items:center;gap:var(--e1);flex-wrap:wrap}
+.menu a{font-size:var(--t2);text-decoration:none;color:var(--tinta2);
+padding:7px var(--e3);border-radius:var(--raio-pill);font-weight:600;
+transition:background .16s var(--suave),color .16s var(--suave)}
+.menu a:hover{background:var(--lavagem);color:var(--marca-forte)}
+@media(max-width:820px){
+/* No celular a barra não cabe com quatro pastilhas e o nome: some o texto
+   e ficam os dois que a pessoa usa de dentro de uma cotação. */
+.menu a:nth-child(3){display:none}
+.topo .quem>b{max-width:9ch;overflow:hidden;text-overflow:ellipsis}
+}
 /* Aviso DENTRO do cartão, colado no preço que ele qualifica. Numa faixa no
    topo da página ele seria lido antes do número e esquecido depois. */
 /* Aba de Documentacao. Escopo proprio: o resto do sistema quase nao usa
    texto corrido, e soltar estilo de <h2>/<ul> no global mexeria nas telas
    de cotacao. */
-.doc h2{font-size:16px;margin:24px 0 6px;color:var(--marca);
-letter-spacing:-.2px}
+/* Título de seção com um filete da marca à esquerda, e não só cor: numa
+   página de texto corrido de 1500px a cor sozinha não marca onde uma seção
+   acaba e a outra começa — quem varre a página procura um degrau, não um
+   tom. O filete sai para fora do fluxo do texto, no respiro do cartão. */
+.doc h2{font-size:var(--t5);margin:var(--e6) 0 var(--e2);color:var(--marca);
+letter-spacing:var(--tr6);position:relative;padding-left:var(--e4);
+scroll-margin-top:84px}
+.doc h2::before{content:"";position:absolute;left:0;top:.18em;bottom:.18em;
+width:3px;border-radius:3px;background:var(--marca-grad)}
 .doc h2:first-child{margin-top:0}
-.doc p{margin:0 0 10px;font-size:14px}
-.doc ul{margin:0 0 12px;padding-left:20px;font-size:14px}
-.doc li{margin-bottom:6px}
-.doc table{margin-bottom:12px}
+.doc p{margin:0 0 var(--e3);font-size:var(--t4);max-width:76ch}
+.doc ul{margin:0 0 var(--e3);padding-left:var(--e5);font-size:var(--t4);
+max-width:76ch}
+.doc li{margin-bottom:var(--e2)}
+.doc table{margin-bottom:var(--e3)}
 .doc td{vertical-align:top}
 .doc .errado{color:var(--erro);font-weight:600}
 .doc .certo{color:var(--ok);font-weight:600}
-.doc .passo{font-size:14px;margin:0 0 10px;padding-left:20px}
-.alerta{background:#fffae6;border:1px solid #ffe380;border-radius:var(--raio-p);
-padding:9px 11px;font-size:12px;margin:6px 0 2px;line-height:1.35}
+.doc .passo{font-size:var(--t4);margin:0 0 var(--e3);padding-left:var(--e5)}
+
+/* ---- o fluxo assistido da Della Volpe ----
+   Eram nove parágrafos seguidos, com "Passo 1", "Passo 2" em negrito no meio
+   do texto — e quatro prints do mesmo tamanho entre eles. Quem está no passo
+   3 com a aba da transportadora aberta ao lado precisa achar o passo 3 de
+   relance, e "negrito no meio do parágrafo" não é um degrau que o olho ache
+   de relance.
+
+   `<ol>` de verdade: o número sai da LISTA, e não de texto escrito à mão —
+   inserir um passo no meio renumerava tudo à mão, e já renumerou errado.
+   O contador é desenhado no `::before` porque o marcador nativo não aceita
+   nem o disco nem a cor. */
+.passos-lista{list-style:none;counter-reset:passo;margin:0;padding:0}
+.passos-lista>li{counter-increment:passo;position:relative;
+padding:0 0 var(--e5) var(--e7);margin:0}
+/* O fio que liga um passo ao seguinte. É o que transforma quatro blocos
+   soltos numa sequência — e some no último, que não leva a lugar nenhum. */
+.passos-lista>li::after{content:"";position:absolute;left:15px;
+top:38px;bottom:var(--e3);width:2px;background:var(--linha)}
+.passos-lista>li:last-child{padding-bottom:0}
+.passos-lista>li:last-child::after{display:none}
+.passos-lista>li::before{content:counter(passo);position:absolute;left:0;
+top:0;width:32px;height:32px;border-radius:50%;
+display:grid;place-items:center;background:var(--marca);color:#fff;
+font-size:var(--t3);font-weight:700;font-variant-numeric:tabular-nums;
+box-shadow:0 0 0 4px var(--papel)}
+.passos-lista>li>h2{font-size:var(--t5);letter-spacing:var(--tr6);
+margin:var(--e1) 0 var(--e2);display:flex;align-items:center;gap:var(--e3);
+flex-wrap:wrap}
+.passos-lista>li>p{margin:0 0 var(--e3);font-size:var(--t4);max-width:72ch}
+.passos-lista .sub{margin:var(--e2) 0 0}
+.passos-lista .print{max-width:560px}
+/* "só na primeira vez" não é parte do título: é uma ressalva sobre ele, e
+   sem separação visual o passo 1 parecia opcional por inteiro. */
+.so-uma-vez{font-size:var(--t1);font-weight:700;text-transform:uppercase;
+letter-spacing:var(--tr-olho);color:var(--cobre);
+background:var(--cobre-lavagem);border-radius:var(--raio-pill);
+padding:3px var(--e2);font-family:var(--fonte)}
+@media(max-width:620px){
+.passos-lista>li{padding-left:var(--e6)}
+.passos-lista>li::before{width:26px;height:26px;font-size:var(--t2)}
+.passos-lista>li::after{left:12px;top:32px}
+}
+.alerta{background:var(--atencao-fraco);border:1px solid var(--atencao-borda);
+border-left:3px solid var(--atencao);border-radius:var(--raio-p);
+padding:var(--e2) var(--e3);font-size:var(--t2);margin:var(--e2) 0 var(--e1);
+line-height:1.45;color:var(--atencao-tinta)}
 /* Amarelo e para "cuidado, esse numero engana". Aqui nao ha erro nenhum: e
    instrucao de onde olhar. Azul separa os dois recados. */
-.alerta.email{background:var(--lavagem);border-color:#c7d6f5}
+.alerta.email{background:var(--lavagem);border-color:var(--borda-forte);
+border-left-color:var(--marca);color:var(--tinta2)}
 /* ---- filtro de transportadoras ---- */
 .filtro{border:1px solid var(--borda);border-radius:var(--raio-p);
 margin:0 0 14px;background:var(--papel)}
@@ -439,9 +696,10 @@ list-style:none;border-radius:var(--raio-p);transition:background .16s}
 .filtro[open]>summary .abrir::after{content:" ▴"}
 /* o aviso fica LOGO acima do botao Cotar: e a rede que impede o filtro de
    virar erro silencioso semanas depois */
-.filtro.parcial{border-color:#ffe380;background:#fffae6}
-.filtro.parcial>summary{color:#7a5b00;font-weight:600}
-.filtro.parcial>summary:hover{background:#fff5d6}
+.filtro.parcial{border-color:var(--atencao-borda);
+background:var(--atencao-fraco);box-shadow:inset 3px 0 0 var(--atencao)}
+.filtro.parcial>summary{color:var(--atencao);font-weight:700}
+.filtro.parcial>summary:hover{background:#faeed5}
 .grupo{border-top:1px solid var(--borda);padding:12px 14px}
 .grupo-cab{display:flex;align-items:baseline;gap:8px;margin-bottom:9px;
 font-size:10.5px;text-transform:uppercase;letter-spacing:.8px;
@@ -461,8 +719,8 @@ transition:background .14s var(--suave),opacity .14s var(--suave)}
    exatamente o que faltava na grade de logos do primeiro desenho */
 .tr:has(input:not(:checked)){opacity:.4}
 .tr:has(input:not(:checked)) .tr-nome{text-decoration:line-through}
-.selo-zap{font-size:10px;background:#e7f8ef;color:var(--ok);
-border-radius:10px;padding:1px 7px;font-weight:700;flex:none}
+.selo-zap{font-size:10px;background:var(--ok-fraco);color:var(--ok);
+border-radius:var(--raio-pill);padding:2px 8px;font-weight:700;flex:none}
 .alerta .caixa{font-size:14px;word-break:break-all}
 /* Tipo de frete: as duas opcoes lado a lado, sempre visiveis. Escondida
    atras de um clique, a diferenca entre cobrar de quem envia e de quem
@@ -473,7 +731,7 @@ var(--borda-forte);border-radius:var(--raio-p);padding:11px 13px;
 cursor:pointer;background:var(--papel);
 transition:border-color .16s var(--suave),background .16s var(--suave),
 box-shadow .16s var(--suave)}
-.opcao:hover{border-color:#b6c2d6;background:#fcfdff}
+.opcao:hover{border-color:var(--fraco);background:var(--cova)}
 .opcao:has(input:checked){border-color:var(--marca);background:var(--lavagem);
 box-shadow:0 0 0 1px var(--marca)}
 .opcao input{width:auto;margin:0;accent-color:var(--marca)}
@@ -489,12 +747,12 @@ box-shadow:0 0 0 1px var(--marca)}
    alguém mudar a cor da barra pela metade. */
 
 /* Tela da cotação pronta para o vendedor copiar (rota /email/...). */
-.pronto{width:100%;font-family:ui-monospace,Consolas,monospace;font-size:13px;
-        line-height:1.5;padding:13px;border:1px solid var(--borda-forte);
-        border-radius:var(--raio-p);background:#fafbfe;color:#222;
+.pronto{width:100%;font-family:var(--fonte-num);font-size:var(--t3);
+        line-height:1.6;padding:var(--e4);border:1px solid var(--borda-forte);
+        border-radius:var(--raio-p);background:var(--cova);color:var(--tinta);
         resize:vertical}
 .pronto:focus{outline:0;border-color:var(--realce);
-box-shadow:0 0 0 3px rgba(82,145,255,.35)}
+box-shadow:0 0 0 3px var(--brilho-marca)}
 /* O campo do endereço existe só para o botão Copiar ter o que selecionar:
    selecionar exige um campo de verdade, e display:none não é selecionável. */
 .escondido{position:absolute;left:-9999px;width:1px;height:1px;opacity:0}
@@ -516,22 +774,83 @@ box-shadow:0 0 0 3px rgba(82,145,255,.35)}
 
    Contraste medido com a fórmula do WCAG antes de escrever, não a olho. Os
    nove pares da tela passam; os apertados estão travados em teste. */
-.entrada{min-height:100vh;display:grid;grid-template-columns:1.04fr .96fr;
-background:#061021;color:#e6e9ef}
+.entrada{min-height:100vh;display:grid;grid-template-columns:1.14fr .86fr;
+background:var(--noite);color:#e9edf5}
+/* A noite da entrada é um token PRÓPRIO, e não o `--fundo` do tema escuro:
+   esta tela é escura por desenho nos dois temas, e amarrá-la ao tema faria
+   a porta da frente clarear no dia em que alguém mexesse no botão. */
+:root{--noite:#04101f;--noite2:#0c1c33;--noite3:#132845}
 .entrada-marca{position:relative;overflow:hidden;
-padding:clamp(32px,4vw,56px);display:flex;flex-direction:column;
-justify-content:center;gap:clamp(26px,3.4vw,40px);
-background:linear-gradient(158deg,#112039 0%,#0a162b 55%,#050d1d 100%)}
+padding:clamp(34px,4.6vw,68px);display:flex;flex-direction:column;
+justify-content:center;gap:clamp(28px,3.6vw,44px);
+background:linear-gradient(152deg,var(--noite3) 0%,var(--noite2) 48%,
+var(--noite) 100%)}
 /* Dois clarões fora de eixo. O índigo chapado é uma parede; os halos dão
    profundidade sem desenhar nada e sem depender de arquivo de imagem — o
-   sistema roda em rede interna, e imagem que não chegou é buraco na tela. */
+   sistema roda em rede interna, e imagem que não chegou é buraco na tela.
+   O de baixo virou COBRE: o azul sobre azul não separava os dois, e o
+   quente é o que diz que há mais de uma coisa acontecendo no fundo. */
 .entrada-marca::before,.entrada-marca::after{content:"";position:absolute;
 border-radius:50%;pointer-events:none}
-.entrada-marca::before{inset:-26% auto auto -16%;width:52%;aspect-ratio:1;
-background:radial-gradient(circle,rgba(112,200,224,.22),transparent 66%)}
-.entrada-marca::after{inset:auto -18% -32% auto;width:56%;aspect-ratio:1;
-background:radial-gradient(circle,rgba(64,88,160,.38),transparent 68%)}
+.entrada-marca::before{inset:-30% auto auto -20%;width:58%;aspect-ratio:1;
+background:radial-gradient(circle,rgba(47,124,255,.26),transparent 66%)}
+.entrada-marca::after{inset:auto -22% -36% auto;width:60%;aspect-ratio:1;
+background:radial-gradient(circle,rgba(154,82,22,.30),transparent 68%)}
 .entrada-marca>*{position:relative;z-index:1}
+
+/* ============================ o corredor ==================================
+   O desenho animado do hero. Não é enfeite de fundo: é o que o sistema FAZ,
+   visto de cima — faixas paralelas de transporte, um nó em cada ponta, e um
+   sinal que percorre a faixa do meio da origem até o destino.
+
+   SVG e CSS, sem biblioteca. O sistema não tem framework nenhum e não vai
+   ganhar um por causa de uma animação de tela de login; o desenho inteiro
+   são doze elementos e quatro @keyframes.
+
+   FINITO de propósito. As faixas se traçam uma vez; os nós acendem uma vez;
+   o sinal atravessa TRÊS vezes e para no destino. Uma animação que não
+   termina numa tela onde a pessoa está digitando a senha é uma coisa se
+   mexendo no canto do olho para sempre — e `prefers-reduced-motion`, lá no
+   topo, já corta tudo para quem pediu.
+
+   `aria-hidden` no elemento: não há informação aqui que o texto ao lado já
+   não diga. Um leitor de tela lendo "corredor, gráfico" ganharia ruído. */
+.corredor{position:absolute;inset:0;width:100%;height:100%;
+object-fit:cover;pointer-events:none;z-index:0;opacity:.85}
+/* Toda faixa leva `pathLength="100"` no SVG: o comprimento do traçado passa
+   a ser 100 unidades para o CSS, qualquer que seja a geometria real. Sem
+   isso o tracejado tem de ser calculado por caminho — e basta mexer numa
+   curva para a animação parar de cobrir a linha inteira, em silêncio. */
+.corredor .faixa-c{fill:none;stroke:rgba(107,162,255,.22);stroke-width:1.5;
+stroke-linecap:round;stroke-dasharray:100;stroke-dashoffset:100;
+animation:corredor-traca 1.6s var(--calmo) both}
+.corredor .faixa-c.viva{stroke:rgba(107,162,255,.55);stroke-width:2.5}
+.corredor .faixa-c.quente{stroke:rgba(196,118,46,.34)}
+@keyframes corredor-traca{to{stroke-dashoffset:0}}
+/* O sinal: um risco curto que corre POR CIMA da faixa viva, usando a mesma
+   geometria. Dois dashes — o aceso e o vazio do resto do caminho — e o que
+   se anima é o deslocamento. É o truque mais barato que existe para mover
+   ao longo de uma curva sem `offset-path` e sem script.
+
+   O vão de 200 contra o risco de 6 não é exagero: com vão curto o padrão se
+   repete dentro do próprio caminho e nasce um SEGUNDO risco atrás do
+   primeiro, bem quando o primeiro está saindo. */
+.corredor .sinal{fill:none;stroke:#8ab5ff;stroke-width:3.5;
+stroke-linecap:round;filter:drop-shadow(0 0 7px rgba(138,181,255,.9));
+stroke-dasharray:6 200;stroke-dashoffset:6;
+animation:corredor-sinal 3.4s var(--suave) 1.1s 3 both}
+@keyframes corredor-sinal{to{stroke-dashoffset:-100}}
+.corredor .no{fill:var(--noite);stroke:#6ba2ff;stroke-width:2.5;
+transform-box:fill-box;transform-origin:center;
+animation:corredor-no .5s var(--mola) both}
+.corredor .no.fim{stroke:#c4762e}
+.corredor .halo{fill:none;stroke:rgba(107,162,255,.30);stroke-width:1.2;
+transform-box:fill-box;transform-origin:center;
+animation:corredor-halo .8s var(--calmo) both}
+@keyframes corredor-no{from{opacity:0;transform:scale(0)}
+to{opacity:1;transform:none}}
+@keyframes corredor-halo{from{opacity:0;transform:scale(.4)}
+to{opacity:1;transform:none}}
 /* Em cores naturais, sobre uma pastilha branca. `brightness(0) invert(1)`
    pintaria o desenho inteiro de branco — e o "V" da marca é um RECORTE, já
    branco: some contra a elipse e a logo vira um borrão. Passa despercebido na
@@ -541,23 +860,33 @@ background:radial-gradient(circle,rgba(64,88,160,.38),transparent 68%)}
 .marca-entrada{align-self:flex-start}
 /* A entrada é escura por desenho: sempre a peça prateada, sem o par
    claro que o resto do sistema tem. */
-.entrada-marca .logo{height:68px;aspect-ratio:469/120;
+.entrada-marca .logo{height:clamp(52px,5.4vw,76px);aspect-ratio:469/120;
 background-image:url({MARCA_COMPACTA})}
 /* A assinatura da marca, em TEXTO: dentro do lockup ela tem 6px de 120 e só
    se lê a partir de ~180px de altura da peça inteira. Aqui ela acompanha a
    largura da logo e fica legível em qualquer tela. */
-.entrada-marca .assinatura{margin:9px 0 0;font-size:11px;letter-spacing:2.4px;
-text-transform:uppercase;color:rgba(255,255,255,.62);font-weight:600;
-white-space:nowrap}
+.entrada-marca .assinatura{margin:var(--e3) 0 0;font-size:11px;
+letter-spacing:2.6px;text-transform:uppercase;color:rgba(255,255,255,.58);
+font-weight:600;white-space:nowrap;
+display:flex;align-items:center;gap:var(--e3)}
+/* O filete que sai da assinatura para a borda do painel. Amarra o bloco da
+   marca ao corredor desenhado atrás dele — sem ele a logo fica boiando num
+   canto, sem relação nenhuma com o resto da composição. */
+.entrada-marca .assinatura::after{content:"";height:1px;flex:1;
+background:linear-gradient(90deg,rgba(255,255,255,.28),transparent)}
 /* Numa tela estreita a entrelinha larga faria a frase estourar a coluna:
    ela aperta em vez de quebrar no meio de "SÓ LUGAR". */
 @media(max-width:520px){
 .entrada-marca .assinatura{letter-spacing:1.4px;font-size:10px}
 }
-.entrada-marca h1{font-size:clamp(28px,3.5vw,42px);line-height:1.1;
-margin:0 0 14px;letter-spacing:-.9px;color:#fff;text-wrap:balance}
-.entrada-marca p{margin:0;max-width:40ch;font-size:15px;line-height:1.55;
-color:rgba(255,255,255,.72);text-wrap:pretty}
+/* A sobrancelha do hero, em cobre sobre a noite. É o único lugar onde o
+   cobre aparece em cima do azul escuro, e é por isso que ele existe. */
+.entrada-marca .olho{color:var(--cobre-claro);margin-bottom:var(--e3)}
+.entrada-marca h1{font-size:var(--t8);line-height:1.06;
+margin:0 0 var(--e4);letter-spacing:var(--tr8);color:#fff;
+font-family:var(--fonte-titulo);text-wrap:balance}
+.entrada-marca p{margin:0;max-width:44ch;font-size:var(--t5);line-height:1.6;
+color:rgba(255,255,255,.74);text-wrap:pretty;font-weight:400}
 
 /* ---- a rota ----
    Não é enfeite: é o que o sistema FAZ, desenhado. Uma carga entra, as
@@ -568,60 +897,90 @@ color:rgba(255,255,255,.72);text-wrap:pretty}
 
    Faixa própria embaixo do texto, e não um traçado atrás dele: fundo que
    cruza o parágrafo briga com a leitura em alguma largura de tela, sempre. */
-.entrada-marca .rota{display:flex;align-items:flex-start;gap:0;margin:0;padding-top:4px}
-.entrada-marca .rota .parada{display:flex;flex-direction:column;gap:9px;flex:0 0 auto;
-max-width:14ch}
-.entrada-marca .rota .ponto{width:13px;height:13px;border-radius:50%;background:#5291ff;
-box-shadow:0 0 0 5px rgba(82,145,255,.18)}
+/* A rota ganhou uma FAIXA por baixo: um retângulo de vidro que a separa do
+   parágrafo acima. Solta sobre o gradiente, ela lia como três palavras
+   perdidas no rodapé do painel; dentro da faixa, lê como o rodapé de dados
+   de um produto — que é o que ela é. */
+.entrada-marca .rota{display:flex;align-items:flex-start;gap:0;margin:0;
+padding:var(--e4) var(--e5);border-radius:var(--raio-g);
+background:rgba(255,255,255,.045);
+border:1px solid rgba(255,255,255,.09)}
+.entrada-marca .rota .parada{display:flex;flex-direction:column;
+gap:var(--e3);flex:0 0 auto;max-width:15ch}
+.entrada-marca .rota .ponto{width:12px;height:12px;border-radius:50%;
+background:#6ba2ff;box-shadow:0 0 0 5px rgba(107,162,255,.16)}
+/* A última parada é o preço que ainda não chegou: contorno em COBRE, e não
+   um contorno branco qualquer. O quente é o que diz "é aqui que termina" —
+   e é o mesmo cobre do halo de baixo e da sobrancelha lá em cima. */
 .entrada-marca .rota .parada:last-child .ponto{background:transparent;
-border:2px solid rgba(255,255,255,.5);box-shadow:none}
-.entrada-marca .rota .parada span{font-size:11.5px;line-height:1.35;
-text-transform:uppercase;letter-spacing:.9px;color:rgba(255,255,255,.72)}
+border:2px solid var(--cobre-claro);box-shadow:0 0 0 5px rgba(196,118,46,.14)}
+.entrada-marca .rota .parada span{font-size:11px;line-height:1.4;
+text-transform:uppercase;letter-spacing:1.1px;color:rgba(255,255,255,.7);
+font-weight:600}
 /* O trecho percorrido é sólido no azul; o que falta é pontilhado. A carga
    ainda não chegou — a linha inteira sólida diria que sim. */
-.entrada-marca .rota .trecho{flex:1 1 auto;height:2px;margin:6px 12px 0;
-background:linear-gradient(90deg,#5291ff,rgba(82,145,255,.45))}
+.entrada-marca .rota .trecho{flex:1 1 auto;height:2px;margin:5px var(--e3) 0;
+border-radius:2px;
+background:linear-gradient(90deg,#6ba2ff,rgba(107,162,255,.35))}
 .entrada-marca .rota .trecho.falta{background:none;
-border-top:2px dashed rgba(255,255,255,.26);height:0;margin-top:5px}
+border-top:2px dashed rgba(196,118,46,.45);height:0;margin-top:4px}
 
 /* ---- o lado do formulário ---- */
 .entrada-form{display:flex;align-items:center;justify-content:center;
-padding:40px 28px;background:#061021}
-.entrada-form .cartao{width:100%;max-width:392px;margin:0;padding:30px;
-background:#111e34;border:1px solid rgba(255,255,255,.09);
-box-shadow:0 26px 60px -24px rgba(0,0,0,.8)}
-.entrada-form h1{color:#fff;font-size:23px}
-.entrada-form .sub{color:#99a4b8}
-.entrada-form label{color:#99a4b8}
-.entrada-form input{background:#0a1426;border-color:rgba(255,255,255,.16);
-color:#e6e9ef}
-.entrada-form input::placeholder{color:#8594ad}
-.entrada-form input:hover{border-color:rgba(255,255,255,.28)}
+padding:var(--e7) var(--e5);background:var(--noite);position:relative}
+/* Um filete de vidro separando as duas colunas. Sem ele os dois azuis
+   escuros encostam e a tela vira um retângulo só com texto de um lado. */
+.entrada-form::before{content:"";position:absolute;left:0;top:14%;bottom:14%;
+width:1px;background:linear-gradient(180deg,transparent,
+rgba(255,255,255,.14),transparent)}
+.entrada-form .cartao{width:100%;max-width:404px;margin:0;
+padding:clamp(26px,3vw,36px);
+background:var(--noite2);border:1px solid rgba(255,255,255,.10);
+border-radius:var(--raio-g);
+box-shadow:0 30px 70px -26px rgba(0,0,0,.85)}
+.entrada-form h1{color:#fff;font-size:var(--t7);letter-spacing:var(--tr7)}
+.entrada-form .sub{color:#95a2b9;margin-bottom:var(--e5)}
+.entrada-form label{color:#95a2b9}
+.entrada-form input{background:#081426;border-color:rgba(255,255,255,.18);
+color:#e9edf5;padding:13px var(--e3)}
+.entrada-form input::placeholder{color:#7d8ca6}
+.entrada-form input:hover{border-color:rgba(255,255,255,.3)}
 .entrada-form input:focus{border-color:var(--realce-claro);
-box-shadow:0 0 0 3px rgba(112,200,224,.24)}
-/* Ciano com tinta escura: o botão vira a coisa mais clara da tela, que é
-   exatamente onde o olho deve parar. Índigo sobre fundo índigo sumiria. */
-.entrada-form button{background:var(--realce-claro);color:#0d1120;
-box-shadow:0 12px 30px -12px rgba(82,145,255,.65)}
-.entrada-form button:hover{background:#85b1ff;
-box-shadow:0 16px 38px -12px rgba(82,145,255,.75)}
-.entrada-form .rodape{margin:14px 0 0;font-size:12px;color:#8594ad;
-text-wrap:pretty}
-.entrada-form .alerta{background:rgba(192,52,29,.16);
-border-color:rgba(255,138,116,.42);color:#ffb4a4}
+box-shadow:0 0 0 3px rgba(47,124,255,.32)}
+/* Azul claro com tinta escura: o botão vira a coisa mais clara da tela, que
+   é exatamente onde o olho deve parar. O azul cheio da marca sobre um fundo
+   da mesma família sumiria dentro dele. */
+.entrada-form button{background:var(--realce-claro);color:#04101f;
+padding:14px var(--e5);font-size:var(--t4);
+box-shadow:0 14px 34px -14px rgba(47,124,255,.7)}
+.entrada-form button:hover{background:#6ba2ff;
+box-shadow:0 18px 42px -14px rgba(47,124,255,.8)}
+.entrada-form button:focus-visible{box-shadow:0 0 0 2px var(--noite2)}
+.entrada-form .rodape{margin:var(--e4) 0 0;font-size:var(--t2);color:#7d8ca6;
+text-wrap:pretty;max-width:44ch}
+.entrada-form .alerta{background:rgba(181,45,24,.18);
+border-color:rgba(255,145,121,.42);border-left-color:#ff9179;color:#ffb4a4}
 .entrada-form a{color:var(--realce-claro)}
 
 /* Numa tela estreita a coluna da marca vira uma faixa curta em cima: some o
    texto longo e a rota, fica a logo e a chamada. Empilhar tudo empurraria o
    campo de digitar para fora da tela — a única coisa que a pessoa veio
    fazer. */
-@media(max-width:860px){
+@media(max-width:900px){
 .entrada{grid-template-columns:1fr;min-height:0}
-.entrada-marca{padding:26px 22px;gap:16px}
-.entrada-marca h1{font-size:22px;margin:0}
+.entrada-marca{padding:var(--e5) var(--e4) var(--e6);gap:var(--e4);
+justify-content:flex-start}
+.entrada-marca h1{font-size:clamp(22px,6vw,28px);margin:0}
+/* No estreito some o parágrafo longo e a rota; o CORREDOR fica. Ele é
+   desenho de fundo e não custa altura nenhuma — empilhar a rota é que
+   empurraria o campo de digitar para fora da tela, que é a única coisa
+   que a pessoa veio fazer aqui. */
 .entrada-marca p,.entrada-marca .rota{display:none}
-.entrada-marca .logo{height:48px}
-.entrada-form{padding:30px 20px}}
+.entrada-marca .olho{margin-bottom:var(--e2)}
+.corredor{opacity:.5}
+.entrada-form{padding:var(--e5) var(--e4) var(--e6)}
+.entrada-form::before{display:none}
+.entrada-form .cartao{max-width:none}}
 /* ================================ a marca ==================================
    Tres pecas, tres trabalhos — ver web/layout.py, MARCA_*.
 
@@ -653,18 +1012,29 @@ background-image:url({MARCA_COMPACTA_CLARA})}
    rodape boiando no meio da tela, com 300px de vazio embaixo dele. */
 body{min-height:100vh;display:flex;flex-direction:column}
 body>.wrap{flex:1 0 auto}
-.rodape-site{border-top:1px solid var(--borda);margin-top:40px;
-background:var(--papel);flex:none}
-.rodape-site .dentro{max-width:1080px;margin:0 auto;padding:22px 20px 26px;
-display:flex;align-items:center;gap:18px;flex-wrap:wrap}
-.rodape-site .marca-lockup{height:28px}
-.rodape-site .diz{font-size:11.5px;color:var(--fraco);line-height:1.5}
-.rodape-site .diz b{display:block;font-size:12px;color:var(--tinta2);
-letter-spacing:.6px;text-transform:uppercase;font-weight:700}
-.rodape-site .links{margin-left:auto;display:flex;gap:16px;font-size:12.5px;
-flex-wrap:wrap}
+.rodape-site{border-top:1px solid var(--borda);margin-top:var(--e8);
+background:var(--papel);flex:none;position:relative}
+/* O mesmo filete da marca do topo, aqui virado para baixo e mais fino: a
+   página abre e fecha com a mesma assinatura. */
+.rodape-site::before{content:"";position:absolute;left:0;right:0;top:0;
+height:2px;background:var(--marca-grad);opacity:.5}
+.rodape-site .dentro{max-width:1140px;margin:0 auto;
+padding:var(--e5) var(--e5) var(--e6);
+display:flex;align-items:center;gap:var(--e5);flex-wrap:wrap}
+.rodape-site .marca-lockup{height:26px}
+.rodape-site .diz{font-size:var(--t2);color:var(--fraco);line-height:1.6;
+max-width:46ch}
+.rodape-site .diz b{display:block;font-size:var(--t-olho);color:var(--cobre);
+letter-spacing:var(--tr-olho);text-transform:uppercase;font-weight:700;
+margin-bottom:2px}
+.rodape-site .links{margin-left:auto;display:flex;gap:var(--e1);
+font-size:var(--t2);flex-wrap:wrap}
+.rodape-site .links a{text-decoration:none;color:var(--tinta2);
+padding:6px var(--e3);border-radius:var(--raio-pill);font-weight:600}
+.rodape-site .links a:hover{background:var(--lavagem);color:var(--marca-forte)}
 @media(max-width:620px){
 .rodape-site .links{margin-left:0;width:100%}
+.rodape-site .dentro{gap:var(--e4)}
 }
 
 /* ---- a faixa da pagina inicial ----
@@ -679,28 +1049,74 @@ flex-wrap:wrap}
    Agora é um cartão da casa, com a lavagem da marca subindo da esquerda —
    presença de marca sem brigar com o formulário logo abaixo, que é onde a
    pessoa veio trabalhar. */
-.faixa-marca{display:flex;align-items:center;gap:20px;flex-wrap:wrap;
+/* Ela deixou de ser uma tira com logo e frase e passou a ser um HERO
+   COMPACTO: marca e texto de um lado, o trilho animado do outro. Compacto é
+   a palavra — a home é onde se trabalha o dia inteiro, e o hero de tela
+   cheia da entrada aqui seria a primeira dobra gasta com apresentação, todo
+   dia, para quem já sabe onde está.
+
+   Grade de duas colunas, e não flex-wrap: o trilho precisa de largura
+   previsível para o desenho não esticar, e `flex-wrap` dava a ele o que
+   sobrasse — que no meio do caminho era 90px. */
+.faixa-marca{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,300px);
+align-items:center;gap:var(--e5);
 background:linear-gradient(110deg,var(--lavagem) 0%,var(--papel) 62%);
-border:1px solid var(--borda);border-radius:var(--raio-g);padding:20px 24px;
-margin:0 0 20px;position:relative;overflow:hidden}
+border:1px solid var(--borda);border-radius:var(--raio-g);
+padding:var(--e5) var(--e5) var(--e5) var(--e6);
+margin:0 0 var(--e6);position:relative;overflow:hidden;
+box-shadow:var(--sombra-1)}
 /* No escuro ela continua sendo o painel fundo: ali o cartão claro é que
    seria o corpo estranho. */
 [data-tema="escuro"] .faixa-marca{background:#0a1020;
-border-color:transparent}
+border-color:var(--borda)}
 /* O filete da marca no alto, o mesmo da faixa do vendedor e da lateral do
    painel: e o que amarra as tres telas como um sistema so. */
 .faixa-marca::before{content:"";position:absolute;left:0;right:0;top:0;
 height:3px;background:var(--marca-grad)}
-.faixa-marca .marca-lockup{height:52px}
-.faixa-marca .diz{color:var(--tinta2);font-size:12.5px;line-height:1.55;
-max-width:42ch}
-.faixa-marca .diz b{display:block;color:var(--tinta);font-size:15px;
-margin-bottom:2px}
+/* Um halo de cobre no canto, o mesmo da entrada, em dose muito menor: é o
+   que impede a faixa clara de virar um retângulo chapado. */
+.faixa-marca::after{content:"";position:absolute;right:-8%;top:-60%;
+width:38%;aspect-ratio:1;border-radius:50%;pointer-events:none;
+background:radial-gradient(circle,var(--cobre-lavagem),transparent 70%)}
+.faixa-marca>*{position:relative;z-index:1}
+.faixa-marca .marca-lockup{height:44px;margin-bottom:var(--e3)}
+.faixa-marca .diz{color:var(--tinta2);font-size:var(--t3);line-height:1.6;
+max-width:52ch;display:block}
+.faixa-marca .diz b{display:block;color:var(--tinta);font-size:var(--t6);
+letter-spacing:var(--tr6);margin-bottom:var(--e1);
+font-family:var(--fonte-titulo);line-height:1.2}
 [data-tema="escuro"] .faixa-marca .diz{color:#c8d2e8}
 [data-tema="escuro"] .faixa-marca .diz b{color:#fff}
+
+/* ---- o trilho ----
+   A versão pequena do corredor da entrada: três nós numa linha, e o sinal
+   que vai do primeiro ao último. Mesmo desenho, mesma ideia, tamanho de
+   faixa — é o que faz a home e o login parecerem a mesma marca.
+
+   Corre DUAS vezes e para. Na entrada são três porque ali a pessoa fica
+   parada olhando; aqui ela veio preencher um formulário. */
+.trilho{width:100%;height:auto;display:block;overflow:visible}
+.trilho .via{fill:none;stroke:var(--borda-forte);stroke-width:2;
+stroke-linecap:round}
+.trilho .via.falta{stroke-dasharray:4 6;stroke:var(--cobre-claro);opacity:.6}
+.trilho .pulso{fill:none;stroke:var(--marca-viva);stroke-width:3.5;
+stroke-linecap:round;stroke-dasharray:10 200;stroke-dashoffset:10;
+animation:trilho-corre 2.8s var(--suave) .5s 2 both}
+@keyframes trilho-corre{to{stroke-dashoffset:-100}}
+.trilho .no-t{fill:var(--papel);stroke:var(--marca);stroke-width:2.5}
+.trilho .no-t.fim{stroke:var(--cobre-claro)}
+.trilho .rot{font-size:8.5px;font-family:var(--fonte);font-weight:700;
+fill:var(--fraco);letter-spacing:.7px;text-transform:uppercase}
+@media(max-width:860px){
+/* Abaixo disto o trilho fica com menos de 200px e os três rótulos se
+   encavalam. Some o desenho e fica o recado — o contrário nunca. */
+.faixa-marca{grid-template-columns:1fr;gap:var(--e4)}
+.faixa-marca .trilho{display:none}
+}
 @media(max-width:620px){
-.faixa-marca{padding:16px}
-.faixa-marca .marca-lockup{height:40px}
+.faixa-marca{padding:var(--e4);margin-bottom:var(--e5)}
+.faixa-marca .marca-lockup{height:34px}
+.faixa-marca .diz b{font-size:var(--t5)}
 }
 
 /* ============================== acabamento =================================
@@ -709,7 +1125,23 @@ margin-bottom:2px}
 /* Título e texto curto não podem quebrar deixando uma palavra órfã na última
    linha. `balance` nos títulos, `pretty` no texto de apoio. */
 h1,h2,.cartao-cab h2,.res .nome{text-wrap:balance}
-.sub,.nota,.res .nota,.entrada-marca p{text-wrap:pretty}
+.sub,.nota,.res .nota,.entrada-marca p,.faixa-marca .diz{text-wrap:pretty}
+
+/* ---- a rede contra o vazamento horizontal ----
+   Duas telas já estouraram de lado: a tabela de resultados (medida em
+   10/09/2026, 1323px dentro de 990) e a grade do painel no celular. O
+   remédio de cada vez foi local, e o defeito voltou por outro caminho.
+   Aqui a regra é do SISTEMA: nada corre para fora da largura da janela, e o
+   que for largo demais rola dentro do próprio container. */
+   `clip`, e nao `hidden`: `overflow-x:hidden` transforma o elemento em
+   container de rolagem, e um container de rolagem no <body> quebra o
+   `position:sticky` da barra do topo — a barra para de grudar sem nenhum
+   erro no console. `clip` corta sem criar container. */
+body{max-width:100%;overflow-x:clip}
+img,svg,table{max-width:100%}
+/* Palavra sem espaço — CNPJ, endereço de e-mail, mensagem de erro de site
+   alheio — é o que estoura a coluna quando a tela aperta. */
+.diz,.sub,.nota,td,.alerta,.r-nota{overflow-wrap:anywhere}
 
 /* Logo de transportadora vem de vinte sites diferentes, e várias têm fundo
    branco: sem contorno, a borda da imagem se dissolve no cartão branco e o
@@ -759,15 +1191,22 @@ table.resultados .r-prazo{width:9%}
 table.resultados .r-nota{width:27%}
 table.resultados .r-estado{width:14%}
 table.resultados .r-print{width:14%}
-table.resultados th{font-size:10.5px;letter-spacing:1px;
+/* O cabeçalho GRUDA no topo da rolagem. A tabela tem seis colunas e o
+   resultado pode ter dezoito linhas: rolando, "Preço" e "Prazo" saem da
+   tela e sobram seis colunas de número sem nome em cima. O `top` é a altura
+   da barra do site, que também gruda — sem o desconto, o cabeçalho da
+   tabela sumiria por baixo dela. */
+table.resultados th{font-size:var(--t-olho);letter-spacing:var(--tr-olho);
 text-transform:uppercase;color:var(--fraco);font-weight:700;text-align:left;
-padding:0 14px;height:34px;background:#f8fafd;
-border-bottom:1px solid var(--borda);white-space:nowrap}
+padding:0 14px;height:38px;background:var(--cova);
+border-bottom:1px solid var(--borda);white-space:nowrap;
+position:sticky;top:0;z-index:1}
 table.resultados th.r-preco,table.resultados th.r-prazo,
 table.resultados th.r-print{text-align:right}
-table.resultados td{padding:0 14px;height:56px;
-border-bottom:1px solid var(--borda);vertical-align:middle}
+table.resultados td{padding:0 14px;height:60px;
+border-bottom:1px solid var(--linha);vertical-align:middle}
 tr.r:hover td{background:var(--lavagem)}
+tr.r:hover td:first-child{box-shadow:inset 2px 0 0 var(--marca)}
 .r-nome{font-weight:500}
 .r-preco{text-align:right;white-space:nowrap}
 .r-prazo{text-align:right;color:var(--tinta2);white-space:nowrap}
@@ -779,12 +1218,14 @@ text-wrap:pretty}
 
 /* A vencedora. Fundo mais filete à esquerda, e não só borda: numa tabela a
    borda de uma linha se confunde com a divisória da linha de cima. */
-tr.r.melhor td{background:#f2f8f5}
-tr.r.melhor:hover td{background:#eaf4ef}
+tr.r.melhor td{background:var(--ok-fraco)}
+tr.r.melhor:hover td{background:#daeee5}
 tr.r.melhor .r-nome{font-weight:700;box-shadow:inset 3px 0 0 var(--ok)}
-tr.r.melhor .preco{font-size:19px}
+tr.r.melhor:hover .r-nome{box-shadow:inset 3px 0 0 var(--ok)}
+tr.r.melhor .preco{font-size:21px;letter-spacing:-.6px}
 
-.resultados .preco{font-size:16px;font-weight:700;color:var(--ok)}
+.resultados .preco{font-size:17px;font-weight:700;color:var(--ok);
+letter-spacing:-.3px}
 /* Preço que não é da carga toda não pode usar o verde de "bom preço": o olho
    compara os números grandes antes de ler qualquer aviso, e era exatamente
    assim que R$ 33,29 por volume parecia mais barato que R$ 69,91 pela carga. */
@@ -794,15 +1235,28 @@ tr.r.melhor .preco{font-size:19px}
 
 /* Pílula de estado. Cor semântica, separada da cor da marca: verde é "veio
    preço", âmbar é "a transportadora disse não", vermelho é "não sabemos". */
+/* A pílula ganhou um PONTO da própria cor à esquerda. Cor sozinha não é
+   informação acessível (WCAG 1.4.1): quem não distingue verde de âmbar
+   lia cinco pílulas iguais com texto diferente. O ponto não resolve isso
+   sozinho — quem resolve é o texto, que sempre esteve lá — mas dá a
+   segunda pista que a tabela não tinha, e de graça. */
 .estado-ok,.estado-aguardando,.estado-recusa,.estado-falha,.estado-cotando{
-display:inline-flex;align-items:center;height:22px;padding:0 9px;
-border-radius:99px;font-size:10.5px;font-weight:700;letter-spacing:.4px;
-white-space:nowrap}
-.estado-ok{background:#e6f4ef;color:var(--ok)}
-.estado-aguardando{background:var(--lavagem);color:var(--marca)}
-.estado-recusa{background:#fff4e2;color:var(--atencao)}
-.estado-falha{background:#fdece9;color:var(--erro)}
-.estado-cotando{background:var(--fundo);color:var(--fraco)}
+display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 10px;
+border-radius:var(--raio-pill);font-size:var(--t-olho);font-weight:700;
+letter-spacing:.5px;white-space:nowrap;border:1px solid transparent}
+.estado-ok::before,.estado-aguardando::before,.estado-recusa::before,
+.estado-falha::before,.estado-cotando::before{content:"";width:6px;
+height:6px;border-radius:50%;background:currentColor;flex:none}
+.estado-ok{background:var(--ok-fraco);color:var(--ok);
+border-color:color-mix(in srgb,var(--ok) 22%,transparent)}
+.estado-aguardando{background:var(--lavagem);color:var(--marca);
+border-color:color-mix(in srgb,var(--marca) 20%,transparent)}
+.estado-recusa{background:var(--atencao-fraco);color:var(--atencao);
+border-color:var(--atencao-borda)}
+.estado-falha{background:var(--erro-fraco);color:var(--erro);
+border-color:color-mix(in srgb,var(--erro) 22%,transparent)}
+.estado-cotando{background:var(--fundo);color:var(--fraco);
+border-color:var(--borda)}
 
 /* A MINIATURA do print, em toda transportadora que tenha — não só na mais
    barata. O print é a prova de que aquele preço veio do site, e prova que só
@@ -821,6 +1275,16 @@ transition:transform .16s var(--suave),box-shadow .16s var(--suave)}
    e ela abre a tela para conferir um preço que já cotou. */
 .hora{color:var(--fraco);font-variant-numeric:tabular-nums;white-space:nowrap;
 width:1%}
+/* Coluna de número: o cabeçalho vai para a direita, junto da vírgula que ele
+   nomeia. Classe própria porque `.melhor` pinta de verde, e um cabeçalho
+   verde diria que o TÍTULO da coluna é um preço bom. */
+th.col-num{text-align:right}
+.clicavel{cursor:pointer}
+/* O número da cotação é o alvo de TECLADO da linha. Fica com a cara do texto
+   que era antes — quem usa mouse clica na linha inteira e não precisa saber
+   que há um link ali; quem anda de Tab precisa de um alvo, e é este. */
+.num-cot{color:var(--tinta2);text-decoration:none;font-weight:600}
+.clicavel:hover .num-cot{color:var(--marca)}
 /* O preço é o número que a linha existe para mostrar: alinhado à direita,
    todas as vírgulas na mesma coluna. */
 .melhor{text-align:right;font-weight:700;color:var(--ok);white-space:nowrap;
@@ -834,8 +1298,9 @@ text-align:right;padding:0}
 
 /* A linha de detalhe: só existe quando há o que avisar, e atravessa a tabela
    inteira. Aviso solto numa célula estreita vira duas palavras por linha. */
-tr.r-extra td{height:auto;padding:0 14px 12px;background:#fbfcfe;
+tr.r-extra td{height:auto;padding:0 14px var(--e3);background:var(--cova);
 border-bottom:1px solid var(--borda)}
+tr.r-extra:hover td:first-child{box-shadow:none}
 tr.r-extra .alerta,tr.r-extra .nota{margin:0 0 6px}
 tr.r-extra>td>*:last-child{margin-bottom:0}
 
@@ -929,6 +1394,67 @@ LUPA = """<dialog class="lupa" aria-label="Comprovante ampliado">
 </script>"""
 
 
+# --------------------------------------------------------------- corredor
+#
+# O desenho animado do hero das telas de entrada: as faixas por onde a carga
+# corre, vistas de cima, com um nó em cada ponta e um sinal que atravessa.
+#
+# SVG escrito à mão, e não arquivo: são doze elementos, e um arquivo teria de
+# ser servido, versionado e baixado — mais três coisas que podem faltar numa
+# rede interna para desenhar o que cabe em vinte linhas aqui. A animação é
+# CSS (ver o bloco "o corredor"), então o mesmo desenho já respeita o
+# `prefers-reduced-motion` global sem nenhuma regra própria.
+#
+# `pathLength="100"` em toda faixa: o CSS passa a medir o traçado em
+# centésimos, qualquer que seja a curva. Sem isso, mexer numa curva quebra o
+# tracejado da animação sem quebrar nada visível no desenho parado.
+#
+# `aria-hidden` e `focusable="false"`: não há informação aqui que a chamada
+# ao lado já não diga, e o `focusable` é o que impede o SVG de virar uma
+# parada extra do Tab no Internet Explorer/Edge legado.
+CORREDOR = """<svg class="corredor" viewBox="0 0 640 480"
+ preserveAspectRatio="xMidYMid slice" aria-hidden="true" focusable="false">
+<path class="faixa-c" pathLength="100"
+      d="M-20,322 C150,322 220,252 340,216 S520,150 660,92"
+      style="animation-delay:.15s"/>
+<path class="faixa-c quente" pathLength="100"
+      d="M-20,456 C190,456 244,354 360,320 S540,266 660,212"
+      style="animation-delay:.45s"/>
+<path class="faixa-c viva" pathLength="100"
+      d="M-20,396 C170,396 224,302 334,270 S520,202 660,140"/>
+<!-- O sinal repete o `d` da faixa viva em vez de um <use href>: o clone de
+     um <use> carrega consigo a CLASSE do original, e o CSS do documento
+     alcança o conteúdo clonado — a regra `.faixa-c.viva` venceria a herança
+     do `.sinal` e o risco sairia com o traço da faixa, parado. -->
+<path class="sinal" pathLength="100"
+      d="M-20,396 C170,396 224,302 334,270 S520,202 660,140"/>
+<circle class="halo" cx="334" cy="270" r="17" style="animation-delay:.9s"/>
+<circle class="halo" cx="604" cy="152" r="21" style="animation-delay:1.3s"/>
+<circle class="no" cx="72" cy="396" r="7" style="animation-delay:.7s"/>
+<circle class="no" cx="334" cy="270" r="6" style="animation-delay:1s"/>
+<circle class="no fim" cx="604" cy="152" r="8" style="animation-delay:1.35s"/>
+</svg>"""
+
+
+# O trilho da faixa do início: o mesmo desenho do corredor, em tamanho de
+# tira e com os três nomes escritos. Três paradas fixas porque são as três
+# que a home descreve na frase ao lado — a contagem de transportadoras, que
+# muda, mora no texto, onde ela é lida e não contada de cabeça.
+TRILHO = """<svg class="trilho" viewBox="0 0 300 92" role="img"
+ aria-label="O caminho de uma cotação: a carga entra, as transportadoras
+ respondem, sai o melhor preço.">
+<path class="via" pathLength="100" d="M22,40 H150"/>
+<path class="via falta" pathLength="100" d="M150,40 H278"/>
+<path class="pulso" pathLength="100" d="M22,40 H278"/>
+<circle class="no-t" cx="22" cy="40" r="6"/>
+<circle class="no-t" cx="150" cy="40" r="6"/>
+<circle class="no-t fim" cx="278" cy="40" r="6"/>
+<text class="rot" x="22" y="66" text-anchor="start">a carga</text>
+<text class="rot" x="150" y="66" text-anchor="middle">cotação</text>
+<text class="rot" x="278" y="66" text-anchor="end">o preço</text>
+</svg>"""
+
+
 # ------------------------------------------------------------------- tema
 
 def cabeca_do_tema(padrao: str) -> str:
@@ -1010,7 +1536,8 @@ def print_embutido(caminho: str | None) -> str:
 
 
 def entrada(titulo: str, cartao: str, *, chamada: str, apoio: str,
-            paradas: tuple[str, ...] = (), rodape: str = "") -> str:
+            paradas: tuple[str, ...] = (), rodape: str = "",
+            olho: str = "Cotafrete") -> str:
     """O casco das telas de entrada: a do vendedor e a do painel.
 
     Casco próprio, e não `pagina()`, por dois motivos. A faixa do topo existe
@@ -1032,8 +1559,15 @@ def entrada(titulo: str, cartao: str, *, chamada: str, apoio: str,
     pontilhado): é o preço que ainda não chegou. Linha inteira sólida diria
     que a cotação já acabou.
 
+    `olho` é a sobrancelha acima da chamada: o rótulo curto que diz de que
+    parte do sistema a tela é. Tem padrão porque as duas entradas que existem
+    hoje ("Cotafrete" no vendedor, "Painel" no adm) não justificam obrigar
+    quem chama a decidir — e um argumento obrigatório a mais é um lugar a
+    mais para as duas telas divergirem sem motivo.
+
     `cartao` entra CRU: é HTML montado por quem chama, com o formulário. Tudo
-    que vem de fora — chamada, apoio, provas, rodapé — passa por `e()`.
+    que vem de fora — chamada, apoio, provas, rodapé, sobrancelha — passa
+    por `e()`.
     """
     pontos = []
     for n, parada in enumerate(paradas):
@@ -1050,12 +1584,14 @@ def entrada(titulo: str, cartao: str, *, chamada: str, apoio: str,
 <title>{e(titulo)} — Cotafrete</title><style>{CSS}</style></head><body>
 <div class="entrada">
   <aside class="entrada-marca">
+    {CORREDOR}
     <div class="marca-entrada">
       <span class="logo marca-peca" role="img"
           aria-label="Ventura Comércio"></span>
       <p class="assinatura">{ASSINATURA}</p>
     </div>
     <div>
+      <p class="olho">{e(olho)}</p>
       <h1>{e(chamada)}</h1>
       <p>{e(apoio)}</p>
     </div>
@@ -1089,9 +1625,9 @@ def rodape_do_site(usuario: str | None = None) -> str:
     devolve a pessoa para onde ela já estava."""
     links = ""
     if usuario:
-        links = ('<span class="links">'
+        links = ('<nav class="links" aria-label="Links do rodapé">'
                  '<a href="/documentacao">Como usar</a>'
-                 '<a href="/historico">Histórico</a></span>')
+                 '<a href="/historico">Histórico</a></nav>')
     return f"""<footer class="rodape-site"><div class="dentro">
   <span class="marca-placa"><span class="marca-peca marca-lockup"
         role="img" aria-label="Ventura Comércio"></span></span>
@@ -1102,17 +1638,27 @@ def rodape_do_site(usuario: str | None = None) -> str:
 
 
 def pagina(titulo: str, corpo: str, usuario: str | None = None) -> str:
+    """O casco das telas de trabalho.
+
+    `<nav>` de verdade em volta do menu, e `<main>` em volta do corpo: eram
+    duas <div>, e num leitor de tela a diferença é entre poder pular direto
+    para o conteúdo e ter de ouvir as quatro abas em toda página. O
+    `aria-label` nomeia a navegação porque a página tem duas — esta e a do
+    rodapé —, e "navegação" repetida duas vezes não distingue nenhuma.
+    """
     quem = ""
     if usuario:
-        quem = ('<span class="quem"><span class="menu">'
+        quem = ('<span class="quem"><nav class="menu" '
+                'aria-label="Navegação principal">'
                 '<a href="/">Nova cotação</a><a href="/historico">Histórico</a>'
                 '<a href="/documentacao">Documentação</a>'
-                f'<a href="/sair">Sair</a></span> <b>{e(usuario)}</b></span>')
+                f'<a href="/sair">Sair</a></nav> <b>{e(usuario)}</b></span>')
     return f"""<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{e(titulo)} — Cotafrete</title>{cabeca_do_tema("claro")}
 <style>{CSS}</style></head><body>
+<a class="pular" href="#conteudo">Pular para o conteúdo</a>
 <div class="topo"><a class="marca-placa" href="/" aria-label="Ventura Comércio — início"><span class="marca-peca marca-lockup" role="img"></span></a>
 {quem}{BOTAO_TEMA}</div>
-<div class="wrap">{corpo}</div>
+<main class="wrap" id="conteudo">{corpo}</main>
 {rodape_do_site(usuario)}{LUPA}{SCRIPT_TEMA}</body></html>"""

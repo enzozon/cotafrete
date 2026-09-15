@@ -23,8 +23,8 @@ from datetime import date
 from math import hypot, pi
 
 from core.painel import categoria
-from web.layout import (BOTAO_TEMA, CSS as CSS_BASE, LUPA, MARCA_SIMBOLO,
-                        SCRIPT_TEMA, cabeca_do_tema, e)
+from web.layout import (ASSINATURA, BOTAO_TEMA, CSS as CSS_BASE, LUPA,
+                        MARCA_SIMBOLO, SCRIPT_TEMA, cabeca_do_tema, e)
 
 # `categoria` é a ÚNICA coisa que este arquivo importa de fora do desenho, e
 # é função pura. Vem de lá em vez de ser reescrita aqui porque é ela quem diz
@@ -128,78 +128,164 @@ html{scroll-behavior:smooth}
    fundo da página ao lado da tabela, como se a navegação tivesse acabado no
    meio. Como `.painel` é flex, a <nav> sem altura já estica sozinha até o
    fim do conteúdo — é o `height:100vh` que impedia. */
-.lateral{flex:0 0 236px;width:236px;
-background:linear-gradient(175deg,#182c4e 0%,#0a1529 100%);color:#b9c3d4}
+.lateral{flex:0 0 252px;width:252px;
+background:linear-gradient(172deg,#132845 0%,#0a1729 46%,#04101f 100%);
+color:#b9c3d4;position:relative}
+/* O filete da marca na borda de dentro, correndo a coluna inteira. É a mesma
+   peça de 3px do topo do vendedor e da faixa do início — o que amarra as
+   três telas como um sistema só, e não como três produtos parecidos. */
+.lateral::after{content:"";position:absolute;right:0;top:0;bottom:0;width:3px;
+background:var(--marca-grad);opacity:.5}
 .lateral-fixa{position:sticky;top:0;height:100vh;
-display:flex;flex-direction:column;padding:20px 0 16px}
-.lateral .marca{display:flex;align-items:center;gap:10px;padding:0 20px 20px;
-border-bottom:1px solid rgba(255,255,255,.07);margin-bottom:14px}
-.lateral .marca img{height:34px;width:auto}
-.lateral .marca b{color:#fff;font-size:15px;letter-spacing:2.4px;
-text-transform:uppercase;font-weight:700}
-.lateral .secao{padding:14px 20px 6px;font-size:10px;letter-spacing:1.4px;
-text-transform:uppercase;color:#95a3bb;font-weight:700}
-.lateral a{display:flex;align-items:center;gap:11px;padding:9px 20px;
-color:#b9c3d4;text-decoration:none;font-size:13.5px;
-border-left:3px solid transparent;
-transition:background .16s,color .16s,border-color .16s}
-.lateral a:hover{background:rgba(255,255,255,.05);color:#fff}
-.lateral a.atual{background:rgba(82,145,255,.14);color:#fff;
-border-left-color:#5291ff;font-weight:600}
-.lateral a svg{width:17px;height:17px;flex:none;opacity:.75}
-.lateral a.atual svg{opacity:1}
-.lateral .rodape{margin-top:auto;padding:12px 20px 0;font-size:11px;
-color:#95a3bb;border-top:1px solid rgba(255,255,255,.07)}
+display:flex;flex-direction:column;padding:var(--e5) 0 var(--e4)}
+.lateral .marca{display:flex;align-items:center;gap:var(--e3);
+padding:0 var(--e5) var(--e5);
+border-bottom:1px solid rgba(255,255,255,.08);margin-bottom:var(--e2)}
+.lateral .marca img{height:32px;width:auto}
+.lateral .marca b{color:#fff;font-size:14px;letter-spacing:2.8px;
+text-transform:uppercase;font-weight:700;line-height:1.2}
+/* O rótulo de seção ganhou o filete curto da sobrancelha do resto do
+   sistema, em cobre. Sem ele, cinza escuro dentro de painel escuro era quase
+   invisível — e é ele que diz onde um grupo acaba e o outro começa. */
+.lateral .secao{display:flex;align-items:center;gap:var(--e2);
+padding:var(--e4) var(--e5) var(--e2);font-size:10px;letter-spacing:1.6px;
+text-transform:uppercase;color:#8fa0bb;font-weight:700}
+.lateral .secao::before{content:"";width:12px;height:2px;border-radius:2px;
+background:var(--cobre-claro);flex:none;opacity:.85}
+.lateral a{display:flex;align-items:center;gap:var(--e3);
+padding:10px var(--e5);color:#b9c3d4;text-decoration:none;font-size:13.5px;
+border-left:3px solid transparent;position:relative;
+transition:background .16s var(--suave),color .16s var(--suave),
+border-color .16s var(--suave),padding-left .16s var(--suave)}
+/* Desliza 3px para dentro no hover. Num menu escuro de itens baixos, a
+   mudança de fundo sozinha não diz qual linha está sob o cursor quando as
+   duas cores são quase a mesma. */
+.lateral a:hover{background:rgba(255,255,255,.06);color:#fff;
+padding-left:27px}
+.lateral a.atual{background:linear-gradient(90deg,rgba(107,162,255,.20),
+rgba(107,162,255,.04));color:#fff;border-left-color:#6ba2ff;font-weight:600}
+.lateral a:focus-visible{outline:2px solid #8ab5ff;outline-offset:-2px;
+box-shadow:none}
+.lateral a svg{width:17px;height:17px;flex:none;opacity:.7}
+.lateral a.atual svg{opacity:1;color:#8ab5ff}
+.lateral .rodape{margin-top:auto;padding:var(--e3) var(--e5) 0;font-size:11px;
+color:#8fa0bb;border-top:1px solid rgba(255,255,255,.08);line-height:1.6}
+.lateral .rodape b{display:block;color:var(--cobre-claro);
+font-size:var(--t-olho);letter-spacing:var(--tr-olho);text-transform:uppercase;
+margin-bottom:2px}
+/* Numa tela estreita a coluna vira uma BARRA horizontal no topo, e não some:
+   sem ela não há como sair do painel nem trocar de seção no celular. A
+   marca fica; os rótulos de seção saem, porque agrupam uma lista vertical
+   que deixou de existir. */
+@media(max-width:900px){
+.painel{flex-direction:column}
+.lateral{flex:none;width:100%}
+.lateral::after{top:auto;bottom:0;left:0;right:0;width:auto;height:3px}
+.lateral-fixa{position:static;height:auto;padding:var(--e4) 0 0;
+flex-direction:row;align-items:center;flex-wrap:wrap;gap:var(--e1)}
+.lateral .marca{border:0;margin:0;padding:0 var(--e4) var(--e3);width:100%}
+.lateral .secao,.lateral .rodape{display:none}
+.lateral a{padding:8px var(--e4) var(--e3);border-left:0;
+border-bottom:3px solid transparent}
+.lateral a:hover{padding-left:var(--e4)}
+.lateral a.atual{border-left:0;border-bottom-color:#6ba2ff;
+background:rgba(107,162,255,.12)}
+}
 
 /* ---- área de conteúdo ---- */
-.conteudo{flex:1;min-width:0;padding:24px 28px 64px}
-.cabecalho{display:flex;align-items:center;gap:14px;flex-wrap:wrap;
-margin-bottom:18px}
-.cabecalho h1{font-size:23px;letter-spacing:-.4px;margin:0}
-.cabecalho .sub{margin:2px 0 0;display:flex;align-items:center;gap:6px;
-flex-wrap:wrap}
-.cabecalho .direita{margin-left:auto;display:flex;align-items:center;gap:10px}
-.aovivo{display:inline-flex;align-items:center;gap:7px;font-size:11.5px;
-color:var(--fraco);background:var(--papel);border:1px solid var(--borda);
-border-radius:99px;padding:5px 12px}
-.aovivo i{width:7px;height:7px;border-radius:50%;background:var(--ok);
+.conteudo{flex:1;min-width:0;padding:var(--e5) var(--e6) var(--e8)}
+@media(max-width:900px){.conteudo{padding:var(--e4) var(--e4) var(--e7)}}
+/* O cabeçalho do painel GRUDA. É a única tela do sistema com 1500px de
+   rolagem, e o seletor de período vive nele: trocar de "7 dias" para "30"
+   estando na tabela do histórico exigia rolar até o topo e depois voltar. */
+.cabecalho{display:flex;align-items:flex-end;gap:var(--e4);flex-wrap:wrap;
+margin:0 0 var(--e5);padding:var(--e3) 0;
+border-bottom:1px solid var(--linha);
+position:sticky;top:0;z-index:15;
+background:color-mix(in srgb,var(--fundo) 88%,transparent);
+backdrop-filter:saturate(1.5) blur(12px);
+-webkit-backdrop-filter:saturate(1.5) blur(12px)}
+@supports not (backdrop-filter:blur(1px)){
+.cabecalho{background:var(--fundo)}}
+@media(max-width:900px){.cabecalho{position:static}}
+.cabecalho h1{font-size:var(--t7);letter-spacing:var(--tr7);margin:0;
+font-family:var(--fonte-titulo)}
+.cabecalho .sub{margin:var(--e1) 0 0;display:flex;align-items:center;
+gap:var(--e2);flex-wrap:wrap;font-size:var(--t2)}
+.cabecalho .direita{margin-left:auto;display:flex;align-items:center;
+gap:var(--e3)}
+/* O "ao vivo" ficou com a pastilha VERDE, e não cinza com um ponto verde:
+   ele afirma um estado do sistema, e um estado afirmado em cinza lê como
+   rótulo decorativo. */
+.aovivo{display:inline-flex;align-items:center;gap:7px;font-size:11px;
+color:var(--ok);background:var(--ok-fraco);
+border:1px solid color-mix(in srgb,var(--ok) 22%,transparent);
+border-radius:var(--raio-pill);padding:6px 13px;font-weight:700;
+letter-spacing:.6px;text-transform:uppercase;white-space:nowrap}
+.aovivo i{width:7px;height:7px;border-radius:50%;background:currentColor;
 animation:pisca 2.2s ease-in-out infinite}
 @keyframes pisca{50%{opacity:.2;transform:scale(.7)}}
 
 /* ---- seletor de período, agora em pastilhas ---- */
-.periodos{margin-left:auto;display:flex;gap:4px;background:var(--papel);
-border:1px solid var(--borda);border-radius:99px;padding:4px}
-.periodo{padding:6px 15px;border-radius:99px;font-size:12.5px;color:var(--fraco);
-text-decoration:none;transition:background .15s,color .15s;white-space:nowrap}
-.periodo:hover{background:var(--fundo)}
-.periodo.atual{background:var(--marca);color:var(--sobre-marca);font-weight:600;
-text-decoration:none}
+.periodos{margin-left:auto;display:flex;gap:2px;background:var(--papel);
+border:1px solid var(--borda);border-radius:var(--raio-pill);padding:3px;
+box-shadow:var(--sombra-0)}
+.periodo{padding:7px var(--e4);border-radius:var(--raio-pill);
+font-size:var(--t2);color:var(--fraco);font-weight:600;
+text-decoration:none;white-space:nowrap;
+transition:background .15s var(--suave),color .15s var(--suave)}
+.periodo:hover{background:var(--lavagem);color:var(--marca-forte)}
+.periodo.atual{background:var(--marca);color:var(--sobre-marca);font-weight:700;
+text-decoration:none;box-shadow:var(--sombra-1)}
+.periodo.atual:hover{background:var(--marca-forte);color:var(--sobre-marca)}
+@media(max-width:620px){
+/* No celular o grupo inteiro passa para baixo do título e ocupa a linha:
+   espremido ao lado dele, "30 dias" saía com duas letras por linha. */
+.periodos{margin-left:0;width:100%;justify-content:space-between}
+.periodo{padding:7px var(--e3);flex:1;text-align:center}
+}
 
 /* ---- grade de cartões ---- */
-.grade{display:grid;gap:16px;grid-template-columns:repeat(12,1fr);
-margin-bottom:16px}
+.grade{display:grid;gap:var(--e4);grid-template-columns:repeat(12,1fr);
+margin-bottom:var(--e4)}
 .c4{grid-column:span 4}.c5{grid-column:span 5}.c7{grid-column:span 7}
 .c8{grid-column:span 8}.c12{grid-column:span 12}
-@media(max-width:1180px){.c4,.c5,.c7,.c8{grid-column:span 12}}
+/* Um degrau intermediário. Era um salto só: acima de 1180 tudo em 12
+   colunas, abaixo tudo empilhado em largura cheia — e num notebook de
+   1280 o cartão de rosca ficava com 1100px de largura para 94px de
+   desenho. Entre 900 e 1180 a grade vira meio a meio. */
+@media(max-width:1180px){.c4,.c5{grid-column:span 6}
+.c7,.c8{grid-column:span 12}}
+@media(max-width:900px){.c4,.c5,.c7,.c8{grid-column:span 12}}
 /* Dois cartões baixos empilhados numa coluna da grade. Sem isto eles caem em
    linhas diferentes: a grade é de 12 colunas com colocação automática, e o
    segundo c4 volta para a coluna 1 da linha seguinte em vez de ficar embaixo
    do primeiro — deixando meia tela em branco ao lado de um cartão alto. */
 .coluna{display:flex;flex-direction:column;gap:16px;min-width:0}
 .painel .cartao{background:var(--papel);border:1px solid var(--borda);
-border-radius:14px;padding:18px 20px;margin:0;box-shadow:var(--sombra);
-min-width:0}
-.cartao-cab{display:flex;align-items:center;gap:10px;margin-bottom:14px}
-.cartao-cab h2{font-size:14px;margin:0;font-weight:700;letter-spacing:-.1px}
-.cartao-cab .nota{font-size:11.5px;color:var(--fraco);font-weight:400}
+border-radius:var(--raio);padding:var(--e5);margin:0;
+box-shadow:var(--sombra-1);min-width:0;
+transition:box-shadow .18s var(--suave),border-color .18s var(--suave)}
+.painel .cartao:hover{box-shadow:var(--sombra-2)}
+/* O cabeçalho do cartão ganhou a linha por baixo. Num quadro de nove
+   cartões o título colava no desenho, e o olho lia os dois como uma coisa
+   só — o degrau é o que diz onde o rótulo acaba e o dado começa. */
+.cartao-cab{display:flex;align-items:baseline;gap:var(--e3);
+margin:0 0 var(--e4);padding-bottom:var(--e3);
+border-bottom:1px solid var(--linha)}
+.cartao-cab h2{font-size:var(--t3);margin:0;font-weight:700;
+letter-spacing:.3px;text-transform:uppercase;color:var(--tinta);
+font-family:var(--fonte)}
+.cartao-cab .nota{font-size:11.5px;color:var(--fraco);font-weight:400;
+text-transform:none;letter-spacing:0}
 .cartao-cab .direita{margin-left:auto;display:flex;align-items:center;
-gap:12px}
-.legenda{display:flex;gap:14px;font-size:11.5px;color:var(--fraco);
+gap:var(--e3)}
+.legenda{display:flex;gap:var(--e4);font-size:11.5px;color:var(--fraco);
 flex-wrap:wrap}
 .legenda span{display:inline-flex;align-items:center;gap:6px}
 .legenda i{width:9px;height:9px;border-radius:3px;display:inline-block}
-.vazio{color:var(--fraco);font-size:13px;text-align:center;padding:26px 0;
-margin:0}
+.vazio{color:var(--fraco);font-size:var(--t3);text-align:center;
+padding:var(--e6) 0;margin:0}
 
 /* ---- entrada dos cartões: sobem uma vez, escalonados ---- */
 @keyframes entra{from{opacity:0;transform:translateY(12px)}
@@ -207,21 +293,47 @@ to{opacity:1;transform:none}}
 .anima{animation:entra .5s cubic-bezier(.22,.9,.3,1) both}
 
 /* ---- números do topo ---- */
-.faixa{display:grid;gap:14px;
-grid-template-columns:repeat(auto-fit,minmax(200px,1fr));margin:0 0 16px}
+.faixa{display:grid;gap:var(--e4);
+grid-template-columns:repeat(auto-fit,minmax(208px,1fr));margin:0 0 var(--e4)}
+/* Os indicadores do topo. Três mudanças que só se veem lado a lado:
+   o filete da esquerda virou uma LAVAGEM inteira do tom, o número subiu para
+   40px e o rótulo virou versalete acima dele em vez de legenda abaixo. Numa
+   fileira de quatro, o olho varre os RÓTULOS para achar o que procura e só
+   então lê o número — com o rótulo embaixo, ele lia quatro números sem saber
+   de que eram, e voltava. */
 .numero{position:relative;overflow:hidden;background:var(--papel);
-border:1px solid var(--borda);border-radius:14px;padding:16px 18px 15px;
-box-shadow:var(--sombra);transition:transform .18s,box-shadow .18s}
-.numero:hover{transform:translateY(-2px);box-shadow:var(--sombra2)}
+border:1px solid var(--borda);border-radius:var(--raio);
+padding:var(--e4) var(--e5) var(--e4) var(--e5);
+box-shadow:var(--sombra-1);
+transition:transform .18s var(--suave),box-shadow .18s var(--suave),
+border-color .18s var(--suave)}
+.numero:hover{transform:translateY(-2px);box-shadow:var(--sombra-2);
+border-color:var(--borda-forte)}
 .numero::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;
 background:var(--cor,var(--marca))}
-.numero .ico{position:absolute;right:14px;top:14px;width:34px;height:34px;
-border-radius:10px;display:grid;place-items:center;
-background:var(--fraca,var(--lavagem))}
+/* A lavagem do tom, subindo da esquerda e morrendo antes do meio. É o que
+   dá cor ao cartão sem pintar o fundo do número — número sobre cor chapada
+   perde contraste, e são quatro tons diferentes na mesma fileira. */
+.numero::after{content:"";position:absolute;left:0;top:0;bottom:0;width:58%;
+background:linear-gradient(90deg,var(--fraca,var(--lavagem)),transparent);
+opacity:.65;pointer-events:none}
+.numero>*{position:relative;z-index:1}
+.numero .ico{position:absolute;right:var(--e4);top:var(--e4);
+width:36px;height:36px;border-radius:11px;display:grid;place-items:center;
+background:var(--fraca,var(--lavagem));color:var(--cor,var(--marca));
+border:1px solid color-mix(in srgb,var(--cor,var(--marca)) 18%,transparent);
+z-index:2}
 .numero .ico svg{width:17px;height:17px}
-.numero b{display:block;font-size:36px;line-height:1.05;font-weight:700;
-letter-spacing:-1.4px;font-variant-numeric:tabular-nums;color:var(--tinta)}
-.numero span{display:block;font-size:12px;color:var(--fraco);margin-top:3px}
+.numero b{display:block;font-size:40px;line-height:1;font-weight:700;
+letter-spacing:-1.8px;font-variant-numeric:tabular-nums;color:var(--tinta);
+font-family:var(--fonte-titulo);order:2}
+/* `order` porque o rótulo continua DEPOIS do número no HTML — quem lê com
+   leitor de tela ouve "412, cotações", que é a ordem natural da frase. Só a
+   pintura inverte; a leitura fica como está. */
+.numero{display:flex;flex-direction:column}
+.numero span{display:block;font-size:var(--t-olho);color:var(--fraco);
+margin:0 0 var(--e2);order:1;text-transform:uppercase;
+letter-spacing:var(--tr-olho);font-weight:700;padding-right:44px}
 .numero.ruim b{color:var(--erro)}
 
 /* ---- gráfico ---- */
@@ -232,15 +344,24 @@ letter-spacing:-1.4px;font-variant-numeric:tabular-nums;color:var(--tinta)}
    5px de altura, ilegível. Abaixo de .grafico ele para de encolher e passa a
    rolar de lado — o número continua do tamanho que dá para ler. */
 .grafico{overflow-x:auto}
-.eixo{font-size:10px;fill:var(--fraco)}
-.malha{stroke:var(--borda);stroke-width:1}
+.eixo{font-size:10px;fill:var(--fraco);letter-spacing:.3px}
+/* A malha virou TRACEJADO e ficou na hairline. Sólida e na cor da borda,
+   ela competia com as barras: cinco linhas cheias atrás de doze barras é
+   um desenho com dezessete elementos do mesmo peso. */
+.malha{stroke:var(--linha);stroke-width:1;stroke-dasharray:2 4}
 .fantasma{fill:var(--lavagem)}
+/* Cantos arredondados no topo da barra. `stroke-linejoin` não alcança
+   retângulo; o que arredonda <rect> é o `rx` no SVG — aqui fica o resto do
+   acabamento: a barra clareia sob o cursor e sobe uma vez, ao entrar. */
 .barra-g{fill:url(#tintaBarra);transform-box:fill-box;transform-origin:bottom;
-animation:sobe .65s cubic-bezier(.22,.9,.3,1) both}
-.barra-g:hover{filter:brightness(1.12)}
+animation:sobe .65s cubic-bezier(.22,.9,.3,1) both;
+transition:filter .15s var(--suave)}
+.barra-g:hover{filter:brightness(1.14) saturate(1.1)}
 @keyframes sobe{from{transform:scaleY(0)}to{transform:scaleY(1)}}
-.linha-g{fill:none;stroke:var(--ok);stroke-width:2.4;stroke-linecap:round;
-stroke-linejoin:round;animation:traca 1.15s ease-out both}
+.linha-g{fill:none;stroke:var(--ok);stroke-width:2.6;stroke-linecap:round;
+stroke-linejoin:round;
+filter:drop-shadow(0 2px 4px color-mix(in srgb,var(--ok) 34%,transparent));
+animation:traca 1.15s ease-out both}
 @keyframes traca{from{stroke-dashoffset:var(--comp)}to{stroke-dashoffset:0}}
 .ponto-g{fill:var(--papel);stroke:var(--ok);stroke-width:2;transform-box:fill-box;
 transform-origin:center;animation:surge .3s ease-out both}
@@ -254,8 +375,8 @@ to{opacity:1;transform:scale(1)}}
 grid-template-columns:repeat(auto-fit,minmax(102px,1fr))}
 .rosca{text-align:center;padding:6px 2px}
 .rosca svg{width:100%;max-width:94px;height:auto}
-.rosca .trilho{fill:none;stroke:var(--borda);stroke-width:9}
-.rosca .arco{fill:none;stroke-width:9;stroke-linecap:round;
+.rosca .trilho{fill:none;stroke:var(--linha);stroke-width:10}
+.rosca .arco{fill:none;stroke-width:10;stroke-linecap:round;
 transform:rotate(-90deg);transform-origin:50% 50%;
 animation:enche 1.05s cubic-bezier(.22,.9,.3,1) both}
 @keyframes enche{from{stroke-dashoffset:var(--vazio)}
@@ -287,17 +408,18 @@ font-variant-numeric:tabular-nums}
 display:inline-block;margin-right:8px}
 
 /* ---- barras horizontais (ranking) ---- */
-.rank{display:flex;flex-direction:column;gap:11px;margin:0}
-.rank .li{display:grid;grid-template-columns:1fr auto;gap:2px 10px;
-font-size:12.5px}
+.rank{display:flex;flex-direction:column;gap:var(--e3);margin:0}
+.rank .li{display:grid;grid-template-columns:1fr auto;gap:var(--e1) var(--e3);
+font-size:var(--t2)}
 .rank .nome{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
 font-weight:600}
-.rank .qtd{color:var(--fraco);font-variant-numeric:tabular-nums}
-.rank .trilho{grid-column:1/-1;height:8px;border-radius:99px;
-background:var(--borda);overflow:hidden}
-.rank .trilho i{display:block;height:100%;border-radius:99px;
-background:linear-gradient(90deg,var(--marca-viva),var(--realce-claro));
-animation:cresce .8s cubic-bezier(.22,.9,.3,1) both}
+.rank .qtd{color:var(--tinta2);font-variant-numeric:tabular-nums;
+font-weight:700}
+.rank .trilho{grid-column:1/-1;height:9px;border-radius:var(--raio-pill);
+background:var(--cova);border:1px solid var(--linha);overflow:hidden}
+.rank .trilho i{display:block;height:100%;border-radius:var(--raio-pill);
+background:linear-gradient(90deg,var(--marca),var(--realce-claro));
+min-width:3px;animation:cresce .8s cubic-bezier(.22,.9,.3,1) both}
 @keyframes cresce{from{width:0}}
 
 /* ---- avatar de quem cotou ---- */
@@ -315,31 +437,50 @@ font-weight:700;border-radius:99px;padding:2px 8px;line-height:1.5;
 font-variant-numeric:tabular-nums;white-space:nowrap}
 
 /* ---- tabelas do painel ---- */
-.painel table{font-size:12.5px}
-.painel th{padding:8px;position:sticky;top:0;background:var(--papel);z-index:2}
-.painel td{padding:9px 8px;vertical-align:middle}
-.painel tbody tr{transition:background .12s}
+.painel table{font-size:var(--t2)}
+/* O cabeçalho grudado ganhou uma SOMBRA que só aparece depois que a tabela
+   começa a rolar por baixo dele. Sem ela, cabeçalho e primeira linha eram
+   duas faixas brancas encostadas e a rolagem parecia travada. */
+.painel th{padding:var(--e2) var(--e3);position:sticky;top:0;
+background:var(--papel);z-index:2;
+box-shadow:0 1px 0 var(--borda),0 6px 10px -8px rgba(11,18,32,.22)}
+.painel td{padding:10px var(--e3);vertical-align:middle}
+.painel tbody tr{transition:background .12s var(--suave)}
 .painel tbody tr:hover td{background:var(--lavagem)}
-.rolagem{max-height:540px;overflow:auto;margin:0 -20px -18px;
-padding:0 20px 6px}
+.painel tbody tr:hover td:first-child{box-shadow:inset 2px 0 0 var(--marca)}
+.rolagem{max-height:540px;overflow:auto;margin:0 calc(var(--e5) * -1)
+calc(var(--e5) * -1);padding:0 var(--e5) var(--e2)}
 .saude td:nth-child(n+2){font-variant-numeric:tabular-nums}
-.barra{display:inline-block;width:74px;height:7px;background:var(--borda);
-border-radius:99px;vertical-align:middle;overflow:hidden}
-.barra i{display:block;height:100%;border-radius:99px;
-background:linear-gradient(90deg,#3ecf8e,#2bb078);
+/* A barra de aproveitamento ficou mais alta e ganhou TRILHO com borda: com
+   7px e fundo da cor da borda, uma barra de 4% era indistinguível de uma
+   barra vazia — e 4% e 0% são coisas muito diferentes nesta coluna. */
+.barra{display:inline-block;width:82px;height:9px;background:var(--cova);
+border:1px solid var(--linha);border-radius:var(--raio-pill);
+vertical-align:middle;overflow:hidden}
+.barra i{display:block;height:100%;border-radius:var(--raio-pill);
+background:linear-gradient(90deg,var(--ok),color-mix(in srgb,var(--ok) 70%,
+var(--marca-viva)));min-width:3px;
 animation:cresce .8s cubic-bezier(.22,.9,.3,1) both}
 .sem-dado{color:var(--fraco);font-size:11.5px;font-style:italic}
 
 /* ---- histórico ---- */
-.busca{position:relative}
-.busca input{width:216px;padding:7px 11px 7px 30px;border-radius:8px;
-font-size:12.5px}
-.busca svg{position:absolute;left:9px;top:50%;transform:translateY(-50%);
-width:14px;height:14px;opacity:.4;pointer-events:none}
-.historico td{border-bottom:1px solid var(--borda)}
-.historico .dia td{background:var(--lavagem);font-size:10.5px;font-weight:700;
-letter-spacing:1.1px;text-transform:uppercase;color:var(--fraco);padding:7px 8px;
-border-bottom:1px solid var(--borda);position:sticky;top:31px;z-index:1}
+.busca{position:relative;display:inline-flex}
+.busca input{width:236px;padding:8px var(--e3) 8px 32px;
+border-radius:var(--raio-pill);font-size:var(--t2)}
+.busca svg{position:absolute;left:11px;top:50%;transform:translateY(-50%);
+width:14px;height:14px;opacity:.45;pointer-events:none}
+@media(max-width:620px){.busca,.busca input{width:100%}}
+.historico td{border-bottom:1px solid var(--linha)}
+/* A faixa do dia. Era lavagem azul, a MESMA cor do hover da linha — e num
+   histórico de trinta linhas as duas se confundiam: passar o mouse
+   "criava" uma faixa de dia. Agora ela é a cova, e não a lavagem. */
+.historico .dia td{background:var(--cova);font-size:var(--t-olho);
+font-weight:700;letter-spacing:var(--tr-olho);text-transform:uppercase;
+color:var(--fraco);padding:8px var(--e3);
+border-top:1px solid var(--borda);
+border-bottom:1px solid var(--borda);position:sticky;top:35px;z-index:1}
+.historico .dia:hover td{background:var(--cova)}
+.historico .dia:hover td:first-child{box-shadow:none}
 .historico .dia .conta{float:right;letter-spacing:0;text-transform:none}
 .historico .id{color:var(--fraco);font-variant-numeric:tabular-nums;width:1%;
 white-space:nowrap}
@@ -368,11 +509,14 @@ text-align:center}
    todo dia treina o olho a pular a região — e aí ele pula também no dia em
    que o alerta está lá. */
 .alertas{display:flex;flex-direction:column;gap:10px;margin:0}
-.alerta-linha{display:flex;gap:12px;align-items:flex-start;
-border:1px solid var(--alerta-borda);background:var(--alerta-fundo);border-radius:12px;
-padding:12px 14px}
-.alerta-linha .sino{width:32px;height:32px;border-radius:9px;flex:none;
-display:grid;place-items:center;background:var(--erro-fraco);color:var(--erro)}
+.alerta-linha{display:flex;gap:var(--e3);align-items:flex-start;
+border:1px solid var(--alerta-borda);background:var(--alerta-fundo);
+border-left:3px solid var(--erro);border-radius:var(--raio-p);
+padding:var(--e3) var(--e4)}
+.alerta-linha .sino{width:34px;height:34px;border-radius:11px;flex:none;
+display:grid;place-items:center;background:var(--erro-fraco);
+color:var(--erro);
+border:1px solid color-mix(in srgb,var(--erro) 20%,transparent)}
 .alerta-linha .sino svg{width:17px;height:17px}
 .alerta-linha .diz{min-width:0;flex:1}
 .alerta-linha b{font-size:13.5px}
@@ -390,17 +534,37 @@ white-space:nowrap}
 .alerta-linha .quais a:hover{background:var(--alerta-borda)}
 
 /* ---- filtros do histórico ---- */
-.filtros{display:flex;align-items:center;gap:6px;flex-wrap:wrap;
-margin:0 0 12px}
-.filtros .rotulo{font-size:11px;text-transform:uppercase;letter-spacing:1px;
-color:var(--fraco);font-weight:700;margin-right:2px}
-.filtro-p{padding:5px 12px;border-radius:99px;font-size:12px;color:var(--fraco);
+/* Os filtros viraram uma BARRA de ferramentas: fundo próprio, borda e
+   respiro. Soltos sobre o cartão eles pareciam links do conteúdo, e o
+   recorte que estava ativo (o "só com falha", por exemplo) sumia no meio
+   de uma linha de texto cinza. */
+.filtros{display:flex;align-items:center;gap:var(--e1);flex-wrap:wrap;
+margin:0 0 var(--e4);padding:var(--e2) var(--e3);
+background:var(--cova);border:1px solid var(--linha);
+border-radius:var(--raio-p)}
+.filtros .rotulo{font-size:var(--t-olho);text-transform:uppercase;
+letter-spacing:var(--tr-olho);color:var(--fraco);font-weight:700;
+margin:0 var(--e2) 0 var(--e1)}
+/* Um separador entre os grupos de filtro (período, vendedor, falhas). Sem
+   ele são nove pastilhas numa fileira só e nada diz quais respondem à mesma
+   pergunta. */
+.filtros .risco{width:1px;align-self:stretch;background:var(--borda);
+margin:2px var(--e2)}
+.filtro-p{padding:6px var(--e3);border-radius:var(--raio-pill);
+font-size:var(--t2);color:var(--tinta2);font-weight:600;
 text-decoration:none;border:1px solid var(--borda);background:var(--papel);
-white-space:nowrap;transition:background .15s,color .15s,border-color .15s}
-.filtro-p:hover{background:var(--fundo)}
-.filtro-p.atual{background:var(--marca);border-color:var(--marca);color:var(--sobre-marca);
-font-weight:600}
-.filtro-p.perigo.atual{background:var(--erro);border-color:var(--erro)}
+white-space:nowrap;
+transition:background .15s var(--suave),color .15s var(--suave),
+border-color .15s var(--suave)}
+.filtro-p:hover{background:var(--lavagem);color:var(--marca-forte);
+border-color:var(--borda-forte)}
+.filtro-p.atual{background:var(--marca);border-color:var(--marca);
+color:var(--sobre-marca);font-weight:700}
+.filtro-p.atual:hover{background:var(--marca-forte);
+color:var(--sobre-marca)}
+.filtro-p.perigo.atual,.filtro-p.perigo.atual:hover{background:var(--erro);
+border-color:var(--erro);color:#fff}
+[data-tema="escuro"] .filtro-p.perigo.atual{color:#2c1e1c}
 
 /* ---- linha do histórico que abre a cotação ---- */
 /* A linha inteira é clicável (o JavaScript leva), mas o número continua
@@ -688,13 +852,17 @@ def _lateral(base: str = "") -> str:
         f'<a href="{base}#{alvo}" data-secao="{alvo}">{_icone(ICONES[chave])}'
         f'<span>{e(rotulo)}</span></a>'
         for chave, rotulo, alvo in MENU)
-    return f"""<nav class="lateral"><div class="lateral-fixa">
+    # A assinatura da marca no rodapé da coluna, do jeito que ela aparece em
+    # toda tela do vendedor: é TEXTO, porque dentro do lockup ela tem 6px de
+    # 120 e aqui a peça toda não passa de 32px de altura.
+    return f"""<nav class="lateral" aria-label="Seções do painel">
+<div class="lateral-fixa">
   <div class="marca">{marca}<b>Painel</b></div>
   <div class="secao">Acompanhar</div>
   {itens}
   <div class="secao">Conta</div>
   <a href="/adm/sair">{_icone(ICONES["sair"])}<span>Sair do painel</span></a>
-  <div class="rodape">Cotafrete · Ventura</div>
+  <div class="rodape"><b>Cotafrete</b>{ASSINATURA}</div>
 </div></nav>"""
 
 
@@ -707,7 +875,9 @@ def pagina_painel(titulo: str, corpo: str, *, base: str = "") -> str:
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{e(titulo)} — Cotafrete</title>{cabeca_do_tema("escuro")}
 <style>{CSS_BASE}{CSS}</style></head><body>
-<div class="painel">{_lateral(base)}<main class="conteudo">{corpo}</main></div>
+<a class="pular" href="#conteudo">Pular para o conteúdo</a>
+<div class="painel">{_lateral(base)}
+<main class="conteudo" id="conteudo">{corpo}</main></div>
 {LUPA}{SCRIPT_TEMA}
 </body></html>"""
 

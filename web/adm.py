@@ -678,8 +678,11 @@ def painel(adm: str | None = Cookie(None, alias=COOKIE_ADM),
 
     corpo = f"""
 <div class="cabecalho" id="topo">
-  <div><h1>Painel</h1>
-  <p class="sub">As cotações de toda a empresa, {e(rotulo.lower())}.</p></div>
+  <div>
+    <p class="olho">Visão geral</p>
+    <h1>Painel</h1>
+    <p class="sub">As cotações de toda a empresa, {e(rotulo.lower())}.</p>
+  </div>
   <span class="aovivo"><i></i>ao vivo</span>
   {_seletor(dias, quem, so_falhas)}
   {ui.BOTAO_TEMA}
