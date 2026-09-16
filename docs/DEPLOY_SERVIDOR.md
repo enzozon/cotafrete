@@ -299,8 +299,12 @@ liga: sobe a VM, a VM loga sozinha, o `Servidor.bat` abre.
 > **Publicando na internet?** Se o sistema vai sair da rede local — por túnel
 > da Cloudflare ou qualquer outro caminho — siga o
 > [`CONFIGURAR_NA_EMPRESA.md`](CONFIGURAR_NA_EMPRESA.md). Ele cobre o túnel
-> como serviço e, antes de tudo, **fechar o acesso**: a tela de entrada do
-> vendedor aceita qualquer nome digitado e não protege nada.
+> como serviço e o Cloudflare Access na frente do sistema.
+>
+> **O login do vendedor já pede senha** (desde 16/09/2026). Mas ele protege o
+> caminho, não a máquina: o `Servidor.bat` escuta em `0.0.0.0`, então quem
+> estiver na mesma rede alcança a porta 8000 direto. O Access continua sendo
+> o que impede a internet inteira de sequer chegar na tela de login.
 
 ---
 

@@ -1021,3 +1021,159 @@ def baixar_evidencias_zip(cotacao_id: int,
         montar_zip_de_prints(c["resultados"]), media_type="application/zip",
         headers={"Content-Disposition":
                  f'attachment; filename="cotacao-{cotacao_id}-prints.zip"'})
+
+
+# ------------------------------------------------------------ quem entra
+# A conta do vendedor nasce AQUI, atrás da senha do painel, e em nenhum outro
+# lugar. A tela de login não cria conta de propósito: se criasse, qualquer
+# pessoa que achasse o endereço na internet se cadastraria sozinha.
+#
+# A senha quem escolhe é a própria pessoa, no primeiro acesso. O
+# administrador nunca vê senha de ninguém — só consegue reabrir o convite
+# (botão "Esquecer senha"), e aí a pessoa escolhe outra.
+
+def _linha_da_conta(c: dict) -> str:
+    if c["senha_hash"] is None:
+        situacao = ('<span class="etiqueta">convite aberto</span>'
+                    ' <span class="sub">ainda vai escolher a senha</span>')
+    else:
+        situacao = (f'<span class="sub">entra desde '
+                    f'{e(_quando(c["definida_em"]))}</span>')
+    nome = e(c["nome"])
+    return f"""
+<tr>
+  <td><b>{nome}</b></td>
+  <td>{situacao}</td>
+  <td style="text-align:right;white-space:nowrap">
+    <form method="post" action="/adm/contas/esquecer" style="display:inline">
+      <input type="hidden" name="nome" value="{nome}">
+      <button type="submit" class="botao2">Esquecer senha</button>
+    </form>
+    <form method="post" action="/adm/contas/remover" style="display:inline"
+          onsubmit="return confirm('Tirar o acesso de {nome}? As cotacoes que ela ja fez continuam no historico.')">
+      <input type="hidden" name="nome" value="{nome}">
+      <button type="submit" class="botao2">Remover</button>
+    </form>
+  </td>
+</tr>"""
+
+
+@router.get("/contas", response_class=HTMLResponse)
+def tela_contas(adm: str | None = Cookie(None, alias=COOKIE_ADM),
+                erro: str = "", feito: str = ""):
+    _exigir_montado()
+    if not autorizado(adm):
+        return RedirectResponse("/adm/entrar", status_code=303)
+
+    lista = banco.contas()
+    linhas = "".join(_linha_da_conta(c) for c in lista) or (
+        '<tr><td colspan="3" class="sub">Nenhuma conta ainda. Crie a '
+        'primeira no campo acima.</td></tr>')
+    aviso = ""
+    if erro:
+        aviso = f'<p class="erro" role="alert">{e(erro)}</p>'
+    elif feito:
+        aviso = f'<p class="sub" role="status">{e(feito)}</p>'
+
+    # Quem já cotou mas ainda não tem conta. Existe por causa da virada de
+    # 16/09/2026: antes do login, o nome era só texto digitado, e o histórico
+    # está cheio de nomes que nunca foram conta.
+    #
+    # A conta NÃO é criada sozinha a partir dessa lista, de propósito: ela
+    # inclui erro de digitação e nome de teste, e cada conta criada é um
+    # convite aberto que a primeira pessoa a adivinhar o nome pode reivindicar.
+    # Quem decide é você, um a um.
+    ja_tem = {c["nome"] for c in lista}
+    sugestoes = [u for u in banco.usuarios() if u not in ja_tem]
+    if sugestoes:
+        botoes = "".join(f"""
+      <form method="post" action="/adm/contas/criar" style="display:inline">
+        <input type="hidden" name="nome" value="{e(u)}">
+        <button type="submit" class="botao2">{e(u)}</button>
+      </form>""" for u in sugestoes)
+        pendentes = f"""
+<div class="cartao c12">
+  <h2>Já cotaram, mas ainda não têm conta</h2>
+  <p class="sub">Do histórico anterior ao login. Clique para criar a conta —
+  confira nome por nome, porque aqui também aparecem erros de digitação e
+  testes antigos. Quem não estiver nesta lista nem na de cima não entra.</p>
+  <div style="display:flex;gap:8px;flex-wrap:wrap">{botoes}</div>
+</div>"""
+    else:
+        pendentes = ""
+
+    corpo = f"""
+<div class="cabecalho" id="topo">
+  <div><h1>Quem entra</h1>
+  <p class="sub">Contas do Cotafrete. A senha quem escolhe é a própria
+  pessoa, no primeiro acesso — nem você consegue vê-la.</p></div>
+  <a href="/adm" class="botao2">Voltar ao painel</a>
+  {ui.BOTAO_TEMA}
+</div>
+<div class="grade">
+  <div class="cartao c12">
+    {aviso}
+    <form method="post" action="/adm/contas/criar"
+          style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px">
+      <input name="nome" placeholder="Nome do vendedor" required autofocus
+             style="flex:1;min-width:200px">
+      <button type="submit">Criar conta</button>
+    </form>
+    <table class="tabela"><tbody>{linhas}</tbody></table>
+  </div>
+  {pendentes}
+</div>"""
+    return HTMLResponse(ui.pagina_painel("Quem entra", corpo))
+
+
+def _voltar(erro: str = "", feito: str = "") -> RedirectResponse:
+    destino = "/adm/contas"
+    if erro:
+        destino += "?erro=" + quote(erro)
+    elif feito:
+        destino += "?feito=" + quote(feito)
+    # 303 e não 307: sem isto, atualizar a página reenviaria o formulário e
+    # criaria a conta de novo.
+    return RedirectResponse(destino, status_code=303)
+
+
+@router.post("/contas/criar")
+def criar_conta(nome: str = Form(...),
+                adm: str | None = Cookie(None, alias=COOKIE_ADM)):
+    _exigir_montado()
+    if not autorizado(adm):
+        return RedirectResponse("/adm/entrar", status_code=303)
+
+    limpo = nome.strip()[:40]
+    if not limpo:
+        return _voltar(erro="Digite o nome.")
+    if not banco.criar_conta(limpo):
+        return _voltar(erro=f"Já existe uma conta com o nome {limpo}.")
+    return _voltar(feito=f"Conta de {limpo} criada. Peça para ela entrar e "
+                         f"escolher a senha.")
+
+
+@router.post("/contas/esquecer")
+def esquecer_senha(nome: str = Form(...),
+                   adm: str | None = Cookie(None, alias=COOKIE_ADM)):
+    _exigir_montado()
+    if not autorizado(adm):
+        return RedirectResponse("/adm/entrar", status_code=303)
+
+    if not banco.esquecer_senha(nome):
+        return _voltar(erro="Conta não encontrada.")
+    return _voltar(feito=f"Senha de {nome} apagada. No próximo acesso ela "
+                         f"escolhe outra.")
+
+
+@router.post("/contas/remover")
+def remover_conta(nome: str = Form(...),
+                  adm: str | None = Cookie(None, alias=COOKIE_ADM)):
+    _exigir_montado()
+    if not autorizado(adm):
+        return RedirectResponse("/adm/entrar", status_code=303)
+
+    if not banco.remover_conta(nome):
+        return _voltar(erro="Conta não encontrada.")
+    return _voltar(feito=f"{nome} não entra mais. As cotações dela seguem no "
+                         f"histórico.")

@@ -27,6 +27,7 @@ fora da rede local sem virar autenticação de verdade.
 from __future__ import annotations
 
 import os
+import time
 import unicodedata
 from concurrent.futures import ThreadPoolExecutor
 from decimal import Decimal, InvalidOperation
@@ -35,7 +36,7 @@ from pathlib import Path
 from urllib.parse import quote
 
 from dotenv import load_dotenv
-from fastapi import Cookie, FastAPI, Form, HTTPException, Request
+from fastapi import Cookie, Depends, FastAPI, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 
@@ -48,6 +49,7 @@ from carriers.generoso.adapter import GenerosoAdapter
 from carriers.jadlog.painel import JadlogPainelAdapter
 from carriers.translovato.adapter import TranslovatoAdapter
 from core import cep as buscador_cep
+from core import sessao
 from core import cnpj as buscador_cnpj
 from core import selecao
 from core.banco import Banco
@@ -475,20 +477,71 @@ def tela_erro(problemas: list[str], dados: dict, usuario: str | None) -> str:
 
 
 # ------------------------------------------------------------------- login
-@app.get("/login", response_class=HTMLResponse)
-def tela_login() -> str:
-    """A porta da frente. Os números do hero saem das CONSTANTES do sistema,
-    não escritos à mão: a tela mentiria sobre o próprio tamanho na primeira
-    transportadora que entrasse ou saísse."""
-    cartao = """
+# Atraso na senha errada, mesmo motivo do /adm: transforma "testar mil senhas"
+# em "esperar mil segundos". Ver web/adm.py.
+PAUSA_SENHA_ERRADA_S = 1.0
+
+
+def vendedor(usuario: str | None = Cookie(None, alias=COOKIE)) -> str | None:
+    """Quem está nesta sessão, ou None.
+
+    TODA rota do vendedor passa por aqui. Antes cada uma lia o cookie crua e
+    acreditava no que estava escrito: trocar `cotafrete_usuario=joao` por
+    `=enzo` no inspetor do navegador era virar o Enzo. A verificação mora num
+    lugar só de propósito — com dez rotas conferindo por conta própria,
+    bastava uma esquecer.
+
+    Confere a assinatura E se a conta ainda existe. Só a assinatura não
+    bastaria: tirar alguém do sistema levaria até
+    `sessao.DIAS_DE_SESSAO` dias para fazer efeito, que é o prazo do cookie
+    que a pessoa já tem na máquina. Demitiu, perdeu o acesso agora."""
+    nome = sessao.dono_do_cookie(usuario, banco.segredo_sessao())
+    if nome is None or banco.conta(nome) is None:
+        return None
+    return nome
+
+
+def _tela_login(erro: str = "", nome: str = "",
+                escolher_senha: bool = False) -> str:
+    """A porta da frente, nos seus dois estados: entrar, ou escolher a senha
+    no primeiro acesso."""
+    aviso = (f'<p class="erro" role="alert">{e(erro)}</p>' if erro else "")
+    valor = e(nome)
+    if escolher_senha:
+        campos = f"""
+    <input type="hidden" name="usuario" value="{valor}">
+    <input name="senha" type="password" placeholder="Escolha sua senha"
+           autofocus required autocomplete="new-password"
+           style="margin-bottom:12px">
+    <input name="confirmacao" type="password" placeholder="Repita a senha"
+           required autocomplete="new-password" style="margin-bottom:12px">"""
+        titulo = "Primeiro acesso"
+        explicacao = (f"<b>{valor}</b>, escolha a senha que você vai usar "
+                      f"daqui em diante. Mínimo de "
+                      f"{sessao.MINIMO_DA_SENHA} caracteres. Ninguém mais "
+                      f"consegue vê-la — nem o administrador.")
+        botao = "Salvar senha e entrar"
+    else:
+        campos = f"""
+    <input name="usuario" placeholder="Seu nome" required
+           autocomplete="username" value="{valor}"
+           style="margin-bottom:12px"{'' if valor else ' autofocus'}>
+    <input name="senha" type="password" placeholder="Sua senha" required
+           autocomplete="current-password"
+           style="margin-bottom:12px"{' autofocus' if valor else ''}>"""
+        titulo = "Entrar"
+        explicacao = ("Suas cotações ficam separadas das dos outros. Se é "
+                      "seu primeiro acesso, digite qualquer coisa no campo "
+                      "da senha: o sistema vai pedir que você escolha a sua.")
+        botao = "Entrar"
+
+    cartao = f"""
 <div class="cartao">
-  <h1>Entrar</h1>
-  <p class="sub">Digite seu nome para começar. Suas cotações ficam separadas
-  das dos outros.</p>
-  <form method="post" action="/login">
-    <input name="usuario" placeholder="Seu nome" autofocus required
-           autocomplete="username" style="margin-bottom:12px">
-    <button type="submit" style="width:100%">Entrar</button>
+  <h1>{titulo}</h1>
+  <p class="sub">{explicacao}</p>
+  {aviso}
+  <form method="post" action="/login">{campos}
+    <button type="submit" style="width:100%">{botao}</button>
   </form>
 </div>"""
     return entrada(
@@ -499,17 +552,73 @@ def tela_login() -> str:
         paradas=("sua carga",
                  f"{len(AUTOMATICAS)} cotam sozinhas",
                  "o mais barato"),
-        rodape="Sem senha por enquanto — serve para separar o histórico, não "
-               "para proteger acesso.")
+        rodape="Sua conta é criada pelo administrador. A senha quem escolhe "
+               "é você, no primeiro acesso.")
+
+
+@app.get("/login", response_class=HTMLResponse)
+def tela_login() -> str:
+    return _tela_login()
+
+
+def _abrir_sessao(nome: str) -> RedirectResponse:
+    r = RedirectResponse("/", status_code=303)
+    # httponly: JavaScript não lê, então um XSS não leva a sessão embora.
+    # samesite=lax: site de terceiro não consegue postar cotação em nome de
+    # quem está logado.
+    r.set_cookie(COOKIE, sessao.assinar(nome, banco.segredo_sessao()),
+                 max_age=sessao.DIAS_DE_SESSAO * 86400, httponly=True,
+                 samesite="lax")
+    return r
+
+
+def _recusar(erro: str, nome: str = "", escolher_senha: bool = False):
+    resposta = HTMLResponse(_tela_login(erro, nome, escolher_senha))
+    resposta.status_code = 401
+    return resposta
 
 
 @app.post("/login")
-def entrar(usuario: str = Form(...)):
-    nome = usuario.strip()[:40] or "sem-nome"
-    r = RedirectResponse("/", status_code=303)
-    r.set_cookie(COOKIE, nome, max_age=60 * 60 * 24 * 30, httponly=True,
-                 samesite="lax")
-    return r
+def entrar(usuario: str = Form(...), senha: str = Form(""),
+           confirmacao: str = Form("")):
+    """Uma rota, três caminhos: conta inexistente, primeiro acesso e entrada
+    normal.
+
+    A conta NÃO é criada aqui. Quem cria é o administrador, em /adm — senão
+    qualquer pessoa que achasse o endereço na internet se cadastraria
+    sozinha, que é exatamente o buraco que este login veio fechar."""
+    nome = usuario.strip()[:40]
+    conta = banco.conta(nome) if nome else None
+
+    if conta is None:
+        time.sleep(PAUSA_SENHA_ERRADA_S)
+        return _recusar("Nome ou senha não conferem. Se você ainda não tem "
+                        "conta, peça ao administrador para criar a sua.", nome)
+
+    if conta["senha_hash"] is None:
+        # Convite aberto: a primeira visita escolhe a senha. A senha digitada
+        # nesta passada é ignorada de propósito — quem chega aqui ainda não
+        # tem senha, e aproveitar o que foi digitado no campo errado viraria
+        # senha escolhida por engano.
+        if not confirmacao:
+            return _tela_login("", nome, escolher_senha=True)
+        recusa = sessao.recusa_da_senha(senha)
+        if recusa:
+            return _recusar(recusa, nome, escolher_senha=True)
+        if senha != confirmacao:
+            return _recusar("As duas senhas não são iguais.", nome,
+                            escolher_senha=True)
+        if not banco.definir_senha(nome, sessao.hash_senha(senha)):
+            # Só chega aqui se outra aba fechou o convite no meio do caminho.
+            return _recusar("Essa conta já tem senha. Entre com ela.", nome)
+        return _abrir_sessao(nome)
+
+    if not sessao.senha_confere(senha, conta["senha_hash"]):
+        time.sleep(PAUSA_SENHA_ERRADA_S)
+        # Nunca repetir o que foi digitado: nem na tela, nem em log.
+        return _recusar("Nome ou senha não conferem.", nome)
+
+    return _abrir_sessao(nome)
 
 
 @app.get("/sair")
@@ -598,7 +707,7 @@ def _valores_de(c: dict) -> dict:
 
 
 @app.get("/", response_class=HTMLResponse)
-def formulario(usuario: str | None = Cookie(None, alias=COOKIE),
+def formulario(usuario: str | None = Depends(vendedor),
                repetir: int | None = None):
     if not usuario:
         return RedirectResponse("/login", status_code=303)
@@ -824,7 +933,7 @@ def montar_request(d: dict) -> CotacaoRequest:
 
 @app.post("/voltar", response_class=HTMLResponse)
 async def voltar(request: Request,
-                 usuario: str | None = Cookie(None, alias=COOKIE)):
+                 usuario: str | None = Depends(vendedor)):
     """Volta ao formulario com o que o usuario ja tinha digitado."""
     if not usuario:
         return RedirectResponse("/login", status_code=303)
@@ -835,7 +944,7 @@ async def voltar(request: Request,
 
 
 @app.post("/cotar", response_class=HTMLResponse)
-def cotar(usuario: str | None = Cookie(None, alias=COOKIE),
+def cotar(usuario: str | None = Depends(vendedor),
           cep_origem: str = Form(...), cep_destino: str = Form(...),
           cnpj_remetente: str = Form(...), cnpj_destinatario: str = Form(...),
           tipo_frete: str = Form("cif"), peso: str = Form(...),
@@ -1055,7 +1164,7 @@ def cartao_resposta_por_email(email: str | None, slug: str = "") -> str:
 
 @app.get("/whatsapp/{cotacao_id}/{slug}")
 def abrir_whatsapp(cotacao_id: int, slug: str,
-                   usuario: str | None = Cookie(None, alias=COOKIE)):
+                   usuario: str | None = Depends(vendedor)):
     """Registra a ABERTURA e leva para a conversa com o texto pronto.
 
     Passar pelo nosso servidor em vez de ligar direto no wa.me é o que
@@ -1080,7 +1189,7 @@ def abrir_whatsapp(cotacao_id: int, slug: str,
 
 @app.get("/email/{cotacao_id}/{slug}", response_class=HTMLResponse)
 def preparar_email(cotacao_id: int, slug: str,
-                   usuario: str | None = Cookie(None, alias=COOKIE)):
+                   usuario: str | None = Depends(vendedor)):
     """A cotação escrita, pronta para o vendedor copiar e mandar por e-mail.
 
     Existe porque a Della Volpe pôs Cloudflare Turnstile no formulário
@@ -1151,7 +1260,7 @@ function copiar(id) {{
 
 @app.get("/dellavolpe/{cotacao_id}", response_class=HTMLResponse)
 def formulario_dellavolpe(cotacao_id: int,
-                          usuario: str | None = Cookie(None, alias=COOKIE)):
+                          usuario: str | None = Depends(vendedor)):
     """O formulário REAL da Della Volpe, pronto para o vendedor preencher com
     um clique — e por isso respondido em minutos, não em horas.
 
@@ -1302,7 +1411,7 @@ def _linha_resultado(slug: str, principal: str, prazo: str, estado: str,
 
 @app.get("/cotacao/{cotacao_id}", response_class=HTMLResponse)
 def ver_cotacao(cotacao_id: int,
-                usuario: str | None = Cookie(None, alias=COOKIE)):
+                usuario: str | None = Depends(vendedor)):
     if not usuario:
         return RedirectResponse("/login", status_code=303)
     c = banco.buscar_cotacao(cotacao_id, usuario)
@@ -1603,7 +1712,7 @@ document.querySelectorAll(".zap").forEach(a => a.addEventListener("click", () =>
 
 @app.get("/cotacao/{cotacao_id}/evidencias.zip")
 def baixar_evidencias_zip(cotacao_id: int,
-                          usuario: str | None = Cookie(None, alias=COOKIE)):
+                          usuario: str | None = Depends(vendedor)):
     """Todos os prints desta cotação num .zip só — mesma ideia do painel adm
     (core.evidencias.montar_zip_de_prints), só que aqui filtrado pelo dono:
     `banco.buscar_cotacao` é a mesma checagem que a tela usa para não abrir
@@ -1800,14 +1909,14 @@ para tentar de novo quem falhou.</p>
 
 
 @app.get("/documentacao", response_class=HTMLResponse)
-def documentacao(usuario: str | None = Cookie(None, alias=COOKIE)):
+def documentacao(usuario: str | None = Depends(vendedor)):
     if not usuario:
         return RedirectResponse("/login", status_code=303)
     return HTMLResponse(pagina("Documentação", pagina_documentacao(), usuario))
 
 
 @app.get("/historico", response_class=HTMLResponse)
-def historico(usuario: str | None = Cookie(None, alias=COOKIE)):
+def historico(usuario: str | None = Depends(vendedor)):
     if not usuario:
         return RedirectResponse("/login", status_code=303)
     linhas = ""

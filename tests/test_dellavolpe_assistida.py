@@ -21,6 +21,8 @@ from __future__ import annotations
 from decimal import Decimal
 
 import pytest
+
+from tests.apoio import entrar
 from fastapi.testclient import TestClient
 
 from core.banco import Banco
@@ -47,7 +49,7 @@ def app(tmp_path, monkeypatch):
 @pytest.fixture
 def cliente(app):
     c = TestClient(app.app)
-    c.cookies.set(app_web.COOKIE, "enzo")
+    entrar(c, app_web)
     return c
 
 
@@ -146,7 +148,7 @@ def test_cotacao_de_outro_usuario_nao_abre(app):
     vendedor, e esta rota não pode ser a porta dos fundos."""
     de_outro = app.banco.salvar_cotacao("outra_pessoa", CARGA)
     c = TestClient(app.app)
-    c.cookies.set(app_web.COOKIE, "enzo")
+    entrar(c, app_web)
 
     assert c.get(f"/email/{de_outro}/dellavolpe").status_code == 404
 

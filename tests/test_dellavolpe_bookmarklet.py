@@ -23,6 +23,8 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 import pytest
+
+from tests.apoio import entrar
 from fastapi.testclient import TestClient
 
 from carriers.dellavolpe import bookmarklet as dv
@@ -149,7 +151,7 @@ def app_web(tmp_path, monkeypatch):
 @pytest.fixture
 def cliente(app_web):
     c = TestClient(app_web.app)
-    c.cookies.set(app_web.COOKIE, "enzo")
+    entrar(c, app_web)
     return c
 
 

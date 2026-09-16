@@ -20,6 +20,8 @@ from __future__ import annotations
 import re
 
 import pytest
+
+from tests.apoio import entrar
 from fastapi.testclient import TestClient
 
 from core.banco import Banco
@@ -35,7 +37,7 @@ def app_web(tmp_path, monkeypatch):
 @pytest.fixture
 def cliente(app_web):
     c = TestClient(app_web.app)
-    c.cookies.set(app_web.COOKIE, "enzo")
+    entrar(c, app_web)
     return c
 
 

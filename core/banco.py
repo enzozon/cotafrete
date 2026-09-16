@@ -17,6 +17,7 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
+from core import sessao
 from core.retentativa import ESPERA_MAXIMA_S
 
 CAMINHO_PADRAO = Path("cotafrete.db")
@@ -95,6 +96,24 @@ CREATE TABLE IF NOT EXISTS whatsapp_aberto (
 
 CREATE INDEX IF NOT EXISTS idx_cotacao_usuario ON cotacao(usuario, id DESC);
 CREATE INDEX IF NOT EXISTS idx_resultado_cotacao ON resultado(cotacao_id);
+
+-- Conta de vendedor. O admin cria a conta; a pessoa escolhe a senha no
+-- primeiro acesso. Por isso senha_hash nasce NULL: NULL quer dizer "convite
+-- aberto, ainda sem dono". Ver core/sessao.py.
+CREATE TABLE IF NOT EXISTS conta (
+    nome        TEXT PRIMARY KEY,
+    senha_hash  TEXT,
+    criado_em   TEXT NOT NULL,
+    definida_em TEXT
+);
+
+-- Guarda-treco de uma linha só. Hoje serve para o segredo que assina os
+-- cookies de sessão: ele precisa sobreviver a reinício do servidor, senão
+-- toda subida derrubaria a equipe inteira.
+CREATE TABLE IF NOT EXISTS config (
+    chave TEXT PRIMARY KEY,
+    valor TEXT NOT NULL
+);
 """
 
 CAMPOS_CARGA = (
@@ -342,3 +361,84 @@ class Banco:
         with closing(self._conectar()) as con, con:
             return [r[0] for r in con.execute(
                 "SELECT DISTINCT usuario FROM cotacao ORDER BY usuario")]
+
+    # ------------------------------------------------------------- contas
+    # Quem pode entrar. Não confundir com usuarios() acima, que lista quem já
+    # cotou — um nome pode aparecer lá sem ter conta (cotações anteriores ao
+    # login) e uma conta pode existir sem nunca ter cotado.
+
+    def segredo_sessao(self) -> str:
+        """O segredo que assina os cookies. Cria na primeira chamada.
+
+        Fica no banco, e não no .env, porque precisa sobreviver a reinício:
+        gerar um novo a cada subida do servidor derrubaria a equipe toda a
+        cada deploy. Para expulsar todo mundo de propósito, apague esta linha.
+        """
+        with closing(self._conectar()) as con, con:
+            linha = con.execute(
+                "SELECT valor FROM config WHERE chave = 'segredo_sessao'"
+            ).fetchone()
+            if linha:
+                return linha["valor"]
+            # INSERT OR IGNORE + releitura: dois trabalhadores subindo juntos
+            # não podem acabar com segredos diferentes, cada um invalidando o
+            # cookie do outro.
+            con.execute("INSERT OR IGNORE INTO config (chave, valor)"
+                        " VALUES ('segredo_sessao', ?)", (sessao.novo_segredo(),))
+            return con.execute(
+                "SELECT valor FROM config WHERE chave = 'segredo_sessao'"
+            ).fetchone()["valor"]
+
+    def criar_conta(self, nome: str) -> bool:
+        """Abre o convite. Devolve False se o nome já existe.
+
+        A senha fica NULL: quem escolhe é a própria pessoa, no primeiro
+        acesso."""
+        with closing(self._conectar()) as con, con:
+            cur = con.execute(
+                "INSERT OR IGNORE INTO conta (nome, criado_em) VALUES (?, ?)",
+                (nome, datetime.now().isoformat(timespec="seconds")))
+            return cur.rowcount == 1
+
+    def conta(self, nome: str) -> dict | None:
+        with closing(self._conectar()) as con, con:
+            linha = con.execute(
+                "SELECT * FROM conta WHERE nome = ?", (nome,)).fetchone()
+            return dict(linha) if linha else None
+
+    def contas(self) -> list[dict]:
+        with closing(self._conectar()) as con, con:
+            return [dict(r) for r in con.execute(
+                "SELECT * FROM conta ORDER BY nome")]
+
+    def definir_senha(self, nome: str, senha_hash: str) -> bool:
+        """Fecha o convite. Só funciona enquanto a senha ainda é NULL.
+
+        O `AND senha_hash IS NULL` é a trava de segurança, e ela mora AQUI de
+        propósito: se dependesse de quem chama conferir antes, bastaria um
+        caminho esquecer a conferência para qualquer pessoa reescrever a senha
+        de um vendedor que já usa o sistema. Para redefinir de verdade, o
+        admin chama esquecer_senha() primeiro."""
+        with closing(self._conectar()) as con, con:
+            cur = con.execute(
+                "UPDATE conta SET senha_hash = ?, definida_em = ?"
+                " WHERE nome = ? AND senha_hash IS NULL",
+                (senha_hash, datetime.now().isoformat(timespec="seconds"),
+                 nome))
+            return cur.rowcount == 1
+
+    def esquecer_senha(self, nome: str) -> bool:
+        """Reabre o convite: a pessoa escolhe outra senha no próximo acesso.
+        É o que o admin usa quando alguém esquece a dela."""
+        with closing(self._conectar()) as con, con:
+            cur = con.execute(
+                "UPDATE conta SET senha_hash = NULL, definida_em = NULL"
+                " WHERE nome = ?", (nome,))
+            return cur.rowcount == 1
+
+    def remover_conta(self, nome: str) -> bool:
+        """Tira o acesso. As cotações que a pessoa já fez ficam — são
+        histórico da empresa, não dela."""
+        with closing(self._conectar()) as con, con:
+            cur = con.execute("DELETE FROM conta WHERE nome = ?", (nome,))
+            return cur.rowcount == 1

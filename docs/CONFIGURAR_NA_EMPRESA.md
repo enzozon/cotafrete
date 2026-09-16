@@ -32,10 +32,11 @@ versão nova.
 
 ## 1. Fechar o acesso ao Cotafrete (Cloudflare Access)
 
-**Faça este passo primeiro.** Hoje `https://cotafrete.ventura.inf.br` está na
-internet pública **sem senha nenhuma**: a tela de entrada aceita qualquer
-nome digitado e cria a sessão. Ela foi desenhada para a rede local, onde
-servia para separar históricos — não para barrar acesso.
+**Faça este passo primeiro.** Desde 16/09/2026 a tela de entrada pede senha
+(ver "Quem entra", mais abaixo), mas o Access continua sendo o passo um: ele
+barra na Cloudflare, antes de a requisição chegar na VM. Sem ele, a tela de
+login do sistema fica exposta à internet inteira para quem quiser tentar
+senha — e qualquer falha futura naquela tela vira falha de todo mundo.
 
 E o que está atrás dela é CNPJ de cliente, valor de nota fiscal e os prints
 que as transportadoras devolvem.
@@ -384,6 +385,38 @@ reg add "HKCU\Console" /v QuickEdit /t REG_DWORD /d 0 /f
 ```
 
 Vale para as janelas abertas daí em diante.
+
+---
+
+## 7-bis. Quem entra no Cotafrete
+
+O vendedor entra com **nome e senha**. A conta é criada por você, no painel;
+a senha quem escolhe é a própria pessoa, no primeiro acesso.
+
+**Você nunca vê a senha de ninguém.** Ela é guardada como hash scrypt — se o
+banco vazar, as senhas não vêm junto em texto. Quando alguém esquecer, o
+botão **Esquecer senha** reabre o convite e a pessoa escolhe outra.
+
+### Ao subir esta versão pela primeira vez
+
+Quem não tem conta não entra — e o histórico antigo **não** vira conta
+sozinho. Faça isto antes de avisar a equipe, senão ninguém trabalha:
+
+1. Abra `https://cotafrete.ventura.inf.br/adm/contas` (pede a senha do
+   painel, a mesma do `COTAFRETE_ADM_SENHA`).
+2. Embaixo aparece **"Já cotaram, mas ainda não têm conta"**, com os nomes do
+   histórico. Clique nos que são pessoas de verdade.
+3. **Confira nome por nome.** Ali também aparecem erros de digitação e testes
+   antigos, e cada conta criada é um convite aberto: a primeira pessoa que
+   adivinhar aquele nome escolhe a senha dele. Não crie o que não reconhecer.
+4. Avise cada vendedor: entrar com o próprio nome, digitar qualquer coisa no
+   campo da senha, e o sistema pede para escolher a senha definitiva.
+
+### Quando alguém sai da empresa
+
+**Remover** tira o acesso na hora — a sessão que a pessoa tiver aberta para
+de funcionar na requisição seguinte, sem esperar o cookie vencer. As cotações
+que ela fez continuam no histórico: são da empresa, não dela.
 
 ---
 

@@ -319,9 +319,18 @@ Dois roteiros cobrem a instalação, nesta ordem:
 - [`docs/DEPLOY_SERVIDOR.md`](docs/DEPLOY_SERVIDOR.md) — criar a VM e
   instalar o Cotafrete nela.
 - [`docs/CONFIGURAR_NA_EMPRESA.md`](docs/CONFIGURAR_NA_EMPRESA.md) — deixar
-  tudo subindo sozinho e publicar na internet. Ele começa **fechando o
-  acesso**: a tela de entrada do vendedor aceita qualquer nome digitado e não
-  protege nada, então na internet pública ela precisa do Access na frente.
+  tudo subindo sozinho e publicar na internet.
+
+**O vendedor entra com senha** desde 16/09/2026. A conta é criada pelo
+administrador em `/adm/contas`; a senha quem escolhe é a própria pessoa, no
+primeiro acesso, e nem o administrador consegue vê-la (fica como hash scrypt,
+ver `core/sessao.py`). Antes disso a tela aceitava qualquer nome digitado —
+e o cookie guardava esse nome puro, então trocá-lo no navegador era virar
+outra pessoa.
+
+> **Ao subir esta versão, crie as contas antes de avisar a equipe.** Quem não
+> tem conta não entra, e o histórico anterior não vira conta sozinho. A tela
+> `/adm/contas` lista quem já cotou e cria cada um com um clique.
 
 O backup do banco é o `Backup.bat`, agendado na VM para rodar todo dia — ver
 [`docs/CONFIGURAR_NA_EMPRESA.md`](docs/CONFIGURAR_NA_EMPRESA.md), passo 8.
