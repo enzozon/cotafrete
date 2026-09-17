@@ -594,6 +594,19 @@ def entrar(usuario: str = Form(...), senha: str = Form(""),
     qualquer pessoa que achasse o endereço na internet se cadastraria
     sozinha, que é exatamente o buraco que este login veio fechar."""
     nome = usuario.strip()[:40]
+
+    # O administrador entra por aqui também, com a senha do painel. Vem antes
+    # da busca de conta porque o nome é reservado: /adm/contas recusa criar
+    # conta de vendedor com ele, então não há ambiguidade.
+    if adm.nome_reservado(nome):
+        resposta = adm.entrada_pelo_login(senha)
+        if resposta is not None:
+            return resposta
+        time.sleep(PAUSA_SENHA_ERRADA_S)
+        # MESMO texto da senha de vendedor errada, de propósito: mensagem
+        # diferente transformaria a tela num detector de nome válido.
+        return _recusar("Nome ou senha não conferem.", nome)
+
     conta = banco.conta(nome) if nome else None
 
     if conta is None:

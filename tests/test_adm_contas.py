@@ -92,6 +92,32 @@ def test_nome_em_branco_nao_cria_conta(chefe, app_web):
     assert app_web.banco.contas() == []
 
 
+@pytest.mark.parametrize("reservado", ["adm", "ADMIN", "Administrador"])
+def test_nome_reservado_ao_administrador_nao_vira_conta(chefe, app_web, reservado):
+    """A conta existiria e nunca conseguiria entrar: a tela de login
+    reconhece esses nomes como porta do painel antes de procurar conta.
+    Criá-la seria fabricar uma conta morta."""
+    r = chefe.post("/adm/contas/criar", data={"nome": reservado})
+
+    assert app_web.banco.contas() == []
+    assert "reservado" in chefe.get(r.headers["location"]).text
+
+
+# ------------------------------------------------------ navegacao da tela
+def test_os_links_da_barra_voltam_para_o_painel(chefe):
+    """17/09/2026: a tela saía com base vazia, então os itens da barra viravam
+    "#historico" — âncora que não existe aqui. Clicar não saía do lugar."""
+    corpo = chefe.get("/adm/contas").text
+
+    assert 'href="/adm#historico"' in corpo
+    assert 'href="#historico"' not in corpo
+
+
+def test_a_barra_tem_o_botao_de_contas(chefe):
+    """Sem ele só se chega aqui digitando o endereço na mão."""
+    assert 'href="/adm/contas"' in chefe.get("/adm").text
+
+
 # -------------------------------------------------------------- esquecer
 def test_esquecer_reabre_o_convite(chefe, app_web):
     app_web.banco.criar_conta("maria")

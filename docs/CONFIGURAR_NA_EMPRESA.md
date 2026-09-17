@@ -412,6 +412,22 @@ sozinho. Faça isto antes de avisar a equipe, senão ninguém trabalha:
 4. Avise cada vendedor: entrar com o próprio nome, digitar qualquer coisa no
    campo da senha, e o sistema pede para escolher a senha definitiva.
 
+### Como você mesmo entra no painel
+
+Duas portas, a mesma senha (`COTAFRETE_ADM_SENHA`):
+
+- direto em `/adm/entrar`;
+- ou na tela normal do vendedor, digitando **`adm`** (ou `admin`, ou
+  `administrador`) no nome e a senha do painel — cai direto no `/adm`.
+
+A segunda existe só para não obrigar ninguém a decorar o endereço. Não abre
+nada novo: `/adm/entrar` já aceita essa senha, na mesma internet, e os dois
+caminhos esperam 1 segundo a cada tentativa errada. Esses três nomes são
+reservados — a tela de contas recusa criar vendedor com eles, senão a conta
+existiria sem nunca conseguir entrar.
+
+Dentro do painel, **Contas** fica na barra da esquerda, em "Administrar".
+
 ### Quando alguém sai da empresa
 
 **Remover** tira o acesso na hora — a sessão que a pessoa tiver aberta para
