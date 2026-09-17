@@ -26,6 +26,16 @@ MARCA_COMPACTA = "/marca/lockup-compacto.png"        # fundo escuro
 MARCA_COMPACTA_CLARA = "/marca/lockup-compacto-claro.png"
 MARCA_SIMBOLO = "/marca/simbolo-web.png"        # lateral do painel
 
+# O ícone da aba do navegador. Serve o mesmo PNG do símbolo, que tem canal
+# alfa — então o V azul fica legível tanto na aba clara quanto na escura, sem
+# um quadrado branco em volta.
+#
+# Sem favicon.ico: nenhum navegador atual precisa dele, e um arquivo a mais
+# seria outro lugar para a marca sair de sincronia quando ela mudar. O
+# `sizes="any"` autoriza o navegador a redimensionar este à vontade.
+ICONE_ABA = (f'<link rel="icon" type="image/png" sizes="any" '
+             f'href="{MARCA_SIMBOLO}">')
+
 # A assinatura ("todos os produtos num só lugar") NÃO vem em imagem em lugar
 # nenhum: dentro do lockup ela ocupa 6px de 120, e só fica legível a partir
 # de ~180px de altura da peça inteira — altura que tela nenhuma do sistema
@@ -1047,7 +1057,8 @@ def entrada(titulo: str, cartao: str, *, chamada: str, apoio: str,
     fim = f'<p class="rodape">{e(rodape)}</p>' if rodape else ""
     return f"""<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>{e(titulo)} — Cotafrete</title><style>{CSS}</style></head><body>
+<title>{e(titulo)} — Cotafrete</title>{ICONE_ABA}
+<style>{CSS}</style></head><body>
 <div class="entrada">
   <aside class="entrada-marca">
     <div class="marca-entrada">
@@ -1110,7 +1121,7 @@ def pagina(titulo: str, corpo: str, usuario: str | None = None) -> str:
                 f'<a href="/sair">Sair</a></span> <b>{e(usuario)}</b></span>')
     return f"""<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>{e(titulo)} — Cotafrete</title>{cabeca_do_tema("claro")}
+<title>{e(titulo)} — Cotafrete</title>{ICONE_ABA}{cabeca_do_tema("claro")}
 <style>{CSS}</style></head><body>
 <div class="topo"><a class="marca-placa" href="/" aria-label="Ventura Comércio — início"><span class="marca-peca marca-lockup" role="img"></span></a>
 {quem}{BOTAO_TEMA}</div>
