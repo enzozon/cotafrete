@@ -578,7 +578,13 @@ def _recusar(erro: str, nome: str = "", escolher_senha: bool = False):
     return resposta
 
 
-@app.post("/login")
+# response_class=HTMLResponse: sem isto, um `return` de str sai daqui como
+# JSON — a pessoa recebe a página inteira escapada, com \n literal na tela, em
+# vez de HTML. Foi o que aconteceu com o primeiro acesso em 17/09/2026: os
+# caminhos de erro passavam por _recusar(), que embrulha, e só o ramo do
+# convite devolvia str crua. Declarado na ROTA, vale para todo `return` dela,
+# inclusive os que vierem depois.
+@app.post("/login", response_class=HTMLResponse)
 def entrar(usuario: str = Form(...), senha: str = Form(""),
            confirmacao: str = Form("")):
     """Uma rota, três caminhos: conta inexistente, primeiro acesso e entrada

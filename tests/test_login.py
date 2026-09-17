@@ -131,6 +131,40 @@ def test_primeiro_acesso_pede_para_escolher_a_senha(c, app_web):
     assert app_web.COOKIE not in r.cookies, "ainda não entrou"
 
 
+def test_toda_resposta_do_login_sai_como_html(c, app_web):
+    """17/09/2026: o ramo do primeiro acesso devolvia str numa rota sem
+    `response_class`, e o FastAPI mandava a página como JSON — a pessoa via
+    o código-fonte escapado, com \\n literal, em vez da tela.
+
+    O teste anterior não pegou porque conferia só se o texto aparecia, e em
+    JSON ele aparece (escapado). Quem decide se a tela funciona é o tipo de
+    mídia, então é ele que precisa ser conferido — em TODOS os caminhos, que
+    é onde o defeito se escondeu: só um dos cinco estava errado."""
+    _com_conta(app_web, nome="maria", senha=None)          # convite aberto
+    _com_conta(app_web, nome="joao")                       # já tem senha
+
+    respostas = {
+        "conta inexistente":
+            c.post("/login", data={"usuario": "ninguem", "senha": "x"}),
+        "primeiro acesso":
+            c.post("/login", data={"usuario": "maria", "senha": "tanto-faz"}),
+        "senha curta":
+            c.post("/login", data={"usuario": "maria", "senha": "123",
+                                   "confirmacao": "123"}),
+        "senhas diferentes":
+            c.post("/login", data={"usuario": "maria", "senha": "uma-senha-boa",
+                                   "confirmacao": "outra-senha-boa"}),
+        "senha errada":
+            c.post("/login", data={"usuario": "joao", "senha": "chute"}),
+        "tela inicial": c.get("/login"),
+    }
+
+    for caminho, r in respostas.items():
+        assert r.headers["content-type"].startswith("text/html"), caminho
+        assert not r.text.lstrip().startswith('"'), (
+            f"{caminho}: saiu como string JSON, não como página")
+
+
 def test_a_senha_digitada_antes_nao_vira_a_senha_da_conta(c, app_web):
     """Quem chega no primeiro acesso digitou algo no campo "sua senha" sem
     saber. Esse valor não pode virar a senha definitiva por acidente."""
