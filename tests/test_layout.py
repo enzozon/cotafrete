@@ -167,7 +167,11 @@ def test_cada_peca_da_marca_vai_onde_cabe():
     assert layout.MARCA_COMPACTA in do_vendedor, "cabecalho do vendedor"
     assert layout.MARCA_COMPACTA in entrada, "a entrada usa a mesma peca"
     assert layout.MARCA_SIMBOLO in painel, "a lateral so cabe o simbolo"
-    assert layout.MARCA_SIMBOLO not in do_vendedor, \
+    # A pergunta e sobre a marca VISIVEL, entao a conferencia e no <img> e nao
+    # na presenca do caminho: desde 17/09/2026 o simbolo tambem e o icone da
+    # aba, e aparece no <head> de todas as telas. Conferir o caminho solto
+    # daria alarme falso para uma imagem que ninguem ve dentro da pagina.
+    assert f'<img src="{layout.MARCA_SIMBOLO}"' not in do_vendedor, \
         "no vendedor a marca vem por extenso, e nao so o simbolo"
 
     # A assinatura e TEXTO em toda parte: dentro do raster ela tem 6px de
@@ -500,3 +504,24 @@ def test_a_rota_deixa_o_ultimo_ponto_em_aberto():
     assert html.count('class="ponto"') == 3
     assert html.count('class="trecho"') == 1, "o do meio, percorrido"
     assert html.count('class="trecho falta"') == 1, "o ultimo, em aberto"
+
+
+def test_todas_as_telas_levam_o_icone_da_aba():
+    """Sao TRES cascos diferentes - entrada(), pagina() e pagina_painel() - e
+    cada um monta o proprio <head>. Conferir um so deixaria as outras duas com
+    o globo cinza do navegador, que e como o site estava ate 17/09/2026.
+
+    O mesmo descuido ja tinha acontecido com a barra lateral da tela de
+    contas: o que vale para um casco nao vale sozinho para os outros."""
+    from web import painel_ui
+
+    cascos = {
+        "entrada (login)": layout.entrada("t", "<div>x</div>", chamada="c",
+                                          apoio="a", paradas=("um", "dois")),
+        "pagina (vendedor)": layout.pagina("t", "<div>x</div>", "enzo"),
+        "painel (adm)": painel_ui.pagina_painel("t", "<div>x</div>"),
+    }
+
+    for nome, html in cascos.items():
+        assert 'rel="icon"' in html, f"{nome} sem icone na aba"
+        assert layout.MARCA_SIMBOLO in html, f"{nome} aponta para outro arquivo"

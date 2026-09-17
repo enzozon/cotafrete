@@ -23,8 +23,8 @@ from datetime import date
 from math import hypot, pi
 
 from core.painel import categoria
-from web.layout import (BOTAO_TEMA, CSS as CSS_BASE, LUPA, MARCA_SIMBOLO,
-                        SCRIPT_TEMA, cabeca_do_tema, e)
+from web.layout import (BOTAO_TEMA, CSS as CSS_BASE, ICONE_ABA, LUPA,
+                        MARCA_SIMBOLO, SCRIPT_TEMA, cabeca_do_tema, e)
 
 # `categoria` é a ÚNICA coisa que este arquivo importa de fora do desenho, e
 # é função pura. Vem de lá em vez de ser reescrita aqui porque é ela quem diz
@@ -706,7 +706,7 @@ def pagina_painel(titulo: str, corpo: str, *, base: str = "") -> str:
     que fica parada enquanto a tabela rola."""
     return f"""<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>{e(titulo)} — Cotafrete</title>{cabeca_do_tema("escuro")}
+<title>{e(titulo)} — Cotafrete</title>{ICONE_ABA}{cabeca_do_tema("escuro")}
 <style>{CSS_BASE}{CSS}</style></head><body>
 <div class="painel">{_lateral(base)}<main class="conteudo">{corpo}</main></div>
 {LUPA}{SCRIPT_TEMA}
