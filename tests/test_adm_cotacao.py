@@ -25,6 +25,8 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 
 import pytest
+
+from tests.apoio import entrar
 from fastapi.testclient import TestClient
 
 from core.banco import Banco
@@ -114,7 +116,7 @@ def test_o_vendedor_continua_sem_ver_a_do_colega(cliente):
     continua fechada para o vendedor errado."""
     cid = adm.banco.salvar_cotacao("leandro", CARGA)
     vendedor = TestClient(app_web.app)
-    vendedor.cookies.set(app_web.COOKIE, "enzo")
+    entrar(vendedor, app_web)
     # A tela do vendedor usa o banco de web.app, não o do painel — o que
     # importa aqui é que ela NÃO abre a cotação de outro, e 404 é isso.
     assert cliente.get(f"/adm/cotacao/{cid}").status_code == 200

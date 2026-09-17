@@ -147,6 +147,8 @@ def test_jadlog_adapter_de_api_tambem_recusa_fob():
 import pytest
 from fastapi.testclient import TestClient
 
+from tests.apoio import entrar
+
 from core.banco import Banco
 
 CARGA = {
@@ -175,7 +177,7 @@ def app_web(tmp_path, monkeypatch):
 @pytest.fixture
 def cliente(app_web):
     c = TestClient(app_web.app)
-    c.cookies.set(app_web.COOKIE, "enzo")
+    entrar(c, app_web)
     return c
 
 
