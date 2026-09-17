@@ -692,7 +692,8 @@ def _lateral(base: str = "") -> str:
   <div class="marca">{marca}<b>Painel</b></div>
   <div class="secao">Acompanhar</div>
   {itens}
-  <div class="secao">Conta</div>
+  <div class="secao">Administrar</div>
+  <a href="/adm/contas">{_icone(ICONES["cotacoes"])}<span>Contas</span></a>
   <a href="/adm/sair">{_icone(ICONES["sair"])}<span>Sair do painel</span></a>
   <div class="rodape">Cotafrete · Ventura</div>
 </div></nav>"""

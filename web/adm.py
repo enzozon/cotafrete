@@ -160,6 +160,43 @@ def sair():
     return r
 
 
+# ---------------------------------------------- entrar pela porta do vendedor
+# Nomes reservados: quem digitar um deles na tela de login do vendedor, com a
+# senha do painel, cai no /adm. É a mesma senha e a mesma barreira de sempre
+# — só poupa decorar o endereço /adm/entrar.
+#
+# Não amplia o que está exposto: /adm/entrar já aceita essa senha, na mesma
+# internet, e os dois caminhos têm o mesmo atraso de 1 segundo na tentativa
+# errada. O que muda é só onde a pessoa digita.
+NOMES_RESERVADOS = frozenset({"adm", "admin", "administrador"})
+
+
+def nome_reservado(nome: str) -> bool:
+    """Se este nome é a porta do administrador, e não de um vendedor.
+
+    casefold() e não lower(): "ADMIN" e "Admin" são a mesma porta, e em
+    português há letra que lower() não normaliza igual."""
+    return nome.strip().casefold() in NOMES_RESERVADOS
+
+
+def entrada_pelo_login(senha: str):
+    """A entrada no painel, ou None se a senha não confere.
+
+    Devolver None em vez de uma tela de erro é de propósito: quem chama é a
+    tela do vendedor, e é ela que sabe como mostrar a recusa — com o mesmo
+    texto de uma senha de vendedor errada, para a tela não virar um detector
+    de "este nome existe"."""
+    correta = senha_configurada()
+    if not correta:
+        return None
+    if not hmac.compare_digest(senha.encode(), correta.encode()):
+        return None
+    r = RedirectResponse("/adm", status_code=303)
+    r.set_cookie(COOKIE_ADM, token_de(correta), max_age=VALIDADE_S,
+                 httponly=True, samesite="lax")
+    return r
+
+
 PERIODOS = ((1, "24 h"), (7, "7 dias"), (30, "30 dias"), (3650, "tudo"))
 # "24 h", não "hoje": esta faixa usa `_desde(1)` (agora menos 24 horas), e a
 # faixa ao vivo do topo (resumo_do_dia) usa o dia do CALENDÁRIO. Às 9h da
@@ -1123,7 +1160,11 @@ def tela_contas(adm: str | None = Cookie(None, alias=COOKIE_ADM),
   </div>
   {pendentes}
 </div>"""
-    return HTMLResponse(ui.pagina_painel("Quem entra", corpo))
+    # base="/adm": os itens da barra sao ANCORAS de secao do painel. Sem o
+    # prefixo eles viram "#historico" nesta pagina, que nao tem essas secoes
+    # — clicar nao sai do lugar e a barra inteira parece quebrada. Foi o que
+    # aconteceu ate 17/09/2026.
+    return HTMLResponse(ui.pagina_painel("Quem entra", corpo, base="/adm"))
 
 
 def _voltar(erro: str = "", feito: str = "") -> RedirectResponse:
@@ -1147,6 +1188,11 @@ def criar_conta(nome: str = Form(...),
     limpo = nome.strip()[:40]
     if not limpo:
         return _voltar(erro="Digite o nome.")
+    if nome_reservado(limpo):
+        # A conta existiria e nunca conseguiria entrar: a tela de login
+        # reconhece o nome como porta do painel antes de procurar conta.
+        return _voltar(erro=f'"{limpo}" é reservado para a entrada do '
+                            f'administrador. Escolha outro nome.')
     if not banco.criar_conta(limpo):
         return _voltar(erro=f"Já existe uma conta com o nome {limpo}.")
     return _voltar(feito=f"Conta de {limpo} criada. Peça para ela entrar e "

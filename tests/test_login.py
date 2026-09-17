@@ -222,6 +222,72 @@ def test_o_convite_nao_pode_ser_usado_por_quem_chegar_depois(c, app_web):
                                 app_web.banco.conta("joao")["senha_hash"])
 
 
+# ------------------------------------------- o administrador pela mesma porta
+SENHA_DO_PAINEL = "senha-do-painel-de-teste"
+
+
+@pytest.fixture
+def com_painel(app_web, monkeypatch):
+    monkeypatch.setenv("COTAFRETE_ADM_SENHA", SENHA_DO_PAINEL)
+    return app_web
+
+
+@pytest.mark.parametrize("como", ["adm", "ADMIN", "Administrador", "  adm  "])
+def test_o_administrador_entra_pela_tela_do_vendedor(c, com_painel, como):
+    """Poupa decorar /adm/entrar. É a MESMA senha e a mesma barreira — muda
+    só onde se digita."""
+    r = c.post("/login", data={"usuario": como, "senha": SENHA_DO_PAINEL})
+
+    assert r.status_code == 303
+    assert r.headers["location"] == "/adm"
+    assert com_painel.adm.COOKIE_ADM in r.cookies
+
+
+def test_senha_errada_no_nome_reservado_nao_abre_o_painel(c, com_painel):
+    r = c.post("/login", data={"usuario": "adm", "senha": "chute"})
+
+    assert r.status_code == 401
+    assert com_painel.adm.COOKIE_ADM not in r.cookies
+    assert com_painel.COOKIE not in r.cookies, "nem sessão de vendedor"
+
+
+def test_a_recusa_do_adm_e_igual_a_de_um_vendedor(c, com_painel):
+    """Texto diferente transformaria a tela num detector de nome válido:
+    quem estivesse tentando descobriria quais nomes existem."""
+    _com_conta(com_painel)
+
+    do_adm = c.post("/login", data={"usuario": "adm", "senha": "chute"}).text
+    do_vendedor = c.post("/login", data={"usuario": "joao", "senha": "x"}).text
+
+    assert "Nome ou senha não conferem" in do_adm
+    assert "Nome ou senha não conferem" in do_vendedor
+
+
+def test_sem_senha_de_painel_configurada_o_nome_reservado_nao_entra(c, app_web,
+                                                                    monkeypatch):
+    """Sem COTAFRETE_ADM_SENHA o painel nem existe (responde 404). O nome
+    reservado não pode virar uma porta sem tranca."""
+    monkeypatch.delenv("COTAFRETE_ADM_SENHA", raising=False)
+
+    r = c.post("/login", data={"usuario": "adm", "senha": ""})
+
+    assert r.status_code == 401
+    assert app_web.adm.COOKIE_ADM not in r.cookies
+
+
+def test_conta_de_vendedor_com_nome_reservado_nao_sequestra_o_painel(c, com_painel):
+    """Se alguém conseguisse criar a conta "adm" por outro caminho, ela não
+    pode servir para entrar no painel com a senha dela."""
+    com_painel.banco.criar_conta("adm")
+    com_painel.banco.definir_senha("adm", sessao.hash_senha("senha-do-espiao"))
+
+    r = c.post("/login", data={"usuario": "adm", "senha": "senha-do-espiao"})
+
+    assert r.status_code == 401
+    assert com_painel.adm.COOKIE_ADM not in r.cookies
+    assert com_painel.COOKIE not in r.cookies
+
+
 def test_sair_derruba_a_sessao(c, app_web):
     _com_conta(app_web)
     c.cookies.set(app_web.COOKIE,
