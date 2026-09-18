@@ -513,6 +513,28 @@ Depois de criar, clique com o botão direito → **Executar**, e confira em
 *Resultado da última execução*: `0x0` é sucesso. Qualquer outra coisa,
 o motivo está na janela do `Backup.bat` rodado à mão.
 
+### 8c-bis. Os prints vão junto
+
+O mesmo `Backup.bat` também espelha os prints das cotações — as pastas
+`teste_real\` e `runs\`. A saída mostra quantos foram:
+
+```
+  Prints:   628 novo(s), 0 ja estavam la
+```
+
+Ele copia **só o que ainda não está lá**: na segunda execução do mesmo dia o
+número cai para zero, e não se arrastam 89 MB pela rede toda noite.
+
+**O espelho nunca apaga nada, e é esse o ponto.** O sistema apaga print local
+com mais de 30 dias para o disco da VM não encher — isso é gestão de espaço,
+não prazo de guarda. Sem o espelho, a imagem que prova o preço que a
+transportadora deu some junto com a faxina. Com ele, o histórico de texto
+fica no banco e a prova visual fica na rede, sem prazo.
+
+A pasta cresce sozinha, cerca de 60-90 MB por mês de movimento. Se um dia
+precisar conter, apague as subpastas mais antigas de
+`<destino>\evidencias\` à mão — nada no sistema depende delas.
+
 ### 8d. O que guardar, e restaurar
 
 A faxina mantém as **14 cópias mais novas** e apaga o resto, para o backup não
@@ -560,8 +582,5 @@ login automático — porque é a única que precisa de navegador com janela.
 
 ## O que continua em aberto
 
-- A pasta `runs\` continua sem cópia. O banco já tem (passo 8); as evidências
-  não. Elas expiram em 30 dias sozinhas, então o que se perde é limitado —
-  mas é o print que prova o preço para o cliente.
 - O `Monitor.bat` ainda escreve na tela. O passo 7 contorna; o conserto de
   verdade é mandar a saída dele para arquivo, como o `Servidor.bat` já faz.
