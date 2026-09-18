@@ -31,10 +31,24 @@ def page():
     with playwright.sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
         pg = browser.new_context(locale="pt-BR").new_page()
+        # A fixture foi capturada do site real e traz dois <script> do
+        # reCAPTCHA do Google. Com wait_until="load" o Playwright esperava por
+        # eles: um teste que se diz offline ficava dependendo de DNS e de um
+        # serviço de terceiro. Mesma causa da instabilidade que derrubava o
+        # test_braspress_dom.py.
+        pg.route("**/*", lambda rota: (
+            rota.continue_() if rota.request.url.startswith("file:")
+            else rota.abort()))
+
         pg.set_default_timeout(8_000)
-        pg.goto(URL_FIXTURE, wait_until="load")
+        pg.goto(URL_FIXTURE, wait_until="domcontentloaded")
         yield pg
         browser.close()
+
+        # Sem scope="module" aqui, ao contrário do test_braspress_dom.py:
+        # estes testes ESCREVEM no DOM — um deles chega a remover todos os
+        # formulários da página. Compartilhar a página faria o estado de um
+        # vazar para o seguinte.
 
 
 @pytest.fixture
