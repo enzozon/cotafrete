@@ -193,6 +193,84 @@ def test_faxina_em_pasta_que_ainda_nao_existe(tmp_path):
     assert backup.limpar_antigas(tmp_path / "ainda-nao", manter=3) == 0
 
 
+# ------------------------------------------------------- espelho de prints
+def _print_falso(pasta: Path, caminho: str, conteudo: bytes = b"\x89PNG-falso"):
+    arquivo = pasta / caminho
+    arquivo.parent.mkdir(parents=True, exist_ok=True)
+    arquivo.write_bytes(conteudo)
+    return arquivo
+
+
+def test_o_espelho_copia_os_prints_das_duas_pastas(tmp_path):
+    """São duas: `teste_real/`, onde as transportadoras gravam, e `runs/`, o
+    workdir do fluxo assistido. A documentação citava só a segunda."""
+    tr = tmp_path / "teste_real"
+    ru = tmp_path / "runs"
+    _print_falso(tr, "generoso/20260917-100000/resultado.png")
+    _print_falso(ru, "20260917-100000/dv_preenchido.png")
+    destino = tmp_path / "rede"
+
+    copiados, ja_tinha = backup.espelhar_evidencias(destino, (tr, ru))
+
+    assert (copiados, ja_tinha) == (2, 0)
+    assert (destino / "evidencias/teste_real/generoso/20260917-100000/"
+                      "resultado.png").exists()
+    assert (destino / "evidencias/runs/20260917-100000/"
+                      "dv_preenchido.png").exists()
+
+
+def test_rodar_de_novo_nao_recopia_o_que_ja_esta_la(tmp_path):
+    """Sem isto, cada backup diário recopiaria 90 MB de print que não mudou."""
+    tr = tmp_path / "teste_real"
+    _print_falso(tr, "camilo/20260917-100000/resultado.png")
+    destino = tmp_path / "rede"
+    backup.espelhar_evidencias(destino, (tr,))
+
+    copiados, ja_tinha = backup.espelhar_evidencias(destino, (tr,))
+
+    assert (copiados, ja_tinha) == (0, 1)
+
+
+def test_o_espelho_guarda_o_print_que_a_faxina_local_apagou(tmp_path):
+    """O ponto da função. A faxina de 30 dias do core/evidencias.py é gestão
+    de espaço; sem espelho, a prova do preço vai junto com ela."""
+    tr = tmp_path / "teste_real"
+    antigo = _print_falso(tr, "jadlog/20260101-090000/resultado.png")
+    destino = tmp_path / "rede"
+    backup.espelhar_evidencias(destino, (tr,))
+
+    antigo.unlink()                       # a faxina passou
+    backup.espelhar_evidencias(destino, (tr,))
+
+    assert (destino / "evidencias/teste_real/jadlog/20260101-090000/"
+                      "resultado.png").exists(), "o espelho nao apaga nada"
+
+
+def test_copia_interrompida_e_refeita(tmp_path):
+    """Arquivo truncado no destino (queda de rede no meio) precisa ser
+    copiado de novo, senão fica um print pela metade para sempre."""
+    tr = tmp_path / "teste_real"
+    _print_falso(tr, "braspress/20260917-100000/r.png", b"conteudo-inteiro")
+    destino = tmp_path / "rede"
+    pela_metade = destino / "evidencias/teste_real/braspress/20260917-100000/r.png"
+    pela_metade.parent.mkdir(parents=True)
+    pela_metade.write_bytes(b"cont")
+
+    copiados, _ = backup.espelhar_evidencias(destino, (tr,))
+
+    assert copiados == 1
+    assert pela_metade.read_bytes() == b"conteudo-inteiro"
+
+
+def test_pasta_de_print_que_nao_existe_nao_atrapalha(tmp_path):
+    """Numa máquina que nunca cotou, `runs/` não existe. Isso não pode
+    derrubar o backup do banco."""
+    copiados, ja_tinha = backup.espelhar_evidencias(
+        tmp_path / "rede", (tmp_path / "nao-existe",))
+
+    assert (copiados, ja_tinha) == (0, 0)
+
+
 # ------------------------------------------------------------- o destino
 def test_o_destino_sai_da_variavel_de_ambiente(monkeypatch, tmp_path):
     """O lugar certo é FORA da VM, e isso muda de empresa para empresa — por

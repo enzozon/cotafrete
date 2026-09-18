@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import os
 import re
+import shutil
 import sqlite3
 from datetime import datetime
 from pathlib import Path
@@ -153,6 +154,53 @@ def limpar_antigas(destino: Path | None = None,
     return len(velhas)
 
 
+# As pastas de print. São DUAS, e a documentação dizia só "runs/" — errado:
+# dos 619 resultados com evidência no banco de produção, 576 apontam para
+# `teste_real/` e 43 para `runs/`. A primeira é onde as transportadoras
+# gravam; a segunda é o `workdir` do fluxo assistido da Della Volpe e do
+# simulador da Jadlog.
+PASTAS_DE_EVIDENCIA = (Path("teste_real"), Path("runs"))
+NOME_DO_ESPELHO = "evidencias"
+
+
+def espelhar_evidencias(destino: Path | None = None,
+                        origens: tuple[Path, ...] = PASTAS_DE_EVIDENCIA
+                        ) -> tuple[int, int]:
+    """Copia para o destino os prints que ainda não estão lá.
+
+    Devolve (copiados, já tinha). **Nunca apaga nada no destino** — e é aí
+    que está o ponto desta função. O `core/evidencias.py` apaga print local
+    com mais de 30 dias, e isso é gestão de espaço em disco, não política de
+    guarda: sem um espelho, a prova do preço que a transportadora deu some
+    junto. O espelho existe para durar mais que a faxina.
+
+    Copia só o que falta, comparando o tamanho. Print gravado nunca é
+    reescrito, então não há caso de "mudou, copie de novo" — a comparação
+    serve para refazer cópia interrompida no meio."""
+    pasta = Path(destino) if destino is not None else destino_configurado()
+    raiz = pasta / NOME_DO_ESPELHO
+    copiados = ja_tinha = 0
+
+    for origem in origens:
+        origem = Path(origem)
+        if not origem.exists():
+            continue
+        for arquivo in origem.rglob("*"):
+            if not arquivo.is_file():
+                continue
+            alvo = raiz / origem.name / arquivo.relative_to(origem)
+            if alvo.exists() and alvo.stat().st_size == arquivo.stat().st_size:
+                ja_tinha += 1
+                continue
+            alvo.parent.mkdir(parents=True, exist_ok=True)
+            # copy2 e não copy: preserva a data de modificação, que é o que
+            # diz de quando é aquele print depois que o banco não estiver
+            # mais por perto para contar.
+            shutil.copy2(arquivo, alvo)
+            copiados += 1
+    return copiados, ja_tinha
+
+
 def rodar() -> int:
     """O que o `Backup.bat` chama. Devolve o código de saída."""
     pasta = destino_configurado()
@@ -169,6 +217,15 @@ def rodar() -> int:
     print(f"  Conteudo: {quantas} cotacoes, {tamanho:.1f} MB")
     if apagadas:
         print(f"  Faxina:   {apagadas} copia(s) antiga(s) apagada(s)")
+
+    # Os prints vêm depois do banco de propósito: se esta parte falhar, o
+    # histórico de texto — que é o que não se recupera de jeito nenhum — já
+    # está salvo. Print perdido dói; cotação perdida não tem volta.
+    try:
+        novos, tinha = espelhar_evidencias(pasta)
+        print(f"  Prints:   {novos} novo(s), {tinha} ja estavam la")
+    except Exception as erro:                      # noqa: BLE001
+        print(f"  Prints:   FALHOU ({erro}). O banco foi salvo assim mesmo.")
 
     # O aviso mais importante da ferramenta: cópia no mesmo disco do original
     # não protege contra o que mais acontece — a VM ou o disco se perderem.

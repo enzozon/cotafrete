@@ -428,6 +428,35 @@ existiria sem nunca conseguir entrar.
 
 Dentro do painel, **Contas** fica na barra da esquerda, em "Administrar".
 
+### Fechar a rede local (quando você quiser)
+
+Hoje o servidor escuta em `0.0.0.0`: qualquer um na rede da empresa — Wi-Fi
+de visitante incluído — alcança `http://192.168.1.250:8000` direto, **por
+fora do Cloudflare Access**. O login pede senha ali também, mas o Access é o
+que impede a internet de sequer chegar na tela.
+
+Para obrigar todo mundo a entrar pelo endereço público, num Prompt **como
+administrador**:
+
+```
+setx /M COTAFRETE_HOST 127.0.0.1
+setx /M COTAFRETE_COOKIE_SEGURO 1
+```
+
+e reinicie o servidor. A segunda linha faz o cookie de sessão só trafegar
+por https, fechando a janela de alguém na mesma rede ler a sessão em
+trânsito.
+
+> **As duas andam juntas, e nesta ordem.** Ligar só a segunda, com o acesso
+> local ainda aberto, quebra o login em `192.168.1.250:8000` **sem dar erro
+> nenhum**: o navegador descarta o cookie calado e a pessoa volta para a tela
+> de login sem entender por quê.
+
+Isso derruba o acesso por `192.168.1.250:8000` para todo mundo. Avise a
+equipe antes, e confirme que `https://cotafrete.ventura.inf.br` está
+funcionando. Para voltar atrás: `setx /M COTAFRETE_HOST 0.0.0.0` e
+`setx /M COTAFRETE_COOKIE_SEGURO 0`, e reinicie.
+
 ### Quando alguém sai da empresa
 
 **Remover** tira o acesso na hora — a sessão que a pessoa tiver aberta para
@@ -513,6 +542,28 @@ Depois de criar, clique com o botão direito → **Executar**, e confira em
 *Resultado da última execução*: `0x0` é sucesso. Qualquer outra coisa,
 o motivo está na janela do `Backup.bat` rodado à mão.
 
+### 8c-bis. Os prints vão junto
+
+O mesmo `Backup.bat` também espelha os prints das cotações — as pastas
+`teste_real\` e `runs\`. A saída mostra quantos foram:
+
+```
+  Prints:   628 novo(s), 0 ja estavam la
+```
+
+Ele copia **só o que ainda não está lá**: na segunda execução do mesmo dia o
+número cai para zero, e não se arrastam 89 MB pela rede toda noite.
+
+**O espelho nunca apaga nada, e é esse o ponto.** O sistema apaga print local
+com mais de 30 dias para o disco da VM não encher — isso é gestão de espaço,
+não prazo de guarda. Sem o espelho, a imagem que prova o preço que a
+transportadora deu some junto com a faxina. Com ele, o histórico de texto
+fica no banco e a prova visual fica na rede, sem prazo.
+
+A pasta cresce sozinha, cerca de 60-90 MB por mês de movimento. Se um dia
+precisar conter, apague as subpastas mais antigas de
+`<destino>\evidencias\` à mão — nada no sistema depende delas.
+
 ### 8d. O que guardar, e restaurar
 
 A faxina mantém as **14 cópias mais novas** e apaga o resto, para o backup não
@@ -560,8 +611,5 @@ login automático — porque é a única que precisa de navegador com janela.
 
 ## O que continua em aberto
 
-- A pasta `runs\` continua sem cópia. O banco já tem (passo 8); as evidências
-  não. Elas expiram em 30 dias sozinhas, então o que se perde é limitado —
-  mas é o print que prova o preço para o cliente.
 - O `Monitor.bat` ainda escreve na tela. O passo 7 contorna; o conserto de
   verdade é mandar a saída dele para arquivo, como o `Servidor.bat` já faz.
