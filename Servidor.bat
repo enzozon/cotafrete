@@ -201,7 +201,21 @@ REM A saida vai para o arquivo pelo motivo explicado la em cima: escrita na
 REM tela e o que o QuickEdit consegue travar. Aqui vao tanto os avisos de
 REM partida (a Della Volpe travada, as cotacoes interrompidas) quanto o
 REM traceback de qualquer transportadora que quebrar no meio do dia.
-.venv\Scripts\python.exe -m uvicorn web.app:app --host 0.0.0.0 --port 8000 --log-level warning >> "log\servidor.log" 2>&1
+REM COTAFRETE_HOST decide quem alcanca o servidor. O padrao continua sendo
+REM 0.0.0.0 -- TODA a rede, Wi-Fi de visitante incluido -- porque e assim que
+REM a equipe usa hoje, por 192.168.1.250:8000.
+REM
+REM Para fechar a rede local e obrigar todo mundo a entrar pelo tunel da
+REM Cloudflare (onde o Access barra antes de chegar na VM), defina a variavel
+REM e reinicie:
+REM
+REM     setx /M COTAFRETE_HOST 127.0.0.1
+REM
+REM Isso DERRUBA o acesso por 192.168.1.250:8000 para todo mundo. Nao faca
+REM sem avisar a equipe e sem o endereco publico ja funcionando.
+if not defined COTAFRETE_HOST set COTAFRETE_HOST=0.0.0.0
+
+.venv\Scripts\python.exe -m uvicorn web.app:app --host %COTAFRETE_HOST% --port 8000 --log-level warning >> "log\servidor.log" 2>&1
 
 echo.
 echo  O servidor parou. Fim de log\servidor.log:

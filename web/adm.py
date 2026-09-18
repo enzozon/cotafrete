@@ -40,6 +40,7 @@ from fastapi import APIRouter, Cookie, Form, HTTPException
 from fastapi.responses import (HTMLResponse, JSONResponse,
                                RedirectResponse, Response)
 
+from core import sessao
 from core.banco import Banco
 from core.evidencias import montar_zip_de_prints
 from core import painel as contas
@@ -148,7 +149,7 @@ def entrar(senha: str = Form(...)):
 
     r = RedirectResponse("/adm", status_code=303)
     r.set_cookie(COOKIE_ADM, token_de(correta), max_age=VALIDADE_S,
-                 httponly=True, samesite="lax")
+                 httponly=True, samesite="lax", secure=sessao.cookie_seguro())
     return r
 
 
@@ -193,7 +194,7 @@ def entrada_pelo_login(senha: str):
         return None
     r = RedirectResponse("/adm", status_code=303)
     r.set_cookie(COOKIE_ADM, token_de(correta), max_age=VALIDADE_S,
-                 httponly=True, samesite="lax")
+                 httponly=True, samesite="lax", secure=sessao.cookie_seguro())
     return r
 
 

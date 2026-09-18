@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import os
 import secrets
 from datetime import datetime
 
@@ -135,6 +136,28 @@ def dono_do_cookie(valor: str | None, segredo: str,
     if (agora or datetime.now()).timestamp() > prazo:
         return None
     return nome
+
+
+def cookie_seguro() -> bool:
+    """Se os cookies de sessão saem com a marca `Secure`.
+
+    É a única função deste módulo que olha o ambiente — as outras são puras.
+    Ela mora aqui, e não em `web/app.py`, porque os DOIS cookies do sistema
+    precisam da mesma resposta: o do vendedor e o do painel. E `web/adm.py`
+    não pode importar `web/app.py`, que é o contrário do que acontece hoje.
+
+    `Secure` faz o navegador NUNCA mandar o cookie por http, o que fecha a
+    janela de alguém na mesma rede ler a sessão em trânsito. Vem DESLIGADO
+    porque a equipe também entra por `http://192.168.1.250:8000`, e ali
+    ligá-la faria o login parar de funcionar sem erro nenhum na tela: o
+    cookie sairia e o navegador o descartaria calado.
+
+    Ligue junto com `COTAFRETE_HOST=127.0.0.1` (ver Servidor.bat), depois que
+    todo mundo já estiver entrando pelo endereço público:
+
+        setx /M COTAFRETE_COOKIE_SEGURO 1
+    """
+    return os.getenv("COTAFRETE_COOKIE_SEGURO", "").strip() == "1"
 
 
 def novo_segredo() -> str:

@@ -428,6 +428,35 @@ existiria sem nunca conseguir entrar.
 
 Dentro do painel, **Contas** fica na barra da esquerda, em "Administrar".
 
+### Fechar a rede local (quando você quiser)
+
+Hoje o servidor escuta em `0.0.0.0`: qualquer um na rede da empresa — Wi-Fi
+de visitante incluído — alcança `http://192.168.1.250:8000` direto, **por
+fora do Cloudflare Access**. O login pede senha ali também, mas o Access é o
+que impede a internet de sequer chegar na tela.
+
+Para obrigar todo mundo a entrar pelo endereço público, num Prompt **como
+administrador**:
+
+```
+setx /M COTAFRETE_HOST 127.0.0.1
+setx /M COTAFRETE_COOKIE_SEGURO 1
+```
+
+e reinicie o servidor. A segunda linha faz o cookie de sessão só trafegar
+por https, fechando a janela de alguém na mesma rede ler a sessão em
+trânsito.
+
+> **As duas andam juntas, e nesta ordem.** Ligar só a segunda, com o acesso
+> local ainda aberto, quebra o login em `192.168.1.250:8000` **sem dar erro
+> nenhum**: o navegador descarta o cookie calado e a pessoa volta para a tela
+> de login sem entender por quê.
+
+Isso derruba o acesso por `192.168.1.250:8000` para todo mundo. Avise a
+equipe antes, e confirme que `https://cotafrete.ventura.inf.br` está
+funcionando. Para voltar atrás: `setx /M COTAFRETE_HOST 0.0.0.0` e
+`setx /M COTAFRETE_COOKIE_SEGURO 0`, e reinicie.
+
 ### Quando alguém sai da empresa
 
 **Remover** tira o acesso na hora — a sessão que a pessoa tiver aberta para

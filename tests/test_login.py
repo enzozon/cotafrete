@@ -288,6 +288,34 @@ def test_conta_de_vendedor_com_nome_reservado_nao_sequestra_o_painel(c, com_pain
     assert com_painel.COOKIE not in r.cookies
 
 
+# ------------------------------------------------------ a marca Secure
+def test_por_padrao_o_cookie_nao_exige_https(c, app_web):
+    """Desligado de propósito: a equipe também entra por
+    http://192.168.1.250:8000, e ali `Secure` faria o navegador descartar o
+    cookie em silêncio — login que não funciona e não dá erro."""
+    _com_conta(app_web)
+
+    r = c.post("/login", data={"usuario": "joao", "senha": "senha-do-joao"})
+
+    assert "secure" not in r.headers["set-cookie"].lower()
+
+
+def test_a_variavel_liga_a_marca_nos_dois_cookies(c, app_web, monkeypatch):
+    """Um cookie protegido e o outro não seria pior que nenhum: o do painel é
+    justamente o mais poderoso."""
+    monkeypatch.setenv("COTAFRETE_COOKIE_SEGURO", "1")
+    monkeypatch.setenv("COTAFRETE_ADM_SENHA", "senha-do-painel-de-teste")
+    _com_conta(app_web)
+
+    do_vendedor = c.post("/login", data={"usuario": "joao",
+                                         "senha": "senha-do-joao"})
+    do_painel = c.post("/login", data={"usuario": "adm",
+                                       "senha": "senha-do-painel-de-teste"})
+
+    assert "secure" in do_vendedor.headers["set-cookie"].lower()
+    assert "secure" in do_painel.headers["set-cookie"].lower()
+
+
 def test_sair_derruba_a_sessao(c, app_web):
     _com_conta(app_web)
     c.cookies.set(app_web.COOKIE,

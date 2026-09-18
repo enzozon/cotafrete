@@ -482,6 +482,12 @@ def tela_erro(problemas: list[str], dados: dict, usuario: str | None) -> str:
 PAUSA_SENHA_ERRADA_S = 1.0
 
 
+# A política da marca `Secure` mora em core/sessao.py porque os DOIS cookies
+# do sistema precisam dela — o do vendedor aqui e o do painel em web/adm.py —
+# e `web/adm.py` não pode importar `web/app.py` (é o contrário que acontece).
+cookie_seguro = sessao.cookie_seguro
+
+
 def vendedor(usuario: str | None = Cookie(None, alias=COOKIE)) -> str | None:
     """Quem está nesta sessão, ou None.
 
@@ -568,7 +574,7 @@ def _abrir_sessao(nome: str) -> RedirectResponse:
     # quem está logado.
     r.set_cookie(COOKIE, sessao.assinar(nome, banco.segredo_sessao()),
                  max_age=sessao.DIAS_DE_SESSAO * 86400, httponly=True,
-                 samesite="lax")
+                 samesite="lax", secure=cookie_seguro())
     return r
 
 
