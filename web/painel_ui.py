@@ -20,11 +20,14 @@ animado por CSS, igual à barra do aproveitamento, que já era assim.
 from __future__ import annotations
 
 from datetime import date
+from pathlib import Path
 from math import hypot, pi
 
 from core.painel import categoria
 from web.layout import (BOTAO_TEMA, CSS as CSS_BASE, LUPA, MARCA_SIMBOLO,
                         SCRIPT_TEMA, cabeca_do_tema, e)
+
+CSS_REBRANDING = Path(__file__).with_name('rebranding_painel.css').read_text(encoding='utf-8')
 
 # `categoria` é a ÚNICA coisa que este arquivo importa de fora do desenho, e
 # é função pura. Vem de lá em vez de ser reescrita aqui porque é ela quem diz
@@ -483,12 +486,13 @@ animation:cresce .8s cubic-bezier(.22,.9,.3,1) both}
 
 /* ---- lista de WhatsApp aberto ---- */
 .abertas{list-style:none;margin:0;padding:0;font-size:12.5px}
-.abertas li{display:flex;align-items:center;gap:8px;padding:7px 0;
+.abertas li{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:7px 0;
 border-bottom:1px solid var(--borda)}
 .abertas li:last-child{border-bottom:0}
 .abertas svg{width:15px;height:15px;flex:none;color:var(--zap)}
-.abertas .hora{margin-left:auto;color:var(--fraco);
-font-variant-numeric:tabular-nums;font-size:11.5px}
+.abertas li>span{min-width:0;max-width:100%;overflow-wrap:anywhere}
+.abertas .hora{width:auto;margin-left:auto;color:var(--fraco);
+white-space:normal;font-variant-numeric:tabular-nums;font-size:11.5px}
 
 /* ---- ficha dentro do painel ---- */
 /* A ficha vem inteira de web/ficha_ui.py, a MESMA que o vendedor vê. Aqui só
@@ -706,8 +710,9 @@ def pagina_painel(titulo: str, corpo: str, *, base: str = "") -> str:
     return f"""<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{e(titulo)} — Cotafrete</title>{cabeca_do_tema("escuro")}
-<style>{CSS_BASE}{CSS}</style></head><body>
-<div class="painel">{_lateral(base)}<main class="conteudo">{corpo}</main></div>
+<style>{CSS_BASE}{CSS}{CSS_REBRANDING}</style></head><body>
+<a class="pular" href="#conteudo">Ir para o conteúdo</a>
+<div class="painel">{_lateral(base)}<main class="conteudo" id="conteudo">{corpo}</main></div>
 {LUPA}{SCRIPT_TEMA}
 </body></html>"""
 
@@ -926,7 +931,7 @@ def grafico_periodo(pontos: list[dict], unidade: str) -> str:
             f'style="animation-delay:{0.55 + i * 0.022:.3f}s"/>'
             for i, (x, y) in enumerate(coords))
 
-    return f"""<div class="grafico"><svg class="svg" viewBox="0 0 {G_L} {G_A}"
+    return f"""<div class="grafico" tabindex="0" role="region" aria-label="Movimento de cotações"><svg class="svg" viewBox="0 0 {G_L} {G_A}"
  role="img" aria-label="Cotações por {e(unidade)} no período">
 <defs>
 <linearGradient id="tintaBarra" x1="0" y1="0" x2="0" y2="1">

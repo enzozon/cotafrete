@@ -58,11 +58,25 @@ button.principal:hover{background:#0043a6}
 .rodape{grid-column:1/-1;color:var(--fraco);font-size:12px}
 .oculto{display:none}
 </style>
+<style>
+:root{--tinta:#0f1724;--fraco:#526079;--fundo:#f2f3f1;--borda:#c1cbdc;--acao:#0042b5}
+body{font-family:'Segoe UI Variable','Segoe UI',sans-serif;padding:32px;line-height:1.6}
+h1{font-family:Bahnschrift,'Segoe UI',sans-serif;font-size:32px;letter-spacing:-1px}
+.topo{border-left:4px solid var(--acao);padding-left:20px}.cartao{border-radius:6px;padding:24px}
+fieldset{border-width:0 0 1px;border-radius:0;padding:18px 0}legend{color:var(--acao);letter-spacing:1.5px}
+label{font-size:13px;color:var(--tinta)}input,select,button{min-height:44px}input,select,textarea{background:var(--papel)}
+.zapcard{background:var(--papel);border-radius:5px}.zapcard .ir{color:#07301f}.sub{font-size:14px}
+:focus-visible{outline:3px solid var(--acao);outline-offset:3px}.wrap>*{min-width:0}
+@media(prefers-color-scheme:dark){:root{--tinta:#e6e9ef;--fraco:#bcc4d2;--borda:#475e85;--fundo:#061021;--papel:#111e34;--acao:#5291ff;--aviso:#2c2413}button{background:var(--papel);color:var(--tinta)}button.principal{color:#061021}.aba.ativa{color:#061021}.aviso{color:#e8cf9a}}
+@media(max-width:620px){body{padding:18px}.wrap{grid-template-columns:minmax(0,1fr)}.cartao{padding:18px}.grid{grid-template-columns:1fr}.linha-volume{grid-template-columns:1fr 1fr}.zapcard{flex-wrap:wrap}.zapcard .ir{margin-left:0}h1{font-size:27px}}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
+</style>
 </head>
 <body>
 <div class="wrap">
 
 <div class="topo">
+  <p class="sub">Cotafrete · Ventura / Atendimento por WhatsApp</p>
   <h1>Cotação por WhatsApp</h1>
   <p class="sub">Movvi, Translovato e Continental não têm formulário de
   cotação — o pedido vai por mensagem. Preencha uma vez e dispare para as

@@ -40,3 +40,7 @@ cotafrete.db
 # arquivos que o modo WAL cria ao lado do banco
 cotafrete.db-wal
 cotafrete.db-shm
+
+# Dados sintéticos e temporários da validação visual local.
+.tmp-rebranding/
+pytest-cache-files-*/

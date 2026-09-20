@@ -1,0 +1,37 @@
+/* Quadro operacional: navegação estável, densidade e hierarquia de dados. */
+.lateral{flex-basis:208px;width:208px;background:#102849}
+.lateral-fixa{padding:28px 12px 20px}.lateral .marca{padding:0 10px 28px}
+.lateral .marca b{font-size:14px;letter-spacing:1px}
+.lateral a{border-radius:5px;margin:3px 0;padding:12px;font-size:14px}
+.lateral .secao{padding:22px 12px 6px;letter-spacing:1.8px}
+.conteudo{padding:36px 32px 64px;max-width:1600px}
+.cabecalho{padding-bottom:24px;border-bottom:1px solid var(--borda);margin-bottom:24px;gap:16px}
+.cabecalho h1{font-size:34px;letter-spacing:-1px}.cabecalho .sub{font-size:14px}
+.periodos{border-radius:6px;background:var(--cova)}.periodo{border-radius:4px}
+.faixa{gap:0;border:1px solid var(--borda);background:var(--papel);border-radius:6px;margin-bottom:28px}
+.numero{border:0;border-right:1px solid var(--borda);border-radius:0;background:transparent;padding:22px;box-shadow:none}
+.numero:last-child{border-right:0}.numero::before{height:3px;bottom:auto;right:0;width:auto}
+.numero b{font-size:40px;font-weight:600}.numero span{font-size:13px;margin-top:10px}
+.numero .ico{width:28px;height:28px;border-radius:4px;right:12px;top:16px}
+.numero:hover,.painel .cartao:hover{transform:none;box-shadow:none}
+.grade{gap:22px}.painel .cartao{border-radius:6px;padding:24px;box-shadow:none}
+.cartao-cab{align-items:flex-start;flex-wrap:wrap;gap:8px;border-bottom:1px solid var(--borda);padding-bottom:16px;margin-bottom:20px}
+.cartao-cab h2{font-size:18px}.cartao-cab .nota{font-size:12px;display:block;margin-top:4px}
+.legenda{font-size:12px}.grafico{padding:12px 0}.rosca{padding:14px 4px}
+.painel th{font-size:11px;letter-spacing:.8px;background:var(--cova);padding:12px 10px}
+.painel td{padding:14px 10px;font-size:13px}
+.rolagem{margin:0;max-height:560px;padding:0}.historico .dia td{top:42px}
+.filtros{padding:12px;background:var(--cova);border-radius:5px;margin-bottom:18px}
+.filtro-p{min-height:40px;display:inline-flex;align-items:center;border-radius:4px}
+.busca input{width:260px;min-height:44px}.resposta{border-radius:5px;padding:20px}
+.resposta .preco{font-size:30px}.aovivo i{animation:none}
+/* .melhor também nomeia a célula de preço do vendedor (nowrap).
+   No painel ela marca um cartão inteiro: seu texto precisa poder quebrar. */
+.resposta.melhor{white-space:normal;text-align:left}
+.resposta{overflow-wrap:anywhere}
+.respostas{grid-template-columns:repeat(auto-fit,minmax(min(258px,100%),1fr))}
+.grade{grid-template-columns:repeat(12,minmax(0,1fr))}
+.cabecalho>div,.cabecalho .direita,#pilulas{min-width:0;max-width:100%}
+.cabecalho .direita{flex-wrap:wrap}
+.cabecalho .sub{overflow-wrap:anywhere}
+@media(max-width:880px){.lateral{width:100%}.lateral-fixa{display:flex;flex-wrap:wrap;padding:14px;gap:4px}.lateral .marca{width:100%;padding:0 10px 12px}.lateral a{padding:10px;margin:0;flex:1 0 auto;font-size:12px}.conteudo{padding:24px 16px 48px}.cabecalho h1{font-size:28px}.periodos{order:4;flex-wrap:wrap;gap:4px}.periodo{padding:7px 10px}.faixa{grid-template-columns:1fr 1fr}.numero{padding:20px 14px;border-bottom:1px solid var(--borda)}.numero b{font-size:32px}.numero .ico{display:none}.painel .cartao{padding:18px}.cartao-cab .direita{margin-left:0;width:100%}.busca,.busca input{width:100%}.grade{gap:18px}.historico{min-width:760px}.saude{min-width:580px}.rolagem{margin:0;padding:0}.cartao-cab h2{font-size:18px}}

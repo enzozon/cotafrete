@@ -486,7 +486,8 @@ def tela_login() -> str:
   <p class="sub">Digite seu nome para começar. Suas cotações ficam separadas
   das dos outros.</p>
   <form method="post" action="/login">
-    <input name="usuario" placeholder="Seu nome" autofocus required
+    <label for="usuario">Seu nome</label>
+    <input id="usuario" name="usuario" placeholder="Seu nome" autofocus required
            autocomplete="username" style="margin-bottom:12px">
     <button type="submit" style="width:100%">Entrar</button>
   </form>
@@ -1551,7 +1552,7 @@ def ver_cotacao(cotacao_id: int,
     <h2>Cotadas automaticamente</h2>
     {baixar_prints}
   </div>
-  <div class="rolagem-r">
+  <div class="rolagem-r" tabindex="0" role="region" aria-label="Comparação de fretes">
     <table class="resultados">
       <thead><tr>
         <th class="r-nome">Transportadora</th>
@@ -1818,7 +1819,7 @@ def historico(usuario: str | None = Cookie(None, alias=COOKIE)):
         sem = "" if c["melhor_preco"] is not None else " vazio"
         linhas += (
             f"""<tr onclick="location='/cotacao/{c['id']}'" style="cursor:pointer">
-            <td>#{c['id']}</td>
+            <td><a href="/cotacao/{c['id']}" aria-label="Abrir cotação {c['id']}">#{c['id']}</a></td>
             <td class="hora">{e(quando_humano(c['criado_em']))}</td>
             <td><b>{e(c['material'])}</b></td>
             <td>{e(c['cidade_origem'])}/{e(c['uf_origem'])} →
@@ -1830,9 +1831,9 @@ def historico(usuario: str | None = Cookie(None, alias=COOKIE)):
 <h1>Histórico</h1>
 <p class="sub">Suas cotações. Clique numa linha para ver o preço de cada
 transportadora.</p>
-<div class="cartao"><table>
+<div class="cartao"><div class="historico-vendedor" tabindex="0" role="region" aria-label="Histórico de cotações"><table>
 <tr><th>#</th><th>quando</th><th>material</th><th>rota</th><th>peso</th>
 <th>melhor preço</th></tr>
 {linhas or '<tr><td colspan="6" class="sub">Nenhuma cotação ainda.</td></tr>'}
-</table></div>
+</table></div></div>
 <p><a href="/">← nova cotação</a></p>""", usuario))

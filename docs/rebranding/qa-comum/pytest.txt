@@ -1,0 +1,12 @@
+........................................................................ [ 22%]
+........................................................................ [ 44%]
+........................................................................ [ 67%]
+........................................................................ [ 89%]
+.................................                                        [100%]
+============================== warnings summary ===============================
+..\cotafrete-dev\.venv\Lib\site-packages\fastapi\testclient.py:1
+  C:\Users\vendas12\enzo\cotafrete-dev\.venv\Lib\site-packages\fastapi\testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+321 passed, 1 warning in 28.04s

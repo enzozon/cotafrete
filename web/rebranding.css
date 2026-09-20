@@ -1,0 +1,87 @@
+/* Cotafrete / Ventura — editorial industrial. Sem fontes ou assets remotos. */
+:root{--fundo:#f2f3f1;--borda:#d8dfE6;--raio:6px;--raio-p:5px;--raio-g:10px}
+body{font-family:'Segoe UI Variable','Segoe UI',sans-serif;line-height:1.55}
+h1,h2{font-family:'Bahnschrift','Segoe UI',sans-serif;font-weight:600}
+h1{font-size:32px;letter-spacing:-1px;line-height:1.2}
+.sub{font-size:14px;line-height:1.6}
+.topo{padding:16px max(24px,calc((100vw - 1220px)/2));gap:24px}
+.topo .menu{display:inline-flex;gap:8px;flex-wrap:wrap}
+.menu a{padding:4px 12px;text-decoration:none;border-radius:4px}
+.menu a:hover,.menu a[aria-current=page]{background:var(--lavagem);color:var(--marca)}
+/* O body é flex em coluna e as margens automáticas impedem o stretch.
+   Largura explícita mantém a largura mínima das tabelas dentro da rolagem. */
+.wrap{width:100%;min-width:0;max-width:1220px;margin:36px auto;padding:0 28px}
+.cartao{padding:28px;box-shadow:0 4px 18px -14px #152b48;margin-bottom:24px}
+.wrap>h1{border-left:4px solid var(--marca);padding-left:16px}
+.wrap>h1+.sub{padding-left:20px;margin-top:8px;margin-bottom:26px}
+fieldset{padding:20px 22px;margin-bottom:22px;background:var(--papel);border-width:0 0 1px;border-radius:0}
+legend{font-size:12px;letter-spacing:1.6px;padding:0 8px 0 0}
+label{font-size:13px;color:var(--tinta2);font-weight:600;margin-bottom:6px}
+input,select,textarea{font:inherit;min-width:0}
+input{min-height:46px;background:var(--cova)}
+input::placeholder{color:var(--fraco);opacity:1}
+button,.botao2{border-radius:5px;min-height:44px}
+button{box-shadow:none;padding:13px 24px}
+:focus-visible{outline:3px solid var(--realce);outline-offset:4px}
+.tema{width:44px;height:44px}
+.pular{position:absolute;left:16px;top:-100px;z-index:100;background:var(--papel);padding:12px 18px;color:var(--marca)}
+.pular:focus{top:12px}
+.faixa-marca{border:0;border-left:4px solid var(--marca);border-radius:0;padding:18px 24px;margin-bottom:30px;box-shadow:none}
+.faixa-marca .marca-lockup{display:none}
+.faixa-marca .diz{max-width:none;font-size:14px}
+.faixa-marca .diz b{font-size:19px}
+.faixa-marca::before{display:none}
+.grid{gap:18px;grid-template-columns:repeat(auto-fit,minmax(190px,1fr))}
+.opcao{padding:15px}.opcao span{font-size:13px}
+.tr{min-height:54px}.tr:has(input:not(:checked)){opacity:1;color:var(--fraco)}
+.r-cab{flex-wrap:wrap}.r-cab h2{font-size:20px}
+table.resultados th{height:44px;background:var(--cova);font-size:11px}
+table.resultados td{height:72px}.resultados .preco{font-size:19px}
+.rolagem-r,.rolagem{border:1px solid var(--borda);border-radius:5px}
+.ficha fieldset{background:var(--cova);border:0;border-left:2px solid var(--borda-forte);padding:18px}
+.ficha .val{font-size:16px}.ficha .pouco{font-size:12px}
+.pronto{padding:22px;line-height:1.8;background:var(--cova);color:var(--tinta)}
+.zap{padding:16px;border-radius:5px}.zap b{font-size:15px}
+.wrap .cartao h2{font-size:22px}.wrap .cartao p{max-width:85ch}
+.wrap .cartao .print{max-width:100%}
+.rodape-site{margin-top:60px}.rodape-site .dentro{max-width:1220px}
+.historico-vendedor{overflow:auto}.historico-vendedor table{min-width:700px;width:100%;border-collapse:collapse}.historico-vendedor th{background:var(--cova);text-align:left;padding:14px;font-size:11px;text-transform:uppercase;letter-spacing:1px}.historico-vendedor td{padding:18px 14px}
+.doc{max-width:940px}.doc h2{margin-top:36px;padding-top:24px;border-top:1px solid var(--borda)}.doc h2:first-child{margin-top:0;padding-top:0;border:0}.doc li{margin:10px 0}.doc .passo{padding:20px;border-left:3px solid var(--marca);background:var(--cova);line-height:2}
+/* O login reserva o desenho à apresentação; o campo permanece acima da dobra. */
+.entrada{grid-template-columns:1.15fr 1fr;background:var(--fundo);color:var(--tinta)}
+.entrada-marca{padding:48px 8%;gap:32px;background:#102849;justify-content:space-between}
+.entrada-marca::before,.entrada-marca::after{display:none}
+.entrada-marca .logo{height:58px}
+.entrada-marca h1{font-size:clamp(36px,4vw,60px);letter-spacing:-2px;max-width:13ch}
+.entrada-marca p{font-size:16px;color:#c6d4e7}
+.entrada-marca .assinatura{color:#c6d4e7}
+.entrada-form{background:var(--fundo);padding:60px 40px;position:relative}
+.entrada-form>div{width:100%;max-width:410px}
+.entrada-form .cartao{max-width:none;padding:0;background:transparent;border:0;box-shadow:none}
+.entrada-form h1{color:var(--tinta);font-size:36px}
+.entrada-form .sub,.entrada-form label,.entrada-form .rodape{color:var(--tinta2)}
+.entrada-form input{background:var(--papel);color:var(--tinta);border:1px solid var(--borda-forte)}
+.entrada-form input::placeholder{color:var(--fraco)}
+.entrada-form button:not(.tema){background:var(--marca);color:var(--sobre-marca);box-shadow:none}
+.entrada-form button:not(.tema):hover{background:var(--marca-forte)}
+.entrada-form .tema{position:absolute;right:24px;top:24px}
+.entrada-form button.tema{background:var(--papel);color:var(--fraco);box-shadow:none}
+.entrada-form .rodape{margin-top:24px;border-top:1px solid var(--borda);padding-top:20px}
+.entrada-form .alerta{background:var(--erro-fraco);color:var(--erro);border-color:var(--erro)}
+.sobretitulo{font-size:12px;letter-spacing:2px;text-transform:uppercase;color:var(--marca);font-weight:700;margin-bottom:16px}
+.entrada-marca .sobretitulo{color:#a7c8ff}
+.malha-logistica{width:100%;max-height:190px;overflow:visible}
+.malha-logistica .vias{stroke:#476484;stroke-width:1;fill:none}
+.malha-logistica .caminho{stroke:#81b1ff;stroke-width:2;fill:none;stroke-dasharray:700;animation:rota-desenha 2.8s ease-out both}
+.malha-logistica .terminal{fill:#102849;stroke:#a7c8ff;stroke-width:2}
+.malha-logistica .carga{fill:#a7c8ff;animation:carga-chega 2.8s ease-out both}
+@keyframes rota-desenha{from{stroke-dashoffset:700}to{stroke-dashoffset:0}}
+@keyframes carga-chega{from{transform:translateX(-80px);opacity:0}to{transform:translateX(0);opacity:1}}
+/* Decoração nunca fica piscando durante o trabalho. */
+tr.r:has(.cotando) td{animation-iteration-count:2}
+.girando{animation-iteration-count:5}
+.grid>*,.ficha,.wrap>*,.entrada>*,.opcao{min-width:0}
+.rolagem-r:focus-visible,.grafico:focus-visible,.rolagem:focus-visible{outline:3px solid var(--realce);outline-offset:3px}
+@media(min-width:1050px){form[action='/cotar']{display:grid;grid-template-columns:1fr 1fr;gap:8px 28px}form[action='/cotar']>fieldset:nth-of-type(3),form[action='/cotar']>.filtro{grid-column:1/-1}form[action='/cotar']>button{justify-self:start}}
+@media(max-width:860px){.entrada{grid-template-columns:1fr}.entrada-marca{padding:26px;gap:20px}.entrada-marca h1{font-size:34px;max-width:19ch;margin:0}.entrada-marca .logo{height:42px}.malha-logistica{position:absolute;right:-40px;bottom:12px;width:180px;opacity:.22}.entrada-marca .sobretitulo{display:block;font-size:10px;margin-bottom:8px}.entrada-form{padding:38px 26px}.entrada-form .tema{top:8px;right:12px}.entrada-form h1{font-size:30px}.entrada-marca .assinatura{display:block;font-size:9px}.entrada-marca .rota{display:none}}
+@media(max-width:620px){.topo{padding:12px 18px;gap:8px;flex-wrap:wrap}.topo .quem{order:3;width:100%;margin:0;display:flex;flex-wrap:wrap;align-items:center;gap:8px}.topo .tema{margin-left:auto}.topo .menu{gap:0}.menu a{font-size:12px;padding:4px 8px}.wrap{padding:0 18px;margin:24px auto}.cartao{padding:18px}.grid{grid-template-columns:1fr;gap:14px}fieldset{padding:16px 0}.ficha .grid{grid-template-columns:1fr 1fr}.opcoes{grid-template-columns:1fr}.faixa-marca{padding:14px 18px}.faixa-marca .diz{font-size:13px}h1{font-size:28px}.zap{flex-wrap:wrap}.zap .ir{margin-left:0}.r-cab .botao2{margin-left:0}.rolagem-r table.resultados{min-width:760px}table.resultados .r-nota,table.resultados th:nth-child(4){display:table-cell}.rodape-site .dentro{padding:20px 18px}.pronto{padding:14px}}

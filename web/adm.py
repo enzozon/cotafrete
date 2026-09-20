@@ -118,7 +118,8 @@ def tela_de_entrada(erro: str = ""):
   <p class="sub">As cotações de toda a empresa, num lugar só.</p>
   {aviso}
   <form method="post" action="/adm/entrar">
-    <input name="senha" type="password" placeholder="Senha do painel"
+    <label for="senha">Senha do painel</label>
+    <input id="senha" name="senha" type="password" placeholder="Senha do painel"
            autocomplete="current-password" autofocus required
            style="margin-bottom:12px">
     <button type="submit" style="width:100%">Entrar</button>
@@ -269,7 +270,7 @@ def _saude(linhas: list[dict]) -> str:
         for l in linhas)
     cabecalho = "".join(f"<th>{e(c)}</th>" for c in COLUNAS_SAUDE)
     return (
-        '<div class="rolagem"><table class="saude">'
+        '<div class="rolagem" tabindex="0" role="region" aria-label="Saúde das transportadoras"><table class="saude">'
         f"<thead><tr><th>transportadora</th>{cabecalho}"
         "<th>aproveitamento</th></tr></thead>"
         f"<tbody>{corpo}</tbody></table></div>"
@@ -351,7 +352,7 @@ def _historico(linhas: list[dict]) -> str:
             + "</tbody>")
 
     return (
-        '<div id="tabela"><div class="rolagem"><table class="historico">'
+        '<div id="tabela"><div class="rolagem" tabindex="0" role="region" aria-label="Histórico administrativo"><table class="historico">'
         "<thead><tr><th>nº</th><th>hora</th><th>quem</th><th>rota</th>"
         "<th>material</th><th>melhor preço</th><th>resultado</th>"
         "<th></th></tr></thead>"
@@ -632,7 +633,7 @@ def painel(adm: str | None = Cookie(None, alias=COOKIE_ADM),
     rotulo = dict(PERIODOS)[dias]
     busca = ('<label class="busca">'
              f'{ui._icone(ui.ICONES["busca"])}'
-             '<input id="busca" type="search" autocomplete="off"'
+             '<input id="busca" aria-label="Buscar no histórico" type="search" autocomplete="off"'
              ' placeholder="buscar nº, vendedor, rota, material"></label>')
     # A seta é literal e não "->": a rota é para ler, não para copiar.
     rotas_na_tela = [{"rota": r["rota"].replace(" -> ", " → "),

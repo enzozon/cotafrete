@@ -856,6 +856,16 @@ tr.r-extra>td>*:last-child{margin-bottom:0}
 # caminhos numa fonte só, no topo do módulo.
 CSS = (CSS.replace("{MARCA_COMPACTA_CLARA}", MARCA_COMPACTA_CLARA)
           .replace("{MARCA_COMPACTA}", MARCA_COMPACTA))
+CSS += Path(__file__).with_name("rebranding.css").read_text(encoding="utf-8")
+
+MALHA_LOGISTICA = """<svg class="malha-logistica" viewBox="0 0 560 180"
+ aria-hidden="true" focusable="false">
+<g class="vias"><path d="M0 30H560M0 90H560M0 150H560M70 0V180M210 0V180M350 0V180M490 0V180"/>
+<path d="M0 180L180 0M140 180L320 0M280 180L460 0M420 180L560 40"/></g>
+<path class="caminho" d="M30 140H130Q150 140 150 120V65Q150 45 170 45H320Q340 45 340 65V120Q340 140 360 140H530"/>
+<g class="terminal"><circle cx="30" cy="140" r="7"/><circle cx="245" cy="45" r="7"/><circle cx="530" cy="140" r="7"/></g>
+<g class="carga"><path d="M390 98l20-12 20 12v24l-20 12-20-12z"/><path d="M438 98l20-12 20 12v24l-20 12-20-12z"/></g>
+</svg>"""
 
 
 def e(v) -> str:
@@ -1047,7 +1057,8 @@ def entrada(titulo: str, cartao: str, *, chamada: str, apoio: str,
     fim = f'<p class="rodape">{e(rodape)}</p>' if rodape else ""
     return f"""<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>{e(titulo)} — Cotafrete</title><style>{CSS}</style></head><body>
+<title>{e(titulo)} — Cotafrete</title>{cabeca_do_tema("claro")}<style>{CSS}</style></head><body>
+<a class="pular" href="#conteudo">Ir para o formulário</a>
 <div class="entrada">
   <aside class="entrada-marca">
     <div class="marca-entrada">
@@ -1056,16 +1067,17 @@ def entrada(titulo: str, cartao: str, *, chamada: str, apoio: str,
       <p class="assinatura">{ASSINATURA}</p>
     </div>
     <div>
+      <div class="sobretitulo">Cotafrete / Logística B2B</div>
       <h1>{e(chamada)}</h1>
       <p>{e(apoio)}</p>
     </div>
-    {lista}
+    {MALHA_LOGISTICA}{lista}
   </aside>
-  <main class="entrada-form">
-    <div>{cartao}{fim}</div>
+  <main class="entrada-form" id="conteudo">
+    {BOTAO_TEMA}<div><div class="sobretitulo">Cotafrete · Acesso</div>{cartao}{fim}</div>
   </main>
 </div>
-</body></html>"""
+{SCRIPT_TEMA}</body></html>"""
 
 
 # O rodapé. Não existia em tela nenhuma do vendedor — a página simplesmente
@@ -1108,11 +1120,16 @@ def pagina(titulo: str, corpo: str, usuario: str | None = None) -> str:
                 '<a href="/">Nova cotação</a><a href="/historico">Histórico</a>'
                 '<a href="/documentacao">Documentação</a>'
                 f'<a href="/sair">Sair</a></span> <b>{e(usuario)}</b></span>')
+        atual = {"Nova cotação": "/", "Histórico": "/historico",
+                 "Documentação": "/documentacao"}.get(titulo)
+        if atual:
+            quem = quem.replace(f'href="{atual}"', f'href="{atual}" aria-current="page"')
     return f"""<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{e(titulo)} — Cotafrete</title>{cabeca_do_tema("claro")}
 <style>{CSS}</style></head><body>
+<a class="pular" href="#conteudo">Ir para o conteúdo</a>
 <div class="topo"><a class="marca-placa" href="/" aria-label="Ventura Comércio — início"><span class="marca-peca marca-lockup" role="img"></span></a>
 {quem}{BOTAO_TEMA}</div>
-<div class="wrap">{corpo}</div>
+<main class="wrap" id="conteudo">{corpo}</main>
 {rodape_do_site(usuario)}{LUPA}{SCRIPT_TEMA}</body></html>"""
