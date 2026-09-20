@@ -57,6 +57,21 @@ button.principal:hover{background:#0043a6}
   font-weight:600}
 .rodape{grid-column:1/-1;color:var(--fraco);font-size:12px}
 .oculto{display:none}
+/* Página avulsa legada: mesma direção visual, sem alterar a mensagem. */
+:root{--tinta:#0f1724;--fraco:#53627a;--borda:#c1cbdc;--fundo:#f5f7fb;--acao:#0042b5}
+body{padding:40px;font-family:"Segoe UI Variable","Segoe UI",sans-serif;line-height:1.6}
+.wrap{max-width:1240px;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:28px}
+.topo{border-left:4px solid var(--acao);padding:22px 28px;background:#eaf1fd}
+.topo::before{content:"COTAFRETE / VENTURA";font-size:12px;letter-spacing:2px;font-weight:700;color:var(--acao)}
+h1{font-size:34px;letter-spacing:-1px;margin:8px 0}.sub{font-size:14px;max-width:80ch}
+.cartao{padding:28px;border-radius:16px;min-width:0}
+fieldset{min-width:0;border:0;border-top:1px solid var(--borda);border-radius:0;padding:20px 0}
+legend{color:var(--acao);letter-spacing:1px}label{font-size:12px;font-weight:600}
+input,select,button{min-height:44px}input,textarea,select{background:var(--papel);min-width:0}
+button{color:var(--tinta);background:var(--papel)}.zapcard .ir{color:#07301f}
+:focus-visible{outline:3px solid #5291ff;outline-offset:3px}
+@media(prefers-color-scheme:dark){:root{--tinta:#e6e9ef;--fraco:#bcc4d2;--borda:#475e85;--fundo:#061021;--papel:#111e34;--acao:#85b1ff;--aviso:#2c2413}html{color-scheme:dark}.topo{background:#18263f}.zapcard{background:var(--papel)}button.principal{background:#5291ff;color:#061021}}
+@media(max-width:880px){body{padding:20px}.wrap{grid-template-columns:minmax(0,1fr)}.cartao{padding:20px}.topo{padding:16px}h1{font-size:28px}.linha-volume{grid-template-columns:1fr 1fr}.zapcard{flex-wrap:wrap}.zapcard .ir{margin-left:0}}
 </style>
 </head>
 <body>

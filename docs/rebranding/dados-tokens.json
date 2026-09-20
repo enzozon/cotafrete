@@ -1,0 +1,118 @@
+{
+  "generated_at": "2026-09-20T19:38:13.854504+00:00",
+  "base_commit": "806f1ff6ca882235d9f12ed6fa543c6862a1ce43",
+  "model": "gpt-6-astra",
+  "reasoning_effort": "low",
+  "conditions": {
+    "skills-atuais": {
+      "thread_id": "01a0a0e0-876d-7440-83ee-459d490274d0",
+      "usage": {
+        "input_tokens": 3701482,
+        "cached_input_tokens": 3249152,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 20777,
+        "reasoning_output_tokens": 2423,
+        "total_tokens": 3722259
+      },
+      "timestamp": "2026-09-20T00:59:30.695Z",
+      "first_request": {
+        "input_tokens": 25689,
+        "cached_input_tokens": 13056,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 199,
+        "reasoning_output_tokens": 0,
+        "total_tokens": 25888
+      },
+      "token_count_events": 37,
+      "state_tokens_used": 3722259
+    },
+    "contexto-enxuto": {
+      "thread_id": "01a0a0e5-4f9f-7082-8887-59bb62c24151",
+      "usage": {
+        "input_tokens": 3048708,
+        "cached_input_tokens": 2612352,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 16947,
+        "reasoning_output_tokens": 2331,
+        "total_tokens": 3065655
+      },
+      "timestamp": "2026-09-20T00:59:30.316Z",
+      "first_request": {
+        "input_tokens": 23552,
+        "cached_input_tokens": 13056,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 194,
+        "reasoning_output_tokens": 0,
+        "total_tokens": 23746
+      },
+      "token_count_events": 31,
+      "state_tokens_used": 3065655
+    },
+    "tentativa-invalida": {
+      "thread_id": "01a0a0e0-87d0-78f1-a76f-70576773dadf",
+      "usage": {
+        "input_tokens": 105443,
+        "cached_input_tokens": 71424,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 416,
+        "reasoning_output_tokens": 0,
+        "total_tokens": 105859
+      },
+      "timestamp": "2026-09-14T17:05:27.693Z",
+      "first_request": {
+        "input_tokens": 25947,
+        "cached_input_tokens": 13056,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 180,
+        "reasoning_output_tokens": 0,
+        "total_tokens": 26127
+      },
+      "token_count_events": 3,
+      "state_tokens_used": 105859
+    }
+  },
+  "evidence": {
+    "skills-atuais": {
+      "rollout_filename": "rollout-2026-09-14T14-04-24-01a0a0e0-876d-7440-83ee-459d490274d0.jsonl",
+      "sha256": "3a4c57c19a2f351a864ac196efb29788252474896512ca71523e407c4e1a3675",
+      "initial_catalog": {
+        "entries": 311,
+        "ecc": 283,
+        "superpowers": 0
+      }
+    },
+    "contexto-enxuto": {
+      "rollout_filename": "rollout-2026-09-14T14-09-38-01a0a0e5-4f9f-7082-8887-59bb62c24151.jsonl",
+      "sha256": "d3b301074b0135e529b4b291ec4ef1debbcb8514dd023ad87c9cbc5b7bcd475b",
+      "initial_catalog": {
+        "entries": 57,
+        "ecc": 0,
+        "superpowers": 0
+      }
+    },
+    "tentativa-invalida": {
+      "rollout_filename": "rollout-2026-09-14T14-04-24-01a0a0e0-87d0-78f1-a76f-70576773dadf.jsonl",
+      "sha256": "d4a5348fa6c4238895e0db52b993499efb7427fa487949d62d606256319c9da6",
+      "initial_catalog": {
+        "entries": 311,
+        "ecc": 283,
+        "superpowers": 0
+      }
+    }
+  },
+  "shared_coordination_snapshot": {
+    "through": "2026-09-20T19:38:00.462Z",
+    "from": "2026-09-14T16:03:09.030Z",
+    "usage": {
+      "input_tokens": 14517670,
+      "cached_input_tokens": 13870848,
+      "cache_write_input_tokens": 0,
+      "output_tokens": 42878,
+      "reasoning_output_tokens": 14499,
+      "total_tokens": 14560548
+    }
+  },
+  "prompt_sha256": "8db75c63478464f98d503c875a0d6e98b36275233ac133c2be356b60c84d87d3",
+  "totals_include_cached_input": true,
+  "coordination_not_allocated_to_branches": true
+}

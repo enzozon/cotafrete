@@ -1,0 +1,3 @@
+.runtime/
+__pycache__/
+qa-comum/diagnostic.json

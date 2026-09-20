@@ -486,7 +486,8 @@ def tela_login() -> str:
   <p class="sub">Digite seu nome para começar. Suas cotações ficam separadas
   das dos outros.</p>
   <form method="post" action="/login">
-    <input name="usuario" placeholder="Seu nome" autofocus required
+    <label for="usuario">Seu nome</label>
+    <input id="usuario" name="usuario" placeholder="Seu nome" autofocus required
            autocomplete="username" style="margin-bottom:12px">
     <button type="submit" style="width:100%">Entrar</button>
   </form>
@@ -1196,7 +1197,7 @@ def formulario_dellavolpe(cotacao_id: int,
   onclick="return confirm('Não clique — ARRASTE este link para a barra de favoritos.')"
   >📋 Preencher cotação (Cotafrete)</a></p>
 
-  <img class="print" src="/ajuda/passo1_barra_favoritos.png"
+  <img class="print" tabindex="0" role="button" src="/ajuda/passo1_barra_favoritos.png"
   alt="Print: o favorito salvo na barra do navegador, com uma seta apontando para ele">
   <p class="sub">Depois de arrastar, o favorito "Preencher cotação
   (Cotafrete)" fica salvo na barra do navegador (seta na imagem) — é nele que
@@ -1210,7 +1211,7 @@ def formulario_dellavolpe(cotacao_id: int,
   (Cotafrete)" que você salvou no passo 1. Os campos enchem sozinhos, e
   aparece um aviso do navegador confirmando — é só clicar OK.</p>
 
-  <img class="print" src="/ajuda/passo3_alerta_preenchido.png"
+  <img class="print" tabindex="0" role="button" src="/ajuda/passo3_alerta_preenchido.png"
   alt="Print: aviso do navegador dizendo que o Cotafrete preencheu os campos">
   <p class="sub">É este o aviso que aparece depois do clique: "Cotafrete
   preencheu os campos. Confira, resolva o captcha e clique em 'Pedir
@@ -1221,7 +1222,7 @@ def formulario_dellavolpe(cotacao_id: int,
   quadradinho verde escrito <b>"Sucesso!"</b>. Só depois clique em
   "Pedir orçamento". Isso o sistema não faz por você — nem deveria.</p>
 
-  <img class="print" src="/ajuda/passo4_captcha_sucesso.png"
+  <img class="print" tabindex="0" role="button" src="/ajuda/passo4_captcha_sucesso.png"
   alt="Print: captcha da Della Volpe resolvido, mostrando Sucesso em verde">
   <p class="sub">É este quadradinho verde que confirma que o captcha foi
   resolvido. Só depois dele aparecer o clique em "Pedir orçamento" envia de
@@ -1551,7 +1552,7 @@ def ver_cotacao(cotacao_id: int,
     <h2>Cotadas automaticamente</h2>
     {baixar_prints}
   </div>
-  <div class="rolagem-r">
+  <div class="rolagem-r" tabindex="0" role="region" aria-label="Resultados das transportadoras">
     <table class="resultados">
       <thead><tr>
         <th class="r-nome">Transportadora</th>
@@ -1818,7 +1819,7 @@ def historico(usuario: str | None = Cookie(None, alias=COOKIE)):
         sem = "" if c["melhor_preco"] is not None else " vazio"
         linhas += (
             f"""<tr onclick="location='/cotacao/{c['id']}'" style="cursor:pointer">
-            <td>#{c['id']}</td>
+            <td><a href="/cotacao/{c['id']}">#{c['id']}</a></td>
             <td class="hora">{e(quando_humano(c['criado_em']))}</td>
             <td><b>{e(c['material'])}</b></td>
             <td>{e(c['cidade_origem'])}/{e(c['uf_origem'])} →

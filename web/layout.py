@@ -823,13 +823,13 @@ transition:transform .16s var(--suave),box-shadow .16s var(--suave)}
 width:1%}
 /* O preço é o número que a linha existe para mostrar: alinhado à direita,
    todas as vírgulas na mesma coluna. */
-.melhor{text-align:right;font-weight:700;color:var(--ok);white-space:nowrap;
+td.melhor{text-align:right;font-weight:700;color:var(--ok);white-space:nowrap;
 font-variant-numeric:tabular-nums}
 /* O travessão de "nenhuma transportadora cotou" NÃO herda o verde: não ter
    preço não é um preço bom, e uma coluna toda verde faz o olho passar
    direto pela linha que precisava de atenção. A classe vem do app, que é
    quem sabe se houve preço — CSS não consegue perguntar isso. */
-.melhor.vazio{color:var(--fraco);font-weight:400;font-size:inherit;
+td.melhor.vazio{color:var(--fraco);font-weight:400;font-size:inherit;
 text-align:right;padding:0}
 
 /* A linha de detalhe: só existe quando há o que avisar, e atravessa a tabela
@@ -856,6 +856,24 @@ tr.r-extra>td>*:last-child{margin-bottom:0}
 # caminhos numa fonte só, no topo do módulo.
 CSS = (CSS.replace("{MARCA_COMPACTA_CLARA}", MARCA_COMPACTA_CLARA)
           .replace("{MARCA_COMPACTA}", MARCA_COMPACTA))
+
+REBRANDING = Path(__file__).with_name("rebranding.css").read_text(encoding="utf-8")
+CSS += REBRANDING
+
+MALHA_LOGISTICA = """<svg class="malha-logistica" viewBox="0 0 540 170"
+ fill="none" aria-hidden="true" focusable="false">
+<g stroke="#345174" stroke-width="1"><path d="M0 135H540M0 85H540M0 35H540"/>
+<path d="M65 0V170M165 0V170M265 0V170M365 0V170M465 0V170"/></g>
+<path class="trajeto" d="M20 135H125L205 55H335L415 115H520"
+ stroke="#82b1ff" stroke-width="3"/>
+<path d="M125 135L205 55M335 55L415 115" stroke="#82b1ff" stroke-dasharray="3 7"/>
+<g fill="#081932" stroke="#82b1ff" stroke-width="3">
+<circle cx="20" cy="135" r="7"/><circle cx="205" cy="55" r="7"/>
+<circle cx="335" cy="55" r="7"/><circle cx="520" cy="115" r="7"/></g>
+<g stroke="#bccadd" stroke-width="1.5"><path d="M244 106l22-12 22 12v25l-22 12-22-12zM244 106l22 12 22-12M266 118v25"/>
+<path d="M50 67V43h40v24H50zm40-16h16l10 10v6H90"/>
+<circle cx="61" cy="72" r="5"/><circle cx="104" cy="72" r="5"/></g>
+</svg>"""
 
 
 def e(v) -> str:
@@ -917,6 +935,12 @@ LUPA = """<dialog class="lupa" aria-label="Comprovante ampliado">
     if (!print) return;
     img.src = print.src;
     lupa.showModal();
+  });
+  document.addEventListener('keydown', ev => {
+    if (ev.target.matches('.print') && (ev.key === 'Enter' || ev.key === ' ')) {
+      ev.preventDefault();
+      ev.target.click();
+    }
   });
 
   // Clique em qualquer lugar fecha — na imagem ou no fundo escuro. O Esc já
@@ -1005,7 +1029,7 @@ def print_embutido(caminho: str | None) -> str:
     if not caminho or not Path(caminho).exists():
         return ""
     dados = base64.b64encode(Path(caminho).read_bytes()).decode()
-    return (f'<img class="print" src="data:image/png;base64,{dados}" '
+    return (f'<img class="print" tabindex="0" role="button" src="data:image/png;base64,{dados}" '
             f'alt="comprovante da cotacao">')
 
 
@@ -1047,7 +1071,8 @@ def entrada(titulo: str, cartao: str, *, chamada: str, apoio: str,
     fim = f'<p class="rodape">{e(rodape)}</p>' if rodape else ""
     return f"""<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>{e(titulo)} — Cotafrete</title><style>{CSS}</style></head><body>
+<title>{e(titulo)} — Cotafrete</title>{cabeca_do_tema("claro")}<style>{CSS}</style></head><body>
+<a class="pular" href="#conteudo">Ir para o formulário</a>
 <div class="entrada">
   <aside class="entrada-marca">
     <div class="marca-entrada">
@@ -1056,16 +1081,17 @@ def entrada(titulo: str, cartao: str, *, chamada: str, apoio: str,
       <p class="assinatura">{ASSINATURA}</p>
     </div>
     <div>
+      <span class="eyebrow">Cotafrete · Logística B2B</span>
       <h1>{e(chamada)}</h1>
       <p>{e(apoio)}</p>
     </div>
-    {lista}
+    {MALHA_LOGISTICA}{lista}
   </aside>
-  <main class="entrada-form">
-    <div>{cartao}{fim}</div>
+  <main class="entrada-form" id="conteudo">
+    {BOTAO_TEMA}<div><span class="produto">Cotafrete / Ventura</span>{cartao}{fim}</div>
   </main>
 </div>
-</body></html>"""
+{SCRIPT_TEMA}</body></html>"""
 
 
 # O rodapé. Não existia em tela nenhuma do vendedor — a página simplesmente
@@ -1112,7 +1138,8 @@ def pagina(titulo: str, corpo: str, usuario: str | None = None) -> str:
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{e(titulo)} — Cotafrete</title>{cabeca_do_tema("claro")}
 <style>{CSS}</style></head><body>
+<a class="pular" href="#conteudo">Ir para o conteúdo</a>
 <div class="topo"><a class="marca-placa" href="/" aria-label="Ventura Comércio — início"><span class="marca-peca marca-lockup" role="img"></span></a>
 {quem}{BOTAO_TEMA}</div>
-<div class="wrap">{corpo}</div>
+<main class="wrap" id="conteudo"><span class="produto">Cotafrete / Operação</span>{corpo}</main>
 {rodape_do_site(usuario)}{LUPA}{SCRIPT_TEMA}</body></html>"""

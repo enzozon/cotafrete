@@ -1,0 +1,153 @@
+/* Cotafrete / Ventura — rotas, precisão e espaço para trabalhar. */
+body{font-family:"Segoe UI Variable","Segoe UI",Arial,sans-serif;line-height:1.55}
+:root{--raio:16px;--raio-p:8px;--raio-g:22px}
+h1,h2{font-family:"Segoe UI Variable Display","Segoe UI",Arial,sans-serif;text-wrap:balance}
+h1{font-size:clamp(28px,3vw,40px);letter-spacing:-1.3px;line-height:1.15}
+.sub{font-size:14px;line-height:1.6;max-width:80ch}
+.wrap{width:100%;max-width:1240px;margin:36px auto;padding:0 40px}
+.topo{padding:18px 40px;gap:24px;border-bottom:1px solid var(--borda);box-shadow:none}
+.topo .marca-lockup{height:34px}
+.topo .quem{display:flex;align-items:center;gap:28px}
+.menu{display:flex;flex-wrap:wrap;gap:6px}
+.menu a{margin:0;padding:10px 12px;border-radius:6px}
+.menu a:hover,.menu a[aria-current="page"]{background:var(--lavagem);color:var(--marca)}
+.produto{font-size:12px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--marca)}
+.pular{position:absolute;top:8px;left:8px;transform:translateY(-160%);z-index:20;background:var(--papel);padding:12px}
+.pular:focus{transform:none}
+.cartao{padding:28px;box-shadow:0 8px 28px -20px #00247255;margin-bottom:24px}
+fieldset{min-width:0;padding:22px;background:var(--papel);border:0;border-top:1px solid var(--borda);border-radius:0;margin:0 0 22px}
+legend{font-size:12px;letter-spacing:1.4px;padding:0 12px 0 0}
+label{font-size:12px;color:var(--tinta2);font-weight:600;margin-bottom:7px}
+input,select,textarea{min-width:0;font-family:inherit}
+input{min-height:46px;background:var(--cova)}
+.grid{gap:18px}
+button,.botao2{min-height:44px}
+button{box-shadow:none}
+:focus-visible{outline:3px solid var(--realce)!important;outline-offset:3px}
+.faixa-marca{padding:22px 28px;border:0;border-left:4px solid var(--marca);border-radius:0;background:var(--lavagem);gap:28px}
+.faixa-marca::before{display:none}
+.faixa-marca .marca-lockup{height:34px}
+.faixa-marca .diz{max-width:75ch;font-size:13px}
+form[action="/cotar"]{display:grid;grid-template-columns:1fr 1fr;gap:0 24px;margin-top:28px}
+form[action="/cotar"]>fieldset:nth-of-type(3),form[action="/cotar"]>fieldset:nth-of-type(4),form[action="/cotar"]>.filtro{grid-column:1/-1}
+form[action="/cotar"]>button{justify-self:start;min-width:220px}
+.opcao{flex-wrap:wrap;gap:8px}
+.filtro>summary{min-height:56px;color:var(--tinta2)}
+.tr:has(input:not(:checked)){opacity:1;color:var(--fraco);background:var(--cova)}
+.tr input{min-height:20px;width:20px;height:20px}
+.grupo-cab{flex-wrap:wrap}
+.doc{max-width:920px;padding:36px}
+.doc h2{font-size:22px;margin-top:32px;padding-top:20px;border-top:1px solid var(--borda)}
+.doc p,.doc li{line-height:1.8}
+.doc .passo{padding:22px;background:var(--lavagem);border-radius:12px;line-height:2}
+.ficha .grid>div{padding:10px 0;border-bottom:1px solid var(--borda)}
+.ficha .val{font-size:16px}
+.ficha fieldset{padding-left:0;padding-right:0}
+.pronto{padding:20px;background:var(--cova);line-height:1.8}
+.cartao:has(>table){overflow-x:auto}
+th{padding:14px 12px;background:var(--cova)}
+td{padding:16px 12px}
+table.resultados td{height:76px}
+.resultado-scroll{overflow-x:auto}
+.zap{padding:16px;border-radius:12px}
+.rodape-site .dentro{max-width:1240px;padding:28px 40px}
+/* A ilustração é original; uma única passagem de quatro segundos. */
+.entrada{grid-template-columns:1.2fr 1fr;background:var(--fundo);min-height:100vh}
+.entrada-marca{padding:48px clamp(28px,5vw,80px);gap:32px;justify-content:space-between;background:#081932}
+.entrada-marca::before{inset:0;width:100%;border-radius:0;background:linear-gradient(135deg,#0042b522,transparent),repeating-linear-gradient(0deg,transparent 0 63px,#ffffff06 64px)}
+.entrada-marca::after{display:none}
+.entrada-marca .logo{height:52px}
+.entrada-marca h1{font-size:clamp(38px,4.3vw,64px);letter-spacing:-2.4px;max-width:12ch;line-height:1.04}
+.entrada-marca p{font-size:16px;color:#bccadd;max-width:43ch}
+.entrada-marca .eyebrow{display:block;color:#90baff;font-size:11px;letter-spacing:2.5px;text-transform:uppercase;margin-bottom:18px}
+.malha-logistica{width:100%;max-width:540px;height:170px;display:block;overflow:visible}
+.malha-logistica .trajeto{stroke-dasharray:700;animation:rota-tracada 4s ease-out both}
+@keyframes rota-tracada{from{stroke-dashoffset:700}to{stroke-dashoffset:0}}
+.entrada-marca .rota{margin:0;max-width:540px}
+.entrada-form{position:relative;background:var(--fundo);padding:64px 40px}
+.entrada-form>div{width:100%;max-width:430px}
+.entrada-form .cartao{max-width:none;padding:0;background:transparent;border:0;box-shadow:none}
+.entrada-form h1{font-size:36px;color:var(--tinta);margin-bottom:16px}
+.entrada-form .sub,.entrada-form label,.entrada-form .rodape{color:var(--tinta2)}
+.entrada-form .sub{font-size:15px;margin-bottom:28px}
+.entrada-form input{background:var(--papel);color:var(--tinta);border-color:var(--borda-forte);min-height:54px}
+.entrada-form input::placeholder{color:var(--fraco)}
+.entrada-form button{background:var(--marca);color:var(--sobre-marca);box-shadow:none;min-height:52px}
+.entrada-form button:hover{background:var(--marca-forte)}
+.entrada-form .rodape{border-top:1px solid var(--borda);padding-top:22px;margin-top:28px;line-height:1.7}
+.entrada-form .tema{position:absolute;right:28px;top:24px;padding:10px;min-height:40px}
+.entrada-form .produto{display:block;margin-bottom:32px}
+/* Dashboard: navegação persistente, indicadores editoriais e dados em superfície. */
+.painel .lateral{flex-basis:208px;width:208px;background:#081932}
+.painel .lateral-fixa{padding:28px 12px 20px}
+.painel .lateral .marca{padding:0 10px 26px}
+.painel .lateral a{border-radius:8px;margin:3px 0;padding:13px 12px}
+.painel .lateral .marca b{font-size:12px;letter-spacing:1.4px}
+.painel .conteudo{padding:36px;max-width:1700px}
+.painel .cabecalho{padding-bottom:24px;border-bottom:1px solid var(--borda);margin-bottom:24px}
+.painel .cabecalho h1{font-size:34px}
+.painel .cabecalho .sub{font-size:13px}
+.painel .cabecalho>div{min-width:0;max-width:100%;overflow-wrap:anywhere}
+.painel .cabecalho .direita{flex-wrap:wrap}
+.painel .cabecalho .direita>div{min-width:0;max-width:100%}
+.painel .faixa{gap:0;border:1px solid var(--borda);border-radius:16px;overflow:hidden;background:var(--papel);margin-bottom:28px;grid-template-columns:repeat(4,minmax(0,1fr))}
+.painel .numero{border:0;border-radius:0;border-right:1px solid var(--borda);padding:28px 20px;box-shadow:none}
+.painel .numero:last-child{border-right:0}
+.painel .numero::before{top:auto;height:3px;width:100%}
+.painel .numero b{font-size:42px;letter-spacing:-2px}
+.painel .numero .ico{position:static;margin-bottom:18px}
+.painel .numero:hover,.painel .cartao:hover{transform:none;box-shadow:none}
+.painel .grade{gap:24px;grid-template-columns:repeat(12,minmax(0,1fr))}
+.painel .cartao{padding:24px;border-radius:16px;box-shadow:none}
+.painel .cartao-cab{flex-wrap:wrap;gap:8px 16px;border-bottom:1px solid var(--borda);padding-bottom:16px;margin-bottom:20px}
+.painel .cartao-cab h2{font-size:17px}
+.painel .cartao-cab .nota{font-size:12px}
+.painel .periodos{border-radius:8px}
+.painel .periodo{border-radius:5px;padding:9px 12px}
+.painel .periodo.atual{box-shadow:none}
+.painel .aovivo i{animation:none}
+.painel .busca input{min-width:0;width:100%}
+.painel .filtros{padding:16px;background:var(--cova);border-radius:10px;margin-bottom:16px;gap:8px}
+.painel .filtro-p{padding:9px 12px;min-height:40px;border-radius:6px}
+.painel th{padding:13px 10px;background:var(--cova)}
+.painel td{padding:14px 10px}
+.painel .saude{min-width:580px}
+.painel .cartao:has(.saude){overflow-x:auto}
+.wrap:has(.pronto)>.cartao,.wrap:has(img[src^="/ajuda/"])>.cartao{border-top:3px solid var(--marca);max-width:960px}
+.wrap:has(img[src^="/ajuda/"]) .print{max-height:280px;object-fit:contain;object-position:left;background:var(--cova)}
+.r-cab{flex-wrap:wrap}.r-cab h2{font-size:20px}
+.contador{float:none;display:inline-block;margin-left:12px}
+.entrada-form .alerta{background:var(--erro-fraco);border-color:var(--erro);color:var(--erro)}
+.painel .grafico{padding:8px 0 12px}
+.painel .respostas{grid-template-columns:repeat(auto-fit,minmax(min(258px,100%),1fr))}
+.painel .resposta{padding:20px;background:var(--cova);overflow-wrap:anywhere}
+.painel .resposta-cab{flex-wrap:wrap}
+.painel .resposta .preco{font-size:30px}
+.painel .roscas{gap:16px}
+.painel .rank .trilho,.painel .tempos .trilho{height:6px}
+@media(max-width:880px){
+ .wrap{padding:0 20px;margin:24px auto}.topo{padding:16px 20px;flex-wrap:wrap;gap:12px}
+ .topo .quem{order:3;width:100%;margin:0;flex-wrap:wrap;gap:8px}.topo>.tema{margin-left:auto}
+ .menu{gap:0}.menu a{font-size:12px;padding:9px}.topo .quem>b{font-size:12px}
+ .entrada{grid-template-columns:1fr}.entrada-marca{padding:28px;gap:22px}
+ .entrada-marca h1{font-size:38px;max-width:17ch}.entrada-marca .logo{height:38px}
+ .entrada-marca .eyebrow{margin:0 0 12px}.malha-logistica{height:88px}
+ .entrada-form{padding:60px 28px 36px}.entrada-form h1{font-size:30px}
+ .entrada-form .produto{margin-bottom:18px}.entrada-form .tema{top:12px;right:24px}
+ form[action="/cotar"]{display:block}.cartao{padding:20px}fieldset{padding:18px 0}
+ .grid{grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:16px}
+ .faixa-marca .marca-lockup{display:none}.faixa-marca{padding:16px 20px}
+ .doc{padding:22px}.rodape-site .dentro{padding:24px 20px}
+ .painel .lateral{width:100%}.painel .lateral-fixa{padding:16px;gap:4px}
+ .painel .lateral .marca{width:100%;padding:0 8px 12px;margin:0}
+ .painel .lateral a{font-size:12px;padding:10px 8px;margin:0}
+ .painel .conteudo{padding:24px 16px}.painel .cabecalho h1{font-size:30px}
+ .painel .faixa{grid-template-columns:repeat(2,minmax(0,1fr))}.painel .numero{padding:20px 16px;border-bottom:1px solid var(--borda)}
+ .painel .numero b{font-size:34px}.painel .numero span{font-size:12px}
+ .painel .cartao{padding:20px 16px}.painel .grade{gap:16px}
+ .painel .cartao-cab .direita{margin-left:0;max-width:100%;flex-wrap:wrap}
+ .painel .periodos{max-width:100%;gap:0}.painel .periodo{padding:9px 10px}
+ .painel .rolagem{margin:0;padding:0}.painel .busca{max-width:100%}
+ table.resultados{min-width:680px}.cartao:has(>table:not(.resultados)) table{min-width:600px}
+}
+@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto!important}.malha-logistica .trajeto{animation:none;stroke-dashoffset:0}}

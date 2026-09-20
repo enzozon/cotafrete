@@ -118,7 +118,8 @@ def tela_de_entrada(erro: str = ""):
   <p class="sub">As cotações de toda a empresa, num lugar só.</p>
   {aviso}
   <form method="post" action="/adm/entrar">
-    <input name="senha" type="password" placeholder="Senha do painel"
+    <label for="senha">Senha do painel</label>
+    <input id="senha" name="senha" type="password" placeholder="Senha do painel"
            autocomplete="current-password" autofocus required
            style="margin-bottom:12px">
     <button type="submit" style="width:100%">Entrar</button>
@@ -632,7 +633,7 @@ def painel(adm: str | None = Cookie(None, alias=COOKIE_ADM),
     rotulo = dict(PERIODOS)[dias]
     busca = ('<label class="busca">'
              f'{ui._icone(ui.ICONES["busca"])}'
-             '<input id="busca" type="search" autocomplete="off"'
+             '<input id="busca" type="search" aria-label="Buscar cotações" autocomplete="off"'
              ' placeholder="buscar nº, vendedor, rota, material"></label>')
     # A seta é literal e não "->": a rota é para ler, não para copiar.
     rotas_na_tela = [{"rota": r["rota"].replace(" -> ", " → "),
