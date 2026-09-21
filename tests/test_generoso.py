@@ -384,3 +384,39 @@ def test_cotacao_com_cif_fob_coerente_continua_passando():
               if e.severidade is Severidade.ERRO]
 
     assert graves == []
+
+
+# ------------------------------------------------------------- validade
+# "Cotação válida até" é o unico numero da tela que diz ATE QUANDO aquele
+# preço vale. Sem ele o vendedor manda para o cliente um frete que pode ter
+# vencido ontem, e o proprio site avisa em letras miudas: "O valor de
+# R$ 421,94 é válido para contratação até dia 30/08/26".
+#
+# Vira `date` e nao texto: a tela precisa COMPARAR com hoje para decidir se
+# ainda da para aceitar, e comparar "30/08/26" com "hoje" em texto e o tipo
+# de coisa que funciona ate virar o ano.
+def test_le_ate_quando_a_cotacao_vale(adapter):
+    from datetime import date
+
+    assert adapter.normalizar_resposta(TELA_COM_PRECO).validade == date(2026, 8, 30)
+
+
+def test_tela_sem_validade_nao_inventa_data(adapter):
+    """Se a Generoso mudar a tela e o rotulo sumir, `validade` fica None e a
+    tela deixa de prometer prazo — nunca chuta uma data."""
+    sem_validade = TELA_COM_PRECO.replace("Cotação válida até\n30/08/26", "")
+
+    res = adapter.normalizar_resposta(sem_validade)
+
+    assert res.valor_frete == Decimal("421.94")   # o preço continua lido
+    assert res.validade is None
+
+
+def test_validade_nao_confunde_com_a_previsao_de_entrega(adapter):
+    """Tres datas na mesma tela, no mesmo formato, uma embaixo da outra:
+    previsao de entrega (25/08), cotado em (20/08) e validade (30/08). Casar
+    a errada aqui faz a cotacao parecer vencida cinco dias antes."""
+    res = adapter.normalizar_resposta(TELA_COM_PRECO)
+
+    assert res.validade.day == 30
+    assert res.prazo_dias == 5

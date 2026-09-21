@@ -56,7 +56,7 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
 
-from datetime import datetime
+from datetime import date, datetime
 
 from carriers.base import (
     CampoSpec, ErroValidacao, Modo, ResultadoCotacao, Severidade, print_seguro,
@@ -198,6 +198,13 @@ RE_PREVISAO = re.compile(r"previs[ãa]o de entrega\D*?(\d{2}/\d{2}/\d{2})",
                          re.IGNORECASE)
 RE_COTADO_EM = re.compile(r"cotado em\D*?(\d{2}/\d{2}/\d{2})", re.IGNORECASE)
 
+# ATÉ QUANDO o preço pode ser contratado — o que decide se ainda dá para
+# aceitar a cotação pelo site. É a terceira data da tela, no mesmo formato
+# das outras duas e logo abaixo delas; casar a errada faz a cotação parecer
+# vencida cinco dias antes do que vence. Ancorada no rótulo inteiro por isso.
+RE_VALIDA_ATE = re.compile(
+    r"cota[çc][ãa]o v[áa]lida at[ée]\D*?(\d{2}/\d{2}/\d{2})", re.IGNORECASE)
+
 
 def _dinheiro(bruto: str) -> Decimal | None:
     """'1.421,94' -> Decimal('1421.94').
@@ -207,6 +214,18 @@ def _dinheiro(bruto: str) -> Decimal | None:
     try:
         return Decimal(bruto.replace(".", "").replace(",", "."))
     except InvalidOperation:
+        return None
+
+
+def _data(bruto: str) -> "date | None":
+    """'30/08/26' -> date(2026, 8, 30). None se a tela mudou de formato.
+
+    Nunca chuta: sem data legível, quem lê isto precisa saber que não sabe —
+    uma validade inventada faz a tela ou prometer prazo que não existe ou
+    esconder um botão que devia estar lá."""
+    try:
+        return datetime.strptime(bruto, "%d/%m/%y").date()
+    except (ValueError, TypeError):
         return None
 
 
@@ -795,6 +814,7 @@ class GenerosoAdapter:
             protocolo = RE_PROTOCOLO.search(texto)
             previsao = RE_PREVISAO.search(texto)
             cotado = RE_COTADO_EM.search(texto)
+            vale_ate = RE_VALIDA_ATE.search(texto)
             return ResultadoCotacao(
                 transportadora=self.slug,
                 status=StatusCotacao.COTADO,
@@ -802,6 +822,7 @@ class GenerosoAdapter:
                 valor_frete=_dinheiro(frete.group(1)),
                 prazo_dias=(_dias_entre(cotado.group(1), previsao.group(1))
                             if cotado and previsao else None),
+                validade=_data(vale_ate.group(1)) if vale_ate else None,
                 raw_response=texto[:800],
             )
 
