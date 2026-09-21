@@ -1107,6 +1107,13 @@ def _rodar(cotacao_id: int, slug: str, cotar_fn, req) -> None:
             # vendedor ler. Gravando só `erro`, ela era jogada fora e o cartão
             # caía no genérico "o site respondeu: recusado".
             protocolo=res.protocolo, erro=res.erro or res.motivo_recusa,
+            # `is not None`, e não o `if` natural: entrega no mesmo dia é
+            # prazo_dias=0, que é falso em Python — e 0 é justamente o prazo
+            # que mais ajuda a fechar negócio. O adapter preenchia isto desde
+            # sempre e esta linha não existia: 414 resultados no banco de
+            # produção (21/09/2026), nenhum com prazo, e a coluna "Prazo" da
+            # tela nascia vazia em toda cotação, para todas as transportadoras.
+            prazo=str(res.prazo_dias) if res.prazo_dias is not None else None,
             evidencia=res.evidencias[-1] if res.evidencias else None,
             respondido_em=(res.respondido_em.isoformat(timespec="seconds")
                            if res.respondido_em else None))
