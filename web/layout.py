@@ -795,6 +795,46 @@ text-wrap:pretty}
 .validade-ok{color:var(--tinta2)}
 .validade-vencida{color:var(--fraco);text-decoration:line-through}
 
+/* O botão de aceitar mora na MESMA célula da validade, logo abaixo dela: é a
+   validade que decide se ainda vale a pena aceitar, e separar as duas faria
+   o vendedor ler "vence hoje" num canto da linha e clicar no outro. */
+.r-validade>span{display:block}
+/* `--marca` e não `--tinta`: no tema escuro a tinta INVERTE (vira clara) e o
+   botão ficaria com texto branco sobre fundo branco. A marca é a mesma
+   família de azul do <button> comum, que já vive bem nos dois temas. */
+.aceite-botao{display:inline-block;margin-top:5px;padding:5px 12px;
+border-radius:7px;background:var(--marca);color:#fff;font-size:12px;
+font-weight:700;text-decoration:none;white-space:nowrap}
+.aceite-botao:hover{background:var(--marca-forte)}
+/* Pedida e confirmada. Sem botão nenhum — botão apagado ainda parece que um
+   dia funciona, e convida ao clique. */
+.aceite-feito{display:block;margin-top:5px;color:var(--ok);font-weight:700;
+font-size:12px}
+.aceite-indo{display:block;margin-top:5px;color:var(--tinta2);font-size:12px}
+.aceite-refazer{display:inline-block;margin-top:5px;color:var(--erro);
+font-size:12px;font-weight:600}
+
+/* A tela de aceite: o que está sendo aceito, em quatro números, acima do
+   formulário. Quem confirma precisa ver isso sem voltar uma página. */
+.resumo-aceite{display:flex;flex-wrap:wrap;gap:22px}
+.resumo-aceite>div{display:flex;flex-direction:column;gap:2px}
+.resumo-aceite .rot{font-size:10.5px;letter-spacing:1px;
+text-transform:uppercase;color:var(--fraco);font-weight:700}
+.resumo-aceite b{font-size:17px}
+.campo{display:block;margin:14px 0}
+.campo>span{display:block;font-size:12.5px;font-weight:600;margin-bottom:5px}
+.campo small{display:block;color:var(--fraco);font-size:11.5px;margin-top:4px}
+.campo input[type=date],.campo select,.campo textarea{width:100%;
+padding:9px 11px;border:1px solid var(--borda);border-radius:8px;
+font:inherit;font-size:14px;background:#fff}
+.campo.linha{display:flex;align-items:center;gap:8px}
+.campo.linha>span{margin:0;font-weight:500}
+.campo.linha input{width:auto}
+.campo.duplo{display:flex;gap:12px}
+.campo.duplo>label{flex:1}
+.campo.duplo span{display:block;font-size:12.5px;font-weight:600;
+margin-bottom:5px}
+
 /* A vencedora. Fundo mais filete à esquerda, e não só borda: numa tabela a
    borda de uma linha se confunde com a divisória da linha de cima. */
 tr.r.melhor td{background:#f2f8f5}

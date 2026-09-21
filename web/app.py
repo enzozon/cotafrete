@@ -31,7 +31,7 @@ import time
 import unicodedata
 from concurrent.futures import ThreadPoolExecutor
 from decimal import Decimal, InvalidOperation
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 from urllib.parse import quote
 
@@ -53,6 +53,7 @@ from core import sessao
 from core import cnpj as buscador_cnpj
 from core import selecao
 from core.aceite import rotulo_validade, vencida
+from carriers.generoso.mapping import Agendamento, validar_agendamento
 from core.banco import Banco
 from core.evidencias import limpar_antigas, montar_zip_de_prints
 from core.retentativa import (
@@ -66,6 +67,7 @@ from web.ficha_ui import (
 from web.layout import (entrada, e, moeda, pagina,
                         print_embutido as _img)
 from web.transportadoras import cota_por_volume
+from web.aceite_ui import COM_ACEITE, celula_de_aceite, tela_aceite
 from core.models import (
     CotacaoRequest, Local, Mercadoria, NotaFiscal, Parte, Servico,
     Solicitante, StatusCotacao, TipoFrete, Volume, limpa_doc,
@@ -1476,6 +1478,9 @@ def ver_cotacao(cotacao_id: int,
               and not cota_por_volume(r["transportadora"], qtd)]
     melhor = min(precos) if precos else None
 
+    # Quais já tiveram coleta pedida. Uma consulta só, fora do laço.
+    aceites = banco.aceites(cotacao_id)
+
     linhas = ""
     for r in c["resultados"]:
         slug = r["transportadora"]
@@ -1501,15 +1506,11 @@ def ver_cotacao(cotacao_id: int,
             # preco CONTRA prazo.
             if r["prazo"]:
                 prazo = f'{e(str(r["prazo"]))} dias'
-            texto_validade = rotulo_validade(r["validade"])
-            if texto_validade:
-                # A vencida fica visualmente apagada: o preço continua na
-                # tela porque ele é histórico, mas não serve mais para
-                # fechar, e a linha precisa dizer isso sem precisar ser lida.
-                classe = ("validade-vencida" if vencida(r["validade"])
-                          else "validade-ok")
-                validade = (f'<span class="{classe}">'
-                            f'{e(texto_validade)}</span>')
+            # Validade e botão "Aceitar" na MESMA célula: é a validade que
+            # decide se ainda vale a pena aceitar, e separá-los faria o
+            # vendedor ler "vence hoje" num canto e clicar no outro.
+            validade = celula_de_aceite(slug, r["valor"], r["validade"],
+                                        aceites.get(slug), cotacao_id)
             if cota_por_volume(slug, qtd):
                 avisos += (
                     f'<div class="alerta"><b>Preço de 1 volume, não da '
@@ -1762,6 +1763,118 @@ document.querySelectorAll(".zap").forEach(a => a.addEventListener("click", () =>
 }}));
 </script>
 """, usuario))
+
+
+# ------------------------------------------------------- aceitar a cotação
+def _agendar(cotacao_id: int, slug: str, protocolo: str, ag,
+             usuario: str) -> None:
+    """Pede a coleta no portal e guarda o que aconteceu. Roda em thread.
+
+    Mesmo desenho do `_rodar` das cotações, e pelo mesmo motivo: o portal leva
+    uns 40 segundos, e segurar a resposta HTTP tudo isso faria o vendedor
+    achar que travou e apertar de novo. A vaga do aceite já está reservada no
+    banco antes daqui — o segundo clique não chega a este ponto.
+
+    O try é obrigatório: exceção em thread do executor some em silêncio, e o
+    aceite ficaria "agendando…" para sempre."""
+    try:
+        res = GenerosoAdapter().agendar_coleta(protocolo, ag, confirmar=True)
+        banco.concluir_aceite(
+            cotacao_id, slug,
+            status="agendado" if res.ok else "erro",
+            protocolo=res.protocolo, erro=res.erro,
+            evidencia=res.evidencias[-1] if res.evidencias else None)
+    except Exception as exc:
+        banco.concluir_aceite(cotacao_id, slug, status="erro",
+                              erro=f"{type(exc).__name__}: {exc}")
+
+
+def _cotacao_para_aceitar(cotacao_id: int, slug: str, usuario: str):
+    """A cotação e a linha da transportadora, ou um 404.
+
+    O `usuario` entra na busca de propósito, como em `ver_cotacao`: sem isso,
+    trocar o número na URL pediria coleta na cotação de outro vendedor."""
+    if slug not in COM_ACEITE:
+        raise HTTPException(404, f"{slug} não aceita cotação pelo site.")
+    c = banco.buscar_cotacao(cotacao_id, usuario)
+    if c is None:
+        raise HTTPException(404, "Cotação não encontrada")
+    r = next((x for x in c["resultados"] if x["transportadora"] == slug), None)
+    if r is None or r["valor"] is None:
+        raise HTTPException(404, f"A {NOMES.get(slug, slug)} não cotou esta "
+                                 f"carga — não há o que aceitar.")
+    return c, r
+
+
+@app.get("/aceitar/{cotacao_id}/{slug}", response_class=HTMLResponse)
+def tela_de_aceite(cotacao_id: int, slug: str,
+                   usuario: str | None = Depends(vendedor)):
+    if not usuario:
+        return RedirectResponse("/login", status_code=303)
+    c, r = _cotacao_para_aceitar(cotacao_id, slug, usuario)
+    return HTMLResponse(pagina(
+        f"Aceitar cotação {cotacao_id}",
+        tela_aceite(c, r, NOMES.get(slug, slug)), usuario))
+
+
+@app.post("/aceitar/{cotacao_id}/{slug}", response_class=HTMLResponse)
+def confirmar_aceite(cotacao_id: int, slug: str,
+                     usuario: str | None = Depends(vendedor),
+                     data_coleta: str = Form(...),
+                     hora_limite: str = Form(...),
+                     # Checkbox desmarcada não é enviada — mas os dois selects
+                     # SÃO, porque existem no HTML de qualquer jeito. Sem esta
+                     # distinção todo agendamento sairia com um almoço que
+                     # ninguém pediu, e o coletador programaria a rota por isso.
+                     fecha_almoco: str = Form(default=""),
+                     almoco_inicio: str = Form(default=""),
+                     almoco_fim: str = Form(default=""),
+                     observacao: str = Form(default="")):
+    if not usuario:
+        return RedirectResponse("/login", status_code=303)
+    c, r = _cotacao_para_aceitar(cotacao_id, slug, usuario)
+
+    enviado = {"data_coleta": data_coleta, "hora_limite": hora_limite,
+               "almoco_inicio": almoco_inicio if fecha_almoco else None,
+               "almoco_fim": almoco_fim if fecha_almoco else None,
+               "observacao": observacao}
+
+    def recusar(erros: list[str]):
+        return HTMLResponse(pagina(
+            f"Aceitar cotação {cotacao_id}",
+            tela_aceite(c, r, NOMES.get(slug, slug), erros=erros,
+                        enviado=enviado), usuario))
+
+    # Esconder o botão não basta: a URL continua existindo, e uma aba aberta
+    # desde ontem ainda a tem. A validade é conferida DE NOVO aqui.
+    if vencida(r["validade"]):
+        return recusar([
+            f"Esta cotação {rotulo_validade(r['validade'])} e não pode mais "
+            f"ser aceita. Faça uma cotação nova para ter um preço válido."])
+
+    try:
+        dia = date.fromisoformat(data_coleta)
+    except (TypeError, ValueError):
+        return recusar([f"Não entendi a data {data_coleta!r}."])
+
+    ag = Agendamento(data=dia, hora_limite=hora_limite,
+                     almoco_inicio=enviado["almoco_inicio"],
+                     almoco_fim=enviado["almoco_fim"],
+                     observacao=observacao.strip())
+    erros = validar_agendamento(ag)
+    if erros:
+        return recusar(erros)
+
+    # A RESERVA vem antes do navegador, e é ela que trava o clique duplo: o
+    # segundo pedido perde a corrida aqui e nunca chega ao portal.
+    if not banco.registrar_aceite(
+            cotacao_id, slug, usuario, data_coleta=dia.isoformat(),
+            hora_limite=ag.hora_limite, almoco_inicio=ag.almoco_inicio,
+            almoco_fim=ag.almoco_fim, observacao=ag.observacao):
+        return RedirectResponse(f"/cotacao/{cotacao_id}", status_code=303)
+
+    EXECUTOR.submit(_agendar, cotacao_id, slug, r["protocolo"], ag, usuario)
+    return RedirectResponse(f"/cotacao/{cotacao_id}", status_code=303)
 
 
 @app.get("/cotacao/{cotacao_id}/evidencias.zip")
