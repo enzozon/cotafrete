@@ -26,6 +26,7 @@ empresa do grupo no destino. Nenhuma outra falha da Generoso tem.
 from __future__ import annotations
 
 import re
+from datetime import date
 from typing import NamedTuple
 
 from core.models import CotacaoRequest, TipoFrete, limpa_doc
@@ -261,3 +262,120 @@ def ponta_travada_sem_o_grupo(req: CotacaoRequest) -> str | None:
         f"endereço da Ventura no lugar do endereço real — o preço seria de "
         f"outra rota. Cote esta carga com outra transportadora, ou corrija o "
         f"CIF/FOB se a Ventura for mesmo uma das pontas.")
+
+
+# ===================================================================
+# AGENDAMENTO DE COLETA — aceitar a cotação pelo site
+# ===================================================================
+#
+# Tudo abaixo saiu de `recon/recon_generoso_agendar.py`, rodado na conta real
+# em 21/09/2026. Nada foi deduzido dos prints: eles mostram O QUE a tela tem,
+# e é o DOM que diz o que ela ACEITA.
+#
+# A validação mora aqui, longe do navegador, porque a célula bloqueada do
+# calendário não recusa o clique com mensagem nenhuma — ela simplesmente não
+# faz nada. O painel fica parado, com cara de travado, e o vendedor recebe um
+# timeout de 45 segundos em vez de "sábado não tem coleta".
+
+# Hora limite da coleta: 08:00 às 18:00, de 30 em 30 minutos (21 opções).
+# ESCRITAS, e não geradas por range: se a Generoso mexer na grade, um teste
+# falha e alguém vai olhar. Uma lista gerada continuaria "certa" em silêncio
+# enquanto o site recusava.
+HORARIOS_COLETA = (
+    "08:00", "08:30", "09:00", "09:30", "10:00", "10:30", "11:00", "11:30",
+    "12:00", "12:30", "13:00", "13:30", "14:00", "14:30", "15:00", "15:30",
+    "16:00", "16:30", "17:00", "17:30", "18:00",
+)
+
+# O almoço tem grade PRÓPRIA e menor: 10:00 às 14:30. Reaproveitar a de cima
+# ofereceria 08:00 para o começo do almoço, e esse item não existe no select.
+HORARIOS_ALMOCO = (
+    "10:00", "10:30", "11:00", "11:30", "12:00", "12:30", "13:00", "13:30",
+    "14:00", "14:30",
+)
+
+# O coletador lê isto num aplicativo de celular. Campo de texto sem limite
+# visível no site é convite para colar um e-mail inteiro.
+LIMITE_OBSERVACAO = 500
+
+
+class Agendamento(NamedTuple):
+    """O que o vendedor escolhe para a coleta.
+
+    `almoco_inicio`/`almoco_fim` são None quando o local NÃO fecha para
+    almoço — ausência, não "das 00:00 às 00:00". Com o checkbox desmarcado
+    os dois selects nem existem no DOM."""
+
+    data: date
+    hora_limite: str
+    almoco_inicio: str | None = None
+    almoco_fim: str | None = None
+    observacao: str = ""
+
+    @property
+    def fecha_para_almoco(self) -> bool:
+        return bool(self.almoco_inicio and self.almoco_fim)
+
+
+def validar_agendamento(ag: Agendamento,
+                        hoje: date | None = None) -> list[str]:
+    """Devolve TODAS as frases de erro, não só a primeira.
+
+    Quem preencheu errado merece ver tudo de uma vez, e não descobrir um
+    problema por vez a cada ida ao portal — cada tentativa custa um login e
+    meio minuto de navegador.
+
+    As frases são escritas para o vendedor ler na tela, não para o log."""
+    hoje = hoje or date.today()
+    erros: list[str] = []
+
+    # ------------------------------------------------------------- a data
+    # O site bloqueia o PRÓPRIO dia: medido em 21/09, o dia 21/09 veio
+    # `data-disabled`. Não existe coleta no mesmo dia.
+    if ag.data <= hoje:
+        erros.append(
+            "A coleta não pode ser hoje nem em data passada: a Generoso só "
+            "abre o calendário a partir de amanhã.")
+    # segunda=0 ... sábado=5, domingo=6
+    elif ag.data.weekday() >= 5:
+        erros.append(
+            f"{ag.data:%d/%m} cai em fim de semana, e a Generoso só coleta em "
+            f"dia útil. Escolha outro dia.")
+
+    # ------------------------------------------------------------- a hora
+    if ag.hora_limite not in HORARIOS_COLETA:
+        erros.append(
+            f"A Generoso não tem o horário {ag.hora_limite}. Ela coleta das "
+            f"{HORARIOS_COLETA[0]} às {HORARIOS_COLETA[-1]}, de meia em meia "
+            f"hora.")
+
+    # ----------------------------------------------------------- o almoço
+    # Os dois selects andam juntos no site. Meia informação aqui viraria um
+    # horário que ninguém escolheu.
+    if bool(ag.almoco_inicio) != bool(ag.almoco_fim):
+        erros.append(
+            "Para avisar o almoço, preencha a hora de começar E a de "
+            "terminar.")
+    elif ag.fecha_para_almoco:
+        for rotulo, valor in (("começa", ag.almoco_inicio),
+                              ("termina", ag.almoco_fim)):
+            if valor not in HORARIOS_ALMOCO:
+                erros.append(
+                    f"O almoço {rotulo} num horário que a Generoso não "
+                    f"oferece ({valor}). São de {HORARIOS_ALMOCO[0]} a "
+                    f"{HORARIOS_ALMOCO[-1]}.")
+        # O site deixa escolher os dois livremente — nada impede 13:00 às
+        # 12:00 lá. Aqui impede: é um almoço que não existe, e o coletador
+        # leria uma janela invertida.
+        if ag.almoco_inicio >= ag.almoco_fim:
+            erros.append(
+                f"O almoço termina antes de começar ({ag.almoco_inicio} às "
+                f"{ag.almoco_fim}).")
+
+    # ------------------------------------------------------- a observação
+    if len(ag.observacao or "") > LIMITE_OBSERVACAO:
+        erros.append(
+            f"A observação para o coletador passou de {LIMITE_OBSERVACAO} "
+            f"letras. Ele lê isso no celular — escreva o essencial.")
+
+    return erros
