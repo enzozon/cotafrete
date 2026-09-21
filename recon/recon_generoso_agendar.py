@@ -33,7 +33,8 @@ from dotenv import load_dotenv
 
 load_dotenv(override=False)
 
-from carriers.generoso.adapter import GenerosoAdapter   # noqa: E402
+from carriers.generoso.adapter import (URL_RESULTADO,   # noqa: E402
+                                       GenerosoAdapter)
 
 SAIDA = RAIZ / "recon_out" / "generoso_agendar"
 
@@ -138,45 +139,68 @@ def main() -> int:
                                ".filter(h => h && h.includes('cota')).slice(0,40)"),
             }
 
-            # ------------------------------------------ 2. abrir uma cotacao
-            # A lista NAO tem link por cotacao: medido em 21/09/2026, os
-            # unicos <a> da pagina sao /cotacao e /cotacao/listar. Cada linha
-            # e um <tr data-slot="context-menu-trigger"> com `cursor-pointer`,
-            # e tem um botao "⋮" ("Open menu", aria-haspopup=menu) na ultima
-            # celula. Ou seja: nao da para montar a URL da cotacao a partir do
-            # numero — tem que clicar na linha.
-            #
-            # A PRIMEIRA linha e a mais recente, e portanto a com mais chance
-            # de ainda estar dentro da validade.
-            linha = page.locator('tr[data-slot="context-menu-trigger"]').first
-            if not linha.count():
-                achados["parou"] = ("nenhuma linha de cotacao na lista — "
-                                    "ver lista.html")
-                return 0
+            # Com um protocolo na linha de comando, vai DIRETO — a primeira
+            # linha da lista nem sempre serve. Medido em 21/09/2026: apareceu
+            # ali uma cotacao com id em UUID (4ea51829-...), frete "R$ N/A" e
+            # menu SEM "Agendar coleta". Cotacao sem preco nao tem coleta para
+            # agendar, e o recon nao tem como adivinhar isso da lista.
+            if len(sys.argv) > 1:
+                achados["protocolo_pedido"] = sys.argv[1]
+                page.goto(URL_RESULTADO.format(sys.argv[1]),
+                          wait_until="domcontentloaded")
+                page.wait_for_timeout(4_000)
+                achados["cotacao"] = {
+                    "url": page.url,
+                    "texto": page.locator("body").inner_text()[:3000]}
+                (SAIDA / "cotacao.html").write_text(page.content(),
+                                                    encoding="utf-8")
+                page.screenshot(path=str(SAIDA / "2_cotacao.png"),
+                                full_page=True)
+                pulou_a_lista = True
+            else:
+                pulou_a_lista = False
 
-            achados["primeira_linha"] = linha.inner_text()[:300]
-            antes = page.url
+            if not pulou_a_lista:
 
-            # Primeiro o menu "⋮": se "Agendar coleta" estiver AQUI, o robo
-            # nem precisa abrir a cotacao — e um passo a menos no portal.
-            try:
-                linha.locator('button[aria-haspopup="menu"]').first.click()
-                page.wait_for_timeout(1_500)
-                page.screenshot(path=str(SAIDA / "2a_menu_linha.png"))
-                achados["menu_da_linha"] = page.locator(
-                    '[role="menuitem"]').all_inner_texts()
-                page.keyboard.press("Escape")
-                page.wait_for_timeout(800)
-            except Exception as exc:
-                achados["menu_da_linha"] = f"{type(exc).__name__}: {exc}"[:200]
+                # ------------------------------------------ 2. abrir uma cotacao
+                # A lista NAO tem link por cotacao: medido em 21/09/2026, os
+                # unicos <a> da pagina sao /cotacao e /cotacao/listar. Cada linha
+                # e um <tr data-slot="context-menu-trigger"> com `cursor-pointer`,
+                # e tem um botao "⋮" ("Open menu", aria-haspopup=menu) na ultima
+                # celula. Ou seja: nao da para montar a URL da cotacao a partir do
+                # numero — tem que clicar na linha.
+                #
+                # A PRIMEIRA linha e a mais recente, e portanto a com mais chance
+                # de ainda estar dentro da validade.
+                linha = page.locator('tr[data-slot="context-menu-trigger"]').first
+                if not linha.count():
+                    achados["parou"] = ("nenhuma linha de cotacao na lista — "
+                                        "ver lista.html")
+                    return 0
 
-            linha.click()
-            page.wait_for_timeout(4_000)
-            achados["clicar_na_linha_navegou"] = page.url != antes
-            page.screenshot(path=str(SAIDA / "2_cotacao.png"), full_page=True)
-            (SAIDA / "cotacao.html").write_text(page.content(), encoding="utf-8")
-            achados["cotacao"] = {"url": page.url,
-                                  "texto": page.locator("body").inner_text()[:3000]}
+                achados["primeira_linha"] = linha.inner_text()[:300]
+                antes = page.url
+
+                # Primeiro o menu "⋮": se "Agendar coleta" estiver AQUI, o robo
+                # nem precisa abrir a cotacao — e um passo a menos no portal.
+                try:
+                    linha.locator('button[aria-haspopup="menu"]').first.click()
+                    page.wait_for_timeout(1_500)
+                    page.screenshot(path=str(SAIDA / "2a_menu_linha.png"))
+                    achados["menu_da_linha"] = page.locator(
+                        '[role="menuitem"]').all_inner_texts()
+                    page.keyboard.press("Escape")
+                    page.wait_for_timeout(800)
+                except Exception as exc:
+                    achados["menu_da_linha"] = f"{type(exc).__name__}: {exc}"[:200]
+
+                linha.click()
+                page.wait_for_timeout(4_000)
+                achados["clicar_na_linha_navegou"] = page.url != antes
+                page.screenshot(path=str(SAIDA / "2_cotacao.png"), full_page=True)
+                (SAIDA / "cotacao.html").write_text(page.content(), encoding="utf-8")
+                achados["cotacao"] = {"url": page.url,
+                                      "texto": page.locator("body").inner_text()[:3000]}
 
             # --------------------------------------- 3. abrir o agendamento
             gatilho = None
@@ -278,6 +302,13 @@ def main() -> int:
                                 page.evaluate(JS_PAINEL) or []),
                             encoding="utf-8")
                         achados["checkbox_usado"] = sel
+                        # A pagina INTEIRA, e nao so o <form>: e daqui que
+                        # sai a fixture do teste offline, e ela precisa
+                        # carregar sozinha num file://. Este estado tem tudo
+                        # de uma vez — data, hora, os dois selects do almoco
+                        # (que so existem com a caixa marcada) e a observacao.
+                        (SAIDA / "almoco_completo.html").write_text(
+                            page.content(), encoding="utf-8")
                         break
                 except Exception:
                     continue
