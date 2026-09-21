@@ -1114,6 +1114,9 @@ def _rodar(cotacao_id: int, slug: str, cotar_fn, req) -> None:
             # produção (21/09/2026), nenhum com prazo, e a coluna "Prazo" da
             # tela nascia vazia em toda cotação, para todas as transportadoras.
             prazo=str(res.prazo_dias) if res.prazo_dias is not None else None,
+            # Até quando o preço ainda fecha negócio. É o que decide se o
+            # botão "Aceitar" aparece — sem isto a coluna nasceria morta.
+            validade=res.validade,
             evidencia=res.evidencias[-1] if res.evidencias else None,
             respondido_em=(res.respondido_em.isoformat(timespec="seconds")
                            if res.respondido_em else None))

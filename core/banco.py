@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import sqlite3
 from contextlib import closing
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
@@ -65,6 +65,14 @@ CREATE TABLE IF NOT EXISTS resultado (
     prazo          TEXT,
     erro           TEXT,
     evidencia      TEXT,
+    -- Até quando este preço ainda pode ser CONTRATADO, em ISO (2026-09-28).
+    -- Não confundir com `prazo`, que é quanto tempo a entrega demora: um diz
+    -- até quando dá para FECHAR, o outro quanto tempo leva para CHEGAR.
+    --
+    -- É o que decide se o botão "Aceitar" aparece na tela. Hoje só a Generoso
+    -- informa (a tela final dela traz "Cotação válida até"); nas outras fica
+    -- NULL, e NULL quer dizer "não sabemos", nunca "vence hoje".
+    validade       TEXT,
     -- Quando a transportadora respondeu. NULL nas linhas anteriores a
     -- 28/08/2026, e a tela precisa dizer "sem dados ainda" em vez de zero.
     --
@@ -91,6 +99,43 @@ CREATE TABLE IF NOT EXISTS whatsapp_aberto (
     transportadora TEXT NOT NULL,
     usuario        TEXT NOT NULL,
     aberto_em      TEXT NOT NULL,
+    UNIQUE (cotacao_id, transportadora)
+);
+
+-- Cotação ACEITA: a coleta foi pedida à transportadora pelo site.
+--
+-- É a primeira coisa neste sistema que combina algo com o mundo de fora em
+-- nome da Ventura. O WhatsApp aqui do lado só ABRE uma conversa e deixa a
+-- pessoa apertar enviar; isto aqui é o robô falando pela empresa, e o que
+-- sai do outro lado é caminhão na porta do cliente.
+--
+-- UNIQUE pelo mesmo motivo do whatsapp_aberto, mas com consequência maior:
+-- lá, repetir inflava uma contagem; aqui, repetir agenda DUAS coletas para a
+-- mesma carga. E o gesto que causa isso é o mais banal que existe numa tela
+-- web — apertar o botão de novo porque a primeira vez pareceu não responder.
+-- Esconder o botão não basta: um F5 traz de volta. A trava mora aqui.
+--
+-- `status`: agendando (o robô está no portal) / agendado (o site confirmou)
+-- / erro (não chegou a acontecer — e aí dá para tentar de novo).
+CREATE TABLE IF NOT EXISTS aceite (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    cotacao_id     INTEGER NOT NULL REFERENCES cotacao(id) ON DELETE CASCADE,
+    transportadora TEXT NOT NULL,
+    usuario        TEXT NOT NULL,
+    pedido_em      TEXT NOT NULL,
+    -- ISO (2026-09-23). O site da Generoso mostra dd/mm/aaaa, mas guardar no
+    -- formato da tela é como a validade: funciona até virar o ano.
+    data_coleta    TEXT NOT NULL,
+    hora_limite    TEXT NOT NULL,          -- "18:00", de 30 em 30 minutos
+    -- NULL = o local NÃO fecha para almoço. Ausência, não "das 00:00 às
+    -- 00:00": com o checkbox desmarcado os dois selects nem existem no DOM.
+    almoco_inicio  TEXT,
+    almoco_fim     TEXT,
+    observacao     TEXT,
+    status         TEXT NOT NULL,
+    protocolo      TEXT,
+    erro           TEXT,
+    evidencia      TEXT,
     UNIQUE (cotacao_id, transportadora)
 );
 
@@ -135,11 +180,23 @@ CAMPOS_CARGA = (
 
 # Colunas de `resultado` que nasceram depois do banco. Mesma razão de
 # CAMPOS_CARGA: CREATE TABLE IF NOT EXISTS não altera tabela existente.
-CAMPOS_RESULTADO = ("respondido_em",)
+CAMPOS_RESULTADO = ("respondido_em", "validade")
 
 
 def _decimal(valor: str | None) -> Decimal | None:
     return Decimal(valor) if valor not in (None, "") else None
+
+
+def _data(valor: str | None) -> date | None:
+    """ISO -> date. Texto estragado vira None, nunca exceção.
+
+    Uma data ilegível não pode derrubar a tela da cotação inteira: o pior que
+    pode acontecer é o botão "Aceitar" não aparecer, e isso é reparável — a
+    tela quebrar, no meio do vendedor comparando preços, não é."""
+    try:
+        return date.fromisoformat(valor) if valor else None
+    except (TypeError, ValueError):
+        return None
 
 
 class Banco:
@@ -218,23 +275,26 @@ class Banco:
                          prazo: str | None = None,
                          erro: str | None = None,
                          evidencia: str | None = None,
-                         respondido_em: str | None = None) -> None:
+                         respondido_em: str | None = None,
+                         validade: date | None = None) -> None:
         # Sobrescreve em vez de acrescentar: a transportadora que responde
         # depois de ter sido dada como interrompida precisa APAGAR o aviso,
         # não conviver com ele. Ver o índice resultado_unico em _migrar.
         with closing(self._conectar()) as con, con:
             con.execute(
                 "INSERT INTO resultado (cotacao_id, transportadora, status,"
-                " valor, protocolo, prazo, erro, evidencia, respondido_em)"
-                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+                " valor, protocolo, prazo, erro, evidencia, respondido_em,"
+                " validade) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
                 " ON CONFLICT (cotacao_id, transportadora) DO UPDATE SET"
                 " status = excluded.status, valor = excluded.valor,"
                 " protocolo = excluded.protocolo, prazo = excluded.prazo,"
                 " erro = excluded.erro, evidencia = excluded.evidencia,"
-                " respondido_em = excluded.respondido_em",
+                " respondido_em = excluded.respondido_em,"
+                " validade = excluded.validade",
                 (cotacao_id, transportadora, status,
                  str(valor) if valor is not None else None,
-                 protocolo, prazo, erro, evidencia, respondido_em))
+                 protocolo, prazo, erro, evidencia, respondido_em,
+                 validade.isoformat() if validade else None))
 
     def marcar_whatsapp_aberto(self, cotacao_id: int, transportadora: str,
                                usuario: str) -> None:
@@ -263,6 +323,64 @@ class Banco:
             return [dict(r) for r in con.execute(
                 "SELECT * FROM whatsapp_aberto WHERE cotacao_id = ?"
                 " ORDER BY id", (cotacao_id,))]
+
+    # ------------------------------------------------------------- aceite
+    def registrar_aceite(self, cotacao_id: int, transportadora: str,
+                         usuario: str, *, data_coleta: str,
+                         hora_limite: str,
+                         almoco_inicio: str | None = None,
+                         almoco_fim: str | None = None,
+                         observacao: str | None = None) -> bool:
+        """Reserva o direito de agendar. True se reservou, False se já era.
+
+        Chamado ANTES de abrir o navegador, e é isso que o torna a trava: o
+        segundo clique perde a corrida aqui e nunca chega ao portal. Se a
+        checagem ficasse por conta de quem chama, dois cliques quase
+        simultâneos passariam os dois — e o cliente receberia dois caminhões.
+
+        O aceite que FALHOU não tranca: `status='erro'` quer dizer que a
+        coleta não chegou a ser pedida, e o vendedor precisa poder tentar de
+        novo. Só `agendando` e `agendado` seguram a vaga."""
+        with closing(self._conectar()) as con, con:
+            cur = con.execute(
+                "INSERT INTO aceite (cotacao_id, transportadora, usuario,"
+                " pedido_em, data_coleta, hora_limite, almoco_inicio,"
+                " almoco_fim, observacao, status)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'agendando')"
+                " ON CONFLICT (cotacao_id, transportadora) DO UPDATE SET"
+                " usuario = excluded.usuario, pedido_em = excluded.pedido_em,"
+                " data_coleta = excluded.data_coleta,"
+                " hora_limite = excluded.hora_limite,"
+                " almoco_inicio = excluded.almoco_inicio,"
+                " almoco_fim = excluded.almoco_fim,"
+                " observacao = excluded.observacao, status = 'agendando',"
+                " protocolo = NULL, erro = NULL, evidencia = NULL"
+                " WHERE aceite.status = 'erro'",
+                (cotacao_id, transportadora, usuario,
+                 datetime.now().isoformat(timespec="seconds"), data_coleta,
+                 hora_limite, almoco_inicio, almoco_fim, observacao))
+            return cur.rowcount == 1
+
+    def concluir_aceite(self, cotacao_id: int, transportadora: str, *,
+                        status: str, protocolo: str | None = None,
+                        erro: str | None = None,
+                        evidencia: str | None = None) -> None:
+        """O que o portal respondeu. Nunca cria linha: só fecha a que o
+        `registrar_aceite` abriu — concluir um aceite que ninguém pediu seria
+        registrar uma coleta que não existe."""
+        with closing(self._conectar()) as con, con:
+            con.execute(
+                "UPDATE aceite SET status = ?, protocolo = ?, erro = ?,"
+                " evidencia = ? WHERE cotacao_id = ? AND transportadora = ?",
+                (status, protocolo, erro, evidencia, cotacao_id,
+                 transportadora))
+
+    def aceites(self, cotacao_id: int) -> dict[str, dict]:
+        """slug -> aceite. A tela pergunta "esta já foi aceita?" por
+        transportadora, e um dicionário responde isso sem varrer lista."""
+        with closing(self._conectar()) as con, con:
+            return {r["transportadora"]: dict(r) for r in con.execute(
+                "SELECT * FROM aceite WHERE cotacao_id = ?", (cotacao_id,))}
 
     # ------------------------------------------------------------ leitura
     def listar_cotacoes(self, usuario: str, limite: int = 100) -> list[dict]:
@@ -303,7 +421,8 @@ class Banco:
             c["peso_kg"] = _decimal(c["peso_kg"])
             c["valor_nf"] = _decimal(c["valor_nf"])
             c["resultados"] = [
-                {**dict(r), "valor": _decimal(r["valor"])}
+                {**dict(r), "valor": _decimal(r["valor"]),
+                 "validade": _data(r["validade"])}
                 for r in con.execute(
                     "SELECT * FROM resultado WHERE cotacao_id = ? ORDER BY id",
                     (cotacao_id,)).fetchall()

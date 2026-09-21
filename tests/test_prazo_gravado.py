@@ -73,3 +73,33 @@ def test_prazo_zero_e_um_prazo(app_web):
         prazo_dias=0), req=None)
 
     assert _prazo_no_banco(app_web, cotacao_id, "jadlog") == "0"
+
+
+# --------------------------------------------------------------- validade
+# Mesma historia do prazo, um degrau adiante: o adapter da Generoso passou a
+# ler "Cotacao valida ate" da tela, e esse valor precisa CHEGAR no banco.
+# Uma coluna que ninguem preenche e pior que coluna nenhuma — ela faz a tela
+# dizer "sem validade" com a mesma cara de "ainda da tempo".
+def test_validade_respondida_chega_no_banco(app_web):
+    from datetime import date
+
+    cotacao_id = app_web.banco.salvar_cotacao("enzo", CARGA)
+
+    app_web._rodar(cotacao_id, "generoso", lambda req: ResultadoCotacao(
+        "generoso", StatusCotacao.COTADO, valor_frete=Decimal("152.16"),
+        validade=date(2026, 9, 28)), req=None)
+
+    c = app_web.banco.buscar_cotacao(cotacao_id, "enzo")
+    assert c["resultados"][0]["validade"] == date(2026, 9, 28)
+
+
+def test_transportadora_que_nao_diz_validade_fica_sem(app_web):
+    """Cinco das seis nao informam. Ausencia nao vira data nenhuma."""
+    cotacao_id = app_web.banco.salvar_cotacao("enzo", CARGA)
+
+    app_web._rodar(cotacao_id, "camilo", lambda req: ResultadoCotacao(
+        "camilo", StatusCotacao.COTADO, valor_frete=Decimal("74.10")),
+        req=None)
+
+    c = app_web.banco.buscar_cotacao(cotacao_id, "enzo")
+    assert c["resultados"][0]["validade"] is None
