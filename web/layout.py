@@ -763,12 +763,13 @@ button:active{transform:scale(.97);box-shadow:var(--sombra-1)}
    Somam exatamente 100%: sobrando, a tabela cresce e a rolagem volta. */
 table.resultados{width:100%;border-collapse:collapse;font-size:13.5px;
 table-layout:fixed}
-table.resultados .r-nome{width:22%}
-table.resultados .r-preco{width:14%}
-table.resultados .r-prazo{width:9%}
-table.resultados .r-nota{width:27%}
-table.resultados .r-estado{width:14%}
-table.resultados .r-print{width:14%}
+table.resultados .r-nome{width:20%}
+table.resultados .r-preco{width:13%}
+table.resultados .r-prazo{width:8%}
+table.resultados .r-nota{width:21%}
+table.resultados .r-validade{width:13%}
+table.resultados .r-estado{width:13%}
+table.resultados .r-print{width:12%}
 table.resultados th{font-size:10.5px;letter-spacing:1px;
 text-transform:uppercase;color:var(--fraco);font-weight:700;text-align:left;
 padding:0 14px;height:34px;background:#f8fafd;
@@ -786,6 +787,13 @@ tr.r:hover td{background:var(--lavagem)}
 .r-nota{color:var(--fraco);font-size:12.5px;line-height:1.35;
 text-wrap:pretty}
 .r-print{text-align:right;width:1%}
+
+/* Até quando o preço ainda fecha negócio. A vencida fica apagada e riscada:
+   o preço continua na tela porque é histórico, mas não serve mais para
+   fechar — e a linha precisa dizer isso antes de ser lida. */
+.r-validade{white-space:nowrap;font-size:12.5px}
+.validade-ok{color:var(--tinta2)}
+.validade-vencida{color:var(--fraco);text-decoration:line-through}
 
 /* A vencedora. Fundo mais filete à esquerda, e não só borda: numa tabela a
    borda de uma linha se confunde com a divisória da linha de cima. */

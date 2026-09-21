@@ -52,6 +52,7 @@ from core import cep as buscador_cep
 from core import sessao
 from core import cnpj as buscador_cnpj
 from core import selecao
+from core.aceite import rotulo_validade, vencida
 from core.banco import Banco
 from core.evidencias import limpar_antigas, montar_zip_de_prints
 from core.retentativa import (
@@ -1403,7 +1404,7 @@ ESTADOS = {
 
 def _linha_resultado(slug: str, principal: str, prazo: str, estado: str,
                      selo: str, destaque: str, evidencia: str | None,
-                     avisos: str, nota: str = "") -> str:
+                     avisos: str, nota: str = "", validade: str = "") -> str:
     """Uma transportadora, em duas linhas de tabela.
 
     A de cima compara: nome, frete, prazo, o que inclui, estado, print. A de
@@ -1425,7 +1426,7 @@ def _linha_resultado(slug: str, principal: str, prazo: str, estado: str,
     rotulo, classe_estado = ESTADOS.get(estado, ("—", "estado-falha"))
     mini = (f'<span class="mini">{_img(evidencia)}</span>'
             if evidencia else '<span class="sem-print">—</span>')
-    detalhe = (f'<tr class="r-extra"><td colspan="6">{avisos}</td></tr>'
+    detalhe = (f'<tr class="r-extra"><td colspan="7">{avisos}</td></tr>'
                if avisos else "")
     # `data-t` com o slug: e o que deixa o teste (e o JavaScript, se um dia
     # precisar) achar a linha de UMA transportadora sem fatiar o HTML no
@@ -1438,6 +1439,9 @@ def _linha_resultado(slug: str, principal: str, prazo: str, estado: str,
         f'<td class="r-preco">{principal}</td>'
         f'<td class="r-prazo">{e(prazo)}</td>'
         f'<td class="r-nota">{e(nota)}</td>'
+        # Já vem montado por quem chama: a célula da validade é a mesma que
+        # abriga o botão "Aceitar", e aí ela deixa de ser só texto.
+        f'<td class="r-validade">{validade}</td>'
         f'<td class="r-estado"><span class="{classe_estado}">'
         f'{e(rotulo)}</span></td>'
         f'<td class="r-print">{mini}</td>'
@@ -1481,6 +1485,10 @@ def ver_cotacao(cotacao_id: int,
         # o desenho da tela nao e motivo para reescrever nenhuma.
         avisos = ""
         prazo = ""
+        # Até quando este preço ainda fecha negócio. Só faz sentido onde HÁ
+        # preço: validade é a data de vencimento de um número, e linha sem
+        # número não tem o que vencer.
+        validade = ""
         if r["valor"] is not None:
             destaque = " melhor" if r["valor"] == melhor else ""
             selo = '<span class="selo">MAIS BARATO</span>' if destaque else ""
@@ -1493,6 +1501,15 @@ def ver_cotacao(cotacao_id: int,
             # preco CONTRA prazo.
             if r["prazo"]:
                 prazo = f'{e(str(r["prazo"]))} dias'
+            texto_validade = rotulo_validade(r["validade"])
+            if texto_validade:
+                # A vencida fica visualmente apagada: o preço continua na
+                # tela porque ele é histórico, mas não serve mais para
+                # fechar, e a linha precisa dizer isso sem precisar ser lida.
+                classe = ("validade-vencida" if vencida(r["validade"])
+                          else "validade-ok")
+                validade = (f'<span class="{classe}">'
+                            f'{e(texto_validade)}</span>')
             if cota_por_volume(slug, qtd):
                 avisos += (
                     f'<div class="alerta"><b>Preço de 1 volume, não da '
@@ -1556,7 +1573,8 @@ def ver_cotacao(cotacao_id: int,
         linhas += _linha_resultado(slug, principal, prazo, estado, selo,
                                    destaque, r["evidencia"], avisos,
                                    NOTAS.get(slug, "")
-                                   if r["valor"] is not None else "")
+                                   if r["valor"] is not None else "",
+                                   validade)
 
     # Quem ainda não respondeu ganha um cartão "cotando". Sem isso a
     # transportadora simplesmente não aparece, e o usuário não sabe se ela
@@ -1702,10 +1720,11 @@ def ver_cotacao(cotacao_id: int,
         <th class="r-preco">Frete</th>
         <th class="r-prazo">Prazo</th>
         <th class="r-nota">O que inclui</th>
+        <th class="r-validade">Validade</th>
         <th class="r-estado">Estado</th>
         <th class="r-print">Print</th>
       </tr></thead>
-      <tbody>{linhas or '<tr><td colspan="6" class="sub">Nenhum resultado.</td></tr>'}</tbody>
+      <tbody>{linhas or '<tr><td colspan="7" class="sub">Nenhum resultado.</td></tr>'}</tbody>
     </table>
   </div>
 </div>
