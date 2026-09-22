@@ -156,7 +156,28 @@ class TranslovatoAdapter:
         Os dois ficam POR CIMA do formulário e engolem cliques. Nascem depois
         do carregamento, então não adianta fechar uma vez no começo."""
         aviso = ""
-        alerta = page.locator(".sweet-alert.visible")
+        # `:visible` do Playwright, e NÃO a classe `.visible` do site.
+        #
+        # O SweetAlert entra em duas etapas: `showSweetAlert` quando aparece e
+        # `visible` meio segundo depois, no fim da animação. Ele engole
+        # cliques desde a PRIMEIRA — então exigir a segunda deixa meio segundo
+        # em que o alerta está na tela e este método jura que não tem nada.
+        #
+        # Meio segundo parece pouco e não é: este método roda logo depois de
+        # `wait_for_timeout(ESPERA_AJAX_MS)`, ou seja, mira exatamente na hora
+        # em que a resposta do site chega. Numa VM disputada o alerta cai
+        # dentro dessa fresta com frequência — e aí o clique seguinte bate no
+        # overlay e o Playwright fica 45 segundos tentando.
+        #
+        # Foi o modo de falha DOMINANTE da Translovato: 18 das 21 cotações com
+        # erro entre 24/08 e 02/09/2026, todas com a mesma assinatura —
+        # `<div class="sweet-alert showSweetAlert"> intercepts pointer
+        # events`, sem o `visible` no meio. O `_limpar_tela` já era chamado
+        # antes do campo que falhava; ele só não enxergava o alerta.
+        #
+        # `:visible` pergunta ao navegador o que está NA TELA, que é a
+        # pergunta certa — e não depende de como o site nomeia suas classes.
+        alerta = page.locator(".sweet-alert:visible")
         try:
             if alerta.count() and alerta.first.is_visible():
                 aviso = alerta.first.inner_text().strip().replace("\n", " ")
