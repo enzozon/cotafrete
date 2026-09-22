@@ -620,6 +620,211 @@ font-weight:700;letter-spacing:.2px}
 .lateral a:focus-visible{outline:2px solid var(--realce-claro);
 outline-offset:-2px}
 
+/* ============================================================================
+   ===================== o quadro de instrumentos, refeito ====================
+   ============================================================================
+   Esta camada fecha o arquivo e sobrescreve o que está acima. Ela existe
+   porque o painel pedia tratamento DELIBERADO — navegação, cabeçalho,
+   indicadores, filtros, tabelas e gráficos — e não o mesmo verniz das telas
+   do vendedor.
+
+   O que orientou (referências completas em docs/rebranding/IMPLEMENTACAO.md):
+   um quadro de instrumentos B2B de 2026 é lateral fixa + faixa de 4 a 6
+   indicadores + grade flexível; o número sai em MONOESPAÇADA e o rótulo em
+   sans, para o olho separar o que é etiqueta do que é valor sem ler; e
+   densidade alta só funciona com alinhamento rígido — "como a primeira
+   página de um jornal", colunas que o olho varre sem esforço.
+
+   Nada aqui muda consulta, número, filtro ou permissão. É desenho. */
+
+/* ---- 1. a navegação ------------------------------------------------------
+   Era uma coluna de 236px com um degradê marinho fixo, escrito em
+   hexadecimal — a única parte do sistema que não acompanhava o tema. Agora
+   ela sai dos TOKENS: no escuro continua a parede marinha que sempre foi; no
+   claro vira papel, porque uma faixa quase preta grudada numa página clara é
+   exatamente a queixa que derrubou a faixa da página inicial. */
+.lateral{flex:0 0 250px;width:250px;
+background:var(--papel);color:var(--tinta2);
+border-right:1px solid var(--borda)}
+[data-tema="escuro"] .lateral{
+background:linear-gradient(176deg,#13243f 0%,#060e1e 100%);
+border-right-color:transparent;color:#aeb9cc}
+.lateral-fixa{padding:var(--e5) 0 var(--e4)}
+.lateral .marca{padding:0 var(--e5) var(--e5);
+border-bottom:1px solid var(--borda);margin-bottom:var(--e4);gap:var(--e3)}
+[data-tema="escuro"] .lateral .marca{border-bottom-color:rgba(255,255,255,.08)}
+.lateral .marca img{height:30px}
+.lateral .marca b{color:var(--tinta);font-size:12px;letter-spacing:.2em}
+[data-tema="escuro"] .lateral .marca b{color:#fff}
+.lateral .secao{padding:var(--e4) var(--e5) var(--e2);font-size:9.5px;
+letter-spacing:.16em;color:var(--fraco)}
+/* O item ganha ar e o estado atual vira uma PASTILHA com a lavagem da marca,
+   em vez de um fundo que atravessa a coluna inteira. Numa lista de cinco, a
+   faixa cheia lê como cabeçalho de seção; a pastilha lê como "você está
+   aqui". */
+.lateral a{margin:1px var(--e3);padding:9px var(--e3);border-radius:var(--raio-p);
+border-left:0;font-size:13px;color:var(--tinta2);gap:var(--e3)}
+[data-tema="escuro"] .lateral a{color:#aeb9cc}
+.lateral a:hover{background:var(--lavagem);color:var(--marca)}
+[data-tema="escuro"] .lateral a:hover{background:rgba(255,255,255,.06);
+color:#fff}
+.lateral a.atual{background:var(--lavagem);color:var(--marca);
+border-left:0;font-weight:600;position:relative}
+[data-tema="escuro"] .lateral a.atual{background:rgba(93,151,255,.16);
+color:#fff}
+/* O filete do "você está aqui" encosta na borda da coluna, e não na borda da
+   pastilha: é ele que amarra o item à navegação inteira. */
+.lateral a.atual::before{content:"";position:absolute;left:calc(-1 * var(--e3));
+top:8px;bottom:8px;width:3px;border-radius:0 3px 3px 0;
+background:var(--marca-grad)}
+.lateral .rodape{padding:var(--e3) var(--e5) 0;font-size:10.5px;
+letter-spacing:.06em;text-transform:uppercase;font-weight:600;
+border-top:1px solid var(--borda)}
+[data-tema="escuro"] .lateral .rodape{border-top-color:rgba(255,255,255,.08)}
+
+/* ---- 2. o cabeçalho -------------------------------------------------------
+   Era uma linha só, com título, "ao vivo", quatro pastilhas de período e o
+   botão de tema disputando espaço — e num monitor de 1366 tudo isso quebrava
+   em duas linhas irregulares. Agora ele GRUDA no topo (a página do painel
+   tem 2000px de rolagem: trocar o período exigia voltar ao começo) e separa
+   o que é IDENTIDADE da tela do que é CONTROLE dela. */
+.conteudo{padding:0 var(--e6) var(--e8)}
+.cabecalho{position:sticky;top:0;z-index:20;margin:0 calc(-1 * var(--e6))
+var(--e5);padding:var(--e4) var(--e6);
+background:color-mix(in srgb,var(--fundo) 88%,transparent);
+backdrop-filter:saturate(1.6) blur(12px);
+-webkit-backdrop-filter:saturate(1.6) blur(12px);
+border-bottom:1px solid var(--borda);align-items:center;gap:var(--e4)}
+.cabecalho h1{font-family:var(--fonte-titulo);font-size:22px;
+letter-spacing:var(--letra-display)}
+.cabecalho .sub{font-size:var(--t-p);color:var(--fraco);margin:2px 0 0}
+/* "ao vivo" e as pastilhas de período ficam JUNTOS, à direita: os dois falam
+   do mesmo assunto — qual recorte de tempo está na tela e se ele ainda está
+   chegando. Separados pela largura da tela, nada dizia que tinham relação. */
+.cabecalho .aovivo{margin-left:auto;order:2;font-size:10.5px;
+letter-spacing:.1em;text-transform:uppercase;font-weight:700;
+background:var(--ok-fraco);border-color:transparent;color:var(--ok)}
+.cabecalho .periodos{margin-left:0;order:3}
+.cabecalho .tema{order:4}
+.periodos{border-radius:var(--raio-p);padding:3px;gap:2px}
+.periodo{border-radius:var(--raio-pp);font-size:12px;font-weight:600;
+padding:6px 14px}
+
+/* ---- 3. os indicadores ----------------------------------------------------
+   Um cartão, um recado. O rótulo sobe para cima do número (era embaixo, em
+   cinza, e lia-se como legenda de rodapé), o número sai na monoespaçada da
+   casa, e o ícone deixa de flutuar no canto para virar a âncora da linha do
+   rótulo. */
+.faixa{gap:var(--e4);grid-template-columns:repeat(auto-fit,minmax(210px,1fr));
+margin-bottom:var(--e5)}
+.numero{display:flex;flex-direction:column;gap:var(--e2);
+border-radius:var(--raio);padding:var(--e4) var(--e5) var(--e5);
+box-shadow:var(--sombra-1)}
+.numero::before{left:0;right:0;top:0;bottom:auto;width:auto;height:3px;
+background:var(--cor,var(--marca))}
+/* O ícone volta para o fluxo, colado no rótulo. No canto absoluto ele era
+   decoração; ao lado da palavra ele diz de que assunto o número é. */
+.numero .ico{position:static;width:26px;height:26px;border-radius:var(--raio-pp);
+order:-1}
+.numero .ico svg{width:15px;height:15px}
+/* Ícone e rótulo na MESMA linha, sem wrapper novo: o ícone entra primeiro
+   (`order:-1` no `.ico`) e o rótulo sobe por cima dele com margem negativa.
+   Envolver os dois num <div> exigiria mexer na função `numero()` — e a
+   marcação dela é a mesma que a rota /adm/agora troca a cada 10s. */
+.numero span{order:-1;font-size:var(--t-mini);font-weight:700;
+letter-spacing:var(--letra-rotulo);text-transform:uppercase;
+color:var(--fraco);margin:-26px 0 0 34px;min-height:26px;
+display:flex;align-items:center}
+.numero b{font-family:var(--fonte-num);font-size:34px;letter-spacing:-.04em;
+line-height:1;margin-top:var(--e2)}
+.numero:hover{transform:translateY(-3px);box-shadow:var(--sombra-2)}
+
+/* ---- 4. a grade e os cartões ---------------------------------------------- */
+.grade{gap:var(--e4)}
+.painel .cartao{border-radius:var(--raio);padding:var(--e5);
+box-shadow:var(--sombra-1)}
+.cartao-cab{margin-bottom:var(--e4);padding-bottom:var(--e3);
+border-bottom:1px solid var(--borda);gap:var(--e3)}
+.cartao-cab h2{font-family:var(--fonte-titulo);font-size:var(--t-m);
+letter-spacing:-.015em}
+.cartao-cab .nota{font-size:11px;color:var(--fraco);
+text-transform:uppercase;letter-spacing:.06em;font-weight:600}
+.legenda{font-size:11px;gap:var(--e3)}
+.legenda i{width:8px;height:8px;border-radius:2px}
+
+/* ---- 5. os filtros --------------------------------------------------------
+   Duas linhas de pastilhas soltas acima da tabela. Agora entram numa BARRA
+   própria, com fundo, que as separa da tabela e diz que elas mandam nela. */
+.filtros{background:var(--cova);border:1px solid var(--borda);
+border-radius:var(--raio-p);padding:var(--e3) var(--e4);
+margin-bottom:var(--e4);gap:var(--e2)}
+.filtros .rotulo{font-size:9.5px;letter-spacing:.14em}
+.filtro-p{border-radius:var(--raio-pp);font-size:11.5px;font-weight:600;
+padding:5px 11px}
+.busca input{width:250px;border-radius:var(--raio-p);padding:8px 12px 8px 32px;
+font-size:12px}
+
+/* ---- 6. as tabelas --------------------------------------------------------
+   Densidade alta só se lê com alinhamento rígido: coluna de número na
+   monoespaçada, cabeçalho em versalete, linha do dia como âncora. */
+.painel table{font-size:12px}
+.painel th{padding:10px var(--e2);font-size:9.5px;
+letter-spacing:.12em;text-transform:uppercase;font-weight:700;
+border-bottom:1px solid var(--borda-forte);background:var(--papel)}
+.painel td{padding:10px var(--e2)}
+.historico .id a,.historico .hora,.historico td:nth-child(6),
+.saude td:nth-child(n+2),.tabela-legenda td:last-child{
+font-family:var(--fonte-num)}
+.historico td:nth-child(6){font-size:12.5px;letter-spacing:-.02em}
+#historico tr.dia td{font-size:9.5px;letter-spacing:.14em}
+.rolagem{max-height:560px;margin:0 calc(-1 * var(--e5)) calc(-1 * var(--e5));
+padding:0 var(--e5) var(--e2)}
+
+/* ---- 7. os gráficos -------------------------------------------------------
+   Malha mais fraca e traço mais forte: o desenho tinha malha e linha quase na
+   mesma força, e num monitor fraco a linha se perdia dentro da grade. */
+.malha{stroke:var(--borda);stroke-width:1;opacity:.7}
+.eixo{font-size:10px;fill:var(--fraco);font-family:var(--fonte-num);
+letter-spacing:-.02em}
+.linha-g{stroke-width:2.8}
+.rosca .meio{font-family:var(--fonte-num);font-size:18px;letter-spacing:-.04em}
+.rosca .quem{font-size:11.5px}
+.rosca .quanto{font-size:10.5px}
+.pizza .total{font-family:var(--fonte-num);font-size:28px;letter-spacing:-.04em}
+.pizza .total-sub{font-size:9px;letter-spacing:.14em}
+.rank .qtd,.tempos .quanto{font-family:var(--fonte-num);font-size:11.5px}
+.rank .trilho,.tempos .trilho{height:6px;background:var(--cova);
+border:1px solid var(--borda)}
+
+/* ---- 8. as respostas de uma cotação -------------------------------------- */
+.resposta{border-radius:var(--raio);padding:var(--e4)}
+.resposta .preco{font-family:var(--fonte-num);font-size:24px;
+letter-spacing:-.04em}
+.resposta-cab{padding-bottom:var(--e3);margin-bottom:var(--e3);
+border-bottom:1px solid var(--borda)}
+.resposta-cab b{font-size:13px;font-weight:700}
+.pilula{letter-spacing:.06em;text-transform:uppercase;font-size:10px;
+padding:3px 9px}
+
+/* ---- 9. o celular ---------------------------------------------------------
+   A lateral vira uma barra de rolagem lateral no topo, e o cabeçalho para de
+   grudar: numa tela de 390px uma barra grudada come um terço da altura. */
+@media(max-width:880px){
+.conteudo{padding:0 var(--e4) var(--e7)}
+.lateral-fixa{padding:10px var(--e3);gap:var(--e1);flex-wrap:nowrap;
+overflow-x:auto;scrollbar-width:none}
+.lateral-fixa::-webkit-scrollbar{display:none}
+.lateral a{margin:0;white-space:nowrap;flex:none}
+.lateral a.atual::before{display:none}
+.cabecalho{position:static;margin:0 calc(-1 * var(--e4)) var(--e4);
+padding:var(--e4)}
+.cabecalho .aovivo{order:0}
+.cabecalho .periodos{width:100%;order:5;justify-content:space-between}
+.numero b{font-size:29px}
+.filtros{padding:var(--e3)}
+.busca input{width:100%}
+.busca{width:100%}
+}
 """
 
 
