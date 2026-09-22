@@ -56,10 +56,11 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
 
-from datetime import datetime
+from datetime import date, datetime
 
 from carriers.base import (
-    CampoSpec, ErroValidacao, Modo, ResultadoCotacao, Severidade, print_seguro,
+    CampoSpec, ErroValidacao, Modo, ResultadoAgendamento, ResultadoCotacao,
+    Severidade, print_seguro,
     CredencialRecusada, argumentos_de_navegador_real, erro_do_adapter,
     recusa_por_validacao,
 )
@@ -67,11 +68,25 @@ from carriers.generoso.mapping import (
     AVISO_CEP_NAO_ATENDIDO, AVISO_MESMO_CEP, cliente_nao_cadastrado,
     conflito_cif_fob, empresa_alvo, empresa_de, ponta_travada_sem_o_grupo,
     recusa_cep_nao_atendido, recusa_cliente_nao_cadastrado, recusa_mesmo_cep,
+    validar_agendamento,
 )
 from core.models import CotacaoRequest, StatusCotacao, TipoFrete, limpa_doc
 
 URL = "https://cliente.generoso.com.br/cotacao"
 URL_LOGIN = "https://cliente.generoso.com.br/login"
+
+# A tela de uma cotação JÁ FEITA — onde mora o "Agendar coleta". O número na
+# URL é o mesmo protocolo que `normalizar_resposta` lê da tela e o Cotafrete
+# guarda em `resultado.protocolo`, então não é preciso varrer lista nenhuma
+# para reencontrar a cotação. Medido em 21/09/2026: a lista (/cotacao/listar)
+# não tem link por cotação — cada linha é um <tr> clicável — e este endereço
+# foi o que apareceu na barra depois do clique.
+URL_RESULTADO = "https://cliente.generoso.com.br/cotacao/resultado/{}"
+
+# A trava do envio real do AGENDAMENTO, separada da trava do envio da cotação.
+# Uma cotação a mais é um registro na conta da Ventura; uma coleta a mais é um
+# caminhão na porta do cliente. Não podem depender do mesmo interruptor.
+VAR_AGENDAMENTO_AUTORIZADO = "GENEROSO_AGENDAMENTO_AUTORIZADO"
 
 # O CNPJ com que a conta ABRE. Continua sendo a ponta travada quando o
 # formulario nao traz nenhuma das tres empresas do grupo; quando traz, o
@@ -134,6 +149,45 @@ TIPO_PAGADOR_TERCEIRO = "Terceiro"
 
 BOTAO_PROXIMO = "Próximo"
 BOTAO_CONFIRMAR = "Confirmar e ver resultado"
+
+# --------------------------------------------------- agendamento de coleta
+# TODOS medidos por recon/recon_generoso_agendar.py em 21/09/2026, na conta
+# real. Nenhum deduzido dos prints: eles dizem o que a tela TEM, o DOM diz
+# como clicar — e aqui a diferença é grande, porque quase nada nesta tela é
+# um campo comum.
+BOTAO_AGENDAR = "Agendar coleta"
+BOTAO_CONTINUAR_AGENDAMENTO = "Continuar para o agendamento"
+
+# O campo de data NÃO é <input type="date">: é um botão que abre um popover
+# com calendário próprio, e o rótulo dele é a data escolhida ("22/09/2026 às
+# 18:00"). `fill()` não tem onde escrever.
+SELETOR_ABRIR_CALENDARIO = '[data-slot="popover-trigger"]'
+
+# Cada dia é uma <td> com a data em ISO no próprio atributo. É o que permite
+# escolher pelo dia e nunca por posição na grade — a grade muda de forma todo
+# mês, e "a terceira célula da quarta linha" é uma data diferente em outubro.
+SELETOR_DIA = 'td[role="gridcell"][data-day="{}"]'
+
+# O dia indisponível vem com isto. Clicar nele não dá erro: NÃO FAZ NADA, e o
+# painel fica parado com cara de travado — por isso o dia é conferido antes.
+MARCA_DIA_BLOQUEADO = "data-disabled"
+
+# "Coletar até ás" — dentro do popover do calendário. É Radix SEM <select>
+# nativo por trás: as opções só existem no DOM depois do clique, num portal
+# no fim do <body>. Só sai por clique.
+SELETOR_HORA_COLETA = '[data-slot="select-trigger"]:has-text("Coletar")'
+
+# O checkbox do almoço tem `id` FIXO — raro nesta tela, onde quase todo id é
+# gerado por render (radix-_R_6j9qnpfiv9fl97b_).
+SELETOR_ALMOCO = "#closedForLunch"
+
+# Os dois selects do almoço, ao contrário do "Coletar até ás", TÊM <select>
+# nativo por trás — então aceitam select_option() e dispensam o clique no
+# portal. Os dois padrões convivem na mesma tela: tratar os dois igual quebra
+# um dos lados.
+SELETOR_SELECT_NATIVO = "select"
+
+SELETOR_OBSERVACAO_COLETA = 'textarea[name="observation"]'
 
 # Tipo de embalagem é OBRIGATÓRIO e não é um <input> — são cards clicáveis
 # (Caixa, Fardo, Rolo, Engradado, Outro), então não apareceu no levantamento
@@ -198,6 +252,13 @@ RE_PREVISAO = re.compile(r"previs[ãa]o de entrega\D*?(\d{2}/\d{2}/\d{2})",
                          re.IGNORECASE)
 RE_COTADO_EM = re.compile(r"cotado em\D*?(\d{2}/\d{2}/\d{2})", re.IGNORECASE)
 
+# ATÉ QUANDO o preço pode ser contratado — o que decide se ainda dá para
+# aceitar a cotação pelo site. É a terceira data da tela, no mesmo formato
+# das outras duas e logo abaixo delas; casar a errada faz a cotação parecer
+# vencida cinco dias antes do que vence. Ancorada no rótulo inteiro por isso.
+RE_VALIDA_ATE = re.compile(
+    r"cota[çc][ãa]o v[áa]lida at[ée]\D*?(\d{2}/\d{2}/\d{2})", re.IGNORECASE)
+
 
 def _dinheiro(bruto: str) -> Decimal | None:
     """'1.421,94' -> Decimal('1421.94').
@@ -207,6 +268,18 @@ def _dinheiro(bruto: str) -> Decimal | None:
     try:
         return Decimal(bruto.replace(".", "").replace(",", "."))
     except InvalidOperation:
+        return None
+
+
+def _data(bruto: str) -> "date | None":
+    """'30/08/26' -> date(2026, 8, 30). None se a tela mudou de formato.
+
+    Nunca chuta: sem data legível, quem lê isto precisa saber que não sabe —
+    uma validade inventada faz a tela ou prometer prazo que não existe ou
+    esconder um botão que devia estar lá."""
+    try:
+        return datetime.strptime(bruto, "%d/%m/%y").date()
+    except (ValueError, TypeError):
         return None
 
 
@@ -795,6 +868,7 @@ class GenerosoAdapter:
             protocolo = RE_PROTOCOLO.search(texto)
             previsao = RE_PREVISAO.search(texto)
             cotado = RE_COTADO_EM.search(texto)
+            vale_ate = RE_VALIDA_ATE.search(texto)
             return ResultadoCotacao(
                 transportadora=self.slug,
                 status=StatusCotacao.COTADO,
@@ -802,6 +876,7 @@ class GenerosoAdapter:
                 valor_frete=_dinheiro(frete.group(1)),
                 prazo_dias=(_dias_entre(cotado.group(1), previsao.group(1))
                             if cotado and previsao else None),
+                validade=_data(vale_ate.group(1)) if vale_ate else None,
                 raw_response=texto[:800],
             )
 
@@ -1008,3 +1083,182 @@ class GenerosoAdapter:
                     + print_seguro(page, run / "erro.png"))
             finally:
                 browser.close()
+
+    # ------------------------------------------------- aceitar a cotação
+    def agendar_coleta(self, protocolo: str, ag, *,
+                       confirmar: bool = False) -> ResultadoAgendamento:
+        """Pede a coleta de uma cotação JÁ FEITA. Dry-run por padrão.
+
+        `confirmar=False` faz o caminho inteiro — login, abre a cotação pelo
+        protocolo, abre o painel, escolhe dia, hora, almoço e observação,
+        printa cada passo — e PARA antes de "Continuar para o agendamento".
+        Nada é agendado.
+
+        `confirmar=True` só obedece se `GENEROSO_AGENDAMENTO_AUTORIZADO`
+        estiver no .env. São DUAS travas, e separadas da trava do envio da
+        cotação de propósito: uma cotação a mais é uma linha na conta da
+        Ventura, uma coleta a mais é um caminhão na porta do cliente. Quem
+        liga a segunda precisa estar dizendo isso, não herdando de outra
+        decisão tomada para outra coisa.
+
+        `ag` é um `mapping.Agendamento` e já chega validado — mas o dia é
+        conferido DE NOVO aqui, contra o DOM: feriado o calendário bloqueia,
+        e nenhuma regra nossa tem como saber disso.
+        """
+        erros = validar_agendamento(ag)
+        if erros:
+            return ResultadoAgendamento(False, erro=" ".join(erros))
+
+        if not (self.usuario and self.senha):
+            return ResultadoAgendamento(
+                False, erro="Faltam GENEROSO_USUARIO e GENEROSO_SENHA no "
+                            ".env. Sem login não dá para agendar coleta.")
+
+        if confirmar and not os.getenv(VAR_AGENDAMENTO_AUTORIZADO):
+            return ResultadoAgendamento(
+                False, erro=f"O agendamento real está desligado. Para ligar, "
+                            f"ponha {VAR_AGENDAMENTO_AUTORIZADO}=1 no .env. "
+                            f"Sem isso a coleta não é pedida — e não foi.")
+
+        from playwright.sync_api import sync_playwright
+
+        run = self.workdir / datetime.now().strftime("%Y%m%d-%H%M%S-%f-coleta")
+        run.mkdir(parents=True, exist_ok=True)
+        evidencias: list[str] = []
+
+        # Mesma trava da cotação, pelo mesmo motivo: a empresa ativa é estado
+        # da CONTA na Generoso, não da aba. Duas sessões simultâneas se pisam.
+        with _TRAVA_CONTA, sync_playwright() as p:
+            browser = p.chromium.launch(**self.opcoes_do_navegador())
+            page = browser.new_context(
+                locale="pt-BR",
+                viewport={"width": 1400, "height": 1400}).new_page()
+            page.set_default_timeout(self.timeout_ms)
+            try:
+                self._entrar(page)
+                page.goto(URL_RESULTADO.format(protocolo),
+                          wait_until="domcontentloaded")
+                page.wait_for_timeout(4_000)
+                evidencias += print_seguro(page, run / "1_cotacao.png")
+
+                botao = page.get_by_role("button", name=BOTAO_AGENDAR).last
+                if not botao.count():
+                    # Vencida, já agendada, ou a tela mudou. As três são "não
+                    # dá para agendar", e nenhuma é falha nossa.
+                    return ResultadoAgendamento(
+                        False, evidencias=evidencias,
+                        erro=f"A cotação {protocolo} não tem o botão "
+                             f"{BOTAO_AGENDAR!r} na tela da Generoso. Ela pode "
+                             f"ter vencido ou já ter coleta agendada — abra "
+                             f"{URL_RESULTADO.format(protocolo)} para ver.")
+                botao.click()
+                page.wait_for_timeout(3_000)
+                evidencias += print_seguro(page, run / "2_painel.png")
+
+                self._escolher_dia_e_hora(page, ag)
+                evidencias += print_seguro(page, run / "3_data.png")
+                self._escolher_almoco(page, ag)
+                if ag.observacao:
+                    page.locator(SELETOR_OBSERVACAO_COLETA).first.fill(
+                        ag.observacao)
+                page.wait_for_timeout(800)
+                evidencias += print_seguro(page, run / "4_preenchido.png")
+
+                # A conferência que importa. O rótulo do botão do calendário é
+                # a ÚNICA confirmação visível de qual data o site entendeu, e
+                # o painel já nasce com uma data preenchida (amanhã, 18:00):
+                # se a escolha não tiver pegado, o robô seguiria adiante e
+                # pediria a coleta para o dia errado sem nunca falhar.
+                escolhido = page.locator(
+                    SELETOR_ABRIR_CALENDARIO).first.inner_text()
+                esperado = f"{ag.data:%d/%m/%Y}"
+                if esperado not in escolhido:
+                    return ResultadoAgendamento(
+                        False, evidencias=evidencias,
+                        erro=f"O painel ficou com {escolhido.strip()!r} em vez "
+                             f"de {esperado}. Nada foi agendado.")
+
+                if not confirmar:
+                    return ResultadoAgendamento(
+                        True, evidencias=evidencias,
+                        raw=f"DRY-RUN: painel preenchido com "
+                            f"{escolhido.strip()}, nada agendado.")
+
+                page.get_by_role(
+                    "button", name=BOTAO_CONTINUAR_AGENDAMENTO).last.click()
+                page.wait_for_timeout(8_000)
+                evidencias += print_seguro(page, run / "5_agendado.png")
+                return ResultadoAgendamento(
+                    True, evidencias=evidencias, protocolo=protocolo,
+                    raw=page.locator("body").inner_text()[:800])
+            except Exception as exc:
+                return ResultadoAgendamento(
+                    False, erro=f"{type(exc).__name__}: {exc}",
+                    evidencias=evidencias
+                    + print_seguro(page, run / "erro.png"))
+            finally:
+                browser.close()
+
+    def _escolher_dia_e_hora(self, page, ag) -> None:
+        """Abre o calendário, confere que o dia está liberado, clica nele e
+        escolhe a hora limite.
+
+        A conferência do `data-disabled` ANTES do clique é o coração disto: a
+        célula bloqueada não recusa nada, ela IGNORA. Sem esta checagem o robô
+        seguiria com a data que já estava no campo — amanhã, 18:00 — e pediria
+        a coleta para outro dia sem nunca falhar."""
+        page.locator(SELETOR_ABRIR_CALENDARIO).first.click()
+        page.wait_for_timeout(1_500)
+
+        dia = page.locator(SELETOR_DIA.format(ag.data.isoformat()))
+        if not dia.count():
+            # O calendário abre no mês corrente e a data pode estar no
+            # seguinte. "Go to the Next Month" é o aria-label medido.
+            page.get_by_label("Go to the Next Month").click()
+            page.wait_for_timeout(1_200)
+            dia = page.locator(SELETOR_DIA.format(ag.data.isoformat()))
+        if not dia.count():
+            raise RuntimeError(
+                f"o calendário da Generoso não mostra {ag.data:%d/%m/%Y}.")
+        if dia.first.get_attribute(MARCA_DIA_BLOQUEADO) == "true":
+            raise RuntimeError(
+                f"a Generoso não aceita coleta em {ag.data:%d/%m/%Y} — o dia "
+                f"vem bloqueado no calendário dela. Costuma ser feriado. "
+                f"Escolha outro dia.")
+        dia.first.click()
+        page.wait_for_timeout(1_200)
+
+        # A hora fica DENTRO do popover, e é Radix sem <select> nativo: as
+        # opções só nascem no DOM depois do clique.
+        page.locator(SELETOR_HORA_COLETA).first.click()
+        page.wait_for_timeout(1_000)
+        page.get_by_role("option", name=ag.hora_limite,
+                         exact=True).first.click()
+        page.wait_for_timeout(1_000)
+        page.keyboard.press("Escape")
+        page.wait_for_timeout(800)
+
+    def _escolher_almoco(self, page, ag) -> None:
+        """Marca (ou não) o "Local fecha para almoço" e os dois horários.
+
+        Sem almoço não há nada a fazer: o checkbox nasce desmarcado e os dois
+        selects não existem no DOM. Marcar e desmarcar "para garantir" criaria
+        o único caminho capaz de deixar a tela com o checkbox ligado e os
+        horários em branco."""
+        if not ag.fecha_para_almoco:
+            return
+
+        page.locator(SELETOR_ALMOCO).first.click()
+        page.wait_for_timeout(1_500)
+
+        # Estes TÊM <select> nativo (ao contrário do "Coletar até ás"), então
+        # select_option resolve sem passear pelo portal do Radix. Os dois
+        # padrões convivem na mesma tela: tratar os dois igual quebra um lado.
+        selects = page.locator(SELETOR_SELECT_NATIVO)
+        if selects.count() < 2:
+            raise RuntimeError(
+                "marquei 'Local fecha para almoço' e os dois horários não "
+                "apareceram na tela da Generoso.")
+        selects.nth(0).select_option(ag.almoco_inicio)
+        selects.nth(1).select_option(ag.almoco_fim)
+        page.wait_for_timeout(800)

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from enum import Enum
 from pathlib import Path
@@ -157,6 +157,16 @@ class ResultadoCotacao:
     protocolo: str | None = None
     valor_frete: Decimal | None = None   # None é resposta VÁLIDA, não falha
     prazo_dias: int | None = None
+    # Até quando o preço ainda pode ser contratado. NÃO confundir com
+    # `prazo_dias`, que é quanto tempo a entrega demora: um diz até quando dá
+    # para FECHAR, o outro quanto tempo leva para CHEGAR. A Generoso mostra os
+    # dois na mesma tela, um embaixo do outro e no mesmo formato — casar um
+    # pelo outro faz a cotação parecer vencida dias antes do que vence.
+    #
+    # `date` e não texto porque quem lê isto precisa comparar com hoje para
+    # decidir se ainda dá para aceitar a cotação, e comparar "30/08/26" com
+    # hoje em texto é o tipo de coisa que funciona até virar o ano.
+    validade: date | None = None
     moeda: str = "BRL"
     raw_response: Any = None
     evidencias: list[str] = field(default_factory=list)
@@ -166,6 +176,29 @@ class ResultadoCotacao:
     erro: str | None = None
     enviado_em: datetime | None = None
     respondido_em: datetime | None = None
+
+
+@dataclass
+class ResultadoAgendamento:
+    """O que aconteceu ao tentar ACEITAR uma cotação (pedir a coleta).
+
+    Separado de `ResultadoCotacao` porque responde outra pergunta. Uma cotação
+    devolve um preço, e "sem preço" é resposta válida — a transportadora pode
+    simplesmente não atender aquela carga. Um agendamento devolve um
+    compromisso: ou a coleta foi pedida, ou não foi, e não existe meio termo
+    que a tela possa desenhar.
+
+    `ok=True` vindo de um dry-run quer dizer que o ensaio chegou até o fim — o
+    painel foi preenchido e conferido, e paramos antes de confirmar. É sucesso
+    de ensaio, não de agendamento, e `raw` começa com "DRY-RUN" para que quem
+    ler saiba de qual dos dois se trata.
+    """
+
+    ok: bool
+    protocolo: str | None = None
+    erro: str | None = None
+    evidencias: list[str] = field(default_factory=list)
+    raw: str | None = None
 
 
 class CredencialRecusada(RuntimeError):
