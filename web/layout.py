@@ -65,18 +65,18 @@ CSS = """
    como escolha. */
 :root{
 /* marca */
---marca:#0042b5;--marca-forte:#00328a;--marca-viva:#0450d2;
---realce:#004bcc;--realce-claro:#317bfc;--lavagem:#eaf1fd;
---marca-grad:linear-gradient(135deg,#317bfc 0%,#0450d2 45%,#0042b5 100%);
+--marca:#003fb0;--marca-forte:#002f85;--marca-viva:#0f56e0;
+--realce:#0047c4;--realce-claro:#3d84ff;--lavagem:#e9f0fe;
+--marca-grad:linear-gradient(135deg,#3d84ff 0%,#0f56e0 45%,#003fb0 100%);
 /* neutros com viés azul */
---tinta:#0f1724;--tinta2:#3c485d;--fraco:#5e6b82;
---borda:#dee3ed;--borda-forte:#c1cbdc;--fundo:#f5f7fb;--papel:#fff;
+--tinta:#0c1526;--tinta2:#39465c;--fraco:#59667e;
+--borda:#dce3ef;--borda-forte:#bdc8dc;--fundo:#f2f5fa;--papel:#fff;
 /* semânticos: sentido, não marca — mudar estes muda o que a tela AFIRMA */
---ok:#00785a;--erro:#c0341d;--atencao:#a15c00;--zap:#25d366;
---ok-fraco:#e6f4ef;--erro-fraco:#fdece9;--atencao-fraco:#fffae6;
+--ok:#00785a;--erro:#bf3320;--atencao:#96560a;--zap:#25d366;
+--ok-fraco:#e4f3ee;--erro-fraco:#fdeae6;--atencao-fraco:#fff8e3;
 --atencao-borda:#ffe380;--atencao-tinta:var(--tinta);
---sobre-marca:#fff;--cova:#f7f9fc;
---brilho-marca:rgba(0,66,181,.45);
+--sobre-marca:#fff;--cova:#f6f8fc;
+--brilho-marca:rgba(0,63,176,.42);
 /* Os tons do quadro de instrumentos. Moram aqui, e não no CSS do
    painel, porque quem os ESCREVE é o Python (o número do topo sai com
    `style="--cor:..."`), e hexadecimal escrito pelo servidor não muda
@@ -88,13 +88,68 @@ CSS = """
 --tom-neutro:#5f6675;--tom-neutro-fraco:#eef0f4;
 --tom-roxo:#7c3aed;--tom-roxo-fraco:#f1eafe;
 --alerta-fundo:#fff6f4;--alerta-borda:#ffd5cc;--alerta-tinta:#7a3b2e;
+/* ---- tipografia -----------------------------------------------------------
+   Três famílias, nenhuma baixada da internet: o sistema roda em rede interna
+   e fonte que não chegou é a página inteira remontando na cara de quem lê.
+   O que muda é a ESCOLHA dentro do que a máquina já tem.
+
+   A de título pede a Segoe UI Variable Display, o corte que a Microsoft
+   desenhou justamente para tamanho grande: contraste maior, espaço entre
+   letras menor. A de texto pede o corte Text, desenhado para 12-16px. Nas
+   máquinas antigas as duas caem na Segoe UI de sempre e nada piora.
+
+   A MONOESPAÇADA é a mudança que mais se vê. Preço, peso, prazo e os números
+   do painel saem nela: o rótulo vira uma coisa, o valor vira outra, e a
+   coluna de dinheiro alinha por desenho e não por sorte. `tabular-nums`
+   sozinho alinha, mas não separa rótulo de valor — e separar é metade do
+   trabalho de um quadro de instrumentos. */
+--fonte:"Segoe UI Variable Text","Segoe UI",system-ui,-apple-system,
+        "Helvetica Neue",Arial,sans-serif;
+--fonte-titulo:"Segoe UI Variable Display","Segoe UI",system-ui,-apple-system,
+        "Helvetica Neue",Arial,sans-serif;
+--fonte-num:"Cascadia Mono",ui-monospace,"Segoe UI Mono",Consolas,
+        "SF Mono",monospace;
+/* A escala. Razão ~1.22 nos tamanhos de leitura e um salto maior nos de
+   display, que é onde o contraste de tamanho precisa aparecer de longe.
+   Os dois maiores são fluidos: num celular de 390px um título de 40px come
+   três linhas antes de o texto começar. */
+--t-micro:10.5px;--t-mini:11.5px;--t-p:12.5px;--t-base:13px;--t-m:14px;
+--t-g:16px;--t-gg:clamp(20px,1rem + .8vw,24px);
+--t-display:clamp(25px,1.1rem + 2vw,34px);
+/* Entrelinha: 1.5 no texto corrido, 1.25 no que é rótulo, 1.08 no display —
+   título grande com entrelinha de parágrafo lê como duas frases soltas. */
+--ent:1.55;--ent-curta:1.3;--ent-display:1.08;
+/* O espaçamento entre letras. Positivo no que é RÓTULO (versalete curto só
+   fica legível espaçado) e negativo no display (a Segoe abre demais em 40px). */
+--letra-rotulo:.09em;--letra-display:-.028em;
+/* ---- espaço -------------------------------------------------------------
+   Escala de 4px. Existia como número solto em cada regra: 11px aqui, 13px
+   ali, 9px na do lado — e o resultado é uma tela onde nada se alinha a nada.
+   Estes oito degraus são o ritmo da página inteira. */
+--e1:4px;--e2:8px;--e3:12px;--e4:16px;--e5:22px;--e6:30px;--e7:44px;--e8:64px;
+/* A coluna de leitura. Era 1080px; num monitor grande sobrava tanta margem
+   que a página parecia um documento perdido no meio da tela. */
+--coluna:1160px;
+/* O anel de foco, num token só. Estava escrito à mão em quatro regras, cada
+   uma com um rgba() diferente — e foco é a peça que mais aparece para quem
+   trabalha no teclado. */
+--anel:0 0 0 3px rgba(61,132,255,.38);
 /* elevação: três degraus, e não sombra solta por regra. Borda de 1px em tudo
    achata a hierarquia — quem precisa se destacar sobe, o resto fica no plano */
---sombra-1:0 1px 2px rgba(20,32,66,.05),0 1px 3px rgba(20,32,66,.04);
---sombra-2:0 2px 4px rgba(20,32,66,.04),0 10px 22px -8px rgba(20,32,66,.14);
---sombra-3:0 18px 44px -12px rgba(20,32,66,.28);
---raio:12px;--raio-p:8px;--raio-g:16px;
---suave:cubic-bezier(.2,.6,.3,1);--mola:cubic-bezier(.34,1.32,.46,1)}
+--sombra-1:0 1px 2px rgba(12,21,38,.05),0 1px 3px rgba(12,21,38,.045);
+--sombra-2:0 2px 4px rgba(12,21,38,.04),0 12px 26px -10px rgba(12,21,38,.16);
+--sombra-3:0 22px 52px -14px rgba(12,21,38,.3);
+/* `--sombra` e `--sombra2` sem hífen ficaram escritos em web/painel_ui.py
+   (`.numero`, `.painel .cartao`) e nunca existiram aqui: `var()` sem valor
+   descarta a propriedade inteira, então os cartões do painel estavam SEM
+   sombra nenhuma desde que o casco dele virou arquivo próprio. Os apelidos
+   custam duas linhas e consertam a elevação de onze cartões. */
+--sombra:var(--sombra-1);--sombra2:var(--sombra-2);
+/* Raios maiores, e uma escala de verdade: 6/10/14/20. O sistema tinha 12px
+   em tudo — cartão, campo e pílula com o mesmo canto achatam a hierarquia. */
+--raio-pp:6px;--raio-p:10px;--raio:14px;--raio-g:20px;
+--suave:cubic-bezier(.2,.6,.3,1);--mola:cubic-bezier(.34,1.32,.46,1);
+--lento:cubic-bezier(.16,.84,.44,1)}
 /* ========================== o mesmo sistema, no escuro ======================
    Segundo conjunto de tokens, ligado por um atributo no <html>. Não é um
    tema "do painel": é do SISTEMA, e por isso mora aqui, junto do claro, e
@@ -111,43 +166,44 @@ html[data-tema="escuro"]{
    "V" — e não o azul cheio: #0042b5 sobre #111e34 dá 1.9:1, e a cor da marca
    estaria na tela sem ninguém ver. O azul cheio continua sendo marca, mas
    como FUNDO: a lateral do painel, o filete do topo. */
---marca:#5291ff;--marca-forte:#85b1ff;--marca-viva:#0450d2;
---realce:#5291ff;--realce-claro:#70a5ff;--lavagem:#1c2940;
+--marca:#5d97ff;--marca-forte:#8ab6ff;--marca-viva:#0f56e0;
+--realce:#5d97ff;--realce-claro:#82b0ff;--lavagem:#1a2740;
+--anel:0 0 0 3px rgba(93,151,255,.42);
 /* O que se escreve EM CIMA de um preenchimento da marca. Herdar o #fff do
    claro daria 2.6:1 sobre o azul claro: o botão sumiria por dentro. */
 --sobre-marca:#061021;
-/* neutros: 13.9:1, 9.1:1 e 6.7:1 sobre o cartão */
---tinta:#e6e9ef;--tinta2:#bcc4d2;--fraco:#99a4b8;
---borda:#2d3f5c;--borda-forte:#475e85;--fundo:#061021;--papel:#111e34;
+/* neutros: 14.4:1, 10.1:1 e 6.8:1 sobre o cartão */
+--tinta:#e8ebf2;--tinta2:#bfc7d6;--fraco:#97a3b9;
+--borda:#2a3c58;--borda-forte:#445b82;--fundo:#050c1a;--papel:#101b30;
 /* Um degrau ABAIXO do papel, para o que é buraco e não cartão: campo de
    digitar, caixa de texto técnico, ficha dentro do cartão. No claro esse
    papel é o próprio branco e o buraco se faz com borda; no escuro é a
    luminância que separa, então o buraco precisa existir como cor. */
---cova:#0a1426;
+--cova:#08121f;
 /* Semânticos: o SENTIDO é o mesmo, só a luminância sobe. Verde 8.4:1, âmbar
    7.8:1, vermelho 7.5:1 sobre o cartão — contra 3.7, 5.2 e 2.8 que as cores
    claras dariam aqui. O vermelho de falha, no escuro, era ilegível. */
---ok:#3ecf8e;--erro:#ff8f75;--atencao:#e5a54a;
+--ok:#3fd394;--erro:#ff9279;--atencao:#e8a94e;
 /* As lavagens de cada semântico: o fundo das pílulas e dos avisos. */
---ok-fraco:#142b26;--erro-fraco:#2d201f;--atencao-fraco:#2c2413;
+--ok-fraco:#112a24;--erro-fraco:#2c1e1d;--atencao-fraco:#2a2312;
 --atencao-borda:#5c4a1c;--atencao-tinta:#e8cf9a;
---brilho-marca:rgba(82,145,255,.55);
+--brilho-marca:rgba(93,151,255,.5);
 /* Os mesmos tons, com a luminância que o fundo escuro exige. O pior é
    o roxo, com 6.1:1 sobre o cartão; no claro o vermelho de falha dava
    2.8:1 aqui e não passava nem como gráfico (SC 1.4.11). */
---tom-marca:#5291ff;--tom-marca-fraco:#18263f;
---tom-ok:#3ecf8e;--tom-ok-fraco:#142b26;
---tom-atencao:#e5a54a;--tom-atencao-fraco:#2b2618;
---tom-erro:#ff8f75;--tom-erro-fraco:#2d201f;
---tom-neutro:#98a1b8;--tom-neutro-fraco:#1f2740;
---tom-roxo:#a78bfa;--tom-roxo-fraco:#242847;
---alerta-fundo:#2a1a17;--alerta-borda:#5c3128;--alerta-tinta:#e0ab9c;
+--tom-marca:#5d97ff;--tom-marca-fraco:#17253d;
+--tom-ok:#3fd394;--tom-ok-fraco:#112a24;
+--tom-atencao:#e8a94e;--tom-atencao-fraco:#2a2416;
+--tom-erro:#ff9279;--tom-erro-fraco:#2c1e1d;
+--tom-neutro:#97a3b9;--tom-neutro-fraco:#1d253d;
+--tom-roxo:#a98cfb;--tom-roxo-fraco:#222645;
+--alerta-fundo:#281917;--alerta-borda:#5a2f26;--alerta-tinta:#e0ab9c;
 /* No escuro sombra não separa nada: quem separa é o degrau de luminância
    entre #0b0f1c e #161d33. A sombra fica só para dizer o que está POR CIMA
    quando o cursor levanta um cartão. */
---sombra-1:0 1px 2px rgba(0,0,0,.4);
---sombra-2:0 10px 28px -8px rgba(0,0,0,.6);
---sombra-3:0 20px 48px -12px rgba(0,0,0,.75);
+--sombra-1:0 1px 2px rgba(0,0,0,.45);
+--sombra-2:0 12px 30px -10px rgba(0,0,0,.62);
+--sombra-3:0 24px 54px -14px rgba(0,0,0,.78);
 /* Diz ao NAVEGADOR que a página é escura, para ele pintar de escuro o que
    desenha sozinho: barra de rolagem, cursor de texto, caixa de seleção. Sem
    isto a barra de rolagem branca era a coisa mais clara da tela. */
@@ -157,7 +213,7 @@ color-scheme:dark}
    Token nenhum alcança um `#fffae6` escrito dentro de uma regra. São estes,
    e ficam juntos para quem for mexer no tema achar num lugar só, em vez de
    caçar um fundo branco perdido no meio do arquivo. */
-[data-tema="escuro"] fieldset{background:#12182b}
+[data-tema="escuro"] fieldset{background:#13203a}
 [data-tema="escuro"] input,[data-tema="escuro"] .pronto{
 background:var(--cova);color:var(--tinta)}
 [data-tema="escuro"] input:hover,[data-tema="escuro"] .opcao:hover{
@@ -188,15 +244,15 @@ border-color:var(--atencao-borda)}
    invisível para quem olha. */
 [data-tema="escuro"] button:not(.tema){color:var(--sobre-marca)}
 [data-tema="escuro"] .selo-zap{background:var(--ok-fraco)}
-[data-tema="escuro"] .zap.aberta{background:#131a2e;border-color:#25503a}
+[data-tema="escuro"] .zap.aberta{background:#13203a;border-color:#22503b}
 
 /* A tabela do resultado. O verde da linha vencedora vira um verde de FUNDO
    escuro: no claro ele é uma lavagem, e lavagem clara no escuro é um rasgo
    branco no meio da tabela. */
-[data-tema="escuro"] table.resultados th{background:#12182b}
-[data-tema="escuro"] tr.r.melhor td{background:#132a24}
-[data-tema="escuro"] tr.r.melhor:hover td{background:#17332b}
-[data-tema="escuro"] tr.r-extra td{background:#12182b}
+[data-tema="escuro"] table.resultados th{background:#15233d}
+[data-tema="escuro"] tr.r.melhor td{background:#112a23}
+[data-tema="escuro"] tr.r.melhor:hover td{background:#16352c}
+[data-tema="escuro"] tr.r-extra td{background:#0d1728}
 [data-tema="escuro"] .estado-ok{background:var(--ok-fraco)}
 [data-tema="escuro"] .estado-recusa{background:var(--atencao-fraco)}
 [data-tema="escuro"] .estado-falha{background:var(--erro-fraco)}
@@ -226,13 +282,24 @@ background:var(--lavagem);transform:none;box-shadow:none}
 [data-tema="escuro"] .tema .p-lua{display:none}
 
 *{box-sizing:border-box}
-body{margin:0;background:var(--fundo);color:var(--tinta);line-height:1.45;
-font-family:system-ui,-apple-system,"Segoe UI",sans-serif;
--webkit-font-smoothing:antialiased;
+body{margin:0;background:var(--fundo);color:var(--tinta);
+line-height:var(--ent);font-family:var(--fonte);
+-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;
 /* O sistema é uma tela de números: peso, cubagem, preço. Dígito de largura
    fixa faz as colunas de dinheiro alinharem sem tabela e sem monoespaçada. */
 font-variant-numeric:tabular-nums}
 a{color:var(--marca)}
+/* Texto selecionado na cor da casa. Custa uma linha e é das poucas coisas
+   que o navegador pinta sozinho na tela inteira. */
+::selection{background:var(--lavagem);color:var(--marca-forte)}
+/* O fundo da página é chapado desde sempre. Duas manchas de luz muito baixas,
+   fixas no topo, dão a ele a mesma profundidade que a tela de entrada tem —
+   sem imagem nenhuma e sem atrapalhar a leitura do que vem por cima. */
+body::before{content:"";position:fixed;inset:0 0 auto;height:420px;z-index:-1;
+pointer-events:none;
+background:
+ radial-gradient(60% 100% at 12% 0%,rgba(61,132,255,.09),transparent 70%),
+ radial-gradient(48% 100% at 88% 0%,rgba(15,86,224,.06),transparent 72%)}
 
 /* Movimento é enfeite até virar obstáculo. Quem pediu para o sistema parar de
    se mexer não pode receber um formulário que entra deslizando. Uma regra, no
@@ -243,17 +310,42 @@ a{color:var(--marca)}
 animation-iteration-count:1 !important;transition-duration:.01ms !important;
 scroll-behavior:auto !important}}
 
+/* ---- pular para o conteúdo ----
+   Primeiro foco da página, e invisível até receber foco. A faixa do topo tem
+   cinco links; sem isto, quem navega pelo teclado atravessa os cinco em toda
+   tela antes de chegar no formulário. */
+.pular{position:absolute;left:var(--e4);top:-100px;z-index:60;
+background:var(--marca);color:#fff;padding:10px 16px;
+border-radius:var(--raio-p);font-size:var(--t-p);font-weight:600;
+text-decoration:none;transition:top .16s var(--suave)}
+.pular:focus{top:var(--e2)}
+
 /* ---- faixa do topo ---- */
-.topo{background:var(--papel);border-bottom:1px solid var(--borda);
-padding:12px 24px;display:flex;align-items:center;gap:16px;position:relative}
+/* Gruda no topo. A faixa tem a navegação inteira do vendedor, e numa tela de
+   resultado com sete transportadoras ela some da vista na primeira rolada —
+   voltar para "nova cotação" virava rolar a página inteira de volta.
+   `backdrop-filter` para o conteúdo passar por baixo dela borrado em vez de
+   bater numa barra opaca; onde não houver suporte, fica o fundo sólido. */
+.topo{background:color-mix(in srgb,var(--papel) 86%,transparent);
+backdrop-filter:saturate(1.6) blur(12px);
+-webkit-backdrop-filter:saturate(1.6) blur(12px);
+border-bottom:1px solid var(--borda);position:sticky;top:0;z-index:30;
+padding:var(--e3) var(--e5);display:flex;align-items:center;gap:var(--e4)}
 /* O filete do gradiente da logo, atravessando a tela inteira. É a assinatura
    da marca no lugar mais barato possível: 3px que nenhuma outra tela de
    sistema interno tem, e que ninguém precisa ler para reconhecer. */
 .topo::before{content:"";position:absolute;left:0;right:0;top:0;height:3px;
 background:var(--marca-grad)}
 .topo img{height:38px}
-.topo .quem{margin-left:auto;font-size:13px;color:var(--fraco)}
-.wrap{max-width:1080px;margin:24px auto;padding:0 24px}
+.topo .quem{margin-left:auto;font-size:var(--t-p);color:var(--fraco);
+display:flex;align-items:center;gap:var(--e3)}
+/* O nome de quem está logado vira pastilha: era um <b> solto ao lado dos
+   links, e num cabeçalho de seis itens nada dizia qual deles era a pessoa. */
+.topo .quem>b{font-weight:600;color:var(--tinta2);background:var(--cova);
+border:1px solid var(--borda);border-radius:99px;padding:5px 12px;
+font-size:var(--t-mini);white-space:nowrap}
+.wrap{max-width:var(--coluna);margin:var(--e6) auto var(--e7);
+padding:0 var(--e5)}
 
 /* Entrada em cascata. O formulário tem cinco blocos; todos aparecendo no
    mesmo quadro é um susto, escalonados o olho acompanha de cima para baixo. */
@@ -264,40 +356,70 @@ background:var(--marca-grad)}
 @keyframes sobe-bloco{from{opacity:0;transform:translateY(10px)}
 to{opacity:1;transform:none}}
 .cartao{background:var(--papel);border:1px solid var(--borda);
-border-radius:var(--raio);padding:20px;margin-bottom:16px;
+border-radius:var(--raio);padding:var(--e5) var(--e5) var(--e5);
+margin-bottom:var(--e4);
 box-shadow:var(--sombra-1);animation:sobe-bloco .42s var(--suave) both}
-h1{font-size:24px;margin:0 0 4px;letter-spacing:-.5px;font-weight:700}
-.sub{color:var(--fraco);font-size:13px;margin:0 0 18px}
+/* ---- a escala dos títulos --------------------------------------------------
+   Três níveis e só. O sistema tinha um <h1> de 24px e <h2> escritos à mão com
+   `style="font-size:15px"` em cinco lugares — que é o jeito de ter cinco
+   escalas diferentes sem ninguém decidir nenhuma. */
+h1{font-family:var(--fonte-titulo);font-size:var(--t-gg);margin:0 0 var(--e1);
+letter-spacing:var(--letra-display);font-weight:700;
+line-height:var(--ent-display)}
+h2{font-family:var(--fonte-titulo);font-size:var(--t-g);
+letter-spacing:-.018em;line-height:var(--ent-curta)}
+.sub{color:var(--fraco);font-size:var(--t-base);margin:0 0 var(--e5);
+max-width:72ch;line-height:var(--ent)}
 fieldset{border:1px solid var(--borda);border-radius:var(--raio-p);
-margin:0 0 14px;padding:14px 16px;background:#fcfdff}
-legend{font-size:10.5px;font-weight:700;color:var(--marca);padding:0 7px;
-text-transform:uppercase;letter-spacing:1px}
-.grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
-label{display:block;font-size:11px;color:var(--fraco);margin-bottom:4px;
-font-weight:500}
-input{width:100%;padding:10px 12px;border:1px solid var(--borda-forte);
-border-radius:var(--raio-p);font-size:14px;font-family:inherit;
+margin:0 0 var(--e4);padding:var(--e4) var(--e4) var(--e5);
+background:var(--cova)}
+/* A legenda sai de cima da borda e vira um RÓTULO de seção, alinhado à
+   esquerda com o resto do bloco. Cavalgando a linha ela é um adorno de
+   formulário de 2004; encostada no conteúdo ela agrupa. */
+legend{font-size:var(--t-micro);font-weight:700;color:var(--marca);
+padding:0 var(--e2) 0 0;text-transform:uppercase;
+letter-spacing:var(--letra-rotulo);margin-left:-2px}
+.grid{display:grid;gap:var(--e3) var(--e4);
+grid-template-columns:repeat(auto-fit,minmax(168px,1fr))}
+label{display:block;font-size:var(--t-mini);color:var(--tinta2);
+margin-bottom:var(--e1);font-weight:600;letter-spacing:.012em}
+input{width:100%;padding:11px 13px;border:1px solid var(--borda-forte);
+border-radius:var(--raio-p);font-size:var(--t-base);font-family:inherit;
 background:var(--papel);color:var(--tinta);
 transition:border-color .16s var(--suave),box-shadow .16s var(--suave)}
-input:hover{border-color:#b6c2d6}
+input:hover{border-color:var(--fraco)}
 /* O azul de realce da marca: o anel de foco é a peça que mais aparece
    num sistema onde se digita o dia inteiro, e era o contorno cinza do
    navegador. */
-input:focus{outline:0;border-color:var(--realce);
-box-shadow:0 0 0 3px rgba(82,145,255,.35)}
+input:focus{outline:0;border-color:var(--realce);box-shadow:var(--anel)}
+/* Campo de número escrito na monoespaçada da casa: CEP, CNPJ, peso e medida
+   são exatamente os campos em que um dígito a mais passa despercebido, e é a
+   largura fixa que faz a falta aparecer. */
+input[inputmode="numeric"],#cep_origem,#cep_destino,#cnpj_remetente,
+#cnpj_destinatario,#peso,#quantidade,#comprimento,#largura,#altura,#valor_nf{
+font-family:var(--fonte-num);letter-spacing:.01em;font-size:13.5px}
 button{font:inherit;cursor:pointer;border:0;border-radius:var(--raio-p);
 background:var(--marca);color:#fff;padding:13px 26px;font-weight:600;
-font-size:15px;box-shadow:var(--sombra-2);
+font-size:var(--t-m);letter-spacing:.005em;
+/* O brilho da marca embaixo do botão, e não uma sombra cinza. É o único
+   elemento cheio da tela — a sombra dele pode dizer de que cor ele é. */
+box-shadow:0 1px 2px rgba(12,21,38,.18),0 10px 22px -10px var(--brilho-marca);
 transition:transform .16s var(--mola),box-shadow .16s var(--suave),
 background .16s var(--suave)}
 button:hover{background:var(--marca-forte);transform:translateY(-1px);
-box-shadow:var(--sombra-3)}
+box-shadow:0 2px 4px rgba(12,21,38,.2),0 16px 30px -12px var(--brilho-marca)}
 /* Afunda no clique. Num formulário que dispara cinco navegadores e leva dois
    minutos, o retorno imediato do botão é o que diz "recebi" antes de a
    primeira transportadora responder. */
 button:active{transform:translateY(1px);box-shadow:var(--sombra-1)}
-button:focus-visible,a:focus-visible,summary:focus-visible{outline:2px solid
-var(--realce);outline-offset:2px}
+/* UM anel de foco para tudo que recebe teclado, e não só para botão, link e
+   summary. A lista curta deixava de fora `<input type=checkbox>` (as vinte
+   caixas do filtro de transportadoras), `<textarea>`, `[tabindex]` e as
+   linhas clicáveis do histórico: quem navega pelo teclado atravessava o
+   filtro inteiro sem enxergar onde estava. */
+:is(button,a,summary,select,textarea,[tabindex],input[type="checkbox"],
+input[type="radio"],input[type="search"],input[type="password"]):focus-visible{
+outline:2px solid var(--realce);outline-offset:2px;border-radius:var(--raio-pp)}
 
 .falhou{color:var(--erro);font-size:13px;font-weight:600}
 /* "Enviada" NAO pode usar o vermelho de falha nem o verde de preco: nao deu
@@ -305,15 +427,25 @@ var(--realce);outline-offset:2px}
    ocupa o lugar do preco - o olho passa pelos cartoes procurando o numero
    grande, e precisa parar aqui em vez de saltar. */
 .enviada{color:var(--marca);font-size:20px;font-weight:700;margin:6px 0 2px}
-.selo{display:inline-block;font-size:10px;font-weight:700;color:#fff;
-background:var(--ok);border-radius:99px;padding:3px 9px;letter-spacing:.4px}
-.zap{display:flex;align-items:center;gap:10px;border:1px solid var(--borda);
-border-radius:var(--raio-p);padding:11px 13px;text-decoration:none;
-color:inherit;margin-bottom:8px;background:var(--papel);
+.selo{display:inline-block;font-size:9.5px;font-weight:700;color:#fff;
+background:var(--ok);border-radius:99px;padding:3px 9px;
+letter-spacing:var(--letra-rotulo);text-transform:uppercase;
+vertical-align:1px}
+.zap{display:flex;align-items:center;gap:var(--e3);
+border:1px solid var(--borda);border-radius:var(--raio);
+padding:12px 14px;text-decoration:none;position:relative;overflow:hidden;
+color:inherit;margin-bottom:var(--e2);background:var(--papel);
 transition:border-color .16s var(--suave),transform .16s var(--suave),
 box-shadow .16s var(--suave)}
+/* Filete verde que cresce da esquerda sob o cursor. É a mesma gramática do
+   sublinhado do menu e do filete do topo: a decoração do sistema é sempre
+   uma linha que nasce e cresce, nunca um fundo que acende. */
+.zap::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;
+background:var(--zap);transform:scaleY(0);transform-origin:center;
+transition:transform .18s var(--suave)}
+.zap:hover::before{transform:scaleY(1)}
 .zap:hover{border-color:var(--zap);transform:translateX(2px);
-box-shadow:var(--sombra-1)}
+box-shadow:var(--sombra-2)}
 /* Já aberta: fica apagada para o olho cair na próxima da lista sozinho, sem
    precisar de seta nem de "next". O visto verde diz que passou por ali. */
 .zap.aberta{background:#f7f9fb;border-color:#d6ecdc}
@@ -346,11 +478,12 @@ border-radius:99px;padding:2px 9px;letter-spacing:.2px;margin-left:4px}
 .zap-dv .marca{width:60px;height:60px}
 .zap-dv b{font-size:16px}
 .zap-dv .ir{font-size:14px;padding:11px 19px}
-table{width:100%;border-collapse:collapse;font-size:13px}
-th{text-align:left;font-size:10.5px;color:var(--fraco);text-transform:uppercase;
-letter-spacing:.8px;padding:8px;border-bottom:1px solid var(--borda);
+table{width:100%;border-collapse:collapse;font-size:var(--t-p)}
+th{text-align:left;font-size:var(--t-micro);color:var(--fraco);
+text-transform:uppercase;letter-spacing:var(--letra-rotulo);
+padding:10px var(--e2);border-bottom:1px solid var(--borda-forte);
 font-weight:700}
-td{padding:9px 8px;border-bottom:1px solid #f0f3f8}
+td{padding:11px var(--e2);border-bottom:1px solid var(--borda)}
 tr:hover td{background:var(--lavagem)}
 .listaerro{margin:0 0 16px;padding-left:20px;font-size:14px}
 .listaerro li{margin-bottom:6px}
@@ -370,8 +503,14 @@ animation:gira .8s linear infinite}
 tr.r:has(.cotando) td{background:linear-gradient(100deg,var(--papel) 38%,
 var(--lavagem) 50%,var(--papel) 62%);background-size:200% 100%;
 animation:brilho 2.2s var(--suave) infinite}
-.aviso{background:#fffae6;border:1px solid #ffe380;border-radius:var(--raio-p);
-padding:11px 13px;font-size:13px;margin-bottom:14px}
+/* Aviso e alerta passam a ter a BARRA à esquerda em vez de só fundo amarelo.
+   Num cartão branco o amarelo chapado lê como decoração; a barra lê como
+   marcação de margem, que é o que ele é. */
+.aviso{background:var(--atencao-fraco);border:1px solid var(--atencao-borda);
+border-left:3px solid var(--atencao);
+border-radius:var(--raio-pp) var(--raio-p) var(--raio-p) var(--raio-pp);
+padding:12px 14px;font-size:var(--t-base);margin-bottom:var(--e4);
+color:var(--atencao-tinta)}
 .print{width:100%;margin-top:10px;border:1px solid var(--borda);
 border-radius:var(--raio-p);cursor:zoom-in;transition:box-shadow .16s}
 .print:hover{box-shadow:var(--sombra-2)}
@@ -399,22 +538,29 @@ border-radius:var(--raio);box-shadow:var(--sombra-3)}
 @keyframes lupa-fundo{from{opacity:0}to{opacity:1}}
 .lupa[open]{animation:lupa-entra .18s var(--suave)}
 .lupa[open]::backdrop{animation:lupa-fundo .18s var(--suave)}
-.botao2{display:inline-block;background:var(--papel);color:var(--marca);
+.botao2{display:inline-flex;align-items:center;gap:var(--e2);
+background:var(--papel);color:var(--marca);
 border:1px solid var(--borda-forte);border-radius:var(--raio-p);
-padding:10px 17px;font-size:14px;font-weight:600;text-decoration:none;
-transition:border-color .16s var(--suave),background .16s var(--suave)}
-.botao2:hover{border-color:var(--marca);background:var(--lavagem)}
+padding:10px 18px;font-size:var(--t-base);font-weight:600;
+text-decoration:none;
+transition:border-color .16s var(--suave),background .16s var(--suave),
+transform .16s var(--suave),box-shadow .16s var(--suave)}
+.botao2:hover{border-color:var(--marca);background:var(--lavagem);
+transform:translateY(-1px);box-shadow:var(--sombra-1)}
 .login{max-width:380px;margin:70px auto;text-align:center;
 animation:sobe-bloco .5s var(--suave) both}
 .login img{height:64px;margin-bottom:18px}
-.menu a{margin-right:14px;font-size:13px;text-decoration:none;
-position:relative;padding-bottom:2px}
+.menu{display:flex;align-items:center;gap:var(--e1)}
+.menu a{font-size:var(--t-p);text-decoration:none;color:var(--tinta2);
+position:relative;padding:0 var(--e3);font-weight:500;
+transition:color .16s var(--suave)}
+.menu a:hover{color:var(--marca)}
 /* Sublinhado que cresce do centro. É a única decoração de navegação do
    sistema, e cabe em duas linhas. */
-.menu a::after{content:"";position:absolute;left:50%;right:50%;bottom:0;
+.menu a::after{content:"";position:absolute;left:50%;right:50%;bottom:6px;
 height:2px;background:var(--marca-grad);border-radius:2px;
 transition:left .2s var(--suave),right .2s var(--suave)}
-.menu a:hover::after{left:0;right:0}
+.menu a:hover::after{left:var(--e3);right:var(--e3)}
 /* Aviso DENTRO do cartão, colado no preço que ele qualifica. Numa faixa no
    topo da página ele seria lido antes do número e esquecido depois. */
 /* Aba de Documentacao. Escopo proprio: o resto do sistema quase nao usa
@@ -431,11 +577,15 @@ letter-spacing:-.2px}
 .doc .errado{color:var(--erro);font-weight:600}
 .doc .certo{color:var(--ok);font-weight:600}
 .doc .passo{font-size:14px;margin:0 0 10px;padding-left:20px}
-.alerta{background:#fffae6;border:1px solid #ffe380;border-radius:var(--raio-p);
-padding:9px 11px;font-size:12px;margin:6px 0 2px;line-height:1.35}
+.alerta{background:var(--atencao-fraco);border:1px solid var(--atencao-borda);
+border-left:3px solid var(--atencao);
+border-radius:var(--raio-pp) var(--raio-p) var(--raio-p) var(--raio-pp);
+padding:10px 12px;font-size:var(--t-p);margin:var(--e2) 0 var(--e1);
+line-height:var(--ent-curta);color:var(--atencao-tinta)}
 /* Amarelo e para "cuidado, esse numero engana". Aqui nao ha erro nenhum: e
    instrucao de onde olhar. Azul separa os dois recados. */
-.alerta.email{background:var(--lavagem);border-color:#c7d6f5}
+.alerta.email{background:var(--lavagem);border-color:#c7d6f5;
+border-left-color:var(--marca);color:var(--tinta2)}
 /* ---- filtro de transportadoras ---- */
 .filtro{border:1px solid var(--borda);border-radius:var(--raio-p);
 margin:0 0 14px;background:var(--papel)}
@@ -526,22 +676,78 @@ box-shadow:0 0 0 3px rgba(82,145,255,.35)}
 
    Contraste medido com a fórmula do WCAG antes de escrever, não a olho. Os
    nove pares da tela passam; os apertados estão travados em teste. */
-.entrada{min-height:100vh;display:grid;grid-template-columns:1.04fr .96fr;
-background:#061021;color:#e6e9ef}
+.entrada{min-height:100vh;display:grid;grid-template-columns:1.12fr .88fr;
+background:#050c1a;color:#e8ebf2}
 .entrada-marca{position:relative;overflow:hidden;
-padding:clamp(32px,4vw,56px);display:flex;flex-direction:column;
-justify-content:center;gap:clamp(26px,3.4vw,40px);
-background:linear-gradient(158deg,#112039 0%,#0a162b 55%,#050d1d 100%)}
+padding:clamp(34px,4.4vw,72px);display:flex;flex-direction:column;
+justify-content:center;gap:clamp(26px,3.2vw,40px);
+background:linear-gradient(158deg,#102542 0%,#091629 52%,#040a16 100%)}
 /* Dois clarões fora de eixo. O índigo chapado é uma parede; os halos dão
    profundidade sem desenhar nada e sem depender de arquivo de imagem — o
    sistema roda em rede interna, e imagem que não chegou é buraco na tela. */
 .entrada-marca::before,.entrada-marca::after{content:"";position:absolute;
 border-radius:50%;pointer-events:none}
-.entrada-marca::before{inset:-26% auto auto -16%;width:52%;aspect-ratio:1;
-background:radial-gradient(circle,rgba(112,200,224,.22),transparent 66%)}
-.entrada-marca::after{inset:auto -18% -32% auto;width:56%;aspect-ratio:1;
-background:radial-gradient(circle,rgba(64,88,160,.38),transparent 68%)}
+.entrada-marca::before{inset:-28% auto auto -18%;width:56%;aspect-ratio:1;
+background:radial-gradient(circle,rgba(61,132,255,.2),transparent 66%)}
+.entrada-marca::after{inset:auto -20% -34% auto;width:58%;aspect-ratio:1;
+background:radial-gradient(circle,rgba(15,86,224,.34),transparent 68%)}
 .entrada-marca>*{position:relative;z-index:1}
+
+/* ================= o hero: a malha de corredores =============================
+   Referência de direção, não de código: os sites de logística que funcionam
+   (project44, Uber Freight) mostram a CARGA se movendo, e não uma foto de
+   navio; o ArcBest põe uma malha de linhas discreta sobre o marinho escuro.
+   Os links estão em docs/rebranding/IMPLEMENTACAO.md.
+
+   Aqui a malha é desenhada à mão, em SVG, e diz o que o sistema faz: quatro
+   corredores saindo de um ponto de origem para destinos diferentes, que é
+   literalmente uma cotação. Nenhum arquivo, nenhuma biblioteca — o sistema
+   roda em rede interna e o que não chegou é buraco na tela.
+
+   TODA a animação é FINITA. Os corredores se desenham uma vez, o pulso de
+   carga percorre três vezes e para. Um hero que se mexe para sempre atrás do
+   campo de digitar é ruído permanente numa tela em que a pessoa veio fazer
+   uma coisa só. A regra global de prefers-reduced-motion, lá no topo, deixa
+   tudo no estado final. */
+.tecido{position:absolute;inset:0;width:100%;height:100%;z-index:0;
+pointer-events:none;opacity:.92}
+.tecido .malha{stroke:rgba(126,170,255,.09);stroke-width:1}
+/* Cada corredor se desenha do começo ao fim, um depois do outro. O
+   `--comp` é o comprimento do traçado, escrito no elemento. */
+.tecido .via{fill:none;stroke:rgba(126,170,255,.34);stroke-width:1.6;
+stroke-linecap:round;stroke-dasharray:var(--comp);
+stroke-dashoffset:var(--comp);
+animation:via-tracada 1.5s var(--lento) both;
+animation-delay:var(--atraso,0s)}
+@keyframes via-tracada{to{stroke-dashoffset:0}}
+/* O corredor principal é o que leva o preço de volta: mais claro e mais
+   grosso que os outros três. */
+.tecido .via.principal{stroke:rgba(93,151,255,.66);stroke-width:2.4}
+/* O pulso de carga: um traço curto correndo por cima do corredor principal.
+   Três voltas e para — é o gesto do sistema, não um letreiro. */
+.tecido .pulso{fill:none;stroke:#9cc2ff;stroke-width:2.6;stroke-linecap:round;
+stroke-dasharray:26 var(--comp);stroke-dashoffset:26;
+animation:pulso-corre 2.9s var(--suave) 1.4s 3 both}
+@keyframes pulso-corre{
+0%{stroke-dashoffset:26;opacity:0}
+12%{opacity:1}
+88%{opacity:1}
+100%{stroke-dashoffset:calc(-1 * var(--comp));opacity:0}}
+/* Os destinos. Aparecem na ordem em que o corredor chega neles. */
+.tecido .destino{fill:#5d97ff;opacity:0;
+animation:destino-acende .5s var(--mola) both;
+animation-delay:var(--atraso,0s)}
+.tecido .destino-anel{fill:none;stroke:rgba(93,151,255,.5);stroke-width:1.4;
+opacity:0;animation:destino-acende .5s var(--mola) both;
+animation-delay:var(--atraso,0s)}
+@keyframes destino-acende{from{opacity:0;transform:scale(.2)}
+to{opacity:1;transform:none}}
+.tecido .destino,.tecido .destino-anel{transform-box:fill-box;
+transform-origin:center}
+/* A origem pulsa três vezes e sossega: é de onde a carga sai. */
+.tecido .origem{fill:#9cc2ff;
+animation:origem-bate 2.2s var(--suave) 3 both}
+@keyframes origem-bate{0%,100%{opacity:.95}50%{opacity:.45}}
 /* Em cores naturais, sobre uma pastilha branca. `brightness(0) invert(1)`
    pintaria o desenho inteiro de branco — e o "V" da marca é um RECORTE, já
    branco: some contra a elipse e a logo vira um borrão. Passa despercebido na
@@ -556,18 +762,34 @@ background-image:url({MARCA_COMPACTA})}
 /* A assinatura da marca, em TEXTO: dentro do lockup ela tem 6px de 120 e só
    se lê a partir de ~180px de altura da peça inteira. Aqui ela acompanha a
    largura da logo e fica legível em qualquer tela. */
-.entrada-marca .assinatura{margin:9px 0 0;font-size:11px;letter-spacing:2.4px;
-text-transform:uppercase;color:rgba(255,255,255,.62);font-weight:600;
-white-space:nowrap}
+.entrada-marca .assinatura{margin:11px 0 0;font-size:10.5px;
+letter-spacing:.24em;text-transform:uppercase;color:rgba(255,255,255,.58);
+font-weight:600;white-space:nowrap}
+/* A tarja de cima: o que ESTA tela é, antes do título dizer o que ela
+   promete. Duas palavras em versalete e um filete — é o degrau que faltava
+   entre a marca e um título de 40px. */
+.entrada-marca .tarja{display:inline-flex;align-items:center;gap:10px;
+font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;
+font-weight:700;color:#9cc2ff;margin:0 0 14px}
+.entrada-marca .tarja::before{content:"";width:26px;height:2px;
+border-radius:2px;background:linear-gradient(90deg,#5d97ff,transparent)}
 /* Numa tela estreita a entrelinha larga faria a frase estourar a coluna:
    ela aperta em vez de quebrar no meio de "SÓ LUGAR". */
 @media(max-width:520px){
 .entrada-marca .assinatura{letter-spacing:1.4px;font-size:10px}
 }
-.entrada-marca h1{font-size:clamp(28px,3.5vw,42px);line-height:1.1;
-margin:0 0 14px;letter-spacing:-.9px;color:#fff;text-wrap:balance}
-.entrada-marca p{margin:0;max-width:40ch;font-size:15px;line-height:1.55;
-color:rgba(255,255,255,.72);text-wrap:pretty}
+.entrada-marca h1{font-family:var(--fonte-titulo);
+font-size:var(--t-display);line-height:var(--ent-display);
+margin:0 0 16px;letter-spacing:var(--letra-display);color:#fff;
+text-wrap:balance;font-weight:700}
+/* A segunda linha do título fica no azul da marca. Uma chamada de 40px em
+   branco chapado é um cartaz; quebrada em duas cores ela tem hierarquia
+   dentro de si mesma, e a cor que carrega o sentido é a da empresa. */
+.entrada-marca h1 em{font-style:normal;
+background:linear-gradient(92deg,#9cc2ff,#5d97ff 62%);
+-webkit-background-clip:text;background-clip:text;color:transparent}
+.entrada-marca p{margin:0;max-width:44ch;font-size:var(--t-m);
+line-height:var(--ent);color:rgba(255,255,255,.7);text-wrap:pretty}
 
 /* ---- a rota ----
    Não é enfeite: é o que o sistema FAZ, desenhado. Uma carga entra, as
@@ -578,47 +800,74 @@ color:rgba(255,255,255,.72);text-wrap:pretty}
 
    Faixa própria embaixo do texto, e não um traçado atrás dele: fundo que
    cruza o parágrafo briga com a leitura em alguma largura de tela, sempre. */
-.entrada-marca .rota{display:flex;align-items:flex-start;gap:0;margin:0;padding-top:4px}
-.entrada-marca .rota .parada{display:flex;flex-direction:column;gap:9px;flex:0 0 auto;
-max-width:14ch}
-.entrada-marca .rota .ponto{width:13px;height:13px;border-radius:50%;background:#5291ff;
-box-shadow:0 0 0 5px rgba(82,145,255,.18)}
+/* A rota ganha CAIXA: um painel de vidro sobre o fundo escuro, com a linha
+   dentro. Solta sobre o gradiente ela se confundia com a malha do hero — as
+   duas são pontos e linhas azuis, e o olho não sabia qual das duas ler. */
+.entrada-marca .rota{display:flex;align-items:flex-start;gap:0;
+margin:0;padding:18px 20px 16px;border-radius:var(--raio);
+background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.09);
+backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
+.entrada-marca .rota .parada{display:flex;flex-direction:column;gap:11px;
+flex:0 0 auto;max-width:14ch}
+.entrada-marca .rota .ponto{width:12px;height:12px;border-radius:50%;
+background:#5d97ff;box-shadow:0 0 0 5px rgba(93,151,255,.16);
+animation:parada-acende .45s var(--mola) both}
+@keyframes parada-acende{from{opacity:0;transform:scale(.3)}
+to{opacity:1;transform:none}}
+.entrada-marca .rota .parada:nth-child(3) .ponto{animation-delay:.5s}
+.entrada-marca .rota .parada:nth-child(5) .ponto{animation-delay:1s}
 .entrada-marca .rota .parada:last-child .ponto{background:transparent;
-border:2px solid rgba(255,255,255,.5);box-shadow:none}
-.entrada-marca .rota .parada span{font-size:11.5px;line-height:1.35;
-text-transform:uppercase;letter-spacing:.9px;color:rgba(255,255,255,.72)}
+border:2px solid rgba(255,255,255,.45);box-shadow:none}
+.entrada-marca .rota .parada span{font-size:10.5px;line-height:var(--ent-curta);
+text-transform:uppercase;letter-spacing:.11em;color:rgba(255,255,255,.66);
+font-weight:600}
 /* O trecho percorrido é sólido no azul; o que falta é pontilhado. A carga
-   ainda não chegou — a linha inteira sólida diria que sim. */
-.entrada-marca .rota .trecho{flex:1 1 auto;height:2px;margin:6px 12px 0;
-background:linear-gradient(90deg,#5291ff,rgba(82,145,255,.45))}
+   ainda não chegou — a linha inteira sólida diria que sim. O sólido cresce
+   da esquerda, uma vez, no ritmo em que as paradas acendem. */
+.entrada-marca .rota .trecho{flex:1 1 auto;height:2px;margin:5px 14px 0;
+border-radius:2px;
+background:linear-gradient(90deg,#5d97ff,rgba(93,151,255,.4));
+transform-origin:left;animation:trecho-corre .55s var(--lento) .25s both}
+@keyframes trecho-corre{from{transform:scaleX(0)}to{transform:scaleX(1)}}
 .entrada-marca .rota .trecho.falta{background:none;
-border-top:2px dashed rgba(255,255,255,.26);height:0;margin-top:5px}
+border-top:2px dashed rgba(255,255,255,.24);height:0;margin-top:4px;
+animation-delay:.75s}
 
 /* ---- o lado do formulário ---- */
 .entrada-form{display:flex;align-items:center;justify-content:center;
-padding:40px 28px;background:#061021}
-.entrada-form .cartao{width:100%;max-width:392px;margin:0;padding:30px;
-background:#111e34;border:1px solid rgba(255,255,255,.09);
-box-shadow:0 26px 60px -24px rgba(0,0,0,.8)}
-.entrada-form h1{color:#fff;font-size:23px}
-.entrada-form .sub{color:#99a4b8}
-.entrada-form label{color:#99a4b8}
-.entrada-form input{background:#0a1426;border-color:rgba(255,255,255,.16);
-color:#e6e9ef}
-.entrada-form input::placeholder{color:#8594ad}
-.entrada-form input:hover{border-color:rgba(255,255,255,.28)}
+padding:48px 32px;background:#050c1a;position:relative}
+/* Um filete vertical de luz na emenda das duas colunas. Sem ele o corte
+   entre o hero e o formulário é uma linha de nada: dois escuros diferentes
+   encostados, que numa tela fraca some e faz o hero parecer vazar. */
+.entrada-form::before{content:"";position:absolute;left:0;top:14%;bottom:14%;
+width:1px;background:linear-gradient(180deg,transparent,
+rgba(93,151,255,.35),transparent)}
+.entrada-form .cartao{width:100%;max-width:404px;margin:0;padding:34px 32px;
+background:#101b30;border:1px solid rgba(255,255,255,.08);
+border-radius:var(--raio-g);
+box-shadow:0 30px 70px -26px rgba(0,0,0,.85)}
+.entrada-form h1{color:#fff;font-size:26px;margin-bottom:6px}
+.entrada-form .sub{color:#97a3b9;font-size:13.5px;margin-bottom:22px}
+.entrada-form label{color:#97a3b9}
+.entrada-form input{background:#08121f;border-color:rgba(255,255,255,.14);
+color:#e8ebf2;padding:13px 14px}
+.entrada-form input::placeholder{color:#7f8ea8}
+.entrada-form input:hover{border-color:rgba(255,255,255,.26)}
 .entrada-form input:focus{border-color:var(--realce-claro);
-box-shadow:0 0 0 3px rgba(112,200,224,.24)}
-/* Ciano com tinta escura: o botão vira a coisa mais clara da tela, que é
+box-shadow:0 0 0 3px rgba(93,151,255,.3)}
+/* Azul claro com tinta escura: o botão vira a coisa mais clara da tela, que é
    exatamente onde o olho deve parar. Índigo sobre fundo índigo sumiria. */
-.entrada-form button{background:var(--realce-claro);color:#0d1120;
-box-shadow:0 12px 30px -12px rgba(82,145,255,.65)}
-.entrada-form button:hover{background:#85b1ff;
-box-shadow:0 16px 38px -12px rgba(82,145,255,.75)}
-.entrada-form .rodape{margin:14px 0 0;font-size:12px;color:#8594ad;
-text-wrap:pretty}
-.entrada-form .alerta{background:rgba(192,52,29,.16);
-border-color:rgba(255,138,116,.42);color:#ffb4a4}
+.entrada-form button{background:var(--realce-claro);color:#061021;
+padding:14px 26px;font-size:var(--t-m);
+box-shadow:0 14px 32px -12px rgba(93,151,255,.6)}
+.entrada-form button:hover{background:#8ab6ff;
+box-shadow:0 18px 40px -12px rgba(93,151,255,.72)}
+.entrada-form .rodape{margin:18px 0 0;font-size:11.5px;color:#7f8ea8;
+text-wrap:pretty;line-height:var(--ent);
+padding-top:16px;border-top:1px solid rgba(255,255,255,.07)}
+.entrada-form .alerta{background:rgba(191,51,32,.18);
+border-color:rgba(255,146,121,.4);border-left-color:#ff9279;color:#ffb4a4;
+font-size:var(--t-p);margin-bottom:var(--e3)}
 .entrada-form a{color:var(--realce-claro)}
 
 /* Numa tela estreita a coluna da marca vira uma faixa curta em cima: some o
@@ -627,11 +876,21 @@ border-color:rgba(255,138,116,.42);color:#ffb4a4}
    fazer. */
 @media(max-width:860px){
 .entrada{grid-template-columns:1fr;min-height:0}
-.entrada-marca{padding:26px 22px;gap:16px}
-.entrada-marca h1{font-size:22px;margin:0}
-.entrada-marca p,.entrada-marca .rota{display:none}
-.entrada-marca .logo{height:48px}
-.entrada-form{padding:30px 20px}}
+.entrada-marca{padding:28px 22px 30px;gap:18px}
+.entrada-marca h1{font-size:24px;margin:0}
+/* A ROTA sai, o parágrafo fica. Empilhar os dois empurra o campo de digitar
+   para fora da tela — a única coisa que a pessoa veio fazer. Mas sumir com
+   os dois deixava uma faixa com logo e título e nada explicando o sistema,
+   que é justamente o que o celular mais precisa ler. */
+.entrada-marca .rota{display:none}
+.entrada-marca p{font-size:13.5px;max-width:none}
+.entrada-marca .tarja{margin-bottom:10px}
+/* A malha desbota: na faixa curta ela vira risco atrás do título. */
+.tecido{opacity:.5}
+.entrada-marca .logo{height:44px}
+.entrada-form{padding:26px 18px 40px}
+.entrada-form::before{display:none}
+.entrada-form .cartao{padding:26px 22px}}
 /* ================================ a marca ==================================
    Tres pecas, tres trabalhos — ver web/layout.py, MARCA_*.
 
@@ -663,16 +922,26 @@ background-image:url({MARCA_COMPACTA_CLARA})}
    rodape boiando no meio da tela, com 300px de vazio embaixo dele. */
 body{min-height:100vh;display:flex;flex-direction:column}
 body>.wrap{flex:1 0 auto}
-.rodape-site{border-top:1px solid var(--borda);margin-top:40px;
-background:var(--papel);flex:none}
-.rodape-site .dentro{max-width:1080px;margin:0 auto;padding:22px 20px 26px;
-display:flex;align-items:center;gap:18px;flex-wrap:wrap}
-.rodape-site .marca-lockup{height:28px}
-.rodape-site .diz{font-size:11.5px;color:var(--fraco);line-height:1.5}
-.rodape-site .diz b{display:block;font-size:12px;color:var(--tinta2);
-letter-spacing:.6px;text-transform:uppercase;font-weight:700}
-.rodape-site .links{margin-left:auto;display:flex;gap:16px;font-size:12.5px;
-flex-wrap:wrap}
+.rodape-site{border-top:1px solid var(--borda);margin-top:var(--e8);
+background:var(--papel);flex:none;position:relative}
+/* O mesmo filete da marca, agora fechando a página por baixo. O topo abria
+   com ele e o rodapé acabava numa linha cinza — a assinatura valia só para
+   metade do documento. */
+.rodape-site::before{content:"";position:absolute;left:0;right:0;top:-1px;
+height:2px;background:var(--marca-grad);opacity:.7}
+.rodape-site .dentro{max-width:var(--coluna);margin:0 auto;
+padding:var(--e6) var(--e5);
+display:flex;align-items:center;gap:var(--e5);flex-wrap:wrap}
+.rodape-site .marca-lockup{height:26px}
+.rodape-site .diz{font-size:11.5px;color:var(--fraco);line-height:var(--ent)}
+.rodape-site .diz b{display:block;font-size:11px;color:var(--tinta2);
+letter-spacing:var(--letra-rotulo);text-transform:uppercase;font-weight:700;
+margin-bottom:2px}
+.rodape-site .links{margin-left:auto;display:flex;gap:var(--e5);
+font-size:var(--t-p);flex-wrap:wrap}
+.rodape-site .links a{text-decoration:none;color:var(--tinta2);
+font-weight:500}
+.rodape-site .links a:hover{color:var(--marca);text-decoration:underline}
 @media(max-width:620px){
 .rodape-site .links{margin-left:0;width:100%}
 }
@@ -689,10 +958,32 @@ flex-wrap:wrap}
    Agora é um cartão da casa, com a lavagem da marca subindo da esquerda —
    presença de marca sem brigar com o formulário logo abaixo, que é onde a
    pessoa veio trabalhar. */
-.faixa-marca{display:flex;align-items:center;gap:20px;flex-wrap:wrap;
+.faixa-marca{display:flex;align-items:center;gap:var(--e5);flex-wrap:wrap;
 background:linear-gradient(110deg,var(--lavagem) 0%,var(--papel) 62%);
-border:1px solid var(--borda);border-radius:var(--raio-g);padding:20px 24px;
-margin:0 0 20px;position:relative;overflow:hidden}
+border:1px solid var(--borda);border-radius:var(--raio-g);
+padding:var(--e5) var(--e6);
+margin:0 0 var(--e6);position:relative;overflow:hidden;
+box-shadow:var(--sombra-1)}
+/* A malha de corredores do hero, reduzida e quase apagada, no canto direito
+   da faixa. É o mesmo desenho da tela de entrada — o que amarra a porta de
+   entrada e a tela de trabalho como um sistema só, sem gastar altura: a
+   página inicial é onde se trabalha o dia inteiro, e faixa alta empurra o
+   formulário para fora da dobra. Zero animação aqui: é tela de trabalho. */
+.faixa-marca .tecido{left:auto;right:0;width:min(46%,420px);opacity:.5}
+.faixa-marca .tecido *{animation:none !important}
+.faixa-marca .tecido .via{stroke-dashoffset:0}
+.faixa-marca .tecido .destino,.faixa-marca .tecido .destino-anel{opacity:1}
+.faixa-marca .tecido .pulso{display:none}
+.faixa-marca>:not(.tecido){position:relative;z-index:1}
+/* No CLARO o traço da malha é azul da marca a baixa opacidade: o
+   rgba(126,170,255) do hero foi escolhido contra um marinho quase preto e
+   aqui ficaria branco sobre branco. */
+.faixa-marca .tecido .malha{stroke:rgba(0,63,176,.1)}
+.faixa-marca .tecido .via{stroke:rgba(0,63,176,.22)}
+.faixa-marca .tecido .via.principal{stroke:rgba(0,63,176,.4)}
+.faixa-marca .tecido .destino,.faixa-marca .tecido .origem{fill:var(--marca)}
+.faixa-marca .tecido .destino-anel{stroke:rgba(0,63,176,.34)}
+@media(max-width:760px){.faixa-marca .tecido{display:none}}
 /* No escuro ela continua sendo o painel fundo: ali o cartão claro é que
    seria o corpo estranho. */
 [data-tema="escuro"] .faixa-marca{background:#0a1020;
@@ -770,13 +1061,14 @@ table.resultados .r-nota{width:21%}
 table.resultados .r-validade{width:13%}
 table.resultados .r-estado{width:13%}
 table.resultados .r-print{width:12%}
-table.resultados th{font-size:10.5px;letter-spacing:1px;
+table.resultados th{font-size:var(--t-micro);
+letter-spacing:var(--letra-rotulo);
 text-transform:uppercase;color:var(--fraco);font-weight:700;text-align:left;
-padding:0 14px;height:34px;background:#f8fafd;
-border-bottom:1px solid var(--borda);white-space:nowrap}
+padding:0 var(--e4);height:40px;background:var(--cova);
+border-bottom:1px solid var(--borda-forte);white-space:nowrap}
 table.resultados th.r-preco,table.resultados th.r-prazo,
 table.resultados th.r-print{text-align:right}
-table.resultados td{padding:0 14px;height:56px;
+table.resultados td{padding:0 var(--e4);height:62px;
 border-bottom:1px solid var(--borda);vertical-align:middle}
 tr.r:hover td{background:var(--lavagem)}
 .r-nome{font-weight:500}
@@ -837,12 +1129,17 @@ margin-bottom:5px}
 
 /* A vencedora. Fundo mais filete à esquerda, e não só borda: numa tabela a
    borda de uma linha se confunde com a divisória da linha de cima. */
-tr.r.melhor td{background:#f2f8f5}
-tr.r.melhor:hover td{background:#eaf4ef}
+tr.r.melhor td{background:var(--ok-fraco)}
+tr.r.melhor:hover td{background:#e0efe9}
 tr.r.melhor .r-nome{font-weight:700;box-shadow:inset 3px 0 0 var(--ok)}
-tr.r.melhor .preco{font-size:19px}
+tr.r.melhor .preco{font-size:21px}
 
-.resultados .preco{font-size:16px;font-weight:700;color:var(--ok)}
+/* O preço na MONOESPAÇADA da casa. É a mudança que mais se nota na tela que
+   mais importa: numa coluna de sete fretes, "R$ 1.204,90" e "R$ 69,91" com
+   largura de dígito e de vírgula iguais viram uma coluna que se lê de cima
+   para baixo sem o olho procurar onde cada número começa. */
+.resultados .preco{font-family:var(--fonte-num);font-size:17px;
+font-weight:700;color:var(--ok);letter-spacing:-.02em}
 /* Preço que não é da carga toda não pode usar o verde de "bom preço": o olho
    compara os números grandes antes de ler qualquer aviso, e era exatamente
    assim que R$ 33,29 por volume parecia mais barato que R$ 69,91 pela carga. */
@@ -852,15 +1149,27 @@ tr.r.melhor .preco{font-size:19px}
 
 /* Pílula de estado. Cor semântica, separada da cor da marca: verde é "veio
    preço", âmbar é "a transportadora disse não", vermelho é "não sabemos". */
+/* Pílula com PONTO à esquerda, e não só cor de fundo. Cor sozinha é o jeito
+   de dizer o estado só para quem enxerga cor; o ponto dá forma ao mesmo
+   recado e não custa marcação nenhuma (`::before`). */
 .estado-ok,.estado-aguardando,.estado-recusa,.estado-falha,.estado-cotando{
-display:inline-flex;align-items:center;height:22px;padding:0 9px;
-border-radius:99px;font-size:10.5px;font-weight:700;letter-spacing:.4px;
-white-space:nowrap}
-.estado-ok{background:#e6f4ef;color:var(--ok)}
-.estado-aguardando{background:var(--lavagem);color:var(--marca)}
-.estado-recusa{background:#fff4e2;color:var(--atencao)}
-.estado-falha{background:#fdece9;color:var(--erro)}
-.estado-cotando{background:var(--fundo);color:var(--fraco)}
+display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 10px;
+border-radius:99px;font-size:var(--t-micro);font-weight:700;
+letter-spacing:var(--letra-rotulo);text-transform:uppercase;
+white-space:nowrap;border:1px solid transparent}
+.estado-ok::before,.estado-aguardando::before,.estado-recusa::before,
+.estado-falha::before,.estado-cotando::before{content:"";width:6px;height:6px;
+border-radius:50%;background:currentColor;flex:none}
+.estado-ok{background:var(--ok-fraco);color:var(--ok);
+border-color:color-mix(in srgb,var(--ok) 26%,transparent)}
+.estado-aguardando{background:var(--lavagem);color:var(--marca);
+border-color:color-mix(in srgb,var(--marca) 22%,transparent)}
+.estado-recusa{background:var(--atencao-fraco);color:var(--atencao);
+border-color:color-mix(in srgb,var(--atencao) 26%,transparent)}
+.estado-falha{background:var(--erro-fraco);color:var(--erro);
+border-color:color-mix(in srgb,var(--erro) 26%,transparent)}
+.estado-cotando{background:var(--fundo);color:var(--fraco);
+border-color:var(--borda)}
 
 /* A MINIATURA do print, em toda transportadora que tenha — não só na mais
    barata. O print é a prova de que aquele preço veio do site, e prova que só
@@ -905,6 +1214,152 @@ tr.r-extra>td>*:last-child{margin-bottom:0}
   table.resultados td,table.resultados th{padding:0 10px}
   .mini .print{width:56px;height:36px}
 }
+
+/* ========================= o cabeçalho das telas de trabalho ================
+   Toda tela do vendedor abria com um <h1> solto e um <p class="sub"> embaixo.
+   Funciona, e não diz de onde a pessoa veio nem o que ela pode fazer ali: os
+   botões ficavam espalhados pelo fim da página, e o contexto da cotação
+   (rota, peso, valor) era uma frase corrida de seis campos separados por
+   pontos médios.
+
+   `.cab-pagina` é o mesmo componente em todas elas: tarja (onde estou),
+   título, uma linha de CONTEXTO em pastilhas e as ações à direita. Compacto
+   de propósito — hero é a porta de entrada, não a mesa de trabalho. O
+   enunciado do rebranding pede exatamente isso: cabeçalho compacto na tela
+   operacional, apresentação na tela que é vista uma vez por sessão. */
+.cab-pagina{display:flex;align-items:flex-start;gap:var(--e4);
+flex-wrap:wrap;margin:0 0 var(--e5);padding-bottom:var(--e4);
+border-bottom:1px solid var(--borda)}
+.cab-pagina>.diz{min-width:0;flex:1 1 320px}
+.cab-pagina h1{margin:0}
+.cab-pagina .sub{margin:var(--e2) 0 0}
+/* A tarja: versalete curto com um filete da marca na frente. Mesma gramática
+   da tarja do hero — é o que faz a tela de dentro parecer da mesma casa que
+   a porta da frente. */
+.tarja{display:inline-flex;align-items:center;gap:var(--e2);
+font-size:var(--t-micro);letter-spacing:.14em;text-transform:uppercase;
+font-weight:700;color:var(--marca);margin:0 0 var(--e2)}
+.tarja::before{content:"";width:22px;height:2px;border-radius:2px;
+background:var(--marca-grad)}
+.cab-pagina .acoes{margin-left:auto;display:flex;align-items:center;
+gap:var(--e2);flex-wrap:wrap}
+/* A linha de contexto. Cada dado numa pastilha, com o rótulo em versalete e
+   o valor na monoespaçada: era uma frase de 120 caracteres com seis números
+   dentro, e achar o peso no meio dela exigia ler a frase inteira. */
+.contexto{display:flex;flex-wrap:wrap;gap:var(--e2);margin:var(--e3) 0 0;
+padding:0;list-style:none}
+.contexto li{display:inline-flex;align-items:baseline;gap:6px;
+background:var(--cova);border:1px solid var(--borda);border-radius:99px;
+padding:5px 12px;font-size:var(--t-p);color:var(--tinta2);max-width:100%}
+.contexto li b{font-family:var(--fonte-num);font-weight:600;
+font-size:12px;color:var(--tinta);overflow:hidden;text-overflow:ellipsis;
+white-space:nowrap}
+.contexto li span{font-size:var(--t-micro);text-transform:uppercase;
+letter-spacing:var(--letra-rotulo);color:var(--fraco);font-weight:700;
+flex:none}
+/* A rota é o dado que identifica a cotação: ganha a cor da marca e fica na
+   frente das outras pastilhas. */
+.contexto li.ctx-rota{background:var(--lavagem);border-color:transparent}
+.contexto li.ctx-rota b{color:var(--marca-forte)}
+
+/* ======================= números onde número é o assunto ===================
+   A monoespaçada não é enfeite: ela separa o RÓTULO do VALOR. Onde entra é
+   onde o olho compara — coluna de preço, hora, peso, campo da ficha. */
+.hora,.melhor,.ficha .val{font-family:var(--fonte-num)}
+/* A linha do histórico do vendedor. O número é um <a> de verdade (é ele que
+   atende o teclado), e a linha inteira é o alvo do mouse. */
+tr[data-abrir]{cursor:pointer}
+.id-l{width:1%;white-space:nowrap}
+.id-l a{font-family:var(--fonte-num);color:var(--fraco);font-weight:700;
+text-decoration:none;font-size:12px}
+tr[data-abrir]:hover .id-l a{color:var(--marca);text-decoration:underline}
+.melhor{font-size:13.5px;letter-spacing:-.02em}
+.melhor.vazio{font-family:var(--fonte)}
+.hora{font-size:12px}
+.ficha .val{font-size:13.5px}
+.ficha .pouco{font-family:var(--fonte)}
+
+/* ---- o filtro de transportadoras, mais leve -------------------------------
+   Ele abre logo acima do botão Cotar e é o último bloco que a pessoa lê. */
+.filtro{border-radius:var(--raio);box-shadow:var(--sombra-1)}
+.filtro>summary{padding:14px 16px;font-size:var(--t-base)}
+.filtro>summary .abrir{font-size:var(--t-p)}
+.grupo-cab{font-size:var(--t-micro);letter-spacing:var(--letra-rotulo)}
+.tr{padding:7px var(--e2);border-radius:var(--raio-pp)}
+.selo-zap{letter-spacing:.04em;text-transform:uppercase;font-size:9.5px;
+padding:2px 8px}
+
+/* ---- as duas opções de tipo de frete -------------------------------------- */
+.opcao{border-radius:var(--raio-p);padding:13px 15px;gap:var(--e3)}
+.opcao b{font-size:var(--t-m)}
+.opcao span{font-size:var(--t-mini);color:var(--fraco)}
+/* A escolhida ganha um anel em vez de dois contornos empilhados: o
+   `box-shadow:0 0 0 1px` sobre a borda fazia 2px de azul irregular. */
+.opcao:has(input:checked){border-color:var(--marca);background:var(--lavagem);
+box-shadow:0 0 0 2px color-mix(in srgb,var(--marca) 28%,transparent)}
+
+/* ---- a cotação pronta para copiar ---------------------------------------- */
+.pronto{font-family:var(--fonte-num);font-size:12.5px;
+border-radius:var(--raio-p);padding:16px;background:var(--cova);
+color:var(--tinta)}
+
+/* ---- o passo a passo assistido (Della Volpe) ------------------------------
+   Eram quatro parágrafos que começavam com "Passo N:" em negrito, no meio de
+   prints e avisos amarelos: numa tela de rolagem longa, achar de onde
+   recomeçar depois de mudar de aba era reler tudo. Agora cada passo é um
+   bloco com o número em medalhão e um filete ligando um ao outro — a pessoa
+   volta do navegador e acha o lugar de relance. */
+.passo-n{position:relative;padding:2px 0 var(--e5) 46px;font-size:var(--t-base);
+line-height:var(--ent);margin:var(--e5) 0 0}
+.passo-n::before{content:attr(data-n);position:absolute;left:0;top:-4px;
+width:30px;height:30px;border-radius:50%;display:grid;place-items:center;
+font-family:var(--fonte-num);font-size:13px;font-weight:700;
+background:var(--marca);color:#fff;
+box-shadow:0 0 0 4px color-mix(in srgb,var(--marca) 14%,transparent)}
+/* O filete que liga um passo ao próximo. O último não tem para onde ligar. */
+.passo-n::after{content:"";position:absolute;left:15px;top:30px;bottom:0;
+width:2px;background:linear-gradient(180deg,var(--borda-forte),
+color-mix(in srgb,var(--borda) 40%,transparent))}
+.passo-n:last-of-type::after{display:none}
+/* O que vem DEPOIS do passo (print, legenda, aviso) entra alinhado com o
+   texto dele, e não volta para a margem do cartão. */
+.passo-n+p,.passo-n+img,.passo-n+.alerta{margin-left:46px}
+
+/* ---- documentação: texto corrido, que o resto do sistema quase não tem ---- */
+.doc{max-width:74ch}
+.doc h2{font-size:var(--t-g);margin:var(--e6) 0 var(--e2);
+font-family:var(--fonte-titulo);letter-spacing:-.018em}
+.doc p,.doc ul,.doc .passo{font-size:var(--t-base);line-height:var(--ent)}
+.doc table{font-size:var(--t-p)}
+
+/* ---- o giro de espera, no traço da marca --------------------------------- */
+.girando{border-width:2px;border-color:var(--borda);
+border-top-color:var(--marca)}
+.cotando{font-size:var(--t-p)}
+
+/* ============================ nada de rolagem lateral ======================
+   `overflow-x:clip` e não `hidden`: `hidden` num ancestral cria contexto de
+   rolagem e quebra `position:sticky` dos filhos — que é exatamente o que a
+   faixa do topo e os cabeçalhos das tabelas do painel usam. */
+html,body{overflow-x:clip;max-width:100%}
+/* Imagem e tabela são as duas coisas que estouram a coluna sozinhas. */
+img{max-width:100%}
+
+@media(max-width:620px){
+.wrap{padding:0 var(--e4);margin-top:var(--e4)}
+.cartao{padding:var(--e4)}
+.cab-pagina{gap:var(--e3);margin-bottom:var(--e4)}
+.cab-pagina .acoes{margin-left:0;width:100%}
+.topo{padding:10px var(--e4);gap:var(--e3)}
+/* No celular o menu do topo rola de lado em vez de quebrar em duas linhas e
+   empurrar o conteúdo: são quatro links curtos, e uma faixa de duas alturas
+   custa 40px de dobra em toda tela. */
+.topo .quem{width:100%;margin-left:0;order:3;overflow-x:auto;
+scrollbar-width:none}
+.topo .quem::-webkit-scrollbar{display:none}
+.menu{flex:none}
+.opcoes{grid-template-columns:1fr}
+}
 """
 
 # O endereço das peças da marca entra AQUI, e não por f-string lá em cima:
@@ -932,6 +1387,55 @@ def moeda(v: Decimal | None) -> str:
     if v is None:
         return "—"
     return f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+
+# ------------------------------------------------------- a malha do hero
+#
+# O desenho de fundo da tela de entrada, e o mesmo em miniatura na faixa da
+# página inicial. Original, feito à mão em SVG: quatro corredores saindo de
+# uma origem para destinos diferentes — que é literalmente o que uma cotação
+# é. Nada de arquivo de imagem e nada de biblioteca de animação; CSS e SVG
+# dão conta, e o sistema roda em rede interna onde o que não chegou é buraco
+# na tela.
+#
+# A referência é de DIREÇÃO, não de código: os sites de logística que
+# funcionam mostram a carga se movendo em vez de uma foto de contêiner
+# (project44, Uber Freight), sobre uma malha discreta num marinho escuro
+# (ArcBest). Os links estão em docs/rebranding/IMPLEMENTACAO.md. Nenhum
+# traçado, nenhuma cor e nenhum arquivo veio de lá.
+#
+# `--comp` é o comprimento de cada traçado, medido no desenho e escrito no
+# elemento: é o que faz `stroke-dasharray`/`dashoffset` desenharem a linha do
+# começo ao fim em vez de piscarem inteira. `--atraso` escalona as chegadas.
+#
+# `aria-hidden` porque é decoração: quem usa leitor de tela já recebe a
+# chamada, o apoio e a rota em texto, logo acima.
+MALHA_CORREDORES = """<svg class="tecido" viewBox="0 0 520 420"
+ preserveAspectRatio="xMidYMid slice" aria-hidden="true" focusable="false">
+<g class="malha">
+<path d="M0 84h520M0 168h520M0 252h520M0 336h520"/>
+<path d="M104 0v420M208 0v420M312 0v420M416 0v420"/>
+</g>
+<path class="via" style="--comp:300;--atraso:.15s"
+ d="M96 300C170 300 186 214 258 206"/>
+<path class="via" style="--comp:330;--atraso:.35s"
+ d="M96 300C168 300 196 128 300 112"/>
+<path class="via" style="--comp:290;--atraso:.55s"
+ d="M96 300C182 300 214 330 286 340"/>
+<path class="via principal" style="--comp:430;--atraso:0s"
+ d="M96 300C204 300 250 176 340 168 404 162 430 206 470 214"/>
+<path class="pulso" style="--comp:430"
+ d="M96 300C204 300 250 176 340 168 404 162 430 206 470 214"/>
+<circle class="destino-anel" cx="258" cy="206" r="11" style="--atraso:.7s"/>
+<circle class="destino" cx="258" cy="206" r="4.5" style="--atraso:.7s"/>
+<circle class="destino-anel" cx="300" cy="112" r="11" style="--atraso:.9s"/>
+<circle class="destino" cx="300" cy="112" r="4.5" style="--atraso:.9s"/>
+<circle class="destino-anel" cx="286" cy="340" r="11" style="--atraso:1.1s"/>
+<circle class="destino" cx="286" cy="340" r="4.5" style="--atraso:1.1s"/>
+<circle class="destino-anel" cx="470" cy="214" r="15" style="--atraso:1.3s"/>
+<circle class="destino" cx="470" cy="214" r="6" style="--atraso:1.3s"/>
+<circle class="origem" cx="96" cy="300" r="7"/>
+</svg>"""
 
 
 # ------------------------------------------------------------------- lupa
@@ -1068,7 +1572,8 @@ def print_embutido(caminho: str | None) -> str:
 
 
 def entrada(titulo: str, cartao: str, *, chamada: str, apoio: str,
-            paradas: tuple[str, ...] = (), rodape: str = "") -> str:
+            paradas: tuple[str, ...] = (), rodape: str = "",
+            tarja: str = "Cotação de frete") -> str:
     """O casco das telas de entrada: a do vendedor e a do painel.
 
     Casco próprio, e não `pagina()`, por dois motivos. A faixa do topo existe
@@ -1103,19 +1608,29 @@ def entrada(titulo: str, cartao: str, *, chamada: str, apoio: str,
                       f"<span>{e(parada)}</span></div>")
     lista = f'<div class="rota">{"".join(pontos)}</div>' if pontos else ""
     fim = f'<p class="rodape">{e(rodape)}</p>' if rodape else ""
+    # A chamada quebra em duas linhas, e a SEGUNDA sai no azul da marca. O
+    # ponto final é o corte: "Uma carga. Todas as transportadoras." vira
+    # branco + azul sem quem escreve precisar saber de HTML. Sem ponto no
+    # meio, sai inteira em branco, que é o comportamento de antes.
+    titulo_html = e(chamada)
+    if ". " in titulo_html:
+        antes, _, depois = titulo_html.partition(". ")
+        titulo_html = f"{antes}.<br><em>{depois}</em>"
     return f"""<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{e(titulo)} — Cotafrete</title>{ICONE_ABA}
 <style>{CSS}</style></head><body>
 <div class="entrada">
   <aside class="entrada-marca">
+    {MALHA_CORREDORES}
     <div class="marca-entrada">
       <span class="logo marca-peca" role="img"
           aria-label="Ventura Comércio"></span>
       <p class="assinatura">{ASSINATURA}</p>
     </div>
     <div>
-      <h1>{e(chamada)}</h1>
+      <p class="tarja">{e(tarja)}</p>
+      <h1>{titulo_html}</h1>
       <p>{e(apoio)}</p>
     </div>
     {lista}
@@ -1160,18 +1675,60 @@ def rodape_do_site(usuario: str | None = None) -> str:
 </div></footer>"""
 
 
+def cabecalho(titulo: str, *, tarja: str = "", sub: str = "",
+              contexto: tuple[tuple[str, str], ...] = (),
+              acoes: str = "") -> str:
+    """O cabeçalho compacto das telas de trabalho.
+
+    UM componente para as sete telas do vendedor, em vez de um `<h1>` solto e
+    um `<p class="sub">` repetidos com espaçamento diferente em cada uma. A
+    hierarquia fica: onde estou (tarja), o que é isto (título), o que é esta
+    cotação (contexto), o que posso fazer (ações).
+
+    `contexto` são pares (rótulo, valor) — a rota, o peso, a nota fiscal. Eles
+    viviam numa frase corrida de seis campos separados por pontos médios, e
+    achar o peso ali exigia ler a frase inteira. Em pastilha, com o rótulo em
+    versalete e o valor na monoespaçada, o olho vai direto.
+
+    `acoes` e `sub` entram CRUS: são HTML montado por quem chama (botões, um
+    `<b>` no meio da frase). Título, tarja e contexto são texto e passam por
+    `e()` — é por ali que entra o que o usuário digitou."""
+    linha = ""
+    if contexto:
+        itens = ""
+        for n, (rotulo, valor) in enumerate(contexto):
+            # A primeira pastilha é a rota, e ela identifica a cotação: ganha
+            # a lavagem da marca para o olho achá-la antes das outras cinco.
+            classe = ' class="ctx-rota"' if n == 0 else ""
+            itens += (f"<li{classe}><span>{e(rotulo)}</span>"
+                      f"<b>{e(valor)}</b></li>")
+        linha = f'<ul class="contexto">{itens}</ul>'
+    return (f'<header class="cab-pagina"><div class="diz">'
+            + (f'<p class="tarja">{e(tarja)}</p>' if tarja else "")
+            + f"<h1>{e(titulo)}</h1>"
+            + (f'<p class="sub">{sub}</p>' if sub else "")
+            + linha + "</div>"
+            + (f'<div class="acoes">{acoes}</div>' if acoes else "")
+            + "</header>")
+
+
 def pagina(titulo: str, corpo: str, usuario: str | None = None) -> str:
     quem = ""
     if usuario:
-        quem = ('<span class="quem"><span class="menu">'
+        # `<nav>` de verdade, e não um <span> com links dentro: é a navegação
+        # principal do sistema, e um leitor de tela precisa poder saltar para
+        # ela. `aria-label` porque a página tem duas (esta e a do rodapé).
+        quem = ('<span class="quem"><nav class="menu" '
+                'aria-label="Navegação principal">'
                 '<a href="/">Nova cotação</a><a href="/historico">Histórico</a>'
                 '<a href="/documentacao">Documentação</a>'
-                f'<a href="/sair">Sair</a></span> <b>{e(usuario)}</b></span>')
+                f'<a href="/sair">Sair</a></nav> <b>{e(usuario)}</b></span>')
     return f"""<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{e(titulo)} — Cotafrete</title>{ICONE_ABA}{cabeca_do_tema("claro")}
 <style>{CSS}</style></head><body>
+<a class="pular" href="#conteudo">Pular para o conteúdo</a>
 <div class="topo"><a class="marca-placa" href="/" aria-label="Ventura Comércio — início"><span class="marca-peca marca-lockup" role="img"></span></a>
 {quem}{BOTAO_TEMA}</div>
-<div class="wrap">{corpo}</div>
+<main class="wrap" id="conteudo">{corpo}</main>
 {rodape_do_site(usuario)}{LUPA}{SCRIPT_TEMA}</body></html>"""
