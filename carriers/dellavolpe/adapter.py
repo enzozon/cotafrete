@@ -413,9 +413,36 @@ class DellavolpeAdapter:
                 # "o site recusou e apagou: Qual o serviço que você procura?".
                 # Medido em 25/08/2026 — três execuções seguidas mostraram o
                 # select com o valor certo do começo ao fim do preenchimento.
+                so_texto = {k: v for k, v in texto.items()
+                            if isinstance(v, str)}
                 recusados = campos_que_o_site_recusou(
-                    {k: v for k, v in texto.items() if isinstance(v, str)},
-                    self._ler_de_volta(page, texto))
+                    so_texto, self._ler_de_volta(page, texto))
+
+                # UMA segunda chance, e só uma. Medido em 22/09/2026: o
+                # formulário voltou a terminar com "Qual o serviço que você
+                # procura?" vazio, e esse campo é o PRIMEIRO da ordem — é ele
+                # que revela os campos condicionais do CF7. Preenchê-lo dispara
+                # o `wpcf7render`, o site re-renderiza o grupo condicional, e o
+                # próprio select volta ao vazio. Sozinho ele FICA (medido em
+                # probe: valor intacto depois de 2s); é o preenchimento do
+                # RESTO que o apaga.
+                #
+                # Repreencher só o que voltou vazio resolve sem mexer na ordem
+                # — e a ordem existe por um motivo: sem o serviço escolhido
+                # primeiro, os campos condicionais nem aparecem.
+                #
+                # Uma vez, e não em laço: se a segunda passada também não
+                # segurar, o site está recusando de verdade, e insistir
+                # trocaria um cartão honesto por um timeout.
+                if recusados:
+                    for rotulo in recusados:
+                        try:
+                            self._preencher(page, {rotulo: so_texto[rotulo]})
+                        except Exception:
+                            continue
+                    page.wait_for_timeout(800)
+                    recusados = campos_que_o_site_recusou(
+                        so_texto, self._ler_de_volta(page, texto))
 
                 evid_preenchido = self._print_formulario(
                     page, run / "preenchido.png")
