@@ -56,6 +56,13 @@ RE_DATA = re.compile(r"(\d{1,2})\s+de\s+([a-zç]+)\s+de\s+(\d{4})",
 RE_DESTINATARIO = re.compile(r"A/C\s*:\s*(.+)")
 RE_CARIMBO = re.compile(r"\(\s*COT\.?\s*(\d+)\s*\)", re.IGNORECASE)
 
+# "ORIGEM: BELO HORIZONTE/MG" e "DESTINO: VILA VELHA/ES". Servem de CONFERÊNCIA
+# do carimbo: se o número da cotação vier trocado (digitado de novo do lado
+# de lá, ou um carimbo velho num nome reaproveitado), a rota não bate e o
+# preço não vai parar na cotação de outra pessoa.
+RE_ORIGEM = re.compile(r"ORIGEM\s*:\s*([^\n]+?)\s*/\s*([A-Z]{2})\b")
+RE_DESTINO = re.compile(r"DESTINO\s*:\s*([^\n]+?)\s*/\s*([A-Z]{2})\b")
+
 
 class Proposta(NamedTuple):
     """Tudo None quando não deu para ler. Nunca um chute.
@@ -70,6 +77,11 @@ class Proposta(NamedTuple):
     validade: date | None = None
     destinatario: str = ""
     cotacao_id: int | None = None
+    # "BELO HORIZONTE/MG": cidade como a Della Volpe escreveu, e a UF.
+    origem: str = ""
+    uf_origem: str | None = None
+    destino: str = ""
+    uf_destino: str | None = None
 
 
 def _sem_acento(texto: str) -> str:
@@ -125,6 +137,8 @@ def ler_proposta(texto: str) -> Proposta:
     achado = RE_DESTINATARIO.search(texto)
     destinatario = achado.group(1).strip() if achado else ""
     carimbo = RE_CARIMBO.search(_sem_acento(destinatario))
+    origem = RE_ORIGEM.search(texto)
+    destino = RE_DESTINO.search(texto)
 
     return Proposta(
         valor=_dinheiro(valor.group(1)) if valor else None,
@@ -138,4 +152,9 @@ def ler_proposta(texto: str) -> Proposta:
                   if emitida and validade_dias else None),
         destinatario=destinatario,
         cotacao_id=int(carimbo.group(1)) if carimbo else None,
+        origem=f"{origem.group(1).strip()}/{origem.group(2)}" if origem else "",
+        uf_origem=origem.group(2) if origem else None,
+        destino=(f"{destino.group(1).strip()}/{destino.group(2)}"
+                 if destino else ""),
+        uf_destino=destino.group(2) if destino else None,
     )

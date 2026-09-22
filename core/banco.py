@@ -117,6 +117,29 @@ CREATE TABLE IF NOT EXISTS whatsapp_aberto (
 --
 -- `status`: agendando (o robô está no portal) / agendado (o site confirmou)
 -- / erro (não chegou a acontecer — e aí dá para tentar de novo).
+-- E-mail de proposta que o ingestor já leu (carriers/dellavolpe/ingestor.py).
+--
+-- É AQUI que mora o "já processei", e não na bandeira de lido do servidor de
+-- e-mail: a caixa do suporte é lida por gente, e um e-mail aberto no Outlook
+-- antes do robô passar seria pulado para sempre se o critério fosse "não
+-- lido". Guarda também os que NÃO foram gravados (sem carimbo, rota que não
+-- bate), para não reabrir o mesmo PDF a cada minuto e para o adm ver por que
+-- uma proposta não apareceu.
+--
+-- `desfecho`: gravado / sem_pdf / sem_carimbo / sem_valor / sem_cotacao /
+-- rota_diferente, com o motivo em `detalhe`. Todos são definitivos: nenhum
+-- deles muda relendo o mesmo e-mail. Falha passageira (rede caiu no meio,
+-- PDF que não abriu) NÃO entra aqui — e por isso é tentada de novo na
+-- próxima volta.
+CREATE TABLE IF NOT EXISTS email_processado (
+    message_id     TEXT PRIMARY KEY,
+    transportadora TEXT NOT NULL,
+    cotacao_id     INTEGER,
+    desfecho       TEXT NOT NULL,
+    detalhe        TEXT,
+    processado_em  TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS aceite (
     id             INTEGER PRIMARY KEY AUTOINCREMENT,
     cotacao_id     INTEGER NOT NULL REFERENCES cotacao(id) ON DELETE CASCADE,
@@ -295,6 +318,49 @@ class Banco:
                  str(valor) if valor is not None else None,
                  protocolo, prazo, erro, evidencia, respondido_em,
                  validade.isoformat() if validade else None))
+
+    # ------------------------------------------------ e-mail de proposta
+    def carga_da_cotacao(self, cotacao_id: int) -> dict | None:
+        """A cotação SEM filtro de dono — só para o ingestor.
+
+        `buscar_cotacao` exige o usuário porque é a porta da TELA, e lá
+        trocar o número na URL não pode abrir a cotação alheia. O ingestor
+        não é ninguém: ele recebe um número de dentro de um PDF e precisa
+        saber se a cotação existe e para onde ela vai. Não devolve os
+        resultados — ele não precisa deles."""
+        with closing(self._conectar()) as con, con:
+            linha = con.execute("SELECT * FROM cotacao WHERE id = ?",
+                                (cotacao_id,)).fetchone()
+            return dict(linha) if linha else None
+
+    def email_ja_processado(self, message_id: str) -> bool:
+        with closing(self._conectar()) as con, con:
+            return con.execute(
+                "SELECT 1 FROM email_processado WHERE message_id = ?",
+                (message_id,)).fetchone() is not None
+
+    def registrar_email(self, message_id: str, transportadora: str, *,
+                        desfecho: str, cotacao_id: int | None = None,
+                        detalhe: str | None = None) -> None:
+        """Sobrescreve: uma segunda passada que DEU CERTO (a cotação foi
+        criada depois do e-mail, por exemplo) troca o desfecho velho."""
+        with closing(self._conectar()) as con, con:
+            con.execute(
+                "INSERT INTO email_processado (message_id, transportadora,"
+                " cotacao_id, desfecho, detalhe, processado_em)"
+                " VALUES (?, ?, ?, ?, ?, ?)"
+                " ON CONFLICT (message_id) DO UPDATE SET"
+                " cotacao_id = excluded.cotacao_id,"
+                " desfecho = excluded.desfecho, detalhe = excluded.detalhe,"
+                " processado_em = excluded.processado_em",
+                (message_id, transportadora, cotacao_id, desfecho, detalhe,
+                 datetime.now().isoformat(timespec="seconds")))
+
+    def emails_processados(self, limite: int = 50) -> list[dict]:
+        with closing(self._conectar()) as con, con:
+            return [dict(r) for r in con.execute(
+                "SELECT * FROM email_processado"
+                " ORDER BY processado_em DESC LIMIT ?", (limite,))]
 
     def marcar_whatsapp_aberto(self, cotacao_id: int, transportadora: str,
                                usuario: str) -> None:
