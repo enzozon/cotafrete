@@ -105,7 +105,7 @@ def servidor(tmp_path_factory):
     banco.salvar_resultado(cid, "jadlog", status="cotado", valor="133.29",
                            prazo=5)
     banco.salvar_resultado(cid, "generoso", status="cotado", valor="152.16",
-                           protocolo="DEMO-2684352", prazo="6 dias úteis",
+                           protocolo="DEMO-2684352", prazo="6",
                            validade=date.today() + timedelta(days=7))
     banco.salvar_resultado(cid, "braspress", status="erro",
                            erro="site fora do ar (sintético)")
