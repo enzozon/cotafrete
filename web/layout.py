@@ -1550,6 +1550,11 @@ SCRIPT_TEMA = """<script>
 </script>"""
 
 
+def e_pdf(caminho: str | None) -> bool:
+    """A evidência é um PDF (proposta por e-mail) e não um print?"""
+    return str(caminho or "").lower().endswith(".pdf")
+
+
 def print_embutido(caminho: str | None) -> str:
     """Embute o print da transportadora na página, em base64.
 
@@ -1564,7 +1569,9 @@ def print_embutido(caminho: str | None) -> str:
     Caminho vazio ou arquivo que sumiu devolve string vazia: print é prova,
     não obrigação, e uma cotação antiga cujo `runs/` foi apagado precisa
     continuar abrindo."""
-    if not caminho or not Path(caminho).exists():
+    if not caminho or e_pdf(caminho) or not Path(caminho).exists():
+        # PDF (a proposta da Della Volpe) não é imagem: embutido num <img>
+        # vira ícone quebrado. Quem sabe mostrá-lo é a tela, com um link.
         return ""
     dados = base64.b64encode(Path(caminho).read_bytes()).decode()
     return (f'<img class="print" src="data:image/png;base64,{dados}" '

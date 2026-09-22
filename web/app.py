@@ -26,10 +26,11 @@ fora da rede local sem virar autenticação de verdade.
 
 from __future__ import annotations
 
-import os
 import time
 import unicodedata
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import asynccontextmanager
+from functools import partial
 from decimal import Decimal, InvalidOperation
 from datetime import date, datetime
 from pathlib import Path
@@ -45,6 +46,9 @@ load_dotenv(override=False)
 from carriers.braspress.adapter import BraspressAdapter
 from carriers.camilo.adapter import CamiloAdapter
 from carriers.dellavolpe import bookmarklet as dv_bookmarklet
+from carriers.dellavolpe import caixa as dv_caixa
+from carriers.dellavolpe import ingestor as dv_ingestor
+from carriers.dellavolpe.adapter import DellavolpeAdapter
 from carriers.generoso.adapter import GenerosoAdapter
 from carriers.jadlog.painel import JadlogPainelAdapter
 from carriers.translovato.adapter import TranslovatoAdapter
@@ -64,8 +68,8 @@ from web.ficha_ui import (
     ficha_da_cotacao, kg as _kg, pagador_da_cotacao, peso_por_volume,
     quando as quando_humano, quem_e as _quem,
 )
-from web.layout import (MALHA_CORREDORES, cabecalho, entrada, e, moeda, pagina,
-                        print_embutido as _img)
+from web.layout import (MALHA_CORREDORES, cabecalho, e_pdf, entrada, e, moeda,
+                        pagina, print_embutido as _img)
 from web.transportadoras import cota_por_volume
 from web.aceite_ui import COM_ACEITE, celula_de_aceite, tela_aceite
 from core.models import (
@@ -73,7 +77,33 @@ from core.models import (
     Solicitante, StatusCotacao, TipoFrete, Volume, limpa_doc,
 )
 
-app = FastAPI(title="Cotafrete — Ventura")
+# O ingestor de e-mail da Della Volpe (carriers/dellavolpe/ingestor.py): uma
+# thread que lê a caixa do suporte de minuto em minuto e grava o preço que
+# chega em PDF.
+#
+# Sobe no LIFESPAN, e não no import, ao contrário de marcar_interrompidas lá
+# embaixo: o import acontece também no pytest, num script solto, num segundo
+# processo na mesma pasta — e cada um deles abriria a caixa do suporte e
+# brigaria com o servidor pelos mesmos e-mails. O lifespan só roda quando o
+# uvicorn sobe de verdade (o TestClient sem `with` nem o chama).
+INGESTOR: dv_ingestor.Vigia | None = None
+
+
+@asynccontextmanager
+async def _vida(_app):
+    global INGESTOR
+    if INGESTOR is None:
+        INGESTOR = dv_ingestor.iniciar(banco)
+        if INGESTOR is not None:
+            print(f"[cotafrete] Della Volpe: lendo as propostas em "
+                  f"{INGESTOR.cx.usuario} a cada "
+                  f"{INGESTOR.cx.intervalo_s} s.")
+    yield
+    if INGESTOR is not None:
+        INGESTOR.parar.set()
+
+
+app = FastAPI(title="Cotafrete — Ventura", lifespan=_vida)
 banco = Banco()
 
 # Faxina dos prints velhos (>30 dias) a cada início do servidor — não há
@@ -142,7 +172,11 @@ MEDIDA_MINIMA_CM = Decimal("1")
 # Contact Form 7 recusa como spam sem gerar e-mail nenhum (cotações #78 a #84).
 # Enquanto ela estivesse nesta lista, toda cotação gastaria uma vaga de
 # navegador para terminar num cartão vermelho que ninguém consegue resolver.
-# Hoje ela é acionada pelo vendedor: ver POR_EMAIL em web/transportadoras.py.
+#
+# Em 22/09/2026 a caixinha tinha sumido (0 desafios em 12 aberturas, ver
+# recon/recon_dellavolpe_turnstile.py), e ela pode VOLTAR — pelo .env, com a
+# data do dia (ver carriers/dellavolpe/caixa.py). Se a caixinha reaparecer,
+# a cotação não vira cartão vermelho: cai no formulário assistido.
 #
 # Vem de lá, e não é definida aqui, porque web/adm.py também precisa desta
 # lista (para não alertar sobre quem já saiu da automação) e não pode
@@ -164,6 +198,10 @@ AUTOMATICA_DESDE = {
     "generoso": "2026-08-24T10:47:15",
     "braspress": "2026-09-03T08:51:41",
 }
+# A data dela vem do .env, junto com a decisão de ligá-la: é o dia em que ela
+# volta a cotar NO SERVIDOR, que nenhum commit sabe.
+if "dellavolpe" in AUTOMATICAS:
+    AUTOMATICA_DESDE["dellavolpe"] = dv_caixa.automatica_desde()
 
 # As 17 DISTINTAS. A Translovato conta uma vez so: ela e automatica E tem
 # WhatsApp. dict.fromkeys em vez de set para a ordem nao mudar a cada
@@ -216,12 +254,12 @@ if _orfas:
 #
 # Este aviso existe para a variável faltando ser vista aqui, na subida, e não
 # descoberta pelo vendedor no meio de uma cotação.
-if "dellavolpe" in AUTOMATICAS and os.getenv("DV_ENVIO_REAL_AUTORIZADO") != "sim":
-    print("[cotafrete] AVISO: a Della Volpe está ligada mas o envio real "
-          "está travado.")
-    print("            Nenhuma cotação vai chegar nela enquanto a linha")
-    print("            DV_ENVIO_REAL_AUTORIZADO do arquivo .env desta pasta")
-    print("            não disser 'sim'.")
+#
+# Desde 22/09/2026 ela só entra na lista COM a trava liberada (ver
+# dv_caixa.automatica), então o que sobra para avisar é o .env pela metade:
+# alguém tentou ligar e faltou uma linha.
+for _falta in dv_caixa.o_que_falta():
+    print(f"[cotafrete] AVISO: Della Volpe — falta no .env: {_falta}")
 
 # Nome de tela e logo das automáticas. O cadastro mora em
 # web/transportadoras.py, junto com o das de WhatsApp — foi para lá em
@@ -238,11 +276,13 @@ NOTAS = {
     "translovato": "Frete fracionado, com coleta. Só atende parte do país — fora da malha ela avisa.",
     "generoso": ("Frete fracionado, com coleta. Cotada com a empresa do "
                  "grupo que você informou no formulário."),
-    # A ÚNICA automática que não devolve preço na tela. Se a nota não disser
-    # isso, o vendedor lê "Cotação enviada" e fica esperando um número que
-    # nunca vai aparecer aqui.
-    "dellavolpe": ("Frete fracionado, com coleta. O preço não sai na tela: "
-                   "a cotação chega no seu e-mail em poucos minutos."),
+    # Até 22/09/2026 era a ÚNICA automática sem preço na tela, e a nota
+    # avisava isso. Desde 22/09/2026 o preço dela VOLTA para a tela, lido do PDF que chega
+    # por e-mail (carriers/dellavolpe/ingestor.py). Esta nota só aparece ao
+    # lado de um preço, então ela diz o que o número cobre — e de onde veio.
+    "dellavolpe": ("Frete fracionado, com coleta. Valor total da proposta, "
+                   "com taxas e ICMS — lido do PDF que ela manda por "
+                   "e-mail."),
     # A Braspress prende um dos lados da carga no CNPJ do LOGIN (a própria
     # conta da Ventura, 08.310.365/0001-24) assim que CIF/FOB é escolhido —
     # mesmo que a ficha tenha outro remetente/destinatário para aquele lado.
@@ -267,6 +307,11 @@ NOTAS = {
 # e-mail que o sistema não manda mandaria o vendedor esperar o que nunca vem.
 # O mecanismo fica: sem entrada, o cartão simplesmente não promete prazo.
 ESPERA_DO_EMAIL: dict[str, str] = {}
+
+# Por quanto tempo a tela da cotação continua se atualizando sozinha à espera
+# da proposta da Della Volpe. Ela chega em 2 a 5 minutos; meia hora cobre um
+# dia ruim sem deixar uma aba esquecida recarregando para sempre.
+ESPERA_PELA_PROPOSTA_S = 30 * 60
 
 # Erro técnico -> frase que o vendedor entende.
 #
@@ -1041,28 +1086,35 @@ def cotar(usuario: str | None = Depends(vendedor),
 
     # Dispara e NÃO espera: cada uma grava o próprio resultado ao terminar.
     for slug in automaticas_da(dados.get("transportadoras")):
-        EXECUTOR.submit(_rodar, cotacao_id, slug, FABRICAS[slug], req)
+        # O id vai amarrado na fábrica, e não como parâmetro do `_rodar`: a
+        # retentativa chama `cotar_fn(req)` e não precisa saber de cotação.
+        EXECUTOR.submit(_rodar, cotacao_id, slug,
+                        partial(FABRICAS[slug], cotacao_id=cotacao_id), req)
 
     return RedirectResponse(f"/cotacao/{cotacao_id}", status_code=303)
 
 
-def _cotar_camilo(req):
+# Toda fábrica recebe (req, cotacao_id), mesmo as que não usam o id: é a
+# Della Volpe que precisa dele — vira o carimbo "(cot. N)" que devolve a
+# proposta do e-mail à cotação certa — e uma assinatura só evita que o
+# /cotar tenha de saber quem é quem.
+def _cotar_camilo(req, cotacao_id=None):
     # confirmar_envio=True aqui só quer dizer "clique em simular": é cálculo
     # automático, não entra em fila de vendedor.
     return CamiloAdapter().cotar(req, confirmar_envio=True)
 
 
-def _cotar_jadlog(req):
+def _cotar_jadlog(req, cotacao_id=None):
     return JadlogPainelAdapter().cotar(req)
 
 
-def _cotar_translovato(req):
+def _cotar_translovato(req, cotacao_id=None):
     # Cria registro em "Minhas Cotações" no portal deles — é
     # auto-serviço, não entra em fila de vendedor.
     return TranslovatoAdapter().cotar(req)
 
 
-def _cotar_generoso(req):
+def _cotar_generoso(req, cotacao_id=None):
     """Cria uma cotação na conta da Ventura no portal deles — auto-serviço,
     como a Translovato, e não fila de vendedor como a Della Volpe.
 
@@ -1072,11 +1124,24 @@ def _cotar_generoso(req):
     return GenerosoAdapter().cotar(req, confirmar_envio=True)
 
 
-def _cotar_braspress(req):
+def _cotar_braspress(req, cotacao_id=None):
     """"Calcular" é cálculo automático (como o "Simular" da Camilo) — não
     entra em fila de vendedor nem cria pendência na conta da Ventura, então
     o envio é confirmado aqui: sem confirmar não existe preço na tela."""
     return BraspressAdapter().cotar(req, confirmar_envio=True)
+
+
+def _cotar_dellavolpe(req, cotacao_id=None):
+    """Envia o formulário público deles — cai na fila de um vendedor da Della
+    Volpe, e o preço volta por e-mail (carriers/dellavolpe/ingestor.py).
+
+    O e-mail do formulário é o do suporte quando o ingestor sabe ler aquela
+    caixa; senão continua sendo o do vendedor, que aí recebe a proposta ele
+    mesmo. O carimbo vai sempre: não atrapalha ninguém, e é o que o ingestor
+    procura."""
+    return DellavolpeAdapter(workdir="teste_real/dellavolpe").cotar(
+        req, confirmar_envio=True, cotacao_id=cotacao_id,
+        email_resposta=dv_caixa.email_de_resposta())
 
 
 # No módulo, e não dentro de /cotar: é o que permite a
@@ -1086,6 +1151,10 @@ def _cotar_braspress(req):
 FABRICAS = {"camilo": _cotar_camilo, "jadlog": _cotar_jadlog,
             "translovato": _cotar_translovato, "generoso": _cotar_generoso,
             "braspress": _cotar_braspress}
+# Só com ela ligada: fábrica de quem não está em AUTOMATICAS nunca roda, e
+# tests/test_dellavolpe_automatica.py não deixa sobrar fábrica órfã.
+if "dellavolpe" in AUTOMATICAS:
+    FABRICAS["dellavolpe"] = _cotar_dellavolpe
 
 
 def _rodar(cotacao_id: int, slug: str, cotar_fn, req) -> None:
@@ -1200,6 +1269,21 @@ def cartao_resposta_por_email(email: str | None, slug: str = "") -> str:
             f'A cotação foi enviada para {onde}. Abra o e-mail para ver o '
             f'preço.{prazo} Confira a caixa de entrada e o spam — esta tela '
             f'não muda quando ela chegar.</div>')
+
+
+def cartao_proposta_a_caminho() -> str:
+    """A Della Volpe recebeu, e a proposta vai cair na caixa do SUPORTE.
+
+    Diferente de `cartao_resposta_por_email`: lá o preço chega no e-mail do
+    vendedor e esta tela nunca muda. Aqui o ingestor lê a caixa do suporte e
+    o preço aparece NESTA linha sozinho — mandar o vendedor abrir o e-mail
+    dele seria mandá-lo procurar uma coisa que nunca vai chegar lá."""
+    return ('<div class="enviada">Cotação enviada</div>'
+            '<div class="alerta email"><b>O preço aparece aqui sozinho.</b> '
+            'A Della Volpe responde por e-mail, em poucos minutos, para a '
+            'caixa do suporte — o sistema lê a proposta e preenche esta '
+            'linha com preço, prazo, validade e o PDF. Pode deixar a página '
+            'aberta.</div>')
 
 
 @app.get("/whatsapp/{cotacao_id}/{slug}")
@@ -1327,7 +1411,9 @@ def formulario_dellavolpe(cotacao_id: int,
     # a coisa pronta", pelo mesmo motivo de sempre — o sistema não tem como
     # saber se o vendedor de fato enviou depois.
     banco.marcar_whatsapp_aberto(cotacao_id, "dellavolpe", usuario)
-    url = dv_bookmarklet.url_formulario(c)
+    # A mesma caixa de resposta do envio automático: a proposta de um envio
+    # feito à mão também precisa cair no ingestor.
+    url = dv_bookmarklet.url_formulario(c, dv_caixa.email_de_resposta())
     href_favorito = dv_bookmarklet.href_bookmarklet()
 
     return HTMLResponse(pagina(f"Cotação {cotacao_id} — Della Volpe", f"""
@@ -1414,7 +1500,8 @@ ESTADOS = {
 
 def _linha_resultado(slug: str, principal: str, prazo: str, estado: str,
                      selo: str, destaque: str, evidencia: str | None,
-                     avisos: str, nota: str = "", validade: str = "") -> str:
+                     avisos: str, nota: str = "", validade: str = "",
+                     cotacao_id: int | None = None) -> str:
     """Uma transportadora, em duas linhas de tabela.
 
     A de cima compara: nome, frete, prazo, o que inclui, estado, print. A de
@@ -1434,8 +1521,16 @@ def _linha_resultado(slug: str, principal: str, prazo: str, estado: str,
     Clicar abre a lupa, que já existe desde 09/09/2026.
     """
     rotulo, classe_estado = ESTADOS.get(estado, ("—", "estado-falha"))
-    mini = (f'<span class="mini">{_img(evidencia)}</span>'
-            if evidencia else '<span class="sem-print">—</span>')
+    if evidencia and e_pdf(evidencia) and cotacao_id is not None:
+        # A Della Volpe não tem print: a prova do preço dela é o PDF da
+        # proposta, lido do e-mail. Link, e não imagem embutida — PDF dentro
+        # de <img> é ícone quebrado.
+        mini = (f'<a class="botao2" href="/cotacao/{cotacao_id}/proposta/'
+                f'{e(slug)}" target="_blank" rel="noopener">PDF</a>')
+    elif evidencia and not e_pdf(evidencia):
+        mini = f'<span class="mini">{_img(evidencia)}</span>'
+    else:
+        mini = '<span class="sem-print">—</span>'
     detalhe = (f'<tr class="r-extra"><td colspan="7">{avisos}</td></tr>'
                if avisos else "")
     # `data-t` com o slug: e o que deixa o teste (e o JavaScript, se um dia
@@ -1534,6 +1629,21 @@ def ver_cotacao(cotacao_id: int,
             if r["protocolo"]:
                 avisos += (f'<div class="nota">Cotação nº '
                            f'{e(r["protocolo"])}</div>')
+        elif (r["status"] == StatusCotacao.INTERVENCAO_NECESSARIA.value
+              and slug == "dellavolpe"):
+            # A caixinha "confirme que é humano" apareceu (ou o site barrou o
+            # envio como spam). NÃO é o caso da senha, logo abaixo: aqui nada
+            # saiu, e quem resolve é o próprio vendedor, em dois cliques, pelo
+            # formulário preenchido que aparece no cartão "Semiautomática".
+            destaque, selo, estado = "", "", "intervencao"
+            principal = '<span class="sem">Envie pelo formulário</span>'
+            avisos = (f'<div class="alerta email"><b>Nada foi enviado à Della '
+                      f'Volpe.</b> O site dela pediu a confirmação de humano, '
+                      f'que o robô não resolve. Use o formulário já preenchido '
+                      f'no cartão "Semiautomática", logo abaixo: você marca a '
+                      f'caixinha e envia.</div>'
+                      f'<div class="nota">'
+                      f'{e((r["erro"] or "")[:LIMITE_MENSAGEM_ERRO])}</div>')
         elif r["status"] == StatusCotacao.INTERVENCAO_NECESSARIA.value:
             # Senha recusada. Diferente de um erro qualquer porque o vendedor
             # NÃO consegue resolver — e se ele repetir a cotação, cada
@@ -1553,7 +1663,11 @@ def ver_cotacao(cotacao_id: int,
             # erro: lá embaixo tudo que não tem valor é tratado como problema.
             destaque, selo, estado = "", "", "aguardando"
             principal = '<span class="sem">preço por e-mail</span>'
-            avisos = cartao_resposta_por_email(c.get("email"), slug)
+            if slug == "dellavolpe" and dv_caixa.email_de_resposta():
+                principal = '<span class="sem">aguardando proposta</span>'
+                avisos = cartao_proposta_a_caminho()
+            else:
+                avisos = cartao_resposta_por_email(c.get("email"), slug)
         elif r["status"] == StatusCotacao.RECUSADO.value:
             # Recusa NÃO é defeito. O site recebeu a carga inteira, entendeu,
             # e disse não — com estas palavras. Cotação #20 (25/08/2026): a
@@ -1583,7 +1697,7 @@ def ver_cotacao(cotacao_id: int,
                                    destaque, r["evidencia"], avisos,
                                    NOTAS.get(slug, "")
                                    if r["valor"] is not None else "",
-                                   validade)
+                                   validade, cotacao_id)
 
     # Quem ainda não respondeu ganha um cartão "cotando". Sem isso a
     # transportadora simplesmente não aparece, e o usuário não sabe se ela
@@ -1625,8 +1739,22 @@ def ver_cotacao(cotacao_id: int,
     # imagem piscar e atrapalharia quem está lendo o resultado. Depois do teto
     # também para: sem isso a página pisca para sempre se um resultado nunca
     # chegar.
-    recarrega = ('<meta http-equiv="refresh" content="3">'
-                 if faltam and not desistiu else "")
+    # A Della Volpe já respondeu "recebido", mas o preço ainda vem pelo
+    # e-mail. Enquanto o ingestor estiver lendo a caixa, a tela continua se
+    # atualizando — devagar, porque o e-mail leva minutos e não segundos — por
+    # meia hora no máximo. Passado isso, quem quiser vê recarregando à mão.
+    dv_r = next((r for r in c["resultados"]
+                 if r["transportadora"] == "dellavolpe"), None)
+    esperando_proposta = (
+        dv_r is not None and dv_r["valor"] is None
+        and dv_r["status"] == StatusCotacao.AGUARDANDO_RETORNO.value
+        and INGESTOR is not None and idade < ESPERA_PELA_PROPOSTA_S)
+    if faltam and not desistiu:
+        recarrega = '<meta http-equiv="refresh" content="3">'
+    elif esperando_proposta:
+        recarrega = '<meta http-equiv="refresh" content="20">'
+    else:
+        recarrega = ""
     if desistiu:
         cabecalho_espera = (
             f'<div class="aviso">{len(faltam)} transportadora(s) não '
@@ -1683,6 +1811,33 @@ def ver_cotacao(cotacao_id: int,
             f'<span class="ir">Abrir e-mail pronto</span>'
             f'<span class="jafoi">Aberta</span></a>')
 
+    # Com ela automática, o cartão só aparece quando o robô NÃO enviou:
+    # captcha na tela, site recusando, erro. Enquanto ela cota, e depois que
+    # a proposta foi aceita ou já tem preço, ele some — oferecer o formulário
+    # ali é convidar o vendedor a mandar a MESMA cotação duas vezes para a
+    # fila de uma pessoa de verdade.
+    dv_automatica = "dellavolpe" in automaticas_da(escolhidas)
+    dv_resolvida = dv_r is not None and (
+        dv_r["valor"] is not None
+        or dv_r["status"] == StatusCotacao.AGUARDANDO_RETORNO.value)
+    # Vale também para a assistida cuja proposta já chegou (o vendedor
+    # enviou à mão e o ingestor leu): não há o que enviar de novo. Já a
+    # automática que passou do teto sem responder nada ("Sem retorno") volta
+    # a oferecer o formulário — ali ninguém sabe se saiu, e esperar mais não
+    # resolve.
+    if dv_resolvida or (dv_automatica and dv_r is None and not desistiu):
+        dv = None
+    # "Erro" é o único estado em que o envio pode ter saído mesmo assim: a
+    # confirmação do site às vezes não é lida. Sem esta ressalva, o
+    # vendedor reenviaria às cegas.
+    ressalva = ""
+    if dv_automatica and (desistiu and dv_r is None or dv_r is not None and
+                          dv_r["status"]
+                          != StatusCotacao.INTERVENCAO_NECESSARIA.value):
+        ressalva = (' <b>O envio automático falhou</b> — se a Della Volpe '
+                    'responder mesmo assim, o preço aparece na tabela acima '
+                    'e você não precisa enviar de novo.')
+
     semiautomatica = ""
     if dv:
         semiautomatica = (
@@ -1691,7 +1846,7 @@ def ver_cotacao(cotacao_id: int,
             f'<p class="sub">O formulário oficial da Della Volpe já vem '
             f'preenchido — falta só você conferir, resolver o captcha e '
             f'clicar em enviar. Responde em 2 a 5 minutos, contra 10 a 12 '
-            f'horas do e-mail avulso.</p>'
+            f'horas do e-mail avulso.{ressalva}</p>'
             f'<a class="zap zap-dv{" aberta" if dv.slug in abertas else ""}"'
             f' id="zap-{e(dv.slug)}" href="/dellavolpe/{cotacao_id}"'
             f' target="_blank" rel="noopener">'
@@ -1915,6 +2070,30 @@ def baixar_evidencias_zip(cotacao_id: int,
                  f'attachment; filename="cotacao-{cotacao_id}-prints.zip"'})
 
 
+@app.get("/cotacao/{cotacao_id}/proposta/{slug}")
+def baixar_proposta(cotacao_id: int, slug: str,
+                    usuario: str | None = Depends(vendedor)):
+    """O PDF da proposta (Della Volpe), aberto no navegador.
+
+    Pela mesma porta da tela — `buscar_cotacao` com o usuário — e nunca por
+    pasta estática: teste_real/ tem as propostas de todo mundo. O caminho do
+    arquivo vem do BANCO, e não da URL, então não há como pedir outro."""
+    if not usuario:
+        return RedirectResponse("/login", status_code=303)
+    c = banco.buscar_cotacao(cotacao_id, usuario)
+    if c is None:
+        raise HTTPException(404, "Cotação não encontrada")
+    r = next((r for r in c["resultados"] if r["transportadora"] == slug),
+             None)
+    if r is None or not e_pdf(r["evidencia"]) or not Path(
+            r["evidencia"]).exists():
+        raise HTTPException(404, "Proposta não encontrada")
+    return Response(
+        Path(r["evidencia"]).read_bytes(), media_type="application/pdf",
+        headers={"Content-Disposition":
+                 f'inline; filename="cotacao-{cotacao_id}-{slug}.pdf"'})
+
+
 # ---------------------------------------------------------------- histórico
 # ------------------------------------------------------- documentação
 def _lista_automaticas() -> str:
@@ -1935,6 +2114,48 @@ def pagina_documentacao() -> str:
     confiança."""
     com_zap = transportadoras.com_whatsapp()
     zap = len(com_zap)
+    # A seção da Della Volpe depende de como ELA está neste servidor: com a
+    # chave do .env ligada ela cota sozinha, e a explicação de "agora quem
+    # envia é você" mandaria o vendedor enviar uma cotação que já saiu.
+    if "dellavolpe" in AUTOMATICAS:
+        secao_dellavolpe = f"""<h2>A {e(NOMES["dellavolpe"])} voltou a cotar sozinha</h2>
+<div class="alerta email">
+<p>Ela entra na tabela de cima como as outras. O site dela não mostra preço
+na hora: responde por e-mail, em <b>poucos minutos</b>, com uma proposta em
+PDF. O sistema lê esse PDF e o preço <b>aparece na linha dela</b>, com prazo,
+validade e o link do PDF.</p>
+<p><b>Se a linha disser "Envie pelo formulário"</b>, o site dela pediu a
+caixinha "confirme que é humano" e nada foi enviado. Aí vale o cartão
+<b>Semiautomática</b>, logo abaixo: o formulário oficial já vem preenchido, e
+você só confere, marca a caixinha e envia.</p>
+</div>
+"""
+    else:
+        secao_dellavolpe = f"""<h2>A {e(NOMES["dellavolpe"])} mudou: agora quem envia é você</h2>
+<div class="alerta email">
+<p>Ela era cotada sozinha até <b>31/08/2026</b>. Nesse dia o site dela passou
+a exigir uma verificação <b>"confirme que é humano"</b> — aquela caixinha da
+Cloudflare — e o sistema não marca essa caixa por você: ela existe justamente
+para impedir que um programa envie o formulário.</p>
+<p>Tentar assim mesmo não funcionava e ainda enganava: o site respondia
+"submissão marcada como spam" e <b>nenhum e-mail era gerado</b>. Testado com
+envio real: nem o segundo clique passa.</p>
+<p><b>O que mudou para você:</b> ela saiu da parte de cima da tela e agora
+aparece em <b>Precisa de você</b>, junto das do WhatsApp.</p>
+<p><b>Preferência: "Preencher formulário (rápido)".</b> Abre o formulário
+OFICIAL da Della Volpe com os campos já prontos — na primeira vez você
+arrasta um favorito para o navegador; depois disso é clicar nele em cada
+cotação nova, conferir, resolver o captcha e enviar. Continua sendo você
+que envia — o sistema só poupa a digitação. É a via rápida: costuma
+responder em <b>2 a 5 minutos</b>, o mesmo prazo de quando ela cotava
+sozinha.</p>
+<p><b>Alternativa: "Abrir e-mail pronto".</b> Mostra a cotação já escrita e
+o endereço deles — você copia, cola no seu e-mail e manda. Funciona sempre,
+mas cai numa fila de e-mail avulso: costuma demorar <b>10 a 12 horas</b>
+para responder. Use quando o formulário oficial estiver fora do ar, ou
+antes de instalar o favorito.</p>
+</div>
+"""
     # A Translovato e automatica E tem WhatsApp, entao 5 + 14 da 19 e o total
     # e 18. Dizer "e as OUTRAS 14" fazia o vendedor somar 19 e procurar uma
     # transportadora que nao existe. A frase nomeia quem se repete, e o nome
@@ -2047,30 +2268,7 @@ prova de que o "não" veio do site e não do Cotafrete — e é o que você mand
 para a transportadora quando precisa reclamar.</p>
 <p>Nas que dão certo o print também fica: a tela preenchida, com o preço.</p>
 
-<h2>A {e(NOMES["dellavolpe"])} mudou: agora quem envia é você</h2>
-<div class="alerta email">
-<p>Ela era cotada sozinha até <b>31/08/2026</b>. Nesse dia o site dela passou
-a exigir uma verificação <b>"confirme que é humano"</b> — aquela caixinha da
-Cloudflare — e o sistema não marca essa caixa por você: ela existe justamente
-para impedir que um programa envie o formulário.</p>
-<p>Tentar assim mesmo não funcionava e ainda enganava: o site respondia
-"submissão marcada como spam" e <b>nenhum e-mail era gerado</b>. Testado com
-envio real: nem o segundo clique passa.</p>
-<p><b>O que mudou para você:</b> ela saiu da parte de cima da tela e agora
-aparece em <b>Precisa de você</b>, junto das do WhatsApp.</p>
-<p><b>Preferência: "Preencher formulário (rápido)".</b> Abre o formulário
-OFICIAL da Della Volpe com os campos já prontos — na primeira vez você
-arrasta um favorito para o navegador; depois disso é clicar nele em cada
-cotação nova, conferir, resolver o captcha e enviar. Continua sendo você
-que envia — o sistema só poupa a digitação. É a via rápida: costuma
-responder em <b>2 a 5 minutos</b>, o mesmo prazo de quando ela cotava
-sozinha.</p>
-<p><b>Alternativa: "Abrir e-mail pronto".</b> Mostra a cotação já escrita e
-o endereço deles — você copia, cola no seu e-mail e manda. Funciona sempre,
-mas cai numa fila de e-mail avulso: costuma demorar <b>10 a 12 horas</b>
-para responder. Use quando o formulário oficial estiver fora do ar, ou
-antes de instalar o favorito.</p>
-</div>
+{secao_dellavolpe}
 
 <h2>As {zap} do WhatsApp</h2>
 <p>As que não têm sistema online ficam na parte de baixo da tela, em

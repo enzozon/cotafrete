@@ -41,7 +41,8 @@ def limpar_antigas(raiz: Path = RAIZ_EVIDENCIAS,
 
 
 def montar_zip_de_prints(resultados: list[dict]) -> bytes:
-    """O print final de cada transportadora que respondeu, num .zip só.
+    """O print final de cada transportadora que respondeu, num .zip só —
+    e o PDF da proposta, para quem responde por e-mail.
 
     Usado tanto pela tela do vendedor quanto pelo painel adm — mesma regra
     nos dois: só o print já mostrado na tela (não as etapas intermediárias,
@@ -52,7 +53,12 @@ def montar_zip_de_prints(resultados: list[dict]) -> bytes:
         for r in resultados:
             caminho = r["evidencia"]
             if caminho and Path(caminho).exists():
-                zf.write(caminho, arcname=f'{r["transportadora"]}.png')
+                # A extensão do ARQUIVO, não .png fixo: a Della Volpe entra
+                # com o PDF da proposta, e "dellavolpe.png" com PDF dentro
+                # não abre em lugar nenhum.
+                extensao = Path(caminho).suffix.lower() or ".png"
+                zf.write(caminho,
+                         arcname=f'{r["transportadora"]}{extensao}')
     return buffer.getvalue()
 
 
