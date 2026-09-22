@@ -119,7 +119,14 @@ def _limpar_tela(page) -> str:
     cookies da Jadlog: o elemento nasce depois, então não adianta fechar uma
     vez só no começo; tem que fechar antes de cada campo."""
     aviso = ""
-    alerta = page.locator(".sweet-alert.visible")
+    # `:visible` do Playwright, não a classe `.visible` do site — mesma
+    # correção do adapter (ver `_limpar_tela` lá, que explica a conta). O
+    # SweetAlert engole cliques meio segundo antes de ganhar essa classe.
+    #
+    # Importa aqui tanto quanto lá: este script é o que se usa para
+    # investigar quando a Translovato falha. Com o mesmo ponto cego do
+    # adapter, ele reproduziria o problema em vez de mostrá-lo.
+    alerta = page.locator(".sweet-alert:visible")
     if alerta.count() and alerta.first.is_visible():
         aviso = alerta.first.inner_text().strip().replace("\n", " ")[:120]
         botao = alerta.first.locator("button.confirm")

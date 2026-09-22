@@ -32,8 +32,8 @@ from pathlib import Path
 from typing import Any
 
 from carriers.base import (
-    CampoSpec, ErroValidacao, Modo, ResultadoCotacao, print_seguro,
-    recusa_por_validacao,
+    CampoSpec, CredencialRecusada, ErroValidacao, Modo, ResultadoCotacao,
+    erro_do_adapter, print_seguro, recusa_por_validacao,
 )
 from carriers.translovato import mapping as m
 from core.models import CotacaoRequest, StatusCotacao, limpa_doc
@@ -156,7 +156,28 @@ class TranslovatoAdapter:
         Os dois ficam POR CIMA do formulário e engolem cliques. Nascem depois
         do carregamento, então não adianta fechar uma vez no começo."""
         aviso = ""
-        alerta = page.locator(".sweet-alert.visible")
+        # `:visible` do Playwright, e NÃO a classe `.visible` do site.
+        #
+        # O SweetAlert entra em duas etapas: `showSweetAlert` quando aparece e
+        # `visible` meio segundo depois, no fim da animação. Ele engole
+        # cliques desde a PRIMEIRA — então exigir a segunda deixa meio segundo
+        # em que o alerta está na tela e este método jura que não tem nada.
+        #
+        # Meio segundo parece pouco e não é: este método roda logo depois de
+        # `wait_for_timeout(ESPERA_AJAX_MS)`, ou seja, mira exatamente na hora
+        # em que a resposta do site chega. Numa VM disputada o alerta cai
+        # dentro dessa fresta com frequência — e aí o clique seguinte bate no
+        # overlay e o Playwright fica 45 segundos tentando.
+        #
+        # Foi o modo de falha DOMINANTE da Translovato: 18 das 21 cotações com
+        # erro entre 24/08 e 02/09/2026, todas com a mesma assinatura —
+        # `<div class="sweet-alert showSweetAlert"> intercepts pointer
+        # events`, sem o `visible` no meio. O `_limpar_tela` já era chamado
+        # antes do campo que falhava; ele só não enxergava o alerta.
+        #
+        # `:visible` pergunta ao navegador o que está NA TELA, que é a
+        # pergunta certa — e não depende de como o site nomeia suas classes.
+        alerta = page.locator(".sweet-alert:visible")
         try:
             if alerta.count() and alerta.first.is_visible():
                 aviso = alerta.first.inner_text().strip().replace("\n", " ")
@@ -192,9 +213,62 @@ class TranslovatoAdapter:
         # O botão é ajax-form: o POST é assíncrono. Esperar a RESPOSTA em vez
         # de dormir um tempo fixo evita seguir com a sessão ainda não criada.
         with page.expect_response(
-                lambda r: "/portal-do-cliente/login" in r.url, timeout=20_000):
+                lambda r: "/portal-do-cliente/login" in r.url,
+                timeout=20_000) as info:
             page.locator("#login-portal button.common-button").click()
+        self._conferir_login(info.value)
         page.wait_for_timeout(1500)
+
+    @staticmethod
+    def _conferir_login(resposta) -> None:
+        """Lê o que o portal respondeu ao login. Levanta se foi "não".
+
+        Esta resposta era ESPERADA e nunca lida. O adapter seguia como se
+        tivesse entrado, ia para o formulário, era devolvido para /home e
+        relatava "sessão não persistiu até o formulário" — frase que manda
+        procurar rede, cookie e timeout quando a Translovato tinha dito o
+        problema em português. Foi o que derrubou as cotações #200 a #203
+        (22/09/2026), quatro seguidas sem nenhum acerto:
+
+            {"status":false,"alterar_senha":true,"class":"warning",
+             "title":"Oops!","message":"Alterar senha"}
+
+        `CredencialRecusada` e não RuntimeError, e esta é a parte cara: o TIPO
+        decide se a cotação é repetida (ver `core.retentativa.vale_repetir`).
+        Erro genérico ganha três tentativas — três logins recusados por
+        cotação, doze nas quatro. É assim que uma conta é bloqueada, e aí não
+        é uma transportadora que falha, são todas as cotações dessa conta.
+
+        Resposta ilegível NÃO derruba o login: na dúvida o adapter segue e
+        deixa a checagem da URL decidir. Só o "não" explícito para tudo."""
+        try:
+            corpo = resposta.json()
+        except Exception:
+            return                      # formato mudou: dúvida, não recusa
+        if not isinstance(corpo, dict) or corpo.get("status") is not False:
+            return
+
+        # A senha venceu. O portal exige a troca ANTES de liberar qualquer
+        # coisa, e trocar senha é trabalho de gente: o robô não inventa
+        # credencial. A tela diz, em letras garrafais, "SUA SENHA EXPIROU!".
+        if corpo.get("alterar_senha"):
+            raise CredencialRecusada(
+                "A senha da Translovato EXPIROU e o portal está exigindo a "
+                "troca antes de deixar cotar. Nenhuma cotação vai passar até "
+                f"alguém entrar em {m.BASE} com o usuário da Ventura e "
+                "definir a nova senha (mínimo 8 caracteres, com maiúscula, "
+                "minúscula, número e caractere especial, e não pode ser uma "
+                "das 10 últimas). Depois é preciso atualizar "
+                "TRANSLOVATO_SENHA nos DOIS .env, o de desenvolvimento e o de "
+                "produção. Não vou tentar de novo para não travar a conta.")
+
+        # Qualquer outro "não" do portal. A frase vai junto porque quem for
+        # investigar precisa das palavras da Translovato, não da paráfrase.
+        raise CredencialRecusada(
+            f"A Translovato não aceitou o login: "
+            f"{corpo.get('message') or 'sem mensagem'}. Confira "
+            f"TRANSLOVATO_CNPJ, TRANSLOVATO_USUARIO e TRANSLOVATO_SENHA no "
+            f".env. Não vou tentar de novo para não travar a conta.")
 
     def _digitar(self, page, seletor: str, valor: str) -> str:
         """Digita tecla a tecla e devolve o que ficou no campo.
@@ -499,9 +573,15 @@ class TranslovatoAdapter:
                     motivo_recusa=str(sem),
                     evidencias=print_seguro(page, run / "sem_tabela.png"))
             except Exception as exc:
-                return ResultadoCotacao(
-                    self.slug, StatusCotacao.ERRO, enviado_em=enviado,
-                    erro=f"{type(exc).__name__}: {exc}",
+                # `erro_do_adapter` em vez de ERRO fixo: ele separa o que se
+                # repete do que não adianta repetir. `CredencialRecusada` vira
+                # INTERVENCAO_NECESSARIA e NÃO ganha as três tentativas — sem
+                # isso, uma senha vencida faz três logins recusados por
+                # cotação, e cada repetição empurra a conta da Ventura para o
+                # bloqueio. A tela também muda de tom: em vez de "não retornou
+                # preço", o vendedor lê "repetir a cotação não resolve".
+                return erro_do_adapter(
+                    self.slug, exc, enviado_em=enviado,
                     evidencias=print_seguro(page, run / "erro.png"))
             finally:
                 browser.close()

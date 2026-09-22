@@ -53,18 +53,30 @@ FORMULARIO = """<!doctype html><meta charset="utf-8"><title>Cotação</title>
 <script>
   const overlay = document.querySelector('.sweet-overlay');
   const alerta = document.querySelector('.sweet-alert');
+  // As classes do SweetAlert de VERDADE, na ordem em que o site as aplica.
+  // Medidas nos logs de erro de producao (18 cotacoes entre 24/08 e
+  // 02/09/2026): o Playwright registrou o elemento que engolia o clique ora
+  // como "sweet-alert showSweetAlert", ora como "sweet-alert showSweetAlert
+  // visible". Ou seja, `visible` chega DEPOIS — e a fixture que o adicionava
+  // junto estava testando a suposicao de quem escreveu o codigo, nao o site.
   const mostrar = () => {
     overlay.classList.remove('escondido');
-    alerta.classList.add('visible');
     alerta.classList.remove('escondido');
+    alerta.classList.add('showSweetAlert');
+    setTimeout(() => alerta.classList.add('visible'), 500);
   };
   // O site real dispara get-cnpj no blur de QUALQUER campo de CNPJ — o
   // adapter espera essa resposta especificamente depois do remetente
   // (page.expect_response). Os dois campos disparam sempre; só o campo sob
   // teste (__CAMPO__) mostra o alerta.
+  // __ATRASO__ ms entre a resposta e o alerta aparecer na tela. Zero e o
+  // laboratorio; o que producao vive e a VM de 4 vCPU rodando seis Chromium
+  // ao mesmo tempo, onde o navegador demora para executar o callback e
+  // animar o popup. E nesse intervalo que o adapter clicava no campo
+  // seguinte e levava o clique na cara do overlay.
   const disparar = (nome) => async () => {
     await fetch('/portal-do-cliente/get-cnpj', {method: 'POST', body: '{}'});
-    if (nome === '__CAMPO__' && __ALERTA__) mostrar();
+    if (nome === '__CAMPO__' && __ALERTA__) setTimeout(mostrar, __ATRASO__);
   };
   document.querySelector('[name="value[sender_cpnj]"]')
       .addEventListener('blur', disparar('value[sender_cpnj]'));
@@ -89,11 +101,17 @@ def navegador():
 
 
 def _preencher(navegador, *, aviso: str | None,
-               campo_evento: str = "value[sender_cpnj]"):
+               campo_evento: str = "value[sender_cpnj]",
+               atraso_ms: int = 0):
     """Roda `_preencher` contra o formulário de mentira. Devolve a exceção.
 
     `campo_evento` é o campo cujo `blur` dispara o alerta — o remetente por
-    padrão (o bug original, #56), ou o destinatário para reproduzir a #117."""
+    padrão (o bug original, #56), ou o destinatário para reproduzir a #117.
+
+    `atraso_ms` é quanto o alerta demora a aparecer DEPOIS da resposta. Zero
+    é o laboratório; produção é uma VM disputada, onde o navegador executa o
+    callback e anima o popup com atraso — e era nessa fresta que o adapter
+    clicava no campo seguinte."""
     page = navegador.new_context().new_page()
     # Curto de propósito: com o bug, o clique bloqueado tem que estourar
     # rápido em vez de segurar o teste pelos 45s reais.
@@ -102,6 +120,7 @@ def _preencher(navegador, *, aviso: str | None,
     corpo = (FORMULARIO
              .replace("__CAMPO__", campo_evento)
              .replace("__AVISO__", aviso or "")
+             .replace("__ATRASO__", str(atraso_ms))
              .replace("__ALERTA__", "true" if aviso else "false"))
     page.route("https://www.translovato.com.br/**", lambda route: route.fulfill(
         status=200,
@@ -156,6 +175,74 @@ def test_sem_alerta_o_preenchimento_segue_normal(navegador):
 
     assert not isinstance(erro, SemTabela), (
         f"recusou sem o site ter reclamado de nada: {erro!r}")
+
+
+# ------------------------------------------- o alerta que chega atrasado
+# O modo de falha DOMINANTE da Translovato em produção: 18 das 21 cotações
+# com erro, entre 24/08 e 02/09/2026, morreram assim —
+#
+#   TimeoutError: Locator.click: Timeout 45000ms exceeded.
+#     waiting for locator("input[name=\"value[receiver_zipcode]\"]")
+#     <div class="sweet-alert showSweetAlert"> subtree intercepts pointer events
+#
+# O `_limpar_tela` ERA chamado antes desse campo. Ele só não achava nada:
+# corria num instante em que o alerta ainda não tinha aparecido, e o clique
+# seguinte pegava o overlay em cheio. O vendedor recebia um rastro de
+# Playwright de 45 segundos no lugar da frase que a Translovato escreveu.
+#
+# Não é caso raro: o alerta do destinatário dispara sempre que o CNPJ de
+# quem recebe não é cliente da Translovato, que é a maioria das cargas.
+# O que varia é só se ele chega antes ou depois do clique — e numa VM
+# carregada, chega depois. Daí quatro erros seguidos sem nenhum acerto.
+# A CONTA que define a janela mortal, e que este arquivo existe para travar:
+#
+#   T+0      blur do campo de CNPJ, o site dispara get-cnpj
+#   T+400    `_digitar` termina (wait_for_timeout(400))
+#   T+2900   `_limpar_tela` olha a tela (ESPERA_AJAX_MS = 2500)
+#   T+2900   `_digitar` do campo seguinte CLICA
+#
+# O SweetAlert entra em duas etapas: `showSweetAlert` quando aparece e
+# `visible` meio segundo DEPOIS, no fim da animação. Ele já engole cliques
+# desde a primeira. Então, se o alerta aparece entre T+2400 e T+2900, na hora
+# em que o adapter olha ele está na tela mas ainda sem `visible` — e o adapter
+# exigia `visible` para enxergá-lo. Resultado: passa batido, o clique seguinte
+# bate no overlay, e o Playwright fica 45 segundos tentando.
+#
+# 2700 cai no meio dessa janela de propósito.
+ATRASO_NA_JANELA_MORTAL = 2_700
+
+
+def test_alerta_sem_a_classe_visible_ainda_assim_e_fechado(navegador):
+    """O caso de produção, em laboratório.
+
+    18 das 21 cotações com erro da Translovato morreram exatamente assim,
+    entre 24/08 e 02/09/2026:
+
+        TimeoutError: Locator.click: Timeout 45000ms exceeded.
+          waiting for locator("input[name=\"value[receiver_zipcode]\"]")
+          <div class="sweet-alert showSweetAlert"> intercepts pointer events
+
+    Repare a classe no log: `showSweetAlert`, SEM `visible`. O `_limpar_tela`
+    era chamado antes desse campo — ele só não enxergava o alerta."""
+    erro = _preencher(navegador, aviso="CNPJ não cadastrado.",
+                      campo_evento="value[receiver_cnpj_cpf]",
+                      atraso_ms=ATRASO_NA_JANELA_MORTAL)
+
+    assert "intercepts pointer events" not in str(erro), (
+        f"o alerta engoliu o clique em vez de ser fechado: {erro!r}")
+
+
+def test_recusa_do_remetente_na_janela_mortal_chega_ao_vendedor(navegador):
+    """Do lado do remetente o alerta É a recusa de negócio da Translovato.
+
+    Perdido na janela, ele não vira só um clique bloqueado: vira um vendedor
+    lendo um stack trace de 45 segundos no lugar de "CNPJ não cadastrado" —
+    e repetindo a cotação três vezes atrás de um preço que não vem."""
+    erro = _preencher(navegador, aviso="CNPJ não cadastrado.",
+                      atraso_ms=ATRASO_NA_JANELA_MORTAL)
+
+    assert isinstance(erro, SemTabela), (
+        f"a recusa da Translovato virou outra coisa: {erro!r}")
 
 
 def test_a_frase_do_site_esta_reconhecida_no_mapping():
