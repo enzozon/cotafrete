@@ -55,18 +55,26 @@ def _dec(valor) -> Decimal | None:
         return None
 
 
-def campos_por_name(c: dict) -> dict[str, str]:
+def campos_por_name(c: dict, email_resposta: str | None = None
+                    ) -> dict[str, str]:
     """A cotação salva (linha de `cotacao`), traduzida para os atributos
     name= REAIS do formulário da Della Volpe — os mesmos que
     carriers.dellavolpe.adapter.SELETOR_POR_ROTULO usa para o Playwright
     localizar campo. Função PURA: nenhum browser, nenhuma rede.
 
     Campo vazio ou ausente simplesmente não entra no resultado — é a mesma
-    regra do bookmarklet: sem valor, o campo do site fica como estava."""
+    regra do bookmarklet: sem valor, o campo do site fica como estava.
+
+    Nome e e-mail seguem a MESMA regra do envio automático (mapping.carimbar
+    e `email_resposta`): a proposta que volta de um envio feito à mão
+    precisa cair no ingestor do mesmo jeito. Sem isso, o caminho assistido
+    — justamente o que existe para quando o automático não passa — seria o
+    único cujo preço nunca aparece na tela."""
     por_rotulo: dict[str, str] = {
         "Qual o serviço que você procura?": SERVICO_FIXO,
-        "Nome completo": c.get("nome_solicitante") or "",
-        "E-mail": c.get("email") or "",
+        "Nome completo": (m.carimbar(c["nome_solicitante"], c.get("id"))
+                          if c.get("nome_solicitante") else ""),
+        "E-mail": email_resposta or c.get("email") or "",
         "WhatsApp": c.get("whatsapp_solicitante") or "",
         "CNPJ - Remetente": c.get("cnpj_remetente") or "",
         "Selecione o estado de origem": c.get("uf_origem") or "",
@@ -96,11 +104,11 @@ def campos_por_name(c: dict) -> dict[str, str]:
             if valor and rotulo in SELETOR_POR_ROTULO}
 
 
-def url_formulario(c: dict) -> str:
+def url_formulario(c: dict, email_resposta: str | None = None) -> str:
     """O link que abre o site real da Della Volpe com os dados no parâmetro
     `cf`. Sem preenchimento nenhum por si só — quem preenche é o bookmarklet,
     rodando na aba já aberta."""
-    dados = campos_por_name(c)
+    dados = campos_por_name(c, email_resposta)
     b64 = base64.b64encode(
         json.dumps(dados, ensure_ascii=False).encode("utf-8")).decode("ascii")
     return f"{URL_BASE}?{urlencode({'cf': b64})}#cotacao"
@@ -208,6 +216,13 @@ SCRIPT_JS = """(function () {
     esperarCidade('cidade_origem', campos.cidade_origem, 15);
     selecionar('estado_destino', campos.estado_destino);
     esperarCidade('cidade_destino', campos.cidade_destino, 15);
+
+    // O mesmo tropeço que o robô teve em 22/09/2026: escolher o serviço
+    // revela os campos condicionais do CF7, e preencher o RESTO faz o site
+    // re-renderizar o grupo e zerar o próprio serviço. Uma segunda escolha,
+    // só se ele voltou vazio — igual ao conserto do adapter.
+    var servico = document.querySelector('select[name="servico"]');
+    if (servico && !servico.value) selecionar('servico', campos.servico);
 
     alert('Cotafrete preencheu os campos.\\n\\nConfira, resolva o captcha '
         + 'e clique em "Pedir orçamento".');

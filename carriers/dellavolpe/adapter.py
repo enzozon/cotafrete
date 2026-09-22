@@ -27,6 +27,11 @@ from core.models import CotacaoRequest, StatusCotacao
 
 URL_PRODUCAO = "https://dellavolpe.com.br/#cotacao"
 
+# A frase do resultado quando a caixinha aparece. Constante porque a tela da
+# cotação a reconhece para trocar o cartão vermelho pelo formulário assistido.
+CAPTCHA_NA_TELA = ("O site da Della Volpe pediu a confirmação de humano "
+                   "(captcha). Nada foi enviado.")
+
 # Janela HEADED, mas longe do monitor.
 #
 # Headed é obrigatório: medido em 13/08/2026, cinco envios com Chromium
@@ -88,6 +93,12 @@ SELETORES_DESAFIO_CAPTCHA = (
     'iframe[src*="recaptcha" i]:not([src*="size=invisible" i])',   # v2: checkbox
     'iframe[src*="hcaptcha" i]',
     'iframe[src*="turnstile" i]',
+    # O iframe do Turnstile vem de challenges.cloudflare.com e nem sempre
+    # traz "turnstile" no caminho. E o placeholder do plugin do CF7 existe
+    # ANTES de virar iframe — o recon de 22/09/2026 mediu a caixinha
+    # justamente contando este elemento, porque contar iframe não bastava.
+    'iframe[src*="challenges.cloudflare.com" i]',
+    '.wpcf7-turnstile',
     'div[class*="cf-challenge" i]',
 )
 
@@ -322,11 +333,17 @@ class DellavolpeAdapter:
         return m.normalizar_resposta(raw)
 
     # ------------------------------------------------------------------ envio
-    def cotar(self, req: CotacaoRequest, *, confirmar_envio: bool = False) -> ResultadoCotacao:
+    def cotar(self, req: CotacaoRequest, *, confirmar_envio: bool = False,
+              cotacao_id: int | None = None,
+              email_resposta: str | None = None) -> ResultadoCotacao:
         """confirmar_envio=False faz DRY-RUN: preenche tudo e para antes do submit.
 
         Contra o site de produção o default é sempre dry-run. Cada envio real cai
-        na fila comercial da transportadora — não é lugar de teste."""
+        na fila comercial da transportadora — não é lugar de teste.
+
+        `cotacao_id` vira o carimbo "(cot. N)" no nome, e `email_resposta` a
+        caixa do suporte: juntos são o que permite ao ingestor devolver a
+        proposta à cotação certa (ver mapping.carimbar)."""
         from playwright.sync_api import sync_playwright
 
         erros = m.bloqueantes(self.validar(req))
@@ -345,7 +362,8 @@ class DellavolpeAdapter:
         else:
             headless_efetivo = self.headless
 
-        payload = self.preparar_payload(req)
+        payload = m.preparar_payload(req, cotacao_id=cotacao_id,
+                                     email_resposta=email_resposta)
         campos = m.campos_do_formulario(payload)
         run = self.workdir / datetime.now().strftime("%Y%m%d-%H%M%S-%f")
         run.mkdir(parents=True, exist_ok=True)
@@ -382,12 +400,7 @@ class DellavolpeAdapter:
                 self._abrir_accordion(page)
 
                 if self._tem_captcha(page):
-                    page.screenshot(path=str(run / "captcha.png"), full_page=True)
-                    return ResultadoCotacao(
-                        self.slug, StatusCotacao.INTERVENCAO_NECESSARIA,
-                        erro="Proteção anti-bot detectada. Requer ação humana.",
-                        evidencias=[str(run / "captcha.png")],
-                    )
+                    return self._parar_no_captcha(page, run)
 
                 # anexos saem ANTES: input[type=file] não aceita fill()
                 texto, arquivos = m.separar_anexos(campos)
@@ -467,6 +480,14 @@ class DellavolpeAdapter:
                              + ". Nada foi enviado.",
                         evidencias=evid_preenchido)
 
+                # Segunda olhada, logo antes do clique. O Turnstile do CF7
+                # pode renderizar só DEPOIS que o formulário é preenchido — e
+                # clicar com a caixinha na tela é o envio que volta como spam
+                # sem gerar e-mail (cotações #78 a #84, 31/08/2026). Parar
+                # aqui deixa o vendedor enviar pelo formulário preenchido.
+                if self._tem_captcha(page):
+                    return self._parar_no_captcha(page, run)
+
                 self._enviar(page)
 
                 res = self.normalizar_resposta(page.content())
@@ -505,6 +526,19 @@ class DellavolpeAdapter:
                     page.wait_for_timeout(900)
             except Exception:
                 continue
+
+    def _parar_no_captcha(self, page, run: Path) -> ResultadoCotacao:
+        """A caixinha apareceu: NADA foi enviado, e a frase diz isso.
+
+        INTERVENCAO_NECESSARIA, e não ERRO, porque o que resolve é uma pessoa
+        — e a tela da cotação troca esta linha pelo formulário preenchido
+        para o vendedor enviar (ver web/app.py, ramo da Della Volpe). ERRO
+        cairia na retentativa, e repetir não faz a caixinha sumir."""
+        return ResultadoCotacao(
+            self.slug, StatusCotacao.INTERVENCAO_NECESSARIA,
+            erro=CAPTCHA_NA_TELA,
+            evidencias=print_seguro(page, run / "captcha.png"),
+        )
 
     def _tem_captcha(self, page) -> bool:
         """Só um DESAFIO VISÍVEL conta como bloqueio.

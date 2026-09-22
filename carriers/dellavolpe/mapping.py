@@ -171,14 +171,43 @@ def bloqueantes(erros: list[ErroValidacao]) -> list[ErroValidacao]:
     return [e for e in erros if e.severidade is Severidade.ERRO]
 
 
+# ------------------------------------------------------------------- carimbo
+RE_CARIMBO_NO_NOME = re.compile(r"\(\s*cot\.?\s*\d+\s*\)", re.IGNORECASE)
+
+
+def carimbar(nome: str, cotacao_id: int | None) -> str:
+    """"Enzo Zon" -> "Enzo Zon (cot. 208)".
+
+    É por este carimbo que a proposta volta para a cotação certa. A Della
+    Volpe copia o "Nome completo" do formulário para o "A/C:" do PDF, em
+    maiúsculas — "A/C: ENZO ZON (COT. 208)" — e o ingestor lê o número de lá
+    (carriers/dellavolpe/proposta.py, RE_CARIMBO). É o único campo que eles
+    devolvem intacto: o e-mail passa a ser o do suporte, igual para todas.
+
+    Sem id (envio de teste, dry-run antigo) o nome vai como está. Já
+    carimbado não ganha um segundo carimbo: repetir uma cotação reaproveita o
+    nome, e "(cot. 12) (cot. 15)" faria o ingestor ler o número velho."""
+    nome = (nome or "").strip()
+    if cotacao_id is None:
+        return nome
+    nome = RE_CARIMBO_NO_NOME.sub("", nome).strip()
+    return f"{nome} (cot. {cotacao_id})"
+
+
 # ------------------------------------------------------------------- payload
-def preparar_payload(req: CotacaoRequest) -> dict[str, Any]:
-    """FUNÇÃO PURA. É o coração do 'está pegando as informações certas'."""
+def preparar_payload(req: CotacaoRequest, *, cotacao_id: int | None = None,
+                     email_resposta: str | None = None) -> dict[str, Any]:
+    """FUNÇÃO PURA. É o coração do 'está pegando as informações certas'.
+
+    `email_resposta` é a caixa do suporte, lida pelo ingestor (ver
+    carriers/dellavolpe/caixa.py). None mantém o e-mail do vendedor — que é
+    o certo quando o ingestor não está configurado: aí só uma pessoa lê a
+    proposta, e ela precisa chegar a essa pessoa."""
     mv = req.maior_volume
 
     payload: dict[str, Any] = {
-        "Nome completo": req.solicitante.nome,
-        "E-mail": req.solicitante.email,
+        "Nome completo": carimbar(req.solicitante.nome, cotacao_id),
+        "E-mail": email_resposta or req.solicitante.email,
         "WhatsApp": req.solicitante.whatsapp_formatado,
         "Qual o serviço que você procura?": ROTULO_SERVICO[req.servico],
 
