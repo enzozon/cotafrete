@@ -145,7 +145,9 @@ CREATE TABLE IF NOT EXISTS email_processado (
     cotacao_id     INTEGER,
     desfecho       TEXT NOT NULL,
     detalhe        TEXT,
-    processado_em  TEXT NOT NULL
+    processado_em  TEXT NOT NULL,
+    assunto        TEXT,
+    recebido_em    TEXT
 );
 
 CREATE TABLE IF NOT EXISTS aceite (
@@ -279,6 +281,15 @@ class Banco:
         # dá a esses e-mails uma segunda leitura, pela regra nova.
         con.execute(
             "DELETE FROM email_processado WHERE desfecho = 'sem_carimbo'")
+
+        # Assunto e hora do e-mail: é por eles que se acha a mensagem na
+        # caixa do suporte a partir da tela /adm/dellavolpe (24/09/2026).
+        existentes = {r["name"] for r in
+                      con.execute("PRAGMA table_info(email_processado)")}
+        for coluna in ("assunto", "recebido_em"):
+            if coluna not in existentes:
+                con.execute(
+                    f"ALTER TABLE email_processado ADD COLUMN {coluna} TEXT")
 
     def _conectar(self) -> sqlite3.Connection:
         """Sempre use com `closing(...)`: o `with` do sqlite3 faz commit e
@@ -415,20 +426,26 @@ class Banco:
 
     def registrar_email(self, message_id: str, transportadora: str, *,
                         desfecho: str, cotacao_id: int | None = None,
-                        detalhe: str | None = None) -> None:
+                        detalhe: str | None = None,
+                        assunto: str | None = None,
+                        recebido_em: str | None = None) -> None:
         """Sobrescreve: uma segunda passada que DEU CERTO (a cotação foi
         criada depois do e-mail, por exemplo) troca o desfecho velho."""
         with closing(self._conectar()) as con, con:
             con.execute(
                 "INSERT INTO email_processado (message_id, transportadora,"
-                " cotacao_id, desfecho, detalhe, processado_em)"
-                " VALUES (?, ?, ?, ?, ?, ?)"
+                " cotacao_id, desfecho, detalhe, processado_em, assunto,"
+                " recebido_em)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
                 " ON CONFLICT (message_id) DO UPDATE SET"
                 " cotacao_id = excluded.cotacao_id,"
                 " desfecho = excluded.desfecho, detalhe = excluded.detalhe,"
-                " processado_em = excluded.processado_em",
+                " processado_em = excluded.processado_em,"
+                " assunto = excluded.assunto,"
+                " recebido_em = excluded.recebido_em",
                 (message_id, transportadora, cotacao_id, desfecho, detalhe,
-                 datetime.now().isoformat(timespec="seconds")))
+                 datetime.now().isoformat(timespec="seconds"), assunto,
+                 recebido_em))
 
     def emails_processados(self, limite: int = 50) -> list[dict]:
         with closing(self._conectar()) as con, con:

@@ -94,6 +94,8 @@ async def _vida(_app):
     global INGESTOR
     if INGESTOR is None:
         INGESTOR = dv_ingestor.iniciar(banco)
+        # Para a tela /adm/dellavolpe mostrar se a caixa está abrindo.
+        adm.ingestor = INGESTOR
         if INGESTOR is not None:
             print(f"[cotafrete] Della Volpe: lendo as propostas em "
                   f"{INGESTOR.cx.usuario} a cada "

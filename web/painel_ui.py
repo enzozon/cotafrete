@@ -850,6 +850,7 @@ ICONES = {
     "sair": ('<path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/>'
              '<path d="M16 17l5-5-5-5"/><path d="M21 12H9"/>'),
     "cotacoes": '<path d="M4 4h16v16H4z"/><path d="M4 9h16M9 9v11"/>',
+    "email": '<path d="M3 5h18v14H3z"/><path d="M3 6l9 7 9-7"/>',
     "preco": ('<circle cx="12" cy="12" r="9"/><path d="M12 6.5v11"/>'
               '<path d="M14.8 9.4a2.4 2.4 0 00-2.3-1.7h-1a2.3 2.3 0 000 4.6h1'
               'a2.3 2.3 0 010 4.6h-1a2.4 2.4 0 01-2.3-1.7"/>'),
@@ -899,6 +900,7 @@ def _lateral(base: str = "") -> str:
   {itens}
   <div class="secao">Administrar</div>
   <a href="/adm/contas">{_icone(ICONES["cotacoes"])}<span>Contas</span></a>
+  <a href="/adm/dellavolpe">{_icone(ICONES["email"])}<span>E-mails Della Volpe</span></a>
   <a href="/adm/sair">{_icone(ICONES["sair"])}<span>Sair do painel</span></a>
   <div class="rodape">Cotafrete · Ventura</div>
 </div></nav>"""
