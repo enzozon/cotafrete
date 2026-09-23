@@ -298,12 +298,13 @@ def href_bookmarklet() -> str:
 # Decidido em 23/09/2026: todos os vendedores usam Chrome e podem instalar
 # extensão. Tampermonkey primeiro (no ar em um dia, sem loja); uma extensão
 # própria da empresa fica para quando o uso provar que vale.
-VERSAO_USERSCRIPT = "1.1.0"
+VERSAO_USERSCRIPT = "1.2.0"
 
 # Onde o script roda. A Della Volpe, com e sem "www". E as páginas
-# /dellavolpe/N do próprio Cotafrete — lá ele não preenche nada, só deixa uma
-# marca para a página saber que o script está instalado e esconder o passo a
-# passo da instalação. O Cotafrete roda em mais de um endereço (localhost,
+# /dellavolpe/N e /cotacao/N do próprio Cotafrete — lá ele não preenche nada,
+# só deixa uma marca com a versão: a tela de instruções esconde o passo a
+# passo da instalação, e o botão da tela da cotação vai direto ao site
+# preenchido quando o script está em dia (desde a 1.2.0). O Cotafrete roda em mais de um endereço (localhost,
 # IP da rede, cotafrete.ventura.inf.br), daí o host livre.
 _CABECALHO = """// ==UserScript==
 // @name         Cotafrete — Della Volpe
@@ -313,6 +314,7 @@ _CABECALHO = """// ==UserScript==
 // @match        https://dellavolpe.com.br/*
 // @match        https://www.dellavolpe.com.br/*
 // @match        *://*/dellavolpe/*
+// @match        *://*/cotacao/*
 // @run-at       document-idle
 // @grant        none
 // @updateURL    {url}

@@ -1523,6 +1523,37 @@ function copiar(id) {{
 </script>""", usuario))
 
 
+def _url_formulario_dv(c: dict) -> str:
+    """O link do site da Della Volpe com os dados desta cotação.
+
+    O e-mail segue a escolha do vendedor: se ele pediu a proposta no
+    PRÓPRIO e-mail, o formulário vai com o dele; senão, com a caixa do
+    suporte (quando configurada), para a proposta cair no ingestor."""
+    dv_r = next((r for r in c["resultados"]
+                 if r["transportadora"] == "dellavolpe"), None)
+    escolheu_email = dv_r is not None and dv_r.get("resposta_em") == "email"
+    return dv_bookmarklet.url_formulario(
+        c, None if escolheu_email else dv_caixa.email_de_resposta())
+
+
+@app.get("/dellavolpe/{cotacao_id}/abrir")
+def abrir_formulario_dellavolpe(cotacao_id: int,
+                                usuario: str | None = Depends(vendedor)):
+    """O atalho do cartão "Semiautomática" quando o script está em dia: vai
+    direto para o site da Della Volpe já preenchido, sem a tela de instruções.
+
+    Passa por aqui, e não direto para o site, para REGISTRAR a abertura —
+    é o relógio que o ingestor usa para casar a proposta que chegar com esta
+    cotação (banco.candidatas_dellavolpe, a porta do formulário assistido)."""
+    if not usuario:
+        return RedirectResponse("/login", status_code=303)
+    c = banco.buscar_cotacao(cotacao_id, usuario)
+    if c is None:
+        return HTMLResponse("Não encontrado", status_code=404)
+    banco.marcar_whatsapp_aberto(cotacao_id, "dellavolpe", usuario)
+    return RedirectResponse(_url_formulario_dv(c), status_code=303)
+
+
 @app.get("/dellavolpe/{cotacao_id}", response_class=HTMLResponse)
 def formulario_dellavolpe(cotacao_id: int,
                           usuario: str | None = Depends(vendedor)):
@@ -1552,11 +1583,7 @@ def formulario_dellavolpe(cotacao_id: int,
     banco.marcar_whatsapp_aberto(cotacao_id, "dellavolpe", usuario)
     # A mesma caixa de resposta do envio automático: a proposta de um envio
     # feito à mão também precisa cair no ingestor.
-    dv_r = next((r for r in c["resultados"]
-                 if r["transportadora"] == "dellavolpe"), None)
-    escolheu_email = dv_r is not None and dv_r.get("resposta_em") == "email"
-    url = dv_bookmarklet.url_formulario(
-        c, None if escolheu_email else dv_caixa.email_de_resposta())
+    url = _url_formulario_dv(c)
     href_favorito = dv_bookmarklet.href_bookmarklet()
 
     # Duas versões da mesma tela, e quem escolhe é o NAVEGADOR: o script do
@@ -2192,6 +2219,11 @@ def ver_cotacao(cotacao_id: int,
             f'horas do e-mail avulso.{ressalva}</p>'
             f'<a class="zap zap-dv{" aberta" if dv.slug in abertas else ""}"'
             f' id="zap-{e(dv.slug)}" href="/dellavolpe/{cotacao_id}"'
+            # O destino final quem decide é o script do Tampermonkey (ver o
+            # <script> no fim da página): em dia, vai direto ao site
+            # preenchido; velho ou ausente, fica na tela de instruções.
+            f' data-direto="/dellavolpe/{cotacao_id}/abrir"'
+            f' data-versao="{e(dv_bookmarklet.VERSAO_USERSCRIPT)}"'
             f' target="_blank" rel="noopener">'
             f'<img class="marca" src="/logos/{e(dv.logo)}" alt="" loading="lazy">'
             f'<b>{e(dv.nome)}</b>'
@@ -2265,6 +2297,34 @@ def ver_cotacao(cotacao_id: int,
 <p class="sub" style="margin-top:24px"><a href="/">← nova cotação</a>
 &nbsp;·&nbsp; <a href="/historico">histórico</a></p>
 <script>
+// O botao da Della Volpe e o script do Tampermonkey. O script marca o <html>
+// com a PROPRIA versao (tambem nesta tela, desde a 1.2.0):
+//   - em dia: o botao vai direto ao site dela ja preenchido;
+//   - velho: vai para /dellavolpe/N, que explica como atualizar;
+//   - ausente (ou a 1.1.0, que nao roda aqui): idem, que ensina a instalar.
+// O padrao do HTML ja e o caminho seguro; isto so encurta quando da.
+(function () {{
+  var dv = document.getElementById('zap-dellavolpe');
+  if (!dv || !dv.dataset.direto) return;
+  var voltas = 15;
+  (function olhar() {{
+    var instalada = document.documentElement.getAttribute('data-cotafrete-dv');
+    if (!instalada) {{
+      if (voltas-- > 0) setTimeout(olhar, 200);
+      return;
+    }}
+    var rotulo = dv.querySelector('.ir');
+    if (instalada === dv.dataset.versao) {{
+      dv.href = dv.dataset.direto;
+      dv.dataset.modo = 'direto';
+      rotulo.textContent = 'Abrir formulário já preenchido';
+    }} else {{
+      dv.dataset.modo = 'atualizar';
+      rotulo.textContent = 'Atualizar o script e preencher';
+    }}
+  }})();
+}})();
+
 // O link abre em outra aba; ESTA pagina fica parada. Sem marcar na hora, o
 // vendedor volta e ve a lista igualzinha, sem saber onde parou. O servidor ja
 // registrou de qualquer jeito -- isto aqui e so o olho acompanhando o dedo.

@@ -419,3 +419,134 @@ def test_o_botao_copia_o_endereco(navegador, app_web):
     assert pg.evaluate("window.__copiado") == (
         "chrome://extensions/?id=dhdgffkkebhmkfjojejmpbldmpobfkfo")
     assert pg.locator("#copiou").is_visible()
+
+
+# ------------------------------- o botão da tela da cotação vai direto
+def test_o_script_tambem_roda_na_tela_da_cotacao():
+    """Desde a 1.2.0: é lá que o botão "Preencher formulário" decide se vai
+    direto ao site ou passa pelas instruções."""
+    assert "@match        *://*/cotacao/*" in SCRIPT
+
+
+def _cotacao_com_captcha(app_web, resposta_em="tela"):
+    from carriers.dellavolpe.adapter import CAPTCHA_NA_TELA
+
+    # Só a Della Volpe: com outras "cotando", a tela recarrega de 3 em 3 s e
+    # levaria junto o que o teste está olhando.
+    cid = app_web.banco.salvar_cotacao(
+        "enzo", {**COTACAO, "transportadoras": "dellavolpe"})
+    app_web.banco.reservar_envio(cid, "dellavolpe", resposta_em=resposta_em)
+    app_web.banco.salvar_resultado(cid, "dellavolpe",
+                                   status="intervencao_necessaria",
+                                   erro=CAPTCHA_NA_TELA)
+    return cid
+
+
+@pytest.fixture
+def dv_automatica(app_web, monkeypatch):
+    monkeypatch.setattr(app_web, "AUTOMATICAS",
+                        (*app_web.AUTOMATICAS, "dellavolpe"))
+    return app_web
+
+
+def test_o_atalho_vai_direto_ao_site_preenchido(dv_automatica):
+    app_web = dv_automatica
+    c = entrar(TestClient(app_web.app), app_web)
+    cid = _cotacao_com_captcha(app_web)
+
+    resposta = c.get(f"/dellavolpe/{cid}/abrir", follow_redirects=False)
+
+    assert resposta.status_code == 303
+    assert resposta.headers["location"].startswith(
+        "https://dellavolpe.com.br/?cf=")
+
+
+def test_o_atalho_registra_a_abertura(dv_automatica):
+    """É o relógio que o ingestor usa para casar a proposta do formulário
+    assistido — pular o Cotafrete e ir direto ao site o perderia."""
+    app_web = dv_automatica
+    c = entrar(TestClient(app_web.app), app_web)
+    cid = _cotacao_com_captcha(app_web)
+
+    c.get(f"/dellavolpe/{cid}/abrir", follow_redirects=False)
+
+    assert "dellavolpe" in app_web.banco.whatsapp_abertos(cid)
+
+
+def test_o_atalho_respeita_a_escolha_do_email(dv_automatica, monkeypatch):
+    import base64
+    import json
+    from urllib.parse import parse_qs, urlparse
+
+    for k, v in {"DV_IMAP_HOST": "x", "DV_IMAP_USUARIO": "suporte@v.com.br",
+                 "DV_IMAP_SENHA": "x"}.items():
+        monkeypatch.setenv(k, v)
+    app_web = dv_automatica
+    c = entrar(TestClient(app_web.app), app_web)
+    cid = _cotacao_com_captcha(app_web, resposta_em="email")
+
+    destino = c.get(f"/dellavolpe/{cid}/abrir",
+                    follow_redirects=False).headers["location"]
+    dados = json.loads(base64.b64decode(
+        parse_qs(urlparse(destino).query)["cf"][0]))
+
+    assert dados["email"] == COTACAO["email"]
+
+
+def test_o_atalho_exige_login_e_dono(dv_automatica):
+    app_web = dv_automatica
+    cid = _cotacao_com_captcha(app_web)
+
+    sem_login = TestClient(app_web.app).get(f"/dellavolpe/{cid}/abrir",
+                                            follow_redirects=False)
+    outro = entrar(TestClient(app_web.app), app_web, "outra_pessoa").get(
+        f"/dellavolpe/{cid}/abrir", follow_redirects=False)
+
+    assert sem_login.status_code == 303
+    assert sem_login.headers["location"] == "/login"
+    assert outro.status_code == 404
+
+
+def _botao_depois_do_script(navegador, app_web, script: str | None):
+    c = entrar(TestClient(app_web.app), app_web)
+    cid = _cotacao_com_captcha(app_web)
+    pg = navegador.new_page()
+    pg.route("**/*", lambda rota: rota.fulfill(status=204))
+    pg.set_content(c.get(f"/cotacao/{cid}").text)
+    if script:
+        pg.evaluate(script)
+    pg.wait_for_timeout(3_500)
+    botao = pg.locator("#zap-dellavolpe")
+    return cid, botao.get_attribute("href"), botao.locator(".ir").inner_text()
+
+
+def test_script_em_dia_o_botao_vai_direto(navegador, dv_automatica):
+    cid, href, rotulo = _botao_depois_do_script(navegador, dv_automatica,
+                                                SCRIPT)
+
+    assert href == f"/dellavolpe/{cid}/abrir"
+    assert rotulo == "Abrir formulário já preenchido"
+
+
+def test_script_velho_o_botao_vai_para_as_instrucoes(navegador,
+                                                     dv_automatica):
+    """Se amanhã o script precisar mudar, quem estiver com a versão velha
+    cai na tela que explica como atualizar — nunca num formulário que o
+    script velho não sabe mais preencher."""
+    velho = SCRIPT.replace(f"'data-cotafrete-dv', '{dv.VERSAO_USERSCRIPT}'",
+                           "'data-cotafrete-dv', '1.1.0'")
+    assert velho != SCRIPT
+
+    cid, href, rotulo = _botao_depois_do_script(navegador, dv_automatica,
+                                                velho)
+
+    assert href == f"/dellavolpe/{cid}"
+    assert rotulo == "Atualizar o script e preencher"
+
+
+def test_sem_script_o_botao_vai_para_a_instalacao(navegador, dv_automatica):
+    cid, href, rotulo = _botao_depois_do_script(navegador, dv_automatica,
+                                                None)
+
+    assert href == f"/dellavolpe/{cid}"
+    assert rotulo == "Preencher formulário (rápido)"
