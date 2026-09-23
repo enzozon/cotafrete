@@ -81,135 +81,115 @@ Por cotação: validade (dias).
   copiar do item anterior; prévia em tabela com alertas na linha; contagem
   regressiva até a data limite.
 
-## Recon (23/09/2026) — `recon/recon_me.py`, nas duas contas, só leitura
-Nada foi salvo nem enviado. O script só clica no "Entrar" do login; depois
-disso a trava de rede aborta todo POST/PUT/PATCH/DELETE para `*.me.com.br` e
-`*.mercadoe.com` (única exceção: a busca da listagem, que é leitura) e o
-`add_init_script` anula `form.submit`, `__doPostBack` e `window.open`.
-Abrir a página de resposta gerou **0** requisições de escrita.
-Evidência (fora do Git, tem token e dado do comprador): `recon_out/me/<conta>/`.
-
-    python recon/recon_me.py login --conta ventura      # guarda a sessão
-    python recon/recon_me.py pendencias --conta ventura
-    python recon/recon_me.py cotacao 23039029 --conta ventura
-
-### Salvar × Confirmar: provado no código da página
-| Botão | JS | Tooltip do ME | O que faz |
-|---|---|---|---|
-| **Salvar** | `Envia(9)` | "Salvar informações para enviar mais tarde" | POST do form `RespCota` com `Acao=9` |
-| **Confirmar** | `Envia(1)` | "Finalizar a resposta da cotação e **enviar ao comprador**" | **mesmo** form, **mesma** URL, `Acao=1` |
-| Recusar (modal) | `Envia(2)` | "Recusar todos os itens da cotação" | POST do form `RespRecusa` para `RespCotaGrava.asp` |
-| Páginas 1/2, › | `Envia(11)`, `Envia(12)`, `Envia(4)` | — | POST do `RespCota` com `Acao` 11/12/4 (+ `GravaRespTemp=S`) |
-| Desconto | `Desconto()` | — | POST com `Acao=5` |
-
-**Existe "salvar sem enviar"**, mas Salvar e Confirmar só diferem no campo
-oculto `Acao` do mesmo POST (`RespostaCotaItem.asp?Cotacao=N&FID=`). Por isso
-a trava do robô não pode olhar só a URL: ela precisa **ler o corpo do POST e
-só deixar passar `Acao=9`** (e a paginação, se usada). `Acao=1`, `Acao=2`,
-`Acao=5`, `RespCotaGrava.asp` e qualquer outro valor → abortar.
-Detalhes do `Envia`:
-- Salvar exige **pelo menos um item marcado** (`chkItem_N`), senão `alert`.
-- Data de entrega do item tem que ser **depois** da data limite da cotação.
-- Validade da proposta ≥ hoje.
-
-### Página de resposta: `RespostaCotaItem.asp?Cotacao=N&SuperCleanPage=`
-Um documento só, sem iframe útil (os frames são gif/about:blank). Formulário
-ASP clássico `RespCota`. `FornShowCotacao.asp?Cot=N` (o link da listagem)
-redireciona para ela enquanto a cotação está aberta.
-
-**Cabeçalho** (`name` → decisão):
-`IcoTerms` (select, `FOB`) · `CondicaoPagamento` (`F060` = 60DDL) ·
-`NomeContato` · `NumFoneCota` · `ValidadePropostaAux` (dd/mm/aaaa, datepicker;
-o JS copia para `ValidadeProposta`) · `MoedaCot` (`BRL` = Real - Brasil) ·
-`InscricaoEstadual` · `atrib_CidadeEstado_1_1_0_0` (textarea "* Frete") ·
-`ObsForn` (Obs). Ocultos úteis: `DataLimite` (`23/09/2026 21:00`), `MaxItem`
-(itens **desta página**), `DataAtual`, `CotacaoID`, `FornecedorID`, `ObsComp`
-(texto do comprador).
-
-**Item N** (N = 1..MaxItem na página):
-| Campo | `name` | Observação |
-|---|---|---|
-| marcar item | `chkItem_N` | obrigatório p/ o Salvar |
-| Preço unitário | `PrecoN` | onblur recalcula; máx. 12 |
-| Unidade | `UnidadeRespN` | 369 opções; "UNIDADE" = `UN`, "Unidades" = `UND` |
-| Tipo imposto | `TipoImpostoN` | `0` vazio, `1` IPI, `2` ISS |
-| IPI % / incluso | `IPIN` / `IPIInclusoN` | `I` Isento, `S` sim, `N` não |
-| ICMS % / incluso | `ICMSN` / `ICMSInclusoN` | `I` Isento, `S` sim |
-| Cód. NCM | `NCMN` | máx. 16 |
-| Prazo (dias) | `PrazoN` | inteiro |
-| Data p/ entrega | `DataEntregaItemAuxN` | dd/mm/aaaa, o ME **não** preenche sozinho |
-| Fabricante/Marca | `FabricanteN` (id `fabricanteN`) | **máx. 20** |
-| Obs | `ObservacaoN` | **máx. 100** |
-| Origem | `OrigMatN` | `992`=0, `993`=1, `994`=2 … `1000`=8 |
-| ST / alíquota / valor | `SubstituicaoTributariaN` (`N`=NÃO) / `AliquotaSubstituicaoTributariaN` / `ValorSubstituicaoTributariaN` | |
-| PIS / incluso | `PISN` / `PISInclusoN` | `I` isento, `S` sim |
-| COFINS / incluso | `COFINSN` / `COFINSInclusoN` | `I` isento, `S` sim |
-| Base ICMS % / c/ s/ IPI | `BaseCalculoN` (já vem 100,00) / `BaseCalculoImpostoN` (`S` = sem IPI) | |
-| recusar item | `btnNaoResponder_N` | **nunca tocar** |
-
-Texto do item (descrição, "Quantidade: 2,00  Unidade: UND", Observação do
-comprador, "Campos Adicionais") está no próprio HTML; anexos aparecem como
-contagens `hidden*QtdeAnexos` e links `exibirPopupAnexos(...)`.
-
-- **Paginação:** 10 itens por página. A 23039029 tem 18 itens (2 páginas; total lido do JS de "recusar todos"). A
-  página 2 **não abre por GET** (erro "Ocorreu uma falha no sistema"); só por
-  `Envia(12)`, que faz POST do formulário com `GravaRespTemp=S`, ou seja,
-  grava a página atual como rascunho. Não testado (é escrita).
-- O ICMS do ME chama `ConsistirImpostoICMS(..., 'ES', 'MG', ...)` (acha que o
-  comprador é MG), mas a função **não bloqueia** (`return true`). A regra
-  continua sendo a nossa, pela UF do "End. entrega".
-- Nesta cotação NCM/PIS/telefone vieram **vazios**; 60DDL e o nome do
-  contato vieram preenchidos. Não dá para contar com pré-preenchimento.
-
-### Listagem e como saber que foi enviada
-A tela `/supplier/inbox/pendencies/4` (Oportunidades a Responder) e
-`/supplier/inbox/transactions/7` (todas as cotações) pedem os dados por
-`POST https://api.web.mercadoe.com/supplier/transactions/v1/transactions/search`
-(com o cookie da sessão), corpo:
-
-    {"aggregations":[],"filter":{"term":"","criteria":[
-      {"field":{"name":"CreateDateStart","type":"string"},"operator":"equal","value":"2026-06-25"},
-      {"field":{"name":"Pendencias","type":"numeric"},"operator":"equal","value":"4"}]},
-     "paging":{"page":1,"size":10},"sort":[]}
-
-Cada linha traz `processId` (nº da cotação), `clientCode`/`summary` (título),
-`company`, `customerName` (comprador), `dueDate` (UTC: `2026-09-29T00:00Z` =
-28/09 21:00 em Brasília), `statusName` (Em andamento / Vencida),
-`answerStatus` (**Não Respondida** / **Totalmente Respondida**),
-`viewedDate`, `firstDateAnswered`, `lastDateAnswered`, `hits` (total).
-→ **Enviada = `answerStatus` ≠ "Não Respondida" + `firstDateAnswered`**, e
-ela some de Pendências. **Falta provar** que um *Salvar* não muda
-`answerStatus` — só dá para ver salvando de verdade (primeiro teste do robô,
-com autorização).
-
-### Estado das contas em 23/09/2026
-- VENTURA (fornecedor 4637695): 23039029 (Samarco, limite **hoje 21:00**,
-  18 itens, entrega ES) e 23049227 (limite 25/09).
-- UNIÃO: 23052403 (Samarco, limite 28/09 21:00, 3 itens, entrega Mariana-**MG**).
-- **IE da UNIÃO é outra:** o select só oferece `083049428 - ES` (VENTURA:
-  `082582190 - ES`). Nome do contato pré-preenchido na UNIÃO: "ELIZIANE
-  AMORIM ROSA BARROS".
-
-### Ambiente (nuvem)
-O Chromium não confiava no proxy da nuvem (`ERR_CERT_AUTHORITY_INVALID`): o
-NSS de `~/.pki/nssdb` estava vazio. Resolvido importando a CA do proxy:
-`certutil -d sql:$HOME/.pki/nssdb -A -t "C,," -n ccr-agent-proxy -i /root/.ccr/agent-proxy-ca.crt`
-(pacote `libnss3-tools`) e `channel="chromium"`. Contexto com
-`timezone_id="America/Sao_Paulo"`, senão o ME abre o modal de fuso horário.
-
 ## Pronto
 - `mercado_eletronico/regras.py` + `feriados.py`: impostos, fixos, datas,
   leitura dos Campos Adicionais, validação (erros bloqueiam / avisos),
   conferência pós-salvamento.
 - `tests/test_me_regras.py`: 68 testes.
-- `recon/recon_me.py` + `tests/test_me_recon_trava.py` (16 testes da trava).
 - Linha de base da suíte na nuvem: 24 falhas **de ambiente** (cryptography do
   sistema quebrado; testes que pedem janela visível). Na nuvem, instalar
   `playwright==1.56.0` para casar com o Chromium de `/opt/pw-browsers`.
 
+## Recon (23/09/2026) — `recon/recon_me.py`, só leitura
+Rodado nas duas contas, sem salvar nem enviar: todo POST ao ME abortado
+pela trava de rede, `form.submit` desligado, único clique = "Entrar".
+Evidência em `recon_out/me/<conta>/` (fora do Git).
+
+**Login**: `#LoginName`, `#RAWSenha`, `#SubmitAuth`. Com fuso diferente de
+America/Sao_Paulo o ME abre um modal de fuso — o contexto do navegador
+precisa de `timezone_id="America/Sao_Paulo"`.
+
+**Lista de pendências**: vem de `POST api.web.mercadoe.com/supplier/
+transactions/v1/transactions/search` (JSON). Por cotação: `processId`
+(número), `company`, `customerName` (comprador), `clientCode`, `dueDate`
+(UTC; 00:00Z = 21:00 de Brasília do dia anterior), `answerStatus`,
+`statusName`. Valores de `answerStatus`: Não Respondida, Parcialmente
+Respondida, Totalmente Respondida, Recusada. Link da resposta:
+`/RespostaCotaItem.asp?Cotacao=<n>&SuperCleanPage=`.
+
+**Salvar × enviar** (lido no JavaScript da página, sem clicar):
+| Botão | Title no ME | Faz |
+|---|---|---|
+| Salvar (`MEButton_5`) | "Salvar informações para enviar mais tarde" | `Envia(9)` |
+| Confirmar (`MEButton_6`) | "Finalizar a resposta da cotação e enviar ao comprador" | `Envia(1)` — **ENVIA** |
+| Recusar (`MEButton_4`/`_8`) | "Recusar todos os itens da cotação" | `Envia(2)` → form `RespRecusa` → `RespCotaGrava.asp` |
+| Páginas 1/2, próxima | — | `Envia(11/12/4)` |
+
+Salvar, Confirmar e a paginação fazem POST do **mesmo** form `RespCota`
+para a **mesma** URL (`RespostaCotaItem.asp?Cotacao=<n>&FID=`); a única
+diferença é o campo oculto `Acao` (9 salva, 1 envia). Logo a trava de rede
+não pode ser por URL: tem de ler o corpo do POST e só deixar passar
+`Acao=9` (e 11/12/4 se paginar). Salvar exige ao menos um `chkItem_N`
+marcado. O form tem `GravaRespTemp=S`: a paginação provavelmente grava o
+rascunho da página atual.
+
+**Paginação**: 10 itens por página (`MaxItem`). Página 2 por GET
+(`&CurrentPage=2`, `&Pagina=2`) dá "Ocorreu uma falha no sistema" — só se
+chega nela pelo POST. Alternativa só leitura: Exportar/Importar abre
+`DO/Excel.mvc/PartialExcel/<cot>/<fornecedor>` (GET) com botão Download
+= POST `/do/Excel.mvc/DownloadCotacaoExcel` (bloqueado no recon).
+
+**Campos do cabeçalho** (name): `IcoTerms` (FOB), `ObsForn`,
+`CondicaoPagamento` (`F060` = 60DDL, já vem), `NomeContato` (já vem),
+`NumFoneCota`, `ValidadePropostaAux` (dd/mm/aaaa), `MoedaCot` (`BRL`),
+`InscricaoEstadual`, `atrib_CidadeEstado_1_1_0_0` (textarea "* Frete").
+Ocultos úteis: `DataLimite`, `DataAtual`, `MaxItem`, `CotacaoID`,
+`FornecedorID`, `ObsComp` (observação do comprador).
+
+**Campos do item N** (name → valor da opção):
+`Preco{N}` (máx. 12, onblur recalcula), `UnidadeResp{N}` (`UN` = UNIDADE),
+`IPI{N}`, `IPIIncluso{N}` (`I` Isento / `S` / `N`), `ICMS{N}`,
+`ICMSIncluso{N}` (`I`/`S`), `PIS{N}`, `PISIncluso{N}` (`I`/`S`),
+`COFINS{N}`, `COFINSIncluso{N}` (`I`/`S`), `NCM{N}` (máx. 16),
+`Prazo{N}` (dias, máx. 4 — o ME calcula `DataEntregaItemAux{N}` sozinho),
+`Fabricante{N}` (**máx. 20 caracteres**), `Observacao{N}`,
+`OrigMat{N}` (`992` = 0, `994` = 2), `SubstituicaoTributaria{N}` (`N`),
+`AliquotaSubstituicaoTributaria{N}`, `ValorSubstituicaoTributaria{N}`,
+`BaseCalculo{N}` (já vem 100,00), `BaseCalculoImposto{N}` (`S` = sem IPI),
+`chkItem_{N}`, `TipoImposto{N}`. Validações do próprio ME antes de salvar:
+impostos ≤ 100; data de entrega > data limite; PIS/COFINS > 0 exigem
+"incluso" (só no Confirmar).
+
+**Divergências com o que estava decidido**:
+- IE da UNIÃO é **083049428 - ES** (VENTURA: 082582190 - ES). O robô escolhe
+  a única IE não vazia do select, não um valor fixo.
+- `NomeContato` já vem preenchido e difere por conta ("Eliziane Amorim" ×
+  "ELIZIANE AMORIM ROSA BARROS").
+- Nada veio pré-preenchido com fundo azul nesta leitura (o azul dos prints
+  era provavelmente preenchimento automático do Chrome).
+
+**Detectar enviada**: `answerStatus` do JSON da lista (Parcialmente/
+Totalmente Respondida) e a cotação sair de "Oportunidades a Responder".
+**Não confirmado**: se um rascunho salvo (`Acao=9`) já muda o
+`answerStatus` — só dá para saber salvando uma vez.
+
+### Complemento do recon (sessão nuvem, mesmo dia, mesmas contas)
+- **A listagem mora em outro domínio** (`api.web.mercadoe.com`). A trava do
+  robô tem que cobrir `*.me.com.br` **e** `*.mercadoe.com`, liberando só o
+  POST exato de `.../transactions/search` (leitura). Testes em
+  `tests/test_me_recon_trava.py`.
+- **Unidade:** o comprador pede `UND` ("Unidades"); a decisão fixa era
+  "UNIDADE" (`UN`). O select tem `UN`, `UNI` (Unidade) e `UND` — escolher
+  qual casa com o pedido (pergunta ao usuário).
+- `Observacao{N}` tem **máx. 100** caracteres (além de Fabricante ≤ 20).
+- `Prazo{N}` chama `MotorFrete.calcularDataSimples`, que só **mostra** a data
+  quando há `IcotermsItem{N}` com `data-tipo`; o `Envia` copia
+  `DataEntregaItemAux{N}` → `DataEntregaItem{N}`. Conferir no teste real se
+  o campo de data se preenche sozinho; se não, o robô digita
+  `regras.data_entrega`.
+- ICMS: o ME chama `ConsistirImpostoICMS(..., 'ES', 'MG', ...)` (acha o
+  comprador em MG), mas a função retorna `true` sem bloquear. Vale a nossa
+  regra pela UF do "End. entrega" (23039029: ES; 23052403 da UNIÃO: MG).
+- Estado em 23/09: VENTURA 23039029 (limite hoje 21:00, 18 itens pelo JS de
+  "recusar todos") e 23049227 (25/09); UNIÃO 23052403 (28/09 21:00, 3 itens).
+- Nuvem: o Chromium recusava o proxy (`ERR_CERT_AUTHORITY_INVALID`) com o
+  NSS vazio. Resolve com `libnss3-tools` +
+  `certutil -d sql:$HOME/.pki/nssdb -A -t "C,," -n ccr-agent-proxy -i /root/.ccr/agent-proxy-ca.crt`.
+
 ## Próximos passos
-1. ~~Recon~~ feito (acima). **Aguardando o usuário** sobre as perguntas do
-   recon antes de construir o robô.
+1. ~~Recon~~ (acima). Pendente de decisão: um teste real de **Salvar**
+   (`Acao=9`) em cotação escolhida pelo usuário, com a trava deixando passar
+   só esse POST, para ver o que muda na lista e na página.
 2. Robô `mercado_eletronico/robo.py` com trava de envio e dry-run + testes
    contra HTML salvo do recon (sem acessar o ME real nos testes).
 3. Banco (tabelas de cotações ME, itens, histórico) + tela nova no `web/`.
