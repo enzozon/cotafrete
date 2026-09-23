@@ -73,6 +73,33 @@ def test_a_rota_entrega_o_script_sem_login(app_web):
             "cotafrete-dellavolpe.user.js") in resposta.text
 
 
+def test_o_botao_usa_um_endereco_por_versao_e_nenhum_cache(app_web):
+    """23/09/2026: o botão abriu a 1.0.0 com a 1.1.0 no servidor, e sem
+    "Atualizar" não havia como sair dela. Endereço novo a cada versão, e
+    proibido guardar."""
+    cliente = TestClient(app_web.app)
+    versionado = cliente.get(f"/extensao/cotafrete-dellavolpe-"
+                             f"{dv.VERSAO_USERSCRIPT}.user.js")
+    fixo = cliente.get("/extensao/cotafrete-dellavolpe.user.js")
+
+    assert versionado.status_code == 200
+    assert versionado.text == fixo.text
+    for resposta in (versionado, fixo):
+        assert "no-store" in resposta.headers["cache-control"]
+
+
+def test_o_update_url_e_sempre_o_fixo(app_web):
+    """O Tampermonkey guarda o @updateURL para sempre. Se fosse o endereço
+    da versão, toda máquina ficaria olhando um arquivo que nunca muda de
+    nome — e nunca veria a versão seguinte."""
+    texto = TestClient(app_web.app).get(
+        "/extensao/cotafrete-dellavolpe-0.9.0.user.js").text
+
+    assert ("@updateURL    http://testserver/extensao/"
+            "cotafrete-dellavolpe.user.js") in texto
+    assert f"@version      {dv.VERSAO_USERSCRIPT}" in texto
+
+
 def test_o_script_nao_carrega_dado_de_cotacao(app_web):
     """Sem login e cacheado pelo Tampermonkey: não pode ter CNPJ nem nada
     de cliente. Os dados vão no link de CADA cotação, não no script."""
@@ -91,7 +118,8 @@ def test_a_tela_ensina_a_instalar(app_web):
 
     html = " ".join(c.get(f"/dellavolpe/{cid}").text.split())
 
-    assert 'href="/extensao/cotafrete-dellavolpe.user.js"' in html
+    assert (f'href="/extensao/cotafrete-dellavolpe-{dv.VERSAO_USERSCRIPT}'
+            f'.user.js"') in html
     assert "chromewebstore.google.com/detail/tampermonkey" in html
     assert "Permitir scripts do usuário" in html
     # o favorito continua como plano B
@@ -292,3 +320,39 @@ def test_cotacao_sem_nome_gravado_usa_o_login_do_vendedor():
     campos = dv.campos_por_name({**antiga, "id": 42, "usuario": "lucas"})
 
     assert campos["nome"] == "lucas (cot. 42)"
+
+
+def test_script_velho_no_navegador_ganha_o_botao_de_atualizar(navegador,
+                                                               app_web):
+    """A tela compara a versão que o script instalado anuncia com a do
+    servidor, e oferece a atualização sem esperar o Tampermonkey."""
+    c = entrar(TestClient(app_web.app), app_web)
+    cid = app_web.banco.salvar_cotacao("enzo", COTACAO)
+    html = c.get(f"/dellavolpe/{cid}").text
+    pg = navegador.new_page()
+    pg.route("**/*", lambda rota: rota.fulfill(status=204))
+    pg.set_content(html)
+
+    velho = SCRIPT.replace(f"'data-cotafrete-dv', '{dv.VERSAO_USERSCRIPT}'",
+                           "'data-cotafrete-dv', '1.0.0'")
+    assert velho != SCRIPT
+    pg.evaluate(velho)
+    pg.wait_for_timeout(800)
+
+    assert pg.locator("text=Atualizar o script").is_visible()
+    assert pg.locator("#versao-instalada").inner_text() == "1.0.0"
+    assert pg.locator("text=Instalar o script do Cotafrete").is_hidden()
+
+
+def test_script_em_dia_nao_pede_atualizacao(navegador, app_web):
+    c = entrar(TestClient(app_web.app), app_web)
+    cid = app_web.banco.salvar_cotacao("enzo", COTACAO)
+    pg = navegador.new_page()
+    pg.route("**/*", lambda rota: rota.fulfill(status=204))
+    pg.set_content(c.get(f"/dellavolpe/{cid}").text)
+
+    pg.evaluate(SCRIPT)
+    pg.wait_for_timeout(800)
+
+    assert pg.locator("text=Atualizar o script").is_hidden()
+    assert pg.locator(f"text=versão {dv.VERSAO_USERSCRIPT}").first.is_visible()

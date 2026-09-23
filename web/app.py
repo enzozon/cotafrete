@@ -1561,6 +1561,8 @@ def formulario_dellavolpe(cotacao_id: int,
 <style>
   body:not(.com-script) .so-com {{ display: none; }}
   body.com-script .so-sem {{ display: none; }}
+  body:not(.script-velho) .so-velho {{ display: none; }}
+  body.script-velho .so-em-dia {{ display: none; }}
 </style>
 {cabecalho("Della Volpe", tarja="Fluxo assistido",
            contexto=(("rota", f"{c['cidade_origem']}/{c['uf_origem']} → "
@@ -1576,7 +1578,14 @@ def formulario_dellavolpe(cotacao_id: int,
   captcha e clica em enviar é você.</div>
 
   <div class="so-com">
-    <p class="sub">✓ O script do Cotafrete está instalado neste navegador.</p>
+    <p class="sub so-em-dia">✓ O script do Cotafrete está instalado neste
+    navegador (versão {dv_bookmarklet.VERSAO_USERSCRIPT}).</p>
+    <div class="alerta so-velho"><b>O script deste navegador está
+    desatualizado</b> (versão <span id="versao-instalada"></span>; a atual
+    é a {dv_bookmarklet.VERSAO_USERSCRIPT}).
+    <a class="botao2" href="{rota_script_versionada()}" target="_blank"
+    rel="noopener">Atualizar o script</a> — o Tampermonkey abre uma tela;
+    clique em <b>"Atualizar"</b> e depois recarregue esta página.</div>
   </div>
 
   <div class="so-sem">
@@ -1593,7 +1602,7 @@ def formulario_dellavolpe(cotacao_id: int,
     usuário"</b>. (Em Chrome mais antigo, a chave é o <b>"Modo do
     desenvolvedor"</b>, no canto de cima da mesma tela.)</p>
     <p>c) Instale o script do Cotafrete:
-    <a class="botao2" href="/extensao/cotafrete-dellavolpe.user.js"
+    <a class="botao2" href="{rota_script_versionada()}"
     target="_blank" rel="noopener">Instalar o script do Cotafrete</a>
     — o Tampermonkey abre uma tela; clique em <b>"Instalar"</b>. Depois
     volte aqui e recarregue esta página.</p>
@@ -1656,8 +1665,16 @@ def formulario_dellavolpe(cotacao_id: int,
 (function () {{
   var voltas = 15;
   (function olhar() {{
-    if (document.documentElement.getAttribute('data-cotafrete-dv')) {{
+    var instalada = document.documentElement.getAttribute('data-cotafrete-dv');
+    if (instalada) {{
       document.body.classList.add('com-script');
+      // O script marca o <html> com a PRÓPRIA versão. Diferente da do
+      // servidor, a tela oferece a atualização — sem depender de quando o
+      // Tampermonkey resolver procurar versão nova sozinho.
+      if (instalada !== '{dv_bookmarklet.VERSAO_USERSCRIPT}') {{
+        document.body.classList.add('script-velho');
+        document.getElementById('versao-instalada').textContent = instalada;
+      }}
     }} else if (voltas-- > 0) {{
       setTimeout(olhar, 200);
     }}
@@ -1670,10 +1687,38 @@ def formulario_dellavolpe(cotacao_id: int,
 # O .user.js do Tampermonkey. SEM login de propósito: o Tampermonkey volta
 # aqui sozinho para buscar versão nova, sem o cookie do vendedor — e o
 # arquivo não tem dado nenhum, só o código de preencher o formulário.
-@app.get("/extensao/cotafrete-dellavolpe.user.js")
+#
+# Dois endereços para o mesmo arquivo. O fixo é o que vai no @updateURL — o
+# Tampermonkey guarda esse e volta nele para sempre. O com a versão no nome é
+# o do botão da tela: endereço novo a cada versão, e nenhum cache no caminho
+# (do Chrome, do Tampermonkey, de um proxy) consegue devolver o arquivo
+# velho. Foi o que aconteceu em 23/09/2026: o botão abriu a 1.0.0 com a 1.1.0
+# já no servidor, e sem "Atualizar" o vendedor fica preso na versão errada.
+ROTA_SCRIPT = "/extensao/cotafrete-dellavolpe.user.js"
+
+
+def rota_script_versionada() -> str:
+    return (f"/extensao/cotafrete-dellavolpe-"
+            f"{dv_bookmarklet.VERSAO_USERSCRIPT}.user.js")
+
+
+def _entregar_script(request: Request) -> Response:
+    fixo = str(request.base_url).rstrip("/") + ROTA_SCRIPT
+    return Response(dv_bookmarklet.userscript(fixo),
+                    media_type="text/javascript; charset=utf-8",
+                    headers={"Cache-Control": "no-store, max-age=0"})
+
+
+@app.get(ROTA_SCRIPT)
 def script_tampermonkey(request: Request):
-    return Response(dv_bookmarklet.userscript(str(request.url)),
-                    media_type="text/javascript; charset=utf-8")
+    return _entregar_script(request)
+
+
+@app.get("/extensao/cotafrete-dellavolpe-{versao}.user.js")
+def script_tampermonkey_versionado(versao: str, request: Request):
+    """Qualquer versão no nome entrega a ATUAL: um link velho guardado em
+    algum lugar leva à versão nova, e não a um 404."""
+    return _entregar_script(request)
 
 
 # Rótulo e classe de cada estado. Um lugar só: a linha e a pílula têm de
