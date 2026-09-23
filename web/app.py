@@ -241,7 +241,13 @@ def automaticas_da(escolhidas: str | None) -> tuple[str, ...]:
 # ("camilo", "jadlog") quando a Translovato entrou, e cotação interrompida
 # dela ficava girando para sempre. A Generoso é a mais lenta de todas — a
 # mais provável de estar no meio do caminho quando alguém fecha a janela.
-_orfas = banco.marcar_interrompidas(AUTOMATICA_DESDE)
+#
+# A Della Volpe fica de fora: desde 23/09/2026 ela só sai quando o vendedor
+# escolhe, na tela, para onde vai a proposta — e "ninguém escolheu" não é
+# cotação interrompida. O "enviando" dela que morreu com o processo é fechado
+# lá dentro, pelo relógio do clique (`pedido_em`).
+_orfas = banco.marcar_interrompidas(
+    {s: d for s, d in AUTOMATICA_DESDE.items() if s != "dellavolpe"})
 if _orfas:
     print(f"[cotafrete] {_orfas} cotação(ões) pendente(s) marcadas como "
           f"interrompidas — o sistema foi fechado durante elas.")
@@ -1086,6 +1092,11 @@ def cotar(usuario: str | None = Depends(vendedor),
 
     # Dispara e NÃO espera: cada uma grava o próprio resultado ao terminar.
     for slug in automaticas_da(dados.get("transportadoras")):
+        # A Della Volpe espera o vendedor escolher, na tela da cotação, para
+        # onde vai a proposta (POST /cotacao/{id}/dellavolpe). O e-mail do
+        # formulário dela depende dessa escolha, então ela não pode sair antes.
+        if slug == "dellavolpe":
+            continue
         # O id vai amarrado na fábrica, e não como parâmetro do `_rodar`: a
         # retentativa chama `cotar_fn(req)` e não precisa saber de cotação.
         EXECUTOR.submit(_rodar, cotacao_id, slug,
@@ -1131,17 +1142,49 @@ def _cotar_braspress(req, cotacao_id=None):
     return BraspressAdapter().cotar(req, confirmar_envio=True)
 
 
-def _cotar_dellavolpe(req, cotacao_id=None):
+def _cotar_dellavolpe(req, cotacao_id=None, resposta_em="tela"):
     """Envia o formulário público deles — cai na fila de um vendedor da Della
     Volpe, e o preço volta por e-mail (carriers/dellavolpe/ingestor.py).
 
-    O e-mail do formulário é o do suporte quando o ingestor sabe ler aquela
-    caixa; senão continua sendo o do vendedor, que aí recebe a proposta ele
-    mesmo. O carimbo vai sempre: não atrapalha ninguém, e é o que o ingestor
-    procura."""
+    `resposta_em` é a escolha do vendedor na tela: "tela" põe o e-mail do
+    suporte no formulário (o ingestor lê e o preço aparece sozinho); "email"
+    põe o dele. Sem a caixa do suporte no .env, "tela" não tem como
+    funcionar e cai no e-mail do vendedor."""
+    email = dv_caixa.email_de_resposta() if resposta_em == "tela" else None
     return DellavolpeAdapter(workdir="teste_real/dellavolpe").cotar(
         req, confirmar_envio=True, cotacao_id=cotacao_id,
-        email_resposta=dv_caixa.email_de_resposta())
+        email_resposta=email)
+
+
+def request_da_cotacao(c: dict) -> CotacaoRequest:
+    """A cotação GRAVADA de volta no modelo central, sem consultar o CEP.
+
+    A Della Volpe sai depois do /cotar (quando o vendedor escolhe o destino
+    da proposta), e aí o pedido original já não existe mais. Cidade e UF
+    estão no banco desde o /cotar; consultar o CEP de novo só traria mais um
+    jeito de falhar."""
+    unitario = peso_por_volume(c)
+    qtd = int(c["quantidade"])
+    peso = unitario if unitario is not None else Decimal(c["peso_kg"]) / qtd
+    return CotacaoRequest(
+        solicitante=Solicitante(nome=c.get("nome_solicitante") or "Ventura",
+                                email=c.get("email") or "",
+                                whatsapp=c.get("whatsapp_solicitante") or ""),
+        servico=Servico.FRACIONADO_LTL,
+        origem=Local(uf=c["uf_origem"], cidade=c["cidade_origem"],
+                     cep=c["cep_origem"]),
+        destino=Local(uf=c["uf_destino"], cidade=c["cidade_destino"],
+                      cep=c["cep_destino"]),
+        remetente=Parte(cnpj=c["cnpj_remetente"]),
+        destinatario=Parte(cnpj=c["cnpj_destinatario"]),
+        tipo_frete=TipoFrete(c.get("tipo_frete") or "cif"),
+        volumes=[Volume(qtd=qtd, comprimento_cm=Decimal(c["comprimento_cm"]),
+                        largura_cm=Decimal(c["largura_cm"]),
+                        altura_cm=Decimal(c["altura_cm"]),
+                        peso_kg=Decimal(peso))],
+        mercadoria=Mercadoria(tipo_material=c.get("material") or ""),
+        nota_fiscal=NotaFiscal(valor_total=Decimal(c["valor_nf"])),
+    )
 
 
 # No módulo, e não dentro de /cotar: é o que permite a
@@ -1280,10 +1323,95 @@ def cartao_proposta_a_caminho() -> str:
     dele seria mandá-lo procurar uma coisa que nunca vai chegar lá."""
     return ('<div class="enviada">Cotação enviada</div>'
             '<div class="alerta email"><b>O preço aparece aqui sozinho.</b> '
-            'A Della Volpe responde por e-mail, em poucos minutos, para a '
+            'A Della Volpe responde por e-mail, em 2 a 5 minutos, para a '
             'caixa do suporte — o sistema lê a proposta e preenche esta '
             'linha com preço, prazo, validade e o PDF. Pode deixar a página '
             'aberta.</div>')
+
+
+def _idade(iso: str | None) -> float:
+    """Segundos desde um horário ISO do banco. Texto estragado conta como
+    agora: melhor a tela esperar um pouco mais do que desistir à toa."""
+    try:
+        return (datetime.now() - datetime.fromisoformat(iso)).total_seconds()
+    except (TypeError, ValueError):
+        return 0
+
+
+def _envio_expirou(r: dict) -> bool:
+    """O "enviando" da Della Volpe passou do teto sem gravar nada — o robô
+    morreu no meio. O relógio é o do clique, não o da cotação."""
+    return _idade(r.get("pedido_em")) > ESPERA_MAXIMA_S
+
+
+def _proposta_na_tela(r: dict) -> bool:
+    """A proposta desta linha vai para a caixa do suporte (e daí para a tela)?
+
+    Linha anterior à escolha (23/09/2026) não diz: vale o .env de hoje, que
+    era a regra daquela época."""
+    if r.get("resposta_em"):
+        return r["resposta_em"] == "tela"
+    return bool(dv_caixa.email_de_resposta())
+
+
+def escolha_da_dellavolpe(cotacao_id: int, email: str | None) -> str:
+    """Os dois botões da Della Volpe, na linha dela.
+
+    Ela é a única automática que manda a cotação para a fila de uma PESSOA,
+    e a resposta chega por e-mail — por isso o vendedor decide para onde. Sem
+    a caixa do suporte no .env, "aqui na tela" não tem como funcionar, e o
+    botão nem aparece."""
+    seu = f' ({e(email)})' if email else ''
+    botao_tela = (
+        '<button class="botao" name="destino" value="tela">Mostrar aqui '
+        '(2 a 5 min)</button> ' if dv_caixa.email_de_resposta() else '')
+    return (
+        f'<form method="post" action="/cotacao/{cotacao_id}/dellavolpe"'
+        f' class="escolha-dv">'
+        f'<div class="alerta email"><b>Para onde vai a proposta da Della '
+        f'Volpe?</b> O site dela não mostra o preço na hora: responde por '
+        f'e-mail, em 2 a 5 minutos, com um PDF.'
+        + (' <b>Mostrar aqui</b> manda para a caixa do suporte, e o preço e '
+           'o PDF aparecem nesta linha sozinhos.' if botao_tela else '')
+        + f' <b>Meu e-mail</b> manda para você{seu}.</div>'
+        f'<p>{botao_tela}<button class="botao2" name="destino" value="email">'
+        f'Mandar para o meu e-mail</button></p></form>')
+
+
+@app.post("/cotacao/{cotacao_id}/dellavolpe")
+def enviar_dellavolpe(cotacao_id: int, destino: str = Form(...),
+                      usuario: str | None = Depends(vendedor)):
+    """O clique num dos dois botões: reserva a linha e solta o robô.
+
+    A reserva vem ANTES do robô e é atômica (banco.reservar_envio): o segundo
+    clique, o F5 que reenvia o POST, a aba duplicada — nenhum deles manda a
+    mesma cotação duas vezes para a fila da Della Volpe."""
+    if not usuario:
+        return RedirectResponse("/login", status_code=303)
+    c = banco.buscar_cotacao(cotacao_id, usuario)
+    if c is None:
+        raise HTTPException(404, "Cotação não encontrada")
+    volta = RedirectResponse(f"/cotacao/{cotacao_id}", status_code=303)
+    if ("dellavolpe" not in automaticas_da(c.get("transportadoras"))
+            or destino not in ("tela", "email")):
+        return volta
+    if destino == "tela" and not dv_caixa.email_de_resposta():
+        # O .env perdeu a caixa entre a tela e o clique. Mandar para o
+        # suporte sem ninguém lendo seria perder a proposta.
+        destino = "email"
+    try:
+        req = request_da_cotacao(c)
+    except Exception as exc:
+        banco.salvar_resultado(cotacao_id, "dellavolpe", status="erro",
+                               erro=f"a cotação gravada não deu para "
+                                    f"reenviar: {type(exc).__name__}: {exc}")
+        return volta
+    if banco.reservar_envio(cotacao_id, "dellavolpe", resposta_em=destino):
+        EXECUTOR.submit(_rodar, cotacao_id, "dellavolpe",
+                        partial(FABRICAS.get("dellavolpe", _cotar_dellavolpe),
+                                cotacao_id=cotacao_id, resposta_em=destino),
+                        req)
+    return volta
 
 
 @app.get("/whatsapp/{cotacao_id}/{slug}")
@@ -1413,7 +1541,11 @@ def formulario_dellavolpe(cotacao_id: int,
     banco.marcar_whatsapp_aberto(cotacao_id, "dellavolpe", usuario)
     # A mesma caixa de resposta do envio automático: a proposta de um envio
     # feito à mão também precisa cair no ingestor.
-    url = dv_bookmarklet.url_formulario(c, dv_caixa.email_de_resposta())
+    dv_r = next((r for r in c["resultados"]
+                 if r["transportadora"] == "dellavolpe"), None)
+    escolheu_email = dv_r is not None and dv_r.get("resposta_em") == "email"
+    url = dv_bookmarklet.url_formulario(
+        c, None if escolheu_email else dv_caixa.email_de_resposta())
     href_favorito = dv_bookmarklet.href_bookmarklet()
 
     return HTMLResponse(pagina(f"Cotação {cotacao_id} — Della Volpe", f"""
@@ -1495,6 +1627,9 @@ ESTADOS = {
     "falha": ("Falhou", "estado-falha"),
     "intervencao": ("Precisa de alguém", "estado-falha"),
     "cotando": ("Cotando", "estado-cotando"),
+    # A Della Volpe esperando o vendedor escolher para onde vai a proposta.
+    # Nada saiu ainda: "Enviada" ali seria a mentira mais cara da tela.
+    "escolher": ("Falta escolher", "estado-aguardando"),
 }
 
 
@@ -1663,11 +1798,17 @@ def ver_cotacao(cotacao_id: int,
             # erro: lá embaixo tudo que não tem valor é tratado como problema.
             destaque, selo, estado = "", "", "aguardando"
             principal = '<span class="sem">preço por e-mail</span>'
-            if slug == "dellavolpe" and dv_caixa.email_de_resposta():
+            if slug == "dellavolpe" and _proposta_na_tela(r):
                 principal = '<span class="sem">aguardando proposta</span>'
                 avisos = cartao_proposta_a_caminho()
             else:
                 avisos = cartao_resposta_por_email(c.get("email"), slug)
+                if slug == "dellavolpe" and r["evidencia"]:
+                    # Escolheu o próprio e-mail: a única prova que ESTA tela
+                    # tem de que a cotação saiu é a confirmação do site.
+                    # Grande, e não só a miniatura da coluna "Print".
+                    avisos += (f'<div class="nota">Confirmação do site da '
+                               f'Della Volpe:</div>{_img(r["evidencia"])}')
         elif r["status"] == StatusCotacao.RECUSADO.value:
             # Recusa NÃO é defeito. O site recebeu a carga inteira, entendeu,
             # e disse não — com estas palavras. Cotação #20 (25/08/2026): a
@@ -1679,6 +1820,25 @@ def ver_cotacao(cotacao_id: int,
             principal = '<span class="sem">O site não cotou</span>'
             avisos = (f'<div class="alerta">'
                       f'{e((r["erro"] or "")[:LIMITE_MENSAGEM_ERRO])}</div>')
+        elif (slug == "dellavolpe"
+              and r["status"] == StatusCotacao.ENVIANDO.value
+              and not _envio_expirou(r)):
+            # O vendedor escolheu e o robô está no site dela agora.
+            destaque, selo, estado = "", "", "cotando"
+            principal = ('<span class="cotando"><span class="girando"></span>'
+                         'enviando…</span>')
+            avisos = (
+                '<div class="alerta email"><b>Cotando automaticamente na '
+                'Della Volpe.</b> O robô está preenchendo o formulário do '
+                'site dela. Depois do envio a proposta leva de 2 a 5 minutos '
+                'para chegar — o preço e o PDF aparecem nesta linha sozinhos. '
+                'Pode deixar a página aberta.</div>'
+                if r.get("resposta_em") == "tela" else
+                '<div class="alerta email"><b>Enviando para a Della '
+                'Volpe.</b> O robô está preenchendo o formulário do site '
+                'dela. A proposta vai para o seu e-mail, '
+                f'{e(c.get("email") or "o do formulário")}, em 2 a 5 '
+                'minutos.</div>')
         else:
             destaque, selo, estado = "", "", "falha"
             # Sempre dizer POR QUE não veio preço. "Não retornou preço" sozinho
@@ -1704,7 +1864,18 @@ def ver_cotacao(cotacao_id: int,
     # falhou ou se ainda está rodando.
     respondidas = {r["transportadora"] for r in c["resultados"]}
     escolhidas = c.get("transportadoras")
-    faltam = [s for s in automaticas_da(escolhidas) if s not in respondidas]
+    # A Della Volpe sem linha não está "faltando": está esperando o vendedor
+    # escolher para onde vai a proposta. Contá-la aqui faria a tela recarregar
+    # de 3 em 3 segundos e, passado o teto, dizer "Sem retorno" de uma
+    # transportadora que ninguém mandou cotar.
+    faltam = [s for s in automaticas_da(escolhidas)
+              if s not in respondidas and s != "dellavolpe"]
+    if "dellavolpe" in automaticas_da(escolhidas) \
+            and "dellavolpe" not in respondidas:
+        linhas += _linha_resultado(
+            "dellavolpe", '<span class="sem">escolha onde receber</span>',
+            "", "escolher", "", "", None,
+            escolha_da_dellavolpe(cotacao_id, c.get("email")))
 
     # Passado o teto, assume que não vem mais nada. Precisa ser decidido AQUI,
     # antes dos cartões: eles mudam de "cotando…" para "Sem retorno" conforme
@@ -1748,8 +1919,13 @@ def ver_cotacao(cotacao_id: int,
     esperando_proposta = (
         dv_r is not None and dv_r["valor"] is None
         and dv_r["status"] == StatusCotacao.AGUARDANDO_RETORNO.value
-        and INGESTOR is not None and idade < ESPERA_PELA_PROPOSTA_S)
-    if faltam and not desistiu:
+        and _proposta_na_tela(dv_r) and INGESTOR is not None
+        and _idade(dv_r.get("pedido_em") or c["criado_em"])
+        < ESPERA_PELA_PROPOSTA_S)
+    dv_enviando = (dv_r is not None
+                   and dv_r["status"] == StatusCotacao.ENVIANDO.value
+                   and not _envio_expirou(dv_r))
+    if (faltam and not desistiu) or dv_enviando:
         recarrega = '<meta http-equiv="refresh" content="3">'
     elif esperando_proposta:
         recarrega = '<meta http-equiv="refresh" content="20">'
@@ -1819,7 +1995,8 @@ def ver_cotacao(cotacao_id: int,
     dv_automatica = "dellavolpe" in automaticas_da(escolhidas)
     dv_resolvida = dv_r is not None and (
         dv_r["valor"] is not None
-        or dv_r["status"] == StatusCotacao.AGUARDANDO_RETORNO.value)
+        or dv_r["status"] == StatusCotacao.AGUARDANDO_RETORNO.value
+        or dv_enviando)
     # Vale também para a assistida cuja proposta já chegou (o vendedor
     # enviou à mão e o ingestor leu): não há o que enviar de novo. Já a
     # automática que passou do teto sem responder nada ("Sem retorno") volta
@@ -1831,9 +2008,8 @@ def ver_cotacao(cotacao_id: int,
     # confirmação do site às vezes não é lida. Sem esta ressalva, o
     # vendedor reenviaria às cegas.
     ressalva = ""
-    if dv_automatica and (desistiu and dv_r is None or dv_r is not None and
-                          dv_r["status"]
-                          != StatusCotacao.INTERVENCAO_NECESSARIA.value):
+    if dv_automatica and dv_r is not None and (
+            dv_r["status"] != StatusCotacao.INTERVENCAO_NECESSARIA.value):
         ressalva = (' <b>O envio automático falhou</b> — se a Della Volpe '
                     'responder mesmo assim, o preço aparece na tabela acima '
                     'e você não precisa enviar de novo.')

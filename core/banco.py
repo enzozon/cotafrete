@@ -73,6 +73,14 @@ CREATE TABLE IF NOT EXISTS resultado (
     -- informa (a tela final dela traz "Cotação válida até"); nas outras fica
     -- NULL, e NULL quer dizer "não sabemos", nunca "vence hoje".
     validade       TEXT,
+    -- Só da Della Volpe: para onde o vendedor pediu a proposta — "tela"
+    -- (caixa do suporte, lida pelo ingestor) ou "email" (o dele). NULL nas
+    -- outras e nas linhas anteriores a 23/09/2026.
+    resposta_em    TEXT,
+    -- Quando o vendedor apertou o botão de envio da Della Volpe. É o relógio
+    -- do "enviando…": ela só sai quando alguém escolhe, então a idade da
+    -- cotação não diz nada sobre há quanto tempo o robô está trabalhando.
+    pedido_em      TEXT,
     -- Quando a transportadora respondeu. NULL nas linhas anteriores a
     -- 28/08/2026, e a tela precisa dizer "sem dados ainda" em vez de zero.
     --
@@ -203,7 +211,7 @@ CAMPOS_CARGA = (
 
 # Colunas de `resultado` que nasceram depois do banco. Mesma razão de
 # CAMPOS_CARGA: CREATE TABLE IF NOT EXISTS não altera tabela existente.
-CAMPOS_RESULTADO = ("respondido_em", "validade")
+CAMPOS_RESULTADO = ("respondido_em", "validade", "resposta_em", "pedido_em")
 
 
 def _decimal(valor: str | None) -> Decimal | None:
@@ -318,6 +326,23 @@ class Banco:
                  str(valor) if valor is not None else None,
                  protocolo, prazo, erro, evidencia, respondido_em,
                  validade.isoformat() if validade else None))
+
+    def reservar_envio(self, cotacao_id: int, transportadora: str, *,
+                       resposta_em: str) -> bool:
+        """Marca "enviando" ANTES de disparar o robô. False se já havia linha.
+
+        É a trava contra o clique duplo — o gesto mais banal de uma tela web,
+        e aqui ele mandaria a MESMA cotação duas vezes para a fila de um
+        vendedor da Della Volpe. INSERT OR IGNORE sobre o índice único
+        (cotacao_id, transportadora): de dois cliques simultâneos, só um
+        insere. Mesma ideia do `registrar_aceite`."""
+        with closing(self._conectar()) as con, con:
+            cur = con.execute(
+                "INSERT OR IGNORE INTO resultado (cotacao_id, transportadora,"
+                " status, resposta_em, pedido_em) VALUES (?, ?, 'enviando', ?, ?)",
+                (cotacao_id, transportadora, resposta_em,
+                 datetime.now().isoformat(timespec="seconds")))
+            return cur.rowcount == 1
 
     # ------------------------------------------------ e-mail de proposta
     def carga_da_cotacao(self, cotacao_id: int) -> dict | None:
@@ -540,6 +565,14 @@ class Banco:
                         (linha["id"], slug,
                          "O sistema foi fechado durante a cotação."))
                     marcadas += 1
+            # A Della Volpe não entra em `esperadas` — ela só sai quando o
+            # vendedor escolhe, e "ninguém escolheu" não é interrupção. O que
+            # ela pode deixar para trás é um "enviando" cujo robô morreu com
+            # o processo, e esse relógio é o `pedido_em`, não o `criado_em`.
+            marcadas += con.execute(
+                "UPDATE resultado SET status = 'interrompido', erro = ?"
+                " WHERE status = 'enviando' AND pedido_em < ?",
+                ("O sistema foi fechado durante a cotação.", limite)).rowcount
         return marcadas
 
     def usuarios(self) -> list[str]:
