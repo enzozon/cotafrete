@@ -186,6 +186,40 @@ Totalmente Respondida) e a cotação sair de "Oportunidades a Responder".
   NSS vazio. Resolve com `libnss3-tools` +
   `certutil -d sql:$HOME/.pki/nssdb -A -t "C,," -n ccr-agent-proxy -i /root/.ccr/agent-proxy-ca.crt`.
 
+## Teste real de Salvar (23/09/2026) — `recon/teste_salvar_me.py`
+Autorizado pelo usuário. UNIÃO, cotação 23052403 (3 itens, MG): cabeçalho +
+só o item 1, textos "TESTE DO ROBO - NAO ENVIAR", preço 1,00. **Saiu um
+único POST, com `Acao=9`; nada foi enviado.** O rascunho continua lá: quem
+for responder de verdade tem que corrigir preço/obs antes de Confirmar.
+
+O que o ME exige para o Salvar passar (cada item vira uma regra do robô):
+1. `TipoImposto{N}` = `1` (IPI) — sem ele: "Escolha um dos tipos de imposto
+   'IPI' ou 'ISS'".
+2. `DataEntregaItemAux{N}` preenchida (dd/mm/aaaa). O ME só calcula a data
+   pelo `keyup` do Prazo e isso não dispara no headless → o robô digita a
+   data de `regras.data_entrega`.
+3. Item não respondido = **totalmente vazio**. O ME já traz
+   `BaseCalculo{N}=100,00` e trata isso como item começado ("Base de cálculo
+   preenchida… informe o Preço"): o robô limpa a Base dos itens sem preço.
+   Isso volta a 100,00 a cada recarga.
+4. `chkItem_{N}` marcado nos itens respondidos.
+5. Um `confirm` "Você verificou todas as informações digitadas?" — aceitar
+   só esse texto e só durante o clique no Salvar; qualquer outro confirm é
+   cancelado.
+6. Campos de dinheiro: preencher o valor inteiro (`fill`) e disparar o blur.
+   Digitar tecla a tecla passa pela máscara e desloca os dígitos.
+7. O name do "* Frete" tem espaço no fim (`atrib_CidadeEstado_1_1_0_0 `).
+
+**Depois de salvar**: relida a página, os 31 campos voltaram exatamente
+como enviados (`regras.conferir` serve). Na lista, a cotação continua
+**"Não Respondida" / "Em andamento"** — o rascunho NÃO muda o
+`answerStatus`. Consequência: "Salva no ME" é estado nosso (banco), e
+"Enviada" = `answerStatus` Parcialmente/Totalmente Respondida.
+
+Decisões do usuário (23/09): IE da UNIÃO 083049428 - ES confirmada; nome do
+contato fica como o ME traz em cada conta; o robô pode salvar a página 1
+para ir à página 2 (é salvamento, `Acao=12`, nunca envio).
+
 ### Cópias das cotações reais (23/09/2026) — `recon/copia_cotacoes_me.py`
 As 3 pendentes foram copiadas antes de fechar, para testar robô e tela sem o
 ME: `tests/fixtures/me_real/` (HTML de cada página de itens com o token
@@ -195,11 +229,13 @@ UNIÃO 23052403 (3 itens). Para a página 2 o script fez o único POST
 liberado, troca de página (`Acao=12`, autorizado pelo usuário); depois
 disso a lista continuou **Não Respondida**, então o rascunho temporário da
 paginação não muda o `answerStatus`. Testes: `tests/test_me_copia.py`.
+**Atenção:** a cópia da UNIÃO 23052403 foi tirada logo depois do teste real
+de Salvar: ela mostra a página **com o rascunho salvo** (item 1 "TESTE DO
+ROBO - NAO ENVIAR", preço 1,00) — serve para testar a releitura/conferência.
+As duas da VENTURA estão limpas.
 
 ## Próximos passos
-1. ~~Recon~~ (acima). Pendente de decisão: um teste real de **Salvar**
-   (`Acao=9`) em cotação escolhida pelo usuário, com a trava deixando passar
-   só esse POST, para ver o que muda na lista e na página.
+1. ~~Recon~~ e ~~teste de Salvar~~ (acima).
 2. Robô `mercado_eletronico/robo.py` com trava de envio e dry-run + testes
    contra HTML salvo do recon (sem acessar o ME real nos testes).
 3. Banco (tabelas de cotações ME, itens, histórico) + tela nova no `web/`.

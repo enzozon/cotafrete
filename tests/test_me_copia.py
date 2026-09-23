@@ -3,6 +3,9 @@
 As três cotações pendentes de 23/09/2026 foram copiadas antes de fecharem:
 VENTURA 23039029 (18 itens, 2 páginas) e 23049227 (1 item); UNIÃO 23052403
 (3 itens). A única escrita liberada na cópia é a troca de página.
+
+A da UNIÃO foi copiada logo depois do teste real de Salvar da sessão local:
+ela traz o rascunho salvo no item 1 ("TESTE DO ROBO - NAO ENVIAR").
 """
 
 from __future__ import annotations
@@ -103,3 +106,9 @@ def test_listagem_copiada(conta, numeros):
     linhas = lista["data"]["result"]
     assert {r["processId"] for r in linhas} == numeros
     assert all(r["answerStatus"] == "Não Respondida" for r in linhas)
+
+
+def test_copia_da_uniao_traz_o_rascunho_do_teste_de_salvar():
+    html = (FIX / "23052403_p1.html").read_text(encoding="utf-8")
+    assert "TESTE DO ROBO" in html
+    assert "TESTE DO ROBO" not in (FIX / "23039029_p1.html").read_text(encoding="utf-8")
