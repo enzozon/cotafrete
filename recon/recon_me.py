@@ -56,6 +56,16 @@ RE_URL_PROIBIDA = re.compile(
     re.IGNORECASE,
 )
 RE_LOGIN = re.compile(r"/Login\.mvc/", re.IGNORECASE)
+# A listagem mora em outro domínio do ME e busca por POST. É leitura: a
+# única escrita liberada depois do login, e só nesse caminho exato.
+HOSTS_ME = ("me.com.br", "mercadoe.com")
+RE_BUSCA_LEITURA = re.compile(
+    r"^https://api\.web\.mercadoe\.com/supplier/transactions/v1/transactions/search$"
+)
+
+
+def _do_me(host: str) -> bool:
+    return any(host == h or host.endswith("." + h) for h in HOSTS_ME)
 
 JS_TRAVA = """
 (() => {
@@ -134,9 +144,10 @@ class Trava:
     def motivo(self, metodo: str, url: str) -> str | None:
         u = urlparse(url)
         host = u.hostname or ""
-        if not (host == "me.com.br" or host.endswith(".me.com.br")):
+        if not _do_me(host):
             return None
-        if metodo in METODOS_ESCRITA and not (RE_LOGIN.search(url) and not self.logado):
+        login = RE_LOGIN.search(url) and not self.logado
+        if metodo in METODOS_ESCRITA and not (login or RE_BUSCA_LEITURA.match(url)):
             return "escrita no ME"
         if RE_URL_PROIBIDA.search(u.path + "?" + (u.query or "")):
             return "url com cara de envio/gravação"
@@ -145,7 +156,7 @@ class Trava:
     def __call__(self, route, request) -> None:
         url, metodo = request.url, request.method.upper()
         motivo = self.motivo(metodo, url)
-        if motivo or (metodo != "GET" and "me.com.br" in url):
+        if motivo or (metodo != "GET" and _do_me(urlparse(url).hostname or "")):
             reg = {"t": time.strftime("%H:%M:%S"), "metodo": metodo, "url": url[:300],
                    "tipo": request.resource_type}
             if motivo:
