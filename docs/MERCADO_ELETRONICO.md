@@ -90,11 +90,83 @@ Por cotação: validade (dias).
   sistema quebrado; testes que pedem janela visível). Na nuvem, instalar
   `playwright==1.56.0` para casar com o Chromium de `/opt/pw-browsers`.
 
+## Recon (23/09/2026) — `recon/recon_me.py`, só leitura
+Rodado nas duas contas, sem salvar nem enviar: todo POST ao ME abortado
+pela trava de rede, `form.submit` desligado, único clique = "Entrar".
+Evidência em `recon_out/me/<conta>/` (fora do Git).
+
+**Login**: `#LoginName`, `#RAWSenha`, `#SubmitAuth`. Com fuso diferente de
+America/Sao_Paulo o ME abre um modal de fuso — o contexto do navegador
+precisa de `timezone_id="America/Sao_Paulo"`.
+
+**Lista de pendências**: vem de `POST api.web.mercadoe.com/supplier/
+transactions/v1/transactions/search` (JSON). Por cotação: `processId`
+(número), `company`, `customerName` (comprador), `clientCode`, `dueDate`
+(UTC; 00:00Z = 21:00 de Brasília do dia anterior), `answerStatus`,
+`statusName`. Valores de `answerStatus`: Não Respondida, Parcialmente
+Respondida, Totalmente Respondida, Recusada. Link da resposta:
+`/RespostaCotaItem.asp?Cotacao=<n>&SuperCleanPage=`.
+
+**Salvar × enviar** (lido no JavaScript da página, sem clicar):
+| Botão | Title no ME | Faz |
+|---|---|---|
+| Salvar (`MEButton_5`) | "Salvar informações para enviar mais tarde" | `Envia(9)` |
+| Confirmar (`MEButton_6`) | "Finalizar a resposta da cotação e enviar ao comprador" | `Envia(1)` — **ENVIA** |
+| Recusar (`MEButton_4`/`_8`) | "Recusar todos os itens da cotação" | `Envia(2)` → form `RespRecusa` → `RespCotaGrava.asp` |
+| Páginas 1/2, próxima | — | `Envia(11/12/4)` |
+
+Salvar, Confirmar e a paginação fazem POST do **mesmo** form `RespCota`
+para a **mesma** URL (`RespostaCotaItem.asp?Cotacao=<n>&FID=`); a única
+diferença é o campo oculto `Acao` (9 salva, 1 envia). Logo a trava de rede
+não pode ser por URL: tem de ler o corpo do POST e só deixar passar
+`Acao=9` (e 11/12/4 se paginar). Salvar exige ao menos um `chkItem_N`
+marcado. O form tem `GravaRespTemp=S`: a paginação provavelmente grava o
+rascunho da página atual.
+
+**Paginação**: 10 itens por página (`MaxItem`). Página 2 por GET
+(`&CurrentPage=2`, `&Pagina=2`) dá "Ocorreu uma falha no sistema" — só se
+chega nela pelo POST. Alternativa só leitura: Exportar/Importar abre
+`DO/Excel.mvc/PartialExcel/<cot>/<fornecedor>` (GET) com botão Download
+= POST `/do/Excel.mvc/DownloadCotacaoExcel` (bloqueado no recon).
+
+**Campos do cabeçalho** (name): `IcoTerms` (FOB), `ObsForn`,
+`CondicaoPagamento` (`F060` = 60DDL, já vem), `NomeContato` (já vem),
+`NumFoneCota`, `ValidadePropostaAux` (dd/mm/aaaa), `MoedaCot` (`BRL`),
+`InscricaoEstadual`, `atrib_CidadeEstado_1_1_0_0` (textarea "* Frete").
+Ocultos úteis: `DataLimite`, `DataAtual`, `MaxItem`, `CotacaoID`,
+`FornecedorID`, `ObsComp` (observação do comprador).
+
+**Campos do item N** (name → valor da opção):
+`Preco{N}` (máx. 12, onblur recalcula), `UnidadeResp{N}` (`UN` = UNIDADE),
+`IPI{N}`, `IPIIncluso{N}` (`I` Isento / `S` / `N`), `ICMS{N}`,
+`ICMSIncluso{N}` (`I`/`S`), `PIS{N}`, `PISIncluso{N}` (`I`/`S`),
+`COFINS{N}`, `COFINSIncluso{N}` (`I`/`S`), `NCM{N}` (máx. 16),
+`Prazo{N}` (dias, máx. 4 — o ME calcula `DataEntregaItemAux{N}` sozinho),
+`Fabricante{N}` (**máx. 20 caracteres**), `Observacao{N}`,
+`OrigMat{N}` (`992` = 0, `994` = 2), `SubstituicaoTributaria{N}` (`N`),
+`AliquotaSubstituicaoTributaria{N}`, `ValorSubstituicaoTributaria{N}`,
+`BaseCalculo{N}` (já vem 100,00), `BaseCalculoImposto{N}` (`S` = sem IPI),
+`chkItem_{N}`, `TipoImposto{N}`. Validações do próprio ME antes de salvar:
+impostos ≤ 100; data de entrega > data limite; PIS/COFINS > 0 exigem
+"incluso" (só no Confirmar).
+
+**Divergências com o que estava decidido**:
+- IE da UNIÃO é **083049428 - ES** (VENTURA: 082582190 - ES). O robô escolhe
+  a única IE não vazia do select, não um valor fixo.
+- `NomeContato` já vem preenchido e difere por conta ("Eliziane Amorim" ×
+  "ELIZIANE AMORIM ROSA BARROS").
+- Nada veio pré-preenchido com fundo azul nesta leitura (o azul dos prints
+  era provavelmente preenchimento automático do Chrome).
+
+**Detectar enviada**: `answerStatus` do JSON da lista (Parcialmente/
+Totalmente Respondida) e a cotação sair de "Oportunidades a Responder".
+**Não confirmado**: se um rascunho salvo (`Acao=9`) já muda o
+`answerStatus` — só dá para saber salvando uma vez.
+
 ## Próximos passos
-1. Recon (sem salvar nem enviar): campos e seletores, iframes/postbacks,
-   botão salvar × enviar, observações e anexos do comprador, lista de
-   pendências (número, comprador, data limite, itens, link), como detectar
-   cotação enviada. Scripts em `recon/`, no padrão dos existentes.
+1. ~~Recon~~ (acima). Pendente de decisão: um teste real de **Salvar**
+   (`Acao=9`) em cotação escolhida pelo usuário, com a trava deixando passar
+   só esse POST, para ver o que muda na lista e na página.
 2. Robô `mercado_eletronico/robo.py` com trava de envio e dry-run + testes
    contra HTML salvo do recon (sem acessar o ME real nos testes).
 3. Banco (tabelas de cotações ME, itens, histórico) + tela nova no `web/`.
