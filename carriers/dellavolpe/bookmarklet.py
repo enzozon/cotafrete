@@ -72,8 +72,13 @@ def campos_por_name(c: dict, email_resposta: str | None = None
     único cujo preço nunca aparece na tela."""
     por_rotulo: dict[str, str] = {
         "Qual o serviço que você procura?": SERVICO_FIXO,
-        "Nome completo": (m.carimbar(c["nome_solicitante"], c.get("id"))
-                          if c.get("nome_solicitante") else ""),
+        # Cotação anterior a 20/08/2026 não guardou o nome de quem pediu. O
+        # login do vendedor é melhor que o campo vazio: "Nome completo" é
+        # obrigatório no site, e vazio o envio é recusado.
+        "Nome completo": (m.carimbar(c.get("nome_solicitante")
+                                     or c.get("usuario") or "", c.get("id"))
+                          if (c.get("nome_solicitante") or c.get("usuario"))
+                          else ""),
         "E-mail": email_resposta or c.get("email") or "",
         "WhatsApp": c.get("whatsapp_solicitante") or "",
         "CNPJ - Remetente": c.get("cnpj_remetente") or "",
@@ -147,11 +152,41 @@ SCRIPT_JS = """(function () {
     el.dispatchEvent(new Event(tipo, { bubbles: true }));
   }
 
+  function visivel(el) {
+    return !!(el && (el.offsetWidth || el.offsetHeight
+                     || el.getClientRects().length));
+  }
+
+  // O formulário CERTO. O site da Della Volpe mantém uns dez formulários no
+  // mesmo HTML — um por serviço, mais o "fale conosco" do rodapé — e vários
+  // têm campos com o mesmo name ("nome", "email", "whatsapp").
+  // document.querySelector pegava o PRIMEIRO da página, às vezes num
+  // formulário escondido: o nome ia para lá e o visível ficava vazio. Foi o
+  // "às vezes vem o nome, às vezes não" de 23/09/2026. O robô já resolvia
+  // isso procurando o campo VISÍVEL (adapter._primeiro_visivel); aqui a
+  // regra é a mesma: o formulário do select de serviço que está na tela.
+  var formulario = null;
+  function raiz() {
+    if (formulario) return formulario;
+    var servicos = document.querySelectorAll('select[name="servico"]');
+    for (var i = 0; i < servicos.length; i++) {
+      if (visivel(servicos[i]) && servicos[i].closest('form')) {
+        formulario = servicos[i].closest('form');
+        return formulario;
+      }
+    }
+    return document;
+  }
+
+  function campo(nome) {
+    return raiz().querySelector('input[name="' + nome + '"], textarea[name="'
+                                + nome + '"], select[name="' + nome + '"]');
+  }
+
   function preencher(nome, valor) {
     if (!valor) return;
-    var el = document.querySelector(
-        'input[name="' + nome + '"], textarea[name="' + nome + '"]');
-    if (!el) return;
+    var el = campo(nome);
+    if (!el || el.tagName === 'SELECT') return;
     el.value = valor;
     disparar(el, 'input');
     disparar(el, 'change');
@@ -160,8 +195,8 @@ SCRIPT_JS = """(function () {
 
   function selecionar(nome, valor) {
     if (!valor) return false;
-    var el = document.querySelector('select[name="' + nome + '"]');
-    if (!el) return false;
+    var el = campo(nome);
+    if (!el || el.tagName !== 'SELECT') return false;
     var opcao = Array.prototype.slice.call(el.options).find(function (o) {
       return o.value === valor || o.textContent.trim() === valor;
     });
@@ -176,7 +211,7 @@ SCRIPT_JS = """(function () {
   // ideia do _esperar_opcoes do adapter Playwright, só que em JS puro.
   function esperarCidade(nomeCidade, cidade, tentativas) {
     if (!cidade) return;
-    var el = document.querySelector('select[name="' + nomeCidade + '"]');
+    var el = campo(nomeCidade);
     if (!el) return;
     if (el.options.length > 1 || tentativas <= 0) {
       selecionar(nomeCidade, cidade);
@@ -186,6 +221,10 @@ SCRIPT_JS = """(function () {
       esperarCidade(nomeCidade, cidade, tentativas - 1);
     }, 300);
   }
+
+  var TEXTO = ['nome', 'email', 'whatsapp', 'cnpj_origem', 'cnpj_destino',
+               'peso', 'qtd-volume', 'comprimento', 'largura', 'altura',
+               'valor', 'material', 'cnpj'];
 
   // Abre o accordion "Fazer Cotação" se ele existir e estiver fechado.
   Array.prototype.forEach.call(document.querySelectorAll('*'), function (el) {
@@ -198,34 +237,41 @@ SCRIPT_JS = """(function () {
 
   setTimeout(function () {
     selecionar('servico', campos.servico);
-    preencher('nome', campos.nome);
-    preencher('email', campos.email);
-    preencher('whatsapp', campos.whatsapp);
-    preencher('cnpj_origem', campos.cnpj_origem);
-    preencher('cnpj_destino', campos.cnpj_destino);
-    preencher('peso', campos.peso);
-    preencher('qtd-volume', campos['qtd-volume']);
-    preencher('comprimento', campos.comprimento);
-    preencher('largura', campos.largura);
-    preencher('altura', campos.altura);
-    preencher('valor', campos.valor);
-    preencher('material', campos.material);
-    preencher('cnpj', campos.cnpj);
+    TEXTO.forEach(function (nome) { preencher(nome, campos[nome]); });
 
     selecionar('estado_origem', campos.estado_origem);
     esperarCidade('cidade_origem', campos.cidade_origem, 15);
     selecionar('estado_destino', campos.estado_destino);
     esperarCidade('cidade_destino', campos.cidade_destino, 15);
 
-    // O mesmo tropeço que o robô teve em 22/09/2026: escolher o serviço
-    // revela os campos condicionais do CF7, e preencher o RESTO faz o site
-    // re-renderizar o grupo e zerar o próprio serviço. Uma segunda escolha,
-    // só se ele voltou vazio — igual ao conserto do adapter.
-    var servico = document.querySelector('select[name="servico"]');
-    if (servico && !servico.value) selecionar('servico', campos.servico);
-
-    alert('Cotafrete preencheu os campos.\\n\\nConfira, resolva o captcha '
-        + 'e clique em "Pedir orçamento".');
+    // Conferência, depois que o site terminou de reagir. Escolher o serviço
+    // revela os campos condicionais do CF7, e a re-renderização pode zerar
+    // o que acabou de ser digitado — o serviço inclusive (o mesmo tropeço
+    // do robô em 22/09/2026). Uma segunda passada no que voltou vazio, e o
+    // que AINDA assim ficar vazio é dito no aviso, para o vendedor digitar.
+    setTimeout(function () {
+      var servico = campo('servico');
+      if (servico && !servico.value) selecionar('servico', campos.servico);
+      TEXTO.forEach(function (nome) {
+        var el = campo(nome);
+        if (campos[nome] && el && !el.value) preencher(nome, campos[nome]);
+      });
+      // Olha de novo só depois de o site ter tido tempo de reagir à segunda
+      // passada: conferir no mesmo instante daria "tudo certo" para um campo
+      // que o site apaga logo em seguida.
+      setTimeout(function () {
+        var faltando = TEXTO.filter(function (nome) {
+          var el = campo(nome);
+          return campos[nome] && (!el || !el.value);
+        });
+        alert('Cotafrete preencheu os campos.\\n\\nConfira, resolva o '
+            + 'captcha e clique em "Pedir orçamento".'
+            + (faltando.length
+               ? '\\n\\nAtenção: não consegui preencher '
+                 + faltando.join(', ') + ' — digite à mão.'
+               : ''));
+      }, 600);
+    }, 1500);
   }, 700);
 })();"""
 
@@ -252,7 +298,7 @@ def href_bookmarklet() -> str:
 # Decidido em 23/09/2026: todos os vendedores usam Chrome e podem instalar
 # extensão. Tampermonkey primeiro (no ar em um dia, sem loja); uma extensão
 # própria da empresa fica para quando o uso provar que vale.
-VERSAO_USERSCRIPT = "1.0.0"
+VERSAO_USERSCRIPT = "1.1.0"
 
 # Onde o script roda. A Della Volpe, com e sem "www". E as páginas
 # /dellavolpe/N do próprio Cotafrete — lá ele não preenche nada, só deixa uma

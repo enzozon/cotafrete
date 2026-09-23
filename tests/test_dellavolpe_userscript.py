@@ -195,3 +195,100 @@ def test_a_tela_real_troca_de_versao_com_o_script(navegador, app_web):
     assert antes is True
     assert pg.locator("text=Instalar o script do Cotafrete").is_hidden()
     assert pg.locator("text=está instalado neste navegador").is_visible()
+
+
+# ------------------------------- o site real: vários formulários no HTML
+# O formulário de teste tem UM formulário. O site da Della Volpe tem uns dez
+# no mesmo HTML (um por serviço, mais o "fale conosco" do rodapé), com campos
+# de mesmo name. É isso que fazia o nome aparecer "às vezes sim, às vezes
+# não" (23/09/2026): o preenchimento ia para o primeiro campo da página, num
+# formulário escondido.
+FORMULARIO_ESCONDIDO_ANTES = """() => {
+    const f = document.createElement('form');
+    f.style.display = 'none';
+    f.innerHTML = '<select name="servico"><option value="">x</option>'
+                + '<option>Fracionado -LTL</option></select>'
+                + '<input name="nome"><input name="email">'
+                + '<input name="whatsapp">';
+    document.body.prepend(f);
+}"""
+
+# A re-renderização do Contact Form 7: escolher o serviço revela os campos
+# condicionais e, logo depois, zera o que estava no formulário.
+SITE_APAGA_DEPOIS_DO_SERVICO = """() => {
+    const visivel = [...document.querySelectorAll('select[name="servico"]')]
+        .find(s => s.offsetWidth || s.offsetHeight);
+    const form = visivel.closest('form');
+    visivel.addEventListener('change', () => setTimeout(() => {
+        form.querySelector('[name="nome"]').value = '';
+        form.querySelector('[name="whatsapp"]').value = '';
+    }, 300), { once: true });
+}"""
+
+
+def _abrir_como_o_site_real(aba, url: str, *preparos: str) -> None:
+    aba.goto(url, wait_until="load")
+    for preparo in preparos:
+        aba.evaluate(preparo)
+    aba.evaluate(SCRIPT)
+    aba.wait_for_timeout(3_500)
+
+
+def _no_formulario_visivel(aba, nome: str) -> str:
+    return aba.evaluate("""nome => {
+        const s = [...document.querySelectorAll('select[name="servico"]')]
+            .find(x => x.offsetWidth || x.offsetHeight);
+        return s.closest('form').querySelector(`[name="${nome}"]`).value;
+    }""", nome)
+
+
+def test_preenche_o_formulario_visivel_e_nao_o_escondido(aba):
+    _abrir_como_o_site_real(aba, dv.url_formulario(COTACAO),
+                            FORMULARIO_ESCONDIDO_ANTES)
+
+    assert _no_formulario_visivel(aba, "nome") == "Enzo Zon"
+    assert _no_formulario_visivel(aba, "email") == "vendas@ventura.com.br"
+    assert _no_formulario_visivel(aba, "whatsapp") == "(27) 99988-7766"
+    escondido = aba.locator('form[style*="none"] [name="nome"]')
+    assert escondido.input_value() == ""
+
+
+def test_campo_que_o_site_apaga_e_preenchido_de_novo(aba):
+    _abrir_como_o_site_real(aba, dv.url_formulario(COTACAO),
+                            SITE_APAGA_DEPOIS_DO_SERVICO)
+
+    assert _no_formulario_visivel(aba, "nome") == "Enzo Zon"
+    assert _no_formulario_visivel(aba, "whatsapp") == "(27) 99988-7766"
+    assert not any("não consegui preencher" in a for a in aba.avisos)
+
+
+def test_as_duas_coisas_juntas(aba):
+    _abrir_como_o_site_real(aba, dv.url_formulario(COTACAO),
+                            FORMULARIO_ESCONDIDO_ANTES,
+                            SITE_APAGA_DEPOIS_DO_SERVICO)
+
+    assert _no_formulario_visivel(aba, "nome") == "Enzo Zon"
+    assert _no_formulario_visivel(aba, "servico") == "Fracionado -LTL"
+    assert _no_formulario_visivel(aba, "cidade_destino") == "São Paulo"
+
+
+def test_o_que_nao_deu_para_preencher_e_dito_no_aviso(aba):
+    """Se o site insistir em apagar, o vendedor precisa saber QUAL campo
+    digitar — e não descobrir quando a Della Volpe recusar o envio."""
+    teimoso = """() => {
+        const nome = document.querySelector('[name="nome"]');
+        setInterval(() => { nome.value = ''; }, 50);
+    }"""
+    _abrir_como_o_site_real(aba, dv.url_formulario(COTACAO), teimoso)
+
+    assert any("não consegui preencher nome" in a for a in aba.avisos)
+
+
+def test_cotacao_sem_nome_gravado_usa_o_login_do_vendedor():
+    """Cotação anterior a 20/08/2026 não tem nome_solicitante. "Nome
+    completo" é obrigatório no site: vazio, o envio é recusado."""
+    antiga = {k: v for k, v in COTACAO.items() if k != "nome_solicitante"}
+
+    campos = dv.campos_por_name({**antiga, "id": 42, "usuario": "lucas"})
+
+    assert campos["nome"] == "lucas (cot. 42)"
