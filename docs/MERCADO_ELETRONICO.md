@@ -1,6 +1,6 @@
 # Mercado Eletrônico (ME): resposta semiautomática de cotações
 
-Documento de passagem entre sessões. Contém o pedido original, as decisões
+Documento de passagem entre sessões. PR: https://github.com/enzozon/cotafrete/pull/32 Contém o pedido original, as decisões
 já tomadas, o que está pronto e o que falta. **Leia inteiro antes de mexer.**
 
 ## Objetivo
