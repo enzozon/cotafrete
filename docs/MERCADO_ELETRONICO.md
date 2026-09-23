@@ -262,10 +262,63 @@ commit anterior ao ME (e7ef26b) — dependem do `.env` desta máquina.
 observação geral. O ME tem "Deseja Recusar o Item?" com justificativa por
 item — não testado; decidir com o usuário se o robô deve usar isso.
 
+## Banco e tela nova (sessão nuvem, 23/09/2026)
+Tela **/me** (link "Mercado Eletrônico" no menu), em `web/me_ui.py`:
+- **Lista**: as cotações das duas contas, filtros por conta e status, data
+  limite com contagem regressiva, "itens c/ preço", destaque vermelho
+  faltando < 24 h — e o alerta mais importante, "Salva no ME mas NÃO
+  enviada — fecha em …". Varredura do ME a cada 7 min (thread no lifespan,
+  só se houver ME_*_LOGIN/SENHA) + botão "Atualizar agora". Leitura que
+  falha não mexe em nada (aparece "Falha ao ler VENTURA: …").
+- **Cotação /me/{id}**: "Ler itens do ME" (todas as páginas) → por item a
+  descrição, quantidade/unidade, UF de entrega, origem e remessa pedidas e
+  o texto do comprador; o usuário preenche preço, NCM, prazo, marca (20),
+  obs (100), origem (0/2) e a validade. "Guardar e conferir" mostra, na
+  linha, o que o robô vai digitar (ICMS/PIS/COFINS, data de entrega) e os
+  erros/avisos de `regras`. "Salvar no ME" e "Testar sem salvar" (dry-run)
+  só saem sem erro. Atalhos: marca/origem/prazo do 1º em todos, copiar do
+  item anterior, NCM/marca/origem lembrados por código de material.
+  **Não existe botão de enviar**; "Marcar como enviada" só grava no banco.
+- **Status** (`mercado_eletronico/painel.py`): Pendente → Salvando → Salva
+  no ME / Erro; Enviada quando o ME diz Parcial/Totalmente Respondida ou a
+  cotação some das pendências antes do prazo; Vencida se some depois;
+  Recusada. Enviada/Recusada são finais. Rascunho salvo sobrevive às
+  varreduras (o ME continua "Não Respondida").
+- **Banco** (`core/banco.py`): `me_cotacao`, `me_item` (o que veio do ME
+  separado do que o usuário digitou — reler não apaga), `me_historico`,
+  `me_material`. Dois cliques em "Salvar no ME" não soltam dois robôs
+  (`me_trocar_status`).
+- `mercado_eletronico/pagina.py` lê o HTML da página de resposta (itens,
+  quantidade, unidade, Campos Adicionais), testado nas cópias reais.
+
+**Ligação com o ME** (`me_ui.FONTE`, `LEITOR`, `ROBO`, trocáveis nos testes):
+`mercado_eletronico/ponte.py` — `pendencias(conta)` (captura o JSON da busca
+e passa por `lista.ler_busca`) e `ler_paginas(conta, numero)` (HTML de cada
+página de itens), os dois dentro de `robo.Sessao`, com as travas do robô —
+e `robo.salvar_cotacao(Conta, numero, itens, validade_dias, dry_run=...)`.
+Provado no ME real às 19:25 de 23/09: as duas listas e a leitura de 23049227
+e 23052403 (só leitura, nenhum POST).
+
+Cuidado aprendido: sem sessão o ME carrega a lista e só depois manda para o
+login por JavaScript, e `networkidle` nunca chega (o chat mantém a rede
+ocupada). A ponte espera a resposta da busca; se não vier e a página estiver
+no login, loga e tenta de novo.
+
+**23039029 foi enviada** (ME: Totalmente Respondida, `lastDateAnswered`
+17:39 de Brasília — fora do sistema). O `firstDateAnswered` dela é 16:45,
+exatamente a troca de página da cópia (`Acao=12`, rascunho temporário): o ME
+guarda a data do PRIMEIRO rascunho como "primeira resposta" quando a cotação
+é enviada. Logo, a hora do envio é `lastDateAnswered`, não o `first`. Logo
+depois da troca de página a lista ainda dizia "Não Respondida", sem datas.
+
+Testes: `test_me_pagina.py`, `test_me_painel.py`, `test_me_banco.py`,
+`test_me_tela.py` (tela de ponta a ponta com a lista e as páginas reais e
+um robô falso).
+
 ## Próximos passos
 1. ~~Recon~~, ~~teste de Salvar~~ e ~~robô~~ (acima).
 2. Robô `mercado_eletronico/robo.py` com trava de envio e dry-run + testes
    contra HTML salvo do recon (sem acessar o ME real nos testes).
-3. Banco (tabelas de cotações ME, itens, histórico) + tela nova no `web/`.
+3. ~~Banco + tela nova~~ feito (acima); falta ligar em `lista.pendencias`/`robo.*` quando existirem.
 4. Revisão por IA.
 5. Documentação na aba /documentacao e README.

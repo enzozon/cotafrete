@@ -1728,6 +1728,7 @@ def pagina(titulo: str, corpo: str, usuario: str | None = None) -> str:
         quem = ('<span class="quem"><nav class="menu" '
                 'aria-label="Navegação principal">'
                 '<a href="/">Nova cotação</a><a href="/historico">Histórico</a>'
+                '<a href="/me">Mercado Eletrônico</a>'
                 '<a href="/documentacao">Documentação</a>'
                 f'<a href="/sair">Sair</a></nav> <b>{e(usuario)}</b></span>')
     return f"""<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">

@@ -63,7 +63,7 @@ from core.evidencias import limpar_antigas, montar_zip_de_prints
 from core.retentativa import (
     ESPERA_MAXIMA_S, SEM_REPETICAO, TENTATIVAS_MAXIMAS, cotar_com_retentativa,
 )
-from web import adm, transportadoras
+from web import adm, me_ui, transportadoras
 from web.ficha_ui import (
     ficha_da_cotacao, kg as _kg, pagador_da_cotacao, peso_por_volume,
     quando as quando_humano, quem_e as _quem,
@@ -87,11 +87,20 @@ from core.models import (
 # brigaria com o servidor pelos mesmos e-mails. O lifespan só roda quando o
 # uvicorn sobe de verdade (o TestClient sem `with` nem o chama).
 INGESTOR: dv_ingestor.Vigia | None = None
+# A varredura da lista do Mercado Eletrônico (web/me_ui.py), pelo mesmo
+# motivo: só sobe com o uvicorn, nunca no import.
+VIGIA_ME = None
 
 
 @asynccontextmanager
 async def _vida(_app):
-    global INGESTOR
+    global INGESTOR, VIGIA_ME
+    if VIGIA_ME is None:
+        VIGIA_ME = me_ui.iniciar_vigia()
+        if VIGIA_ME is not None:
+            print(f"[cotafrete] Mercado Eletrônico: lendo as pendências de "
+                  f"{', '.join(me_ui.contas_configuradas())} a cada "
+                  f"{me_ui.INTERVALO_S // 60} min.")
     if INGESTOR is None:
         INGESTOR = dv_ingestor.iniciar(banco)
         if INGESTOR is not None:
@@ -101,6 +110,8 @@ async def _vida(_app):
     yield
     if INGESTOR is not None:
         INGESTOR.parar.set()
+    if VIGIA_ME is not None:
+        VIGIA_ME.set()
 
 
 app = FastAPI(title="Cotafrete — Ventura", lifespan=_vida)
@@ -114,6 +125,8 @@ app.include_router(adm.router)
 # O painel usa o MESMO banco do resto do sistema. Injetado aqui, e não
 # importado lá, porque `web/adm.py` importar `web/app.py` seria circular.
 adm.banco = banco
+app.include_router(me_ui.router)
+me_ui.banco = banco
 
 # Quantas transportadoras rodam juntas, quantas vezes se tenta de novo e por
 # quanto tempo: tudo em core/retentativa.py, porque as três decisões dependem
@@ -554,6 +567,11 @@ def vendedor(usuario: str | None = Cookie(None, alias=COOKIE)) -> str | None:
         return None
     return nome
 
+
+
+# A tela do ME pergunta quem é a pessoa pela MESMA porta do vendedor.
+me_ui.vendedor = vendedor
+me_ui.COOKIE = COOKIE
 
 def _tela_login(erro: str = "", nome: str = "",
                 escolher_senha: bool = False) -> str:
