@@ -624,6 +624,16 @@ if (window.IntersectionObserver && secoes.length) {
   }, {rootMargin: '-15% 0px -75% 0px'});
   secoes.forEach(s => olho.observe(s));
 }
+
+// O #topo e o cabecalho grudado (sticky): ele nunca "entra" na tela para o
+// observador acima, e voltar ao alto deixava marcado o ultimo item visto.
+// No alto da pagina, quem esta na frente dos olhos e a visao geral.
+const marcarTopo = () => {
+  if (window.scrollY > 40) return;
+  document.querySelectorAll('.lateral a[data-secao]').forEach(a =>
+    a.classList.toggle('atual', a.dataset.secao === 'topo'));
+};
+window.addEventListener('scroll', marcarTopo, {passive: true});
 """
 
 

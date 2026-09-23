@@ -906,6 +906,25 @@ def _lateral(base: str = "") -> str:
 </div></nav>"""
 
 
+# "Visão geral" aponta para #topo, o cabeçalho — que é position:sticky. Com a
+# página rolada ele está grudado no alto da tela, o navegador acha que o alvo
+# já está à vista e não rola nada: no painel o clique não fazia nada, e nas
+# outras telas funcionava só porque o link abre outra página (24/09/2026).
+# Aqui o clique num #topo DESTA página leva ao alto de verdade. A rolagem
+# continua suave pelo scroll-behavior do CSS, que respeita o "reduzir
+# movimento" do sistema.
+SCRIPT_TOPO = """<script>
+document.addEventListener('click', ev => {
+  const a = ev.target.closest('a[href$="#topo"]');
+  if (!a || a.pathname !== location.pathname) return;
+  if (!document.getElementById('topo')) return;
+  ev.preventDefault();
+  window.scrollTo({top: 0});
+  history.replaceState(null, '', '#topo');
+});
+</script>"""
+
+
 def pagina_painel(titulo: str, corpo: str, *, base: str = "") -> str:
     """A página inteira do painel. Casco próprio, e não o `pagina()` do
     layout: aquele é uma faixa em cima e uma coluna de 1080px, desenhada para
@@ -916,7 +935,7 @@ def pagina_painel(titulo: str, corpo: str, *, base: str = "") -> str:
 <title>{e(titulo)} — Cotafrete</title>{ICONE_ABA}{cabeca_do_tema("escuro")}
 <style>{CSS_BASE}{CSS}</style></head><body>
 <div class="painel">{_lateral(base)}<main class="conteudo">{corpo}</main></div>
-{LUPA}{SCRIPT_TEMA}
+{LUPA}{SCRIPT_TEMA}{SCRIPT_TOPO}
 </body></html>"""
 
 
