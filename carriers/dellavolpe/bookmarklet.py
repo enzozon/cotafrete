@@ -237,3 +237,74 @@ def href_bookmarklet() -> str:
     dependência nova nenhuma só para economizar alguns bytes numa URL que o
     navegador aceita de sobra."""
     return "javascript:" + quote(SCRIPT_JS)
+
+
+# ------------------------------------------------------- o script instalado
+# O mesmo preenchimento do favorito, mas instalado UMA vez no Tampermonkey e
+# rodando SOZINHO quando a aba da Della Volpe abre com os dados no link.
+#
+# Por que existe, se o favorito já funciona: o favorito pedia três gestos que
+# ninguém faz direito na primeira vez — arrastar um link para a barra, abrir
+# a aba certa, clicar no favorito NELA. Com o script o vendedor só clica em
+# "Abrir formulário" no Cotafrete, e a aba já nasce preenchida. O captcha e o
+# "Pedir orçamento" continuam sendo dele: o script não toca em nenhum dos dois.
+#
+# Decidido em 23/09/2026: todos os vendedores usam Chrome e podem instalar
+# extensão. Tampermonkey primeiro (no ar em um dia, sem loja); uma extensão
+# própria da empresa fica para quando o uso provar que vale.
+VERSAO_USERSCRIPT = "1.0.0"
+
+# Onde o script roda. A Della Volpe, com e sem "www". E as páginas
+# /dellavolpe/N do próprio Cotafrete — lá ele não preenche nada, só deixa uma
+# marca para a página saber que o script está instalado e esconder o passo a
+# passo da instalação. O Cotafrete roda em mais de um endereço (localhost,
+# IP da rede, cotafrete.ventura.inf.br), daí o host livre.
+_CABECALHO = """// ==UserScript==
+// @name         Cotafrete — Della Volpe
+// @namespace    https://cotafrete.ventura.inf.br/
+// @version      {versao}
+// @description  Preenche o formulário de cotação da Della Volpe com os dados que o Cotafrete manda no link. Quem resolve o captcha e envia continua sendo você.
+// @match        https://dellavolpe.com.br/*
+// @match        https://www.dellavolpe.com.br/*
+// @match        *://*/dellavolpe/*
+// @run-at       document-idle
+// @grant        none
+// @updateURL    {url}
+// @downloadURL  {url}
+// ==/UserScript==
+"""
+
+_CORPO = """(function () {
+  if (!/(^|\\.)dellavolpe\\.com\\.br$/.test(location.hostname)) {
+    // Tela do Cotafrete: só avisa que o script está instalado.
+    document.documentElement.setAttribute('data-cotafrete-dv', '__VERSAO__');
+    return;
+  }
+  // Visita normal ao site da Della Volpe, sem dados no link: nada a fazer,
+  // e nenhum aviso — o vendedor pode estar só olhando o site.
+  if (!new URLSearchParams(location.search).get('cf')) return;
+
+  // O formulário é montado por JavaScript do site e mora dentro de um
+  // acordeão. Espera o select de serviço existir, até 15 s.
+  var tentativas = 50;
+  (function esperar() {
+    if (document.querySelector('select[name="servico"]') || tentativas-- <= 0) {
+      __PREENCHER__
+      return;
+    }
+    setTimeout(esperar, 300);
+  })();
+})();
+"""
+
+
+def userscript(url_do_script: str) -> str:
+    """O arquivo .user.js que o Tampermonkey instala.
+
+    `url_do_script` é o endereço deste mesmo arquivo no Cotafrete: o
+    Tampermonkey volta lá para buscar versão nova, e é assim que uma
+    correção chega a todas as máquinas sem ninguém reinstalar nada."""
+    corpo = (_CORPO.replace("__VERSAO__", VERSAO_USERSCRIPT)
+             .replace("__PREENCHER__", SCRIPT_JS))
+    return _CABECALHO.format(versao=VERSAO_USERSCRIPT,
+                             url=url_do_script) + corpo

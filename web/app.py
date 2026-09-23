@@ -319,6 +319,11 @@ ESPERA_DO_EMAIL: dict[str, str] = {}
 # dia ruim sem deixar uma aba esquecida recarregando para sempre.
 ESPERA_PELA_PROPOSTA_S = 30 * 60
 
+# Onde o vendedor instala o Tampermonkey (o gerenciador de scripts que roda o
+# preenchimento da Della Volpe — ver carriers/dellavolpe/bookmarklet.py).
+URL_TAMPERMONKEY = ("https://chromewebstore.google.com/detail/tampermonkey/"
+                    "dhdgffkkebhmkfjojejmpbldmpobfkfo")
+
 # Erro técnico -> frase que o vendedor entende.
 #
 # Pedido do Enzo em 18/08/2026. O motivo é concreto: ele não sabe o que é
@@ -1548,7 +1553,15 @@ def formulario_dellavolpe(cotacao_id: int,
         c, None if escolheu_email else dv_caixa.email_de_resposta())
     href_favorito = dv_bookmarklet.href_bookmarklet()
 
+    # Duas versões da mesma tela, e quem escolhe é o NAVEGADOR: o script do
+    # Tampermonkey marca o <html> com data-cotafrete-dv quando está
+    # instalado, e aí o passo a passo da instalação some. Sem o script, a
+    # tela ensina a instalar — e guarda o favorito antigo como plano B.
     return HTMLResponse(pagina(f"Cotação {cotacao_id} — Della Volpe", f"""
+<style>
+  body:not(.com-script) .so-com {{ display: none; }}
+  body.com-script .so-sem {{ display: none; }}
+</style>
 {cabecalho("Della Volpe", tarja="Fluxo assistido",
            contexto=(("rota", f"{c['cidade_origem']}/{c['uf_origem']} → "
                               f"{c['cidade_destino']}/{c['uf_destino']}"),
@@ -1562,44 +1575,52 @@ def formulario_dellavolpe(cotacao_id: int,
   OFICIAL deles — o preenchimento só poupa a digitação, quem resolve o
   captcha e clica em enviar é você.</div>
 
-  <div class="passo-n" data-n="1"><b>Só na primeira vez:</b> arraste este
-  link para a barra de favoritos do navegador.</div>
-  <p><a class="botao2" href="{href_favorito}"
-  onclick="return confirm('Não clique — ARRASTE este link para a barra de favoritos.')"
-  >📋 Preencher cotação (Cotafrete)</a></p>
+  <div class="so-com">
+    <p class="sub">✓ O script do Cotafrete está instalado neste navegador.</p>
+  </div>
 
-  <img class="print" src="/ajuda/passo1_barra_favoritos.png"
-  alt="Print: o favorito salvo na barra do navegador, com uma seta apontando para ele">
-  <p class="sub">Depois de arrastar, o favorito "Preencher cotação
-  (Cotafrete)" fica salvo na barra do navegador (seta na imagem) — é nele que
-  você vai clicar no Passo 3, sempre na aba NOVA da Della Volpe.</p>
+  <div class="so-sem">
+    <div class="passo-n" data-n="1"><b>Só na primeira vez, neste
+    computador:</b> instale o preenchimento automático. São dois cliques e
+    vale para todas as cotações daqui para a frente.</div>
+    <div style="margin-left:46px">
+    <p>a) Instale a extensão <b>Tampermonkey</b> no Chrome:
+    <a class="botao2" href="{URL_TAMPERMONKEY}" target="_blank"
+    rel="noopener">Abrir Tampermonkey na Chrome Web Store</a>
+    — clique em <b>"Usar no Chrome"</b>.</p>
+    <p>b) Libere os scripts: em <b>chrome://extensions</b>, abra
+    <b>Detalhes</b> do Tampermonkey e ligue <b>"Permitir scripts do
+    usuário"</b>. (Em Chrome mais antigo, a chave é o <b>"Modo do
+    desenvolvedor"</b>, no canto de cima da mesma tela.)</p>
+    <p>c) Instale o script do Cotafrete:
+    <a class="botao2" href="/extensao/cotafrete-dellavolpe.user.js"
+    target="_blank" rel="noopener">Instalar o script do Cotafrete</a>
+    — o Tampermonkey abre uma tela; clique em <b>"Instalar"</b>. Depois
+    volte aqui e recarregue esta página.</p>
+    </div>
+  </div>
 
-  <div class="passo-n" data-n="2">Abra o formulário da Della Volpe nesta
-  aba nova.</div>
+  <div class="passo-n so-com" data-n="1">Abra o formulário da Della Volpe.
+  Ele já abre preenchido.</div>
+  <div class="passo-n so-sem" data-n="2">Abra o formulário da Della Volpe.
+  Ele abre preenchido quando o script do passo 1 estiver instalado.</div>
   <p><a class="botao2" href="{e(url)}" target="_blank" rel="noopener"
   >Abrir formulário da Della Volpe</a></p>
+  <p class="sub">Os campos enchem sozinhos alguns segundos depois de a
+  página abrir, e aparece um aviso do navegador confirmando — é só clicar
+  OK.</p>
 
-  <div class="passo-n" data-n="3"><b>Na aba nova</b>, clique no favorito
-  "Preencher cotação (Cotafrete)" que você salvou no passo 1. Os campos
-  enchem sozinhos, e aparece um aviso do navegador confirmando — é só
-  clicar OK.</div>
-
-  <img class="print" src="/ajuda/passo3_alerta_preenchido.png"
-  alt="Print: aviso do navegador dizendo que o Cotafrete preencheu os campos">
-  <p class="sub">É este o aviso que aparece depois do clique: "Cotafrete
-  preencheu os campos. Confira, resolva o captcha e clique em 'Pedir
-  orçamento'." Clique OK e siga para o Passo 4.</p>
-
-  <div class="passo-n" data-n="4">Confira os dados preenchidos e resolva o captcha da
-  Della Volpe ("confirme que é humano") — quando ele validar, aparece um
-  quadradinho verde escrito <b>"Sucesso!"</b>. Só depois clique em
-  "Pedir orçamento". Isso o sistema não faz por você — nem deveria.</div>
+  <div class="passo-n so-com" data-n="2">Confira os dados preenchidos e
+  resolva o captcha da Della Volpe ("confirme que é humano") — quando ele
+  validar, aparece um quadradinho verde escrito <b>"Sucesso!"</b>. Só
+  depois clique em "Pedir orçamento".</div>
+  <div class="passo-n so-sem" data-n="3">Confira os dados preenchidos e
+  resolva o captcha da Della Volpe ("confirme que é humano") — quando ele
+  validar, aparece um quadradinho verde escrito <b>"Sucesso!"</b>. Só
+  depois clique em "Pedir orçamento".</div>
 
   <img class="print" src="/ajuda/passo4_captcha_sucesso.png"
   alt="Print: captcha da Della Volpe resolvido, mostrando Sucesso em verde">
-  <p class="sub">É este quadradinho verde que confirma que o captcha foi
-  resolvido. Só depois dele aparecer o clique em "Pedir orçamento" envia de
-  verdade.</p>
 
   <div class="alerta"><b>É normal o primeiro clique em "Pedir orçamento"
   parecer que não fez nada.</b> Enquanto o captcha não terminar de validar
@@ -1609,12 +1630,50 @@ def formulario_dellavolpe(cotacao_id: int,
   <p class="sub">Anexo de planilha ou FISPQ não entra sozinho — o navegador
   não permite preencher esse tipo de campo por segurança. Anexe à mão se a
   carga precisar.</p>
+
+  <details class="so-sem">
+    <summary>Não dá para instalar agora? Use o favorito (jeito antigo)</summary>
+    <p>Arraste este link para a barra de favoritos:
+    <a class="botao2" href="{href_favorito}"
+    onclick="return confirm('Não clique — ARRASTE este link para a barra de favoritos.')"
+    >📋 Preencher cotação (Cotafrete)</a></p>
+    <img class="print" src="/ajuda/passo1_barra_favoritos.png"
+    alt="Print: o favorito salvo na barra do navegador">
+    <p class="sub">Depois abra o formulário (passo 2) e, <b>na aba nova da
+    Della Volpe</b>, clique no favorito. Os campos enchem e aparece o aviso
+    de confirmação.</p>
+    <img class="print" src="/ajuda/passo3_alerta_preenchido.png"
+    alt="Print: aviso do navegador dizendo que o Cotafrete preencheu os campos">
+  </details>
 </div>
 
 <p class="sub" style="margin-top:24px">Prefere continuar mandando por e-mail
 (mais lento)? <a href="/email/{cotacao_id}/dellavolpe">Abrir e-mail pronto</a>
 </p>
+<script>
+// O script do Tampermonkey roda depois que a página carrega e marca o
+// <html>. Olha por 3 segundos; sem marca, fica a versão "instale".
+(function () {{
+  var voltas = 15;
+  (function olhar() {{
+    if (document.documentElement.getAttribute('data-cotafrete-dv')) {{
+      document.body.classList.add('com-script');
+    }} else if (voltas-- > 0) {{
+      setTimeout(olhar, 200);
+    }}
+  }})();
+}})();
+</script>
 """, usuario))
+
+
+# O .user.js do Tampermonkey. SEM login de propósito: o Tampermonkey volta
+# aqui sozinho para buscar versão nova, sem o cookie do vendedor — e o
+# arquivo não tem dado nenhum, só o código de preencher o formulário.
+@app.get("/extensao/cotafrete-dellavolpe.user.js")
+def script_tampermonkey(request: Request):
+    return Response(dv_bookmarklet.userscript(str(request.url)),
+                    media_type="text/javascript; charset=utf-8")
 
 
 # Rótulo e classe de cada estado. Um lugar só: a linha e a pílula têm de
