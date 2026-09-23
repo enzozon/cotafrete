@@ -1,0 +1,1082 @@
+{
+ "aggregation": [
+  {
+   "favoritename": "Transaction_Status",
+   "name": "Status",
+   "label": "Status do Processo",
+   "type": "object",
+   "isFavorite": false,
+   "values": [
+    {
+     "id": "7",
+     "value": "Cotação",
+     "order": 1,
+     "favoritename": "Transaction_Status_Cotacao",
+     "name": "Status",
+     "label": "Status do Processo",
+     "isFavorite": false,
+     "values": [
+      {
+       "id": "0",
+       "value": "Em Andamento",
+       "order": 1,
+       "favoritename": "Transaction_Status_Cotacao_0",
+       "name": "Em Andamento",
+       "label": "Em Andamento",
+       "isFavorite": false,
+       "total": 0
+      },
+      {
+       "id": "3",
+       "value": "Cancelada",
+       "order": 2,
+       "favoritename": "Transaction_Status_Cotacao_3",
+       "name": "Cancelada",
+       "label": "Cancelada",
+       "isFavorite": false,
+       "total": 0
+      },
+      {
+       "id": "4",
+       "value": "Encerrada",
+       "order": 3,
+       "favoritename": "Transaction_Status_Cotacao_4",
+       "name": "Encerrada",
+       "label": "Encerrada",
+       "isFavorite": false,
+       "total": 0
+      }
+     ],
+     "total": 0
+    },
+    {
+     "id": "13",
+     "value": "Pedido",
+     "order": 2,
+     "favoritename": "Transaction_Status_Pedido",
+     "name": "Status",
+     "label": "Status do Processo",
+     "isFavorite": false,
+     "values": [
+      {
+       "id": "2",
+       "value": "Aguardando Resposta",
+       "order": 1,
+       "favoritename": "Transaction_Status_Pedido_2",
+       "name": "Aguardando Resposta",
+       "label": "Aguardando Resposta",
+       "isFavorite": false,
+       "total": 0
+      },
+      {
+       "id": "9",
+       "value": "A Entregar",
+       "order": 2,
+       "favoritename": "Transaction_Status_Pedido_9",
+       "name": "A Entregar",
+       "label": "A Entregar",
+       "isFavorite": false,
+       "total": 0
+      },
+      {
+       "id": "6",
+       "value": "Reprogramados / Alterados",
+       "order": 3,
+       "favoritename": "Transaction_Status_Pedido_6",
+       "name": "Reprogramados / Alterados",
+       "label": "Reprogramados / Alterados",
+       "isFavorite": false,
+       "total": 0
+      },
+      {
+       "id": "10",
+       "value": "Parcialmente Confirmado",
+       "order": 4,
+       "favoritename": "Transaction_Status_Pedido_10",
+       "name": "Parcialmente Confirmado",
+       "label": "Parcialmente Confirmado",
+       "isFavorite": false,
+       "total": 0
+      },
+      {
+       "id": "3",
+       "value": "Confirmados",
+       "order": 5,
+       "favoritename": "Transaction_Status_Pedido_3",
+       "name": "Confirmados",
+       "label": "Confirmados",
+       "isFavorite": false,
+       "total": 0
+      },
+      {
+       "id": "7",
+       "value": "Recusados",
+       "order": 6,
+       "favoritename": "Transaction_Status_Pedido_7",
+       "name": "Recusados",
+       "label": "Recusados",
+       "isFavorite": false,
+       "total": 0
+      },
+      {
+       "id": "5",
+       "value": "Cancelado pelo Comprador",
+       "order": 7,
+       "favoritename": "Transaction_Status_Pedido_5",
+       "name": "Cancelado pelo Comprador",
+       "label": "Cancelado pelo Comprador",
+       "isFavorite": false,
+       "total": 0
+      }
+     ],
+     "total": 0
+    },
+    {
+     "id": "9",
+     "value": "Nota Fiscal",
+     "order": 3,
+     "favoritename": "Transaction_Status_NotaFiscal",
+     "name": "Status",
+     "label": "Status do Processo",
+     "isFavorite": false,
+     "values": [
+      {
+       "id": "1",
+       "value": "Criada",
+       "order": 1,
+       "favoritename": "Transaction_Status_NotaFiscal_1",
+       "name": "Status do Processo",
+       "label": "Status do Processo",
+       "isFavorite": false,
+       "total": 0
+      },
+      {
+       "id": "5000",
+       "value": "Integrada",
+       "order": 2,
+       "favoritename": "Transaction_Status_NotaFiscal_5000",
+       "name": "Status do Processo",
+       "label": "Status do Processo",
+       "isFavorite": false,
+       "total": 0
+      },
+      {
+       "id": "3",
+       "value": "Em Aprovação",
+       "order": 3,
+       "favoritename": "Transaction_Status_NotaFiscal_3",
+       "name": "Status do Processo",
+       "label": "Status do Processo",
+       "isFavorite": false,
+       "total": 0
+      },
+      {
+       "id": "1000",
+       "value": "Aceita",
+       "order": 4,
+       "favoritename": "Transaction_Status_NotaFiscal_1000",
+       "name": "Status do Processo",
+       "label": "Status do Processo",
+       "isFavorite": false,
+       "total": 0
+      },
+      {
+       "id": "9",
+       "value": "Recusada",
+       "order": 5,
+       "favoritename": "Transaction_Status_NotaFiscal_9",
+       "name": "Status do Processo",
+       "label": "Status do Processo",
+       "isFavorite": false,
+       "total": 0
+      },
+      {
+       "id": "60",
+       "value": "Cancelada",
+       "order": 6,
+       "favoritename": "Transaction_Status_NotaFiscal_60",
+       "name": "Status do Processo",
+       "label": "Status do Processo",
+       "isFavorite": false,
+       "total": 0
+      },
+      {
+       "id": "10",
+       "value": "Bloqueada",
+       "order": 7,
+       "favoritename": "Transaction_Status_NotaFiscal_10",
+       "name": "Status do Processo",
+       "label": "Status do Processo",
+       "isFavorite": false,
+       "total": 0
+      }
+     ],
+     "total": 0
+    },
+    {
+     "id": "3",
+     "value": "Contrato",
+     "order": 7,
+     "favoritename": "Transaction_Status_Contrato",
+     "name": "Status",
+     "label": "Status do Processo",
+     "isFavorite": false,
+     "values": [
+      {
+       "id": "0",
+       "value": "Submetido",
+       "order": 1,
+       "favoritename": "Transaction_Status_Contrato_0",
+       "name": "Submetido",
+       "label": "Submetido",
+       "isFavorite": false,
+       "total": 0
+      },
+      {
+       "id": "1",
+       "value": "Aprovado",
+       "order": 2,
+       "favoritename": "Transaction_Status_Contrato_1",
+       "name": "Aprovado",
+       "label": "Aprovado",
+       "isFavorite": false,
+       "total": 0
+      },
+      {
+       "id": "2",
+       "value": "Recusado",
+       "order": 3,
+       "favoritename": "Transaction_Status_Contrato_2",
+       "name": "Recusado",
+       "label": "Recusado",
+       "isFavorite": false,
+       "total": 0
+      },
+      {
+       "id": "11",
+       "value": "Aguardando aprovação do fornecedor",
+       "order": 4,
+       "favoritename": "Transaction_Status_Contrato_11",
+       "name": "Aguardando aprovação do fornecedor",
+       "label": "Aguardando aprovação do fornecedor",
+       "isFavorite": false,
+       "total": 0
+      }
+     ],
+     "total": 0
+    }
+   ]
+  },
+  {
+   "favoritename": "Transaction_ProcessType",
+   "name": "ProcessType",
+   "label": "Tipo",
+   "type": "object",
+   "isFavorite": false,
+   "values": [
+    {
+     "id": "7",
+     "value": "Cotação",
+     "order": 1,
+     "favoritename": "Transaction_ProcessType_7",
+     "name": "Cotação",
+     "label": "Cotação",
+     "isFavorite": false,
+     "total": 0
+    },
+    {
+     "id": "13",
+     "value": "Pedido",
+     "order": 2,
+     "favoritename": "Transaction_ProcessType_13",
+     "name": "Pedido",
+     "label": "Pedido",
+     "isFavorite": false,
+     "total": 0
+    },
+    {
+     "id": "9",
+     "value": "Nota Fiscal",
+     "order": 3,
+     "favoritename": "Transaction_ProcessType_9",
+     "name": "Nota Fiscal",
+     "label": "Nota Fiscal",
+     "isFavorite": false,
+     "total": 0
+    },
+    {
+     "id": "23",
+     "value": "Contas Pagas",
+     "order": 4,
+     "favoritename": "Transaction_ProcessType_23",
+     "name": "Contas Pagas",
+     "label": "Contas Pagas",
+     "isFavorite": false,
+     "total": 0
+    },
+    {
+     "id": "24",
+     "value": "Contas a Receber",
+     "order": 5,
+     "favoritename": "Transaction_ProcessType_24",
+     "name": "Contas a Receber",
+     "label": "Contas a Receber",
+     "isFavorite": false,
+     "total": 0
+    },
+    {
+     "id": "3",
+     "value": "Contrato",
+     "order": 7,
+     "favoritename": "Transaction_ProcessType_3",
+     "name": "Contrato",
+     "label": "Contrato",
+     "isFavorite": false,
+     "total": 0
+    }
+   ]
+  },
+  {
+   "favoritename": "Transaction_Pendencias",
+   "name": "Pendencias",
+   "label": "Pendências",
+   "type": "object",
+   "isFavorite": true,
+   "values": [
+    {
+     "id": "1",
+     "value": "Pedidos a Responder",
+     "order": 1,
+     "favoritename": "Transaction_Pendencias_1",
+     "name": "Pedidos a Responder",
+     "label": "Pedidos a Responder",
+     "isFavorite": false,
+     "total": 0
+    },
+    {
+     "id": "2",
+     "value": "Pedidos a Emitir NF",
+     "order": 2,
+     "favoritename": "Transaction_Pendencias_2",
+     "name": "Pedidos a Emitir NF",
+     "label": "Pedidos a Emitir NF",
+     "isFavorite": false,
+     "total": 0
+    },
+    {
+     "id": "4",
+     "value": "Oportunidades a Responder",
+     "order": 4,
+     "favoritename": "Transaction_Pendencias_4",
+     "name": "Oportunidades a Responder",
+     "label": "Oportunidades a Responder",
+     "isFavorite": false,
+     "total": 0
+    },
+    {
+     "id": "5",
+     "value": "Contratos a Responder",
+     "order": 5,
+     "favoritename": "Transaction_Pendencias_5",
+     "name": "Contratos a Responder",
+     "label": "Contratos a Responder",
+     "isFavorite": false,
+     "total": 0
+    }
+   ]
+  },
+  {
+   "favoritename": "Transaction_OriginProcessId",
+   "name": "OriginProcessId",
+   "label": "Origem",
+   "type": "object",
+   "isFavorite": false,
+   "values": [
+    {
+     "id": "27",
+     "value": "Nota Fiscal de Retorno",
+     "order": 1,
+     "favoritename": "Transaction_OriginProcessId_27",
+     "name": "Nota Fiscal de Retorno",
+     "label": "Nota Fiscal de Retorno",
+     "isFavorite": false,
+     "total": 0
+    },
+    {
+     "id": "9",
+     "value": "Nota Fiscal",
+     "order": 2,
+     "favoritename": "Transaction_OriginProcessId_9",
+     "name": "Nota Fiscal",
+     "label": "Nota Fiscal",
+     "isFavorite": false,
+     "total": 0
+    }
+   ]
+  },
+  {
+   "favoritename": "Transaction_OportunidadesNegocio",
+   "name": "OportunidadesNegocio",
+   "label": "Oportunidades de Negócios",
+   "type": "object",
+   "isFavorite": true,
+   "values": [
+    {
+     "id": "3",
+     "value": "Oportunidades de Negócios",
+     "order": 1,
+     "favoritename": "Transaction_OportunidadesNegocio_3",
+     "name": "Oportunidades de Negócios",
+     "label": "Oportunidades de Negócios",
+     "isFavorite": false,
+     "total": 0
+    }
+   ]
+  },
+  {
+   "favoritename": "Transaction_QuotationAnswerStatus",
+   "name": "QuotationAnswerStatus",
+   "label": "Status Resposta Cotação",
+   "type": "object",
+   "isFavorite": false,
+   "values": [
+    {
+     "id": "1",
+     "value": "Totalmente Respondida",
+     "order": 1,
+     "favoritename": "Transaction_QuotationAnswerStatus_1",
+     "name": "Totalmente Respondida",
+     "label": "Totalmente Respondida",
+     "isFavorite": false,
+     "total": 0
+    },
+    {
+     "id": "2",
+     "value": "Parcialmente Respondida",
+     "order": 2,
+     "favoritename": "Transaction_QuotationAnswerStatus_2",
+     "name": "Parcialmente Respondida",
+     "label": "Parcialmente Respondida",
+     "isFavorite": false,
+     "total": 0
+    },
+    {
+     "id": "3",
+     "value": "Não Respondida",
+     "order": 3,
+     "favoritename": "Transaction_QuotationAnswerStatus_3",
+     "name": "Não Respondida",
+     "label": "Não Respondida",
+     "isFavorite": false,
+     "total": 0
+    },
+    {
+     "id": "4",
+     "value": "Recusada",
+     "order": 4,
+     "favoritename": "Transaction_QuotationAnswerStatus_4",
+     "name": "Recusada",
+     "label": "Recusada",
+     "isFavorite": false,
+     "total": 0
+    }
+   ]
+  },
+  {
+   "favoritename": "Transaction_QuotationType",
+   "name": "QuotationType",
+   "label": "Tipo de Cotação",
+   "type": "object",
+   "isFavorite": false,
+   "values": [
+    {
+     "id": "1",
+     "value": "Pública",
+     "order": 1,
+     "favoritename": "Transaction_QuotationType_1",
+     "name": "Pública",
+     "label": "Pública",
+     "isFavorite": false,
+     "total": 0
+    },
+    {
+     "id": "2",
+     "value": "Privada",
+     "order": 2,
+     "favoritename": "Transaction_QuotationType_2",
+     "name": "Privada",
+     "label": "Privada",
+     "isFavorite": false,
+     "total": 0
+    }
+   ]
+  },
+  {
+   "favoritename": "Transaction_QuotationNegotiationStage",
+   "name": "QuotationNegotiationStage",
+   "label": "Tipo de Rodada",
+   "type": "object",
+   "isFavorite": false,
+   "values": [
+    {
+     "id": "1",
+     "value": "1º Oportunidade",
+     "order": 1,
+     "favoritename": "Transaction_QuotationNegotiationStage_1",
+     "name": "1º Oportunidade",
+     "label": "1º Oportunidade",
+     "isFavorite": false,
+     "total": 0
+    },
+    {
+     "id": "2",
+     "value": "ShortList",
+     "order": 2,
+     "favoritename": "Transaction_QuotationNegotiationStage_2",
+     "name": "ShortList",
+     "label": "ShortList",
+     "isFavorite": false,
+     "total": 0
+    },
+    {
+     "id": "3",
+     "value": "Contra Proposta",
+     "order": 3,
+     "favoritename": "Transaction_QuotationNegotiationStage_3",
+     "name": "Contra Proposta",
+     "label": "Contra Proposta",
+     "isFavorite": false,
+     "total": 0
+    },
+    {
+     "id": "4",
+     "value": "Gerou ShortList",
+     "order": 4,
+     "favoritename": "Transaction_QuotationNegotiationStage_4",
+     "name": "Gerou ShortList",
+     "label": "Gerou ShortList",
+     "isFavorite": false,
+     "total": 0
+    }
+   ]
+  },
+  {
+   "favoritename": "Transaction_QuotationBuyer",
+   "name": "QuotationBuyer",
+   "label": "Comprador",
+   "type": "object",
+   "isFavorite": false,
+   "values": [
+    {
+     "id": "7264437",
+     "value": "Mayanna Cristina Goncalves de Aguirre",
+     "order": 1,
+     "favoritename": "Transaction_QuotationBuyer_7264437",
+     "name": "Mayanna Cristina Goncalves de Aguirre",
+     "label": "Mayanna Cristina Goncalves de Aguirre",
+     "isFavorite": false,
+     "total": 0
+    }
+   ]
+  },
+  {
+   "favoritename": "Transaction_QuotationWorkflow",
+   "name": "QuotationWorkflow",
+   "label": "Workflow",
+   "type": "object",
+   "isFavorite": false,
+   "values": [
+    {
+     "id": "3070936",
+     "value": "Samarco",
+     "order": 1,
+     "favoritename": "Transaction_QuotationWorkflow_3070936",
+     "name": "Samarco",
+     "label": "Samarco",
+     "isFavorite": false,
+     "total": 0
+    }
+   ]
+  },
+  {
+   "favoritename": "Transaction_QuotationStatus",
+   "name": "QuotationStatus",
+   "label": "Status da Cotação",
+   "type": "object",
+   "isFavorite": false,
+   "values": [
+    {
+     "id": "8",
+     "value": "Em andamento",
+     "order": 1,
+     "favoritename": "Transaction_QuotationStatus_8",
+     "name": "Em andamento",
+     "label": "Em andamento",
+     "isFavorite": false,
+     "total": 0
+    },
+    {
+     "id": "3",
+     "value": "Cancelado",
+     "order": 2,
+     "favoritename": "Transaction_QuotationStatus_3",
+     "name": "Cancelado",
+     "label": "Cancelado",
+     "isFavorite": false,
+     "total": 0
+    },
+    {
+     "id": "6",
+     "value": "Encerrada",
+     "order": 3,
+     "favoritename": "Transaction_QuotationStatus_6",
+     "name": "Encerrada",
+     "label": "Encerrada",
+     "isFavorite": false,
+     "total": 0
+    },
+    {
+     "id": "4",
+     "value": "Vencida",
+     "order": 4,
+     "favoritename": "Transaction_QuotationStatus_4",
+     "name": "Vencida",
+     "label": "Vencida",
+     "isFavorite": false,
+     "total": 0
+    },
+    {
+     "id": "27",
+     "value": "Aguardando Publicação",
+     "order": 5,
+     "favoritename": "Transaction_QuotationStatus_27",
+     "name": "Aguardando Publicação",
+     "label": "Aguardando Publicação",
+     "isFavorite": false,
+     "total": 0
+    },
+    {
+     "id": "28",
+     "value": "Finalizado",
+     "order": 6,
+     "favoritename": "Transaction_QuotationStatus_28",
+     "name": "Finalizado",
+     "label": "Finalizado",
+     "isFavorite": false,
+     "total": 0
+    }
+   ]
+  },
+  {
+   "favoritename": "Transaction_QuotationIsPublicPriceMarketplace",
+   "name": "QuotationIsPublicPriceMarketplace",
+   "label": "Marketplace Público de Preços",
+   "type": "object",
+   "isFavorite": false,
+   "values": [
+    {
+     "id": "1",
+     "value": "Sim",
+     "order": 1,
+     "favoritename": "Transaction_QuotationIsPublicPriceMarketplace_1",
+     "name": "Sim",
+     "label": "Sim",
+     "isFavorite": false,
+     "total": 0
+    },
+    {
+     "id": "2",
+     "value": "Não",
+     "order": 2,
+     "favoritename": "Transaction_QuotationIsPublicPriceMarketplace_2",
+     "name": "Não",
+     "label": "Não",
+     "isFavorite": false,
+     "total": 0
+    }
+   ]
+  }
+ ],
+ "aggregations": [
+  {
+   "name": "company_filter",
+   "value": "",
+   "items": [
+    {
+     "name": "3070936",
+     "value": "1",
+     "items": [
+      {
+       "name": "company_filter_name",
+       "value": "",
+       "items": [
+        {
+         "name": "Samarco",
+         "value": "1",
+         "items": []
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "buyer_filter",
+   "value": "",
+   "items": [
+    {
+     "name": "7264437",
+     "value": "1",
+     "items": [
+      {
+       "name": "buyer_filter_name",
+       "value": "",
+       "items": [
+        {
+         "name": "Mayanna Cristina Goncalves de Aguirre",
+         "value": "1",
+         "items": []
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  }
+ ],
+ "data": {
+  "count": 1,
+  "result": [
+   {
+    "id": "7_23052403_4403017",
+    "processType": 7,
+    "processId": 23052403,
+    "processName": "Cotação",
+    "customerId": 7264437,
+    "customerName": "Mayanna Cristina Goncalves de Aguirre",
+    "company": "Samarco Mineração",
+    "companyId": 46501,
+    "workflow": "Samarco",
+    "workflowId": 3070936,
+    "clientCode": "266-071426",
+    "createDate": "2026-09-23T14:27:56.047Z",
+    "emergency": 0,
+    "acceptFup": 0,
+    "receptionId": 0,
+    "quantity": 0,
+    "centerQuantity": 0,
+    "statusId": 8,
+    "statusName": "Em andamento",
+    "summary": "266-071426",
+    "answerStatus": "Não Respondida",
+    "negotiationStage": "1º Oportunidade",
+    "viewedDate": "2026-09-23T14:59:03.647Z",
+    "dueDate": "2026-09-29T00:00:00Z",
+    "quotationType": "Privada",
+    "isPublicQuotation": false,
+    "freeQuotationPolicy": false,
+    "stageRFX": "RFQ",
+    "negotiationRound": "Original",
+    "isPublicPriceMarketplaceDescription": "Não",
+    "supplierRoleTypeId": 0
+   }
+  ]
+ },
+ "hits": 1,
+ "filters": [
+  {
+   "name": "Pendencias",
+   "label": "Pendências",
+   "type": "object",
+   "operators": "=",
+   "values": [
+    {
+     "value": "4",
+     "description": ""
+    }
+   ],
+   "isFavorite": false
+  },
+  {
+   "name": "QuotationNumber",
+   "label": "ID Cotação ME",
+   "type": "string",
+   "operators": "=",
+   "fieldName": "ProcessId",
+   "values": [
+    {
+     "value": "",
+     "description": ""
+    }
+   ],
+   "isFavorite": false
+  },
+  {
+   "name": "QuotationBuyer",
+   "label": "Comprador",
+   "type": "object",
+   "operators": "=",
+   "fieldName": "CustomerName",
+   "values": [
+    {
+     "value": "",
+     "description": ""
+    }
+   ],
+   "isFavorite": false
+  },
+  {
+   "name": "QuotationWorkflow",
+   "label": "Empresa",
+   "type": "object",
+   "operators": "=",
+   "fieldName": "Workflow",
+   "values": [
+    {
+     "value": "",
+     "description": ""
+    }
+   ],
+   "isFavorite": false
+  },
+  {
+   "name": "QuotationSummary",
+   "label": "Título da Cotação",
+   "type": "string",
+   "operators": "=",
+   "fieldName": "Summary",
+   "values": [
+    {
+     "value": "",
+     "description": ""
+    }
+   ],
+   "isFavorite": false
+  },
+  {
+   "name": "QuotationStatus",
+   "label": "Status da Cotação",
+   "type": "object",
+   "operators": "=",
+   "fieldName": "StatusName",
+   "values": [
+    {
+     "value": "",
+     "description": ""
+    }
+   ],
+   "isFavorite": false
+  },
+  {
+   "name": "QuotationClientCode",
+   "label": "Número Cotação Cliente",
+   "type": "string",
+   "operators": "=",
+   "fieldName": "ClientCode",
+   "values": [
+    {
+     "value": "",
+     "description": ""
+    }
+   ],
+   "isFavorite": false
+  },
+  {
+   "name": "QuotationAnswerStatus",
+   "label": "Status Resposta",
+   "type": "object",
+   "operators": "=",
+   "fieldName": "AnswerStatus",
+   "values": [
+    {
+     "value": "",
+     "description": ""
+    }
+   ],
+   "isFavorite": false
+  },
+  {
+   "name": "QuotationNegotiationStage",
+   "label": "Tipo de Rodada",
+   "type": "object",
+   "operators": "=",
+   "fieldName": "NegotiationStage",
+   "values": [
+    {
+     "value": "",
+     "description": ""
+    }
+   ],
+   "isFavorite": false
+  },
+  {
+   "name": "CreateDateStart",
+   "label": "Data Criação Início",
+   "type": "date",
+   "operators": "=",
+   "fieldName": "CreateDate",
+   "values": [
+    {
+     "value": "2026-06-25",
+     "description": ""
+    }
+   ],
+   "isFavorite": false
+  },
+  {
+   "name": "QuotationType",
+   "label": "Tipo de Cotação",
+   "type": "object",
+   "operators": "=",
+   "fieldName": "QuotationType",
+   "values": [
+    {
+     "value": "",
+     "description": ""
+    }
+   ],
+   "isFavorite": false
+  },
+  {
+   "name": "CreateDateFinish",
+   "label": "Data Criação Fim",
+   "type": "date",
+   "operators": "=",
+   "fieldName": "CreateDate",
+   "values": [
+    {
+     "value": "",
+     "description": ""
+    }
+   ],
+   "isFavorite": false
+  },
+  {
+   "name": "ViewedDateStart",
+   "label": "Data Leitura Início",
+   "type": "date",
+   "operators": "=",
+   "fieldName": "ViewedDate",
+   "values": [
+    {
+     "value": "",
+     "description": ""
+    }
+   ],
+   "isFavorite": false
+  },
+  {
+   "name": "ViewedDateFinish",
+   "label": "Data Leitura Fim",
+   "type": "date",
+   "operators": "=",
+   "fieldName": "ViewedDate",
+   "values": [
+    {
+     "value": "",
+     "description": ""
+    }
+   ],
+   "isFavorite": false
+  },
+  {
+   "name": "DueDateStart",
+   "label": "Data Vencimento Início",
+   "type": "date",
+   "operators": "=",
+   "fieldName": "DueDate",
+   "values": [
+    {
+     "value": "",
+     "description": ""
+    }
+   ],
+   "isFavorite": false
+  },
+  {
+   "name": "DueDateFinish",
+   "label": "Data Vencimento Fim",
+   "type": "date",
+   "operators": "=",
+   "fieldName": "DueDate",
+   "values": [
+    {
+     "value": "",
+     "description": ""
+    }
+   ],
+   "isFavorite": false
+  },
+  {
+   "name": "AnsweredDateStart",
+   "label": "Data Resposta Início",
+   "type": "date",
+   "operators": "=",
+   "fieldName": "LastDateAnswered",
+   "values": [
+    {
+     "value": "",
+     "description": ""
+    }
+   ],
+   "isFavorite": false
+  },
+  {
+   "name": "AnsweredDateFinish",
+   "label": "Data Resposta Fim",
+   "type": "date",
+   "operators": "=",
+   "fieldName": "LastDateAnswered",
+   "values": [
+    {
+     "value": "",
+     "description": ""
+    }
+   ],
+   "isFavorite": false
+  },
+  {
+   "name": "QuotationStageRFX",
+   "label": "Etapa de Negociação",
+   "type": "object",
+   "operators": "=",
+   "fieldName": "StageRFX",
+   "values": [
+    {
+     "value": "",
+     "description": ""
+    }
+   ],
+   "isFavorite": false
+  },
+  {
+   "name": "QuotationNegotiationRound",
+   "label": "Rodada de Negociação",
+   "type": "object",
+   "operators": "=",
+   "fieldName": "NegotiationRound",
+   "values": [
+    {
+     "value": "",
+     "description": ""
+    }
+   ],
+   "isFavorite": false
+  },
+  {
+   "name": "QuotationIsPublicPriceMarketplace",
+   "label": "Marketplace Público de Preços",
+   "type": "object",
+   "operators": "=",
+   "fieldName": "QuotationIsPublicPriceMarketplace",
+   "values": [
+    {
+     "value": "",
+     "description": ""
+    }
+   ],
+   "isFavorite": false
+  }
+ ]
+}

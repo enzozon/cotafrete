@@ -186,6 +186,16 @@ Totalmente Respondida) e a cotação sair de "Oportunidades a Responder".
   NSS vazio. Resolve com `libnss3-tools` +
   `certutil -d sql:$HOME/.pki/nssdb -A -t "C,," -n ccr-agent-proxy -i /root/.ccr/agent-proxy-ca.crt`.
 
+### Cópias das cotações reais (23/09/2026) — `recon/copia_cotacoes_me.py`
+As 3 pendentes foram copiadas antes de fechar, para testar robô e tela sem o
+ME: `tests/fixtures/me_real/` (HTML de cada página de itens com o token
+trocado por `TOKEN`, print em JPEG e o JSON da listagem de cada conta).
+VENTURA 23039029 (p1: itens 10–100, p2: 110–180) e 23049227 (1 item);
+UNIÃO 23052403 (3 itens). Para a página 2 o script fez o único POST
+liberado, troca de página (`Acao=12`, autorizado pelo usuário); depois
+disso a lista continuou **Não Respondida**, então o rascunho temporário da
+paginação não muda o `answerStatus`. Testes: `tests/test_me_copia.py`.
+
 ## Próximos passos
 1. ~~Recon~~ (acima). Pendente de decisão: um teste real de **Salvar**
    (`Acao=9`) em cotação escolhida pelo usuário, com a trava deixando passar
