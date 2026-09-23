@@ -194,6 +194,24 @@ def test_origem_diferente_da_pedida_avisa():
     assert r.pode_salvar and any("pediu origem 0" in a for a in r.avisos)
 
 
+def test_marca_acima_de_20_caracteres_bloqueia():
+    # o campo Fabricante{N} do ME tem maxlength=20: cortaria calado
+    r = R.validar_item(_item(marca="X" * 21), HOJE)
+    assert not r.pode_salvar and any("20" in e for e in r.erros)
+    assert R.validar_item(_item(marca="X" * 20), HOJE).pode_salvar
+
+
+def test_ie_e_contato_nao_sao_fixos():
+    # UNIÃO tem outra IE (083049428) e o ME já traz o contato de cada conta
+    assert "inscricao_estadual" not in R.CAMPOS_FIXOS_COTACAO
+    assert "nome_contato" not in R.CAMPOS_FIXOS_COTACAO
+
+
+def test_tipo_de_imposto_do_item_e_ipi():
+    # sem ele o ME recusa salvar: "Escolha um dos tipos de imposto IPI ou ISS"
+    assert R.CAMPOS_FIXOS_ITEM["tipo_imposto"] == "IPI"
+
+
 def test_marca_em_branco_so_avisa():
     r = R.validar_item(_item(marca=""), HOJE)
     assert r.pode_salvar and any("marca" in a for a in r.avisos)

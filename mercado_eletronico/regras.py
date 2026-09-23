@@ -43,18 +43,21 @@ class RegraDesconhecida(ValueError):
 
 
 # ------------------------------------------------------------ valores fixos
+# IE e nome do contato ficam como o ME traz em cada conta (recon 23/09/2026:
+# UNIÃO usa IE 083049428, VENTURA 082582190; o select só tem a da conta).
 CAMPOS_FIXOS_COTACAO: dict[str, str] = {
     "tipo_frete": "FOB",
     "frete": "Frete FOB",
     "condicao_pagamento": "60DDL",
-    "nome_contato": "Eliziane Amorim",
     "telefone_contato": "2732991664",
     "moeda": "Real - Brasil",
-    "inscricao_estadual": "082582190 - ES",
 }
+
+MAX_MARCA = 20  # maxlength do Fabricante{N} no ME
 
 CAMPOS_FIXOS_ITEM: dict[str, str] = {
     "unidade": "UNIDADE",
+    "tipo_imposto": "IPI",
     "ipi": "0",
     "ipi_incluso": "Isento",
     "substituicao_tributaria": "NÃO",
@@ -264,6 +267,8 @@ def validar_item(item: EntradaItem, hoje: date) -> Resultado:
 
     if not item.marca.strip():
         r.avisos.append(f"{n}: fabricante/marca em branco.")
+    elif len(item.marca.strip()) > MAX_MARCA:
+        r.erros.append(f"{n}: fabricante/marca passa de {MAX_MARCA} caracteres (limite do ME).")
 
     if item.pedido.origem is not None and item.origem is not None and item.pedido.origem != item.origem:
         r.avisos.append(
