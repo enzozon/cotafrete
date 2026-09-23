@@ -234,8 +234,36 @@ de Salvar: ela mostra a página **com o rascunho salvo** (item 1 "TESTE DO
 ROBO - NAO ENVIAR", preço 1,00) — serve para testar a releitura/conferência.
 As duas da VENTURA estão limpas.
 
+## Robô (23/09/2026) — sessão local
+Módulos (camadas puras testadas sem navegador; robô testado offline com as
+cópias reais de `tests/fixtures/me_real` e uma página falsa com os botões do ME):
+- `trava.py` — as 3 camadas: `botao_e_salvar` (title exato do Salvar),
+  `JS_TRAVA_FORM` (form.submit só RespCota com Acao 9/4/11–19),
+  `motivo_bloqueio` (rede: todo POST aos dois domínios do ME morre fora disso),
+  `confirm_aceito` (só "Você verificou…", só durante Salvar/paginar).
+- `lista.py` — `ler_busca(json) -> list[CotacaoPendente]` (numero, empresa,
+  comprador, codigo, data_limite em Brasília, status_resposta, `.enviada`,
+  `.recusada`, `.link`).
+- `mapa.py` — regras → nomes/códigos do ME; `plano_pagina` limpa a Base dos
+  itens sem resposta e leva a justificativa de item sem preço para a obs geral.
+- `robo.py` — `salvar_cotacao(conta, numero, itens, validade_dias, dry_run=True,
+  obs_geral="") -> ResultadoRobo(ok, salvo, dry_run, divergencias, avisos,
+  prints, erro, posts_liberados, bloqueios)`. Lê a UF/origem/remessa de cada
+  item na página; pagina gravando (autorizado); reabre e confere depois de
+  salvar. Prints e sessão em `runs/me/<conta>/` (fora do Git).
+
+**Provas no ME real (UNIÃO 23052403, valores "TESTE DO ROBO")**: dry-run →
+ok, 0 divergências, 0 POST; salvar → 1 POST `Acao=9`, reaberta e conferida,
+0 divergências. Suíte: 1337 passam; 2 falhas de Della Volpe
+(`test_dellavolpe_automatica`, `test_dellavolpe_caixa`) já falhavam no
+commit anterior ao ME (e7ef26b) — dependem do `.env` desta máquina.
+
+**Pendente**: item sem preço hoje fica vazio e a justificativa vai para a
+observação geral. O ME tem "Deseja Recusar o Item?" com justificativa por
+item — não testado; decidir com o usuário se o robô deve usar isso.
+
 ## Próximos passos
-1. ~~Recon~~ e ~~teste de Salvar~~ (acima).
+1. ~~Recon~~, ~~teste de Salvar~~ e ~~robô~~ (acima).
 2. Robô `mercado_eletronico/robo.py` com trava de envio e dry-run + testes
    contra HTML salvo do recon (sem acessar o ME real nos testes).
 3. Banco (tabelas de cotações ME, itens, histórico) + tela nova no `web/`.
