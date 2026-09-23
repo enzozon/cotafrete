@@ -273,6 +273,13 @@ class Banco:
             "CREATE UNIQUE INDEX IF NOT EXISTS resultado_unico"
             " ON resultado (cotacao_id, transportadora)")
 
+        # "sem_carimbo" era o desfecho do ingestor de 22/09/2026, que só
+        # sabia casar pelo carimbo — e o PDF real veio com o A/C vazio. Desde
+        # 23/09/2026 ele casa pela rota e pelo peso: apagar esses registros
+        # dá a esses e-mails uma segunda leitura, pela regra nova.
+        con.execute(
+            "DELETE FROM email_processado WHERE desfecho = 'sem_carimbo'")
+
     def _conectar(self) -> sqlite3.Connection:
         """Sempre use com `closing(...)`: o `with` do sqlite3 faz commit e
         rollback, mas NÃO fecha a conexão. Cada cotação abre cinco delas."""
@@ -357,6 +364,48 @@ class Banco:
             linha = con.execute("SELECT * FROM cotacao WHERE id = ?",
                                 (cotacao_id,)).fetchone()
             return dict(linha) if linha else None
+
+    def candidatas_dellavolpe(self, desde: str, ate: str) -> list[dict]:
+        """Cotações esperando proposta da Della Volpe NA CAIXA DO SUPORTE,
+        pedidas entre `desde` e `ate` (ISO, hora local). Cada uma com a
+        chave `pedido`: quando foi pedida.
+
+        Duas portas, porque a proposta chega ao suporte por dois caminhos:
+
+        - o botão "Mostrar aqui" (resposta_em = 'tela'), com o `pedido_em`
+          do clique;
+        - o formulário assistido (/dellavolpe/N, o do captcha), que manda
+          para o suporte quando a caixa está configurada. Ali o relógio é a
+          abertura do formulário (whatsapp_aberto) — e ficam de fora as que
+          o vendedor mandou para o PRÓPRIO e-mail.
+
+        Só as que ainda NÃO têm preço: a que já foi casada sai da lista, e é
+        isso que faz duas cotações idênticas receberem uma proposta cada."""
+        with closing(self._conectar()) as con, con:
+            pela_escolha = con.execute(
+                "SELECT c.*, r.pedido_em AS pedido FROM cotacao c"
+                " JOIN resultado r ON r.cotacao_id = c.id"
+                "  AND r.transportadora = 'dellavolpe'"
+                " WHERE r.resposta_em = 'tela' AND r.valor IS NULL"
+                "  AND r.pedido_em BETWEEN ? AND ?", (desde, ate)).fetchall()
+            pelo_formulario = con.execute(
+                "SELECT c.*, w.aberto_em AS pedido FROM cotacao c"
+                " JOIN whatsapp_aberto w ON w.cotacao_id = c.id"
+                "  AND w.transportadora = 'dellavolpe'"
+                " LEFT JOIN resultado r ON r.cotacao_id = c.id"
+                "  AND r.transportadora = 'dellavolpe'"
+                " WHERE w.aberto_em BETWEEN ? AND ?"
+                "  AND (r.id IS NULL OR (r.valor IS NULL"
+                "   AND COALESCE(r.resposta_em, '') <> 'email'))",
+                (desde, ate)).fetchall()
+        por_id: dict[int, dict] = {}
+        for linha in (*pela_escolha, *pelo_formulario):
+            c = dict(linha)
+            c["peso_kg"] = _decimal(c["peso_kg"])
+            c["valor_nf"] = _decimal(c["valor_nf"])
+            if c["id"] not in por_id or c["pedido"] > por_id[c["id"]]["pedido"]:
+                por_id[c["id"]] = c
+        return sorted(por_id.values(), key=lambda c: c["pedido"])
 
     def email_ja_processado(self, message_id: str) -> bool:
         with closing(self._conectar()) as con, con:

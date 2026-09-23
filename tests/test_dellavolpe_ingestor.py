@@ -158,13 +158,16 @@ def test_acha_a_proposta_mesmo_que_ela_nao_seja_o_primeiro_anexo(
 
 
 # ------------------------------------------- na dúvida, NÃO grava o preço
-def test_sem_carimbo_nao_grava(banco, cotacao, tmp_path):
-    """A proposta de um envio feito ANTES do carimbo, ou pelo e-mail avulso.
-    Adivinhar a cotação pela rota poria o preço na carga de outra pessoa."""
+def test_sem_carimbo_e_sem_cotacao_esperando_nao_grava(banco, cotacao,
+                                                       tmp_path):
+    """Sem carimbo o ingestor só casa com cotação que ESTÁ esperando proposta
+    no suporte (tests/test_dellavolpe_casamento.py). Esta ninguém pediu pelo
+    "Mostrar aqui" — adivinhar pela rota poria o preço na carga de outra
+    pessoa."""
     d = ingestor.processar(email_bruto(texto_proposta(carimbo=None)), banco,
                            gravar=True, pasta=tmp_path)
 
-    assert d.desfecho == "sem_carimbo"
+    assert d.desfecho == "sem_par"
     assert _resultado(banco, cotacao) is None
     assert not list(tmp_path.rglob("*.pdf"))
 
@@ -336,7 +339,7 @@ def test_marca_lido_so_o_que_gravou(banco, cotacao, tmp_path):
 
     desfechos = _varrer(banco, imap, tmp_path)
 
-    assert [d.desfecho for d in desfechos] == ["gravado", "sem_carimbo"]
+    assert [d.desfecho for d in desfechos] == ["gravado", "sem_par"]
     lidos = [c for c in imap.comandos if c[0] == "STORE"]
     assert lidos == [("STORE", b"10", "+FLAGS", r"(\Seen)")]
 
