@@ -26,6 +26,7 @@ fora da rede local sem virar autenticação de verdade.
 
 from __future__ import annotations
 
+import threading
 import time
 import unicodedata
 from concurrent.futures import ThreadPoolExecutor
@@ -223,8 +224,41 @@ TODAS_AS_SLUGS = tuple(dict.fromkeys(
 # esperando thread livre em vez de esperar vaga de navegador. Quem limita o
 # peso na máquina é o semáforo NAVEGADORES_SIMULTANEOS, em core/retentativa.py;
 # o executor só precisa caber todo mundo.
-EXECUTOR = ThreadPoolExecutor(max_workers=len(AUTOMATICAS),
-                              thread_name_prefix="cotacao")
+class _ExecutorContado(ThreadPoolExecutor):
+    """O executor de sempre, sabendo quantos trabalhos ainda não acabaram
+    (na fila ou rodando).
+
+    É o que o `atualizar.py` pergunta, por GET /_ocupado, antes de reiniciar
+    o servidor sozinho depois de um merge: reiniciar no meio de uma cotação
+    mata as threads das transportadoras, e o cartão do vendedor termina em
+    "o sistema foi fechado durante a cotação"."""
+
+    def __init__(self, *a, **k) -> None:
+        super().__init__(*a, **k)
+        self._trava = threading.Lock()
+        self.em_curso = 0
+
+    def submit(self, fn, /, *args, **kwargs):
+        with self._trava:
+            self.em_curso += 1
+
+        def contado():
+            try:
+                return fn(*args, **kwargs)
+            finally:
+                with self._trava:
+                    self.em_curso -= 1
+
+        try:
+            return super().submit(contado)
+        except BaseException:
+            with self._trava:
+                self.em_curso -= 1
+            raise
+
+
+EXECUTOR = _ExecutorContado(max_workers=len(AUTOMATICAS),
+                            thread_name_prefix="cotacao")
 
 
 def automaticas_da(escolhidas: str | None) -> tuple[str, ...]:
@@ -627,6 +661,16 @@ def _tela_login(erro: str = "", nome: str = "",
                  "o mais barato"),
         rodape="Sua conta é criada pelo administrador. A senha quem escolhe "
                "é você, no primeiro acesso.")
+
+
+@app.get("/_ocupado", include_in_schema=False)
+def ocupado() -> dict:
+    """Quantas cotações e agendamentos ainda estão rodando. Quem pergunta é o
+    `atualizar.py`, que só reinicia o servidor com zero.
+
+    Sem login de propósito: quem pergunta é um script da própria VM. E só
+    sai um número — nada de cliente, rota nem vendedor."""
+    return {"em_curso": EXECUTOR.em_curso}
 
 
 @app.get("/login", response_class=HTMLResponse)
