@@ -37,8 +37,10 @@ import io
 import re
 import sys
 import threading
+import unicodedata
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
+from decimal import ROUND_CEILING, Decimal, InvalidOperation
 from email.message import Message
 from email.utils import parseaddr, parsedate_to_datetime
 from pathlib import Path
@@ -177,6 +179,126 @@ def decidir(p: Proposta, carga: dict | None) -> tuple[str, str]:
     return "gravado", f"R$ {p.valor} na cotação #{p.cotacao_id}"
 
 
+# ------------------------------------------------ casar sem o carimbo
+# Quanto tempo antes do e-mail a cotação pode ter sido pedida. A proposta
+# chega em 2 a 5 minutos (medido em 25-26/08 e 23/09/2026); duas horas cobrem
+# um dia ruim sem juntar cotações de manhã e de tarde. E um pouco DEPOIS, para
+# o relógio do servidor de e-mail não precisar bater com o da VM.
+JANELA_ANTES = timedelta(hours=2)
+JANELA_DEPOIS = timedelta(minutes=10)
+
+
+def _normal(texto: str | None) -> str:
+    """'São Caetano do Sul' e 'SAO CAETANO DO SUL' viram a mesma coisa."""
+    plano = "".join(ch for ch in unicodedata.normalize("NFD", texto or "")
+                    if unicodedata.category(ch) != "Mn")
+    return " ".join(re.sub(r"[^0-9A-Za-z]+", " ", plano).upper().split())
+
+
+def _mesma_rota(p: Proposta, c: dict) -> bool:
+    return (_normal(p.cidade_origem) == _normal(c.get("cidade_origem"))
+            and _normal(p.uf_origem) == _normal(c.get("uf_origem"))
+            and _normal(p.cidade_destino) == _normal(c.get("cidade_destino"))
+            and _normal(p.uf_destino) == _normal(c.get("uf_destino")))
+
+
+def _mesmo_peso(p: Proposta, c: dict) -> bool:
+    """O robô digita o peso total arredondado para CIMA (mapping.peso_br), e
+    é esse número que volta no "PESO REAL". PDF sem a linha não reprova."""
+    if p.peso_real is None or c.get("peso_kg") is None:
+        return True
+    return (Decimal(c["peso_kg"]).to_integral_value(ROUND_CEILING)
+            == p.peso_real.to_integral_value(ROUND_CEILING))
+
+
+def _mesma_nota(p: Proposta, c: dict) -> bool:
+    """A nota estimada pelo ad-valorem, com folga: o seguro vem arredondado
+    em centavos (0,01 / 0,20% = R$ 5 de erro possível)."""
+    if p.nota_fiscal is None or c.get("valor_nf") is None:
+        return False
+    nf = Decimal(c["valor_nf"])
+    return abs(p.nota_fiscal - nf) <= max(Decimal(5), nf * Decimal("0.005"))
+
+
+def _cubado(c: dict) -> Decimal | None:
+    try:
+        m3 = (Decimal(c["comprimento_cm"]) * Decimal(c["largura_cm"])
+              * Decimal(c["altura_cm"]) * int(c["quantidade"])) / 1_000_000
+    except (TypeError, ValueError, InvalidOperation, KeyError):
+        return None
+    from carriers.dellavolpe.mapping import FATOR_CUBAGEM
+    return m3 * FATOR_CUBAGEM
+
+
+def _mesmo_cubado(p: Proposta, c: dict) -> bool:
+    nosso = _cubado(c)
+    if p.peso_cubado is None or nosso is None:
+        return False
+    return abs(p.peso_cubado - nosso) <= max(Decimal(1), nosso / 100)
+
+
+def _mesma_carga(a: dict, b: dict) -> bool:
+    """Tudo o que o formulário da Della Volpe recebe é igual — a proposta de
+    uma serve à outra.
+
+    Inclui CNPJs e material, que não aparecem no PDF: o pagador pode ter
+    tabela negociada, e material pode mudar a taxa. Se diferem, o mesmo
+    número NÃO serve às duas, e o casamento vira "ambigua"."""
+    chaves = ("cidade_origem", "uf_origem", "cidade_destino", "uf_destino",
+              "peso_kg", "quantidade", "comprimento_cm", "largura_cm",
+              "altura_cm", "valor_nf", "cnpj_remetente", "cnpj_destinatario",
+              "cnpj_pagador", "tipo_frete", "material")
+    return all(_normal(str(a.get(k))) == _normal(str(b.get(k)))
+               for k in chaves)
+
+
+def casar(p: Proposta, candidatas: list[dict]) -> tuple[dict | None, str, str]:
+    """Qual cotação é a dona desta proposta, sem carimbo. FUNÇÃO PURA.
+
+    Devolve (cotação, desfecho, detalhe). `candidatas` já vem filtrada pelo
+    banco: esperando proposta no suporte, pedida perto da hora do e-mail, sem
+    preço ainda — em ordem de pedido, a mais antiga primeiro.
+
+    1. Rota (cidade e UF, dos dois lados) e peso real têm de bater. Sem isso
+       não é a mesma carga, e nada é gravado.
+    2. Sobrou mais de uma: desempata pela nota fiscal (estimada pelo
+       ad-valorem) e depois pelo peso cubado (que sai das medidas). Um
+       critério que não separa ninguém — a Della Volpe cobrou seguro mínimo,
+       por exemplo — é ignorado, e não usado para descartar todo mundo.
+    3. Ainda empatadas: se forem a MESMA carga em tudo que entra no preço, a
+       proposta vale para qualquer uma, e vai para a mais antiga. A próxima
+       proposta igual vai para a seguinte, porque a primeira já tem preço.
+       Se forem cargas diferentes que o PDF não distingue, nada é gravado:
+       o e-mail fica não lido para uma pessoa decidir."""
+    if not candidatas:
+        return None, "sem_par", ("nenhuma cotação esperando proposta da Della "
+                                 "Volpe no suporte nesse horário")
+    na_rota = [c for c in candidatas if _mesma_rota(p, c)]
+    if not na_rota:
+        return None, "sem_par", (f"nenhuma cotação esperando proposta com a "
+                                 f"rota {p.origem} -> {p.destino}")
+    restantes = [c for c in na_rota if _mesmo_peso(p, c)]
+    if not restantes:
+        return None, "sem_par", (f"a rota {p.origem} -> {p.destino} bate, mas "
+                                 f"o peso de {p.peso_real} kg não")
+    for criterio in (_mesma_nota, _mesmo_cubado):
+        if len(restantes) == 1:
+            break
+        separadas = [c for c in restantes if criterio(p, c)]
+        if separadas:
+            restantes = separadas
+    if len(restantes) == 1:
+        c = restantes[0]
+        return c, "gravado", f"R$ {p.valor} na cotação #{c['id']}"
+    if all(_mesma_carga(restantes[0], c) for c in restantes[1:]):
+        c = restantes[0]
+        return c, "gravado", (f"R$ {p.valor} na cotação #{c['id']} — a mais "
+                              f"antiga de {len(restantes)} cargas iguais")
+    ids = ", ".join(f"#{c['id']}" for c in restantes)
+    return None, "ambigua", (f"a proposta serve a mais de uma cotação "
+                             f"({ids}) e o PDF não diz qual")
+
+
 def _melhor_proposta(pdfs: list[Anexo]) -> tuple[Proposta, Anexo | None, str]:
     """O primeiro PDF que PARECE proposta (tem valor ou carimbo).
 
@@ -206,6 +328,16 @@ def _guardar_pdf(anexo: Anexo, p: Proposta, pasta: Path) -> Path:
     return destino
 
 
+def _hora_do_email(data: datetime | None) -> datetime:
+    """O `Date:` do e-mail em hora local sem fuso — o relógio do banco. Sem
+    data (raro), vale agora: o e-mail acabou de ser lido."""
+    if data is None:
+        return datetime.now()
+    if data.tzinfo is not None:
+        data = data.astimezone().replace(tzinfo=None)
+    return data
+
+
 def _hora_local(data: datetime | None) -> str | None:
     """O `Date:` do e-mail em hora local, sem fuso — como o resto do banco
     grava (`datetime.now()`). Misturar os dois formatos faria "respondeu em"
@@ -226,8 +358,8 @@ def processar(bruto: bytes, banco, *, gravar: bool,
     msg = ler_mensagem(bruto)
 
     def fim(desfecho: str, detalhe: str = "", p: Proposta | None = None,
-            registrar: bool = True) -> Desfecho:
-        cid = p.cotacao_id if p else None
+            registrar: bool = True, cid: int | None = None) -> Desfecho:
+        cid = cid if cid is not None else (p.cotacao_id if p else None)
         if gravar and registrar:
             banco.registrar_email(msg.message_id, SLUG, desfecho=desfecho,
                                   cotacao_id=cid, detalhe=detalhe)
@@ -248,20 +380,32 @@ def processar(bruto: bytes, banco, *, gravar: bool,
         # registra, e a próxima volta tenta de novo.
         return fim("pdf_ilegivel", erros, registrar=False)
 
-    carga = (banco.carga_da_cotacao(p.cotacao_id)
-             if p.cotacao_id is not None else None)
-    desfecho, detalhe = decidir(p, carga)
+    if p.cotacao_id is not None:
+        # Com carimbo (se um dia a Della Volpe passar a devolvê-lo no A/C):
+        # o número manda, e a rota só confere.
+        cid = p.cotacao_id
+        desfecho, detalhe = decidir(p, banco.carga_da_cotacao(cid))
+    elif p.valor is None:
+        cid = None
+        desfecho, detalhe = decidir(p, None)
+    else:
+        # Sem carimbo — o caso real desde 23/09/2026: o A/C vem vazio.
+        quando = _hora_do_email(msg.data)
+        dona, desfecho, detalhe = casar(p, banco.candidatas_dellavolpe(
+            (quando - JANELA_ANTES).isoformat(timespec="seconds"),
+            (quando + JANELA_DEPOIS).isoformat(timespec="seconds")))
+        cid = dona["id"] if dona else None
     if desfecho != "gravado" or not gravar:
-        return fim(desfecho, detalhe, p)
+        return fim(desfecho, detalhe, p, cid=cid)
 
-    caminho = _guardar_pdf(anexo, p, pasta)
+    caminho = _guardar_pdf(anexo, p._replace(cotacao_id=cid), pasta)
     banco.salvar_resultado(
-        p.cotacao_id, SLUG, status=StatusCotacao.COTADO.value, valor=p.valor,
+        cid, SLUG, status=StatusCotacao.COTADO.value, valor=p.valor,
         protocolo=p.numero,
         prazo=str(p.prazo_dias) if p.prazo_dias is not None else None,
         validade=p.validade, evidencia=str(caminho),
         respondido_em=_hora_local(msg.data))
-    return fim(desfecho, detalhe, p)
+    return fim(desfecho, detalhe, p, cid=cid)
 
 
 # ------------------------------------------------------------------- IMAP
@@ -399,7 +543,8 @@ def _mostrar(d: Desfecho) -> str:
     if p and p.valor is not None:
         linha += (f"\n      proposta {p.numero}  R$ {p.valor}  "
                   f"prazo {p.prazo_dias} dias  validade {p.validade}  "
-                  f"{p.origem} -> {p.destino}  A/C {p.destinatario}")
+                  f"{p.origem} -> {p.destino}  {p.peso_real} kg  "
+                  f"NF ~{p.nota_fiscal}")
     if d.detalhe:
         linha += f"\n      {d.detalhe}"
     return linha
@@ -419,7 +564,19 @@ def main(argv: list[str] | None = None) -> int:
         p = ler_proposta(texto_do_pdf(args.pdf.read_bytes()))
         for campo, valor in p._asdict().items():
             print(f"  {campo:14} {valor}")
-        return 0 if p.valor is not None else 1
+        if p.valor is None:
+            return 1
+        # Com qual cotação ela casaria AGORA — só lê o banco, não grava.
+        from core.banco import CAMINHO_PADRAO, Banco
+
+        if p.cotacao_id is None and Path(CAMINHO_PADRAO).exists():
+            agora = datetime.now()
+            dona, desfecho, detalhe = casar(p, Banco().candidatas_dellavolpe(
+                (agora - JANELA_ANTES).isoformat(timespec="seconds"),
+                (agora + JANELA_DEPOIS).isoformat(timespec="seconds")))
+            print(f"\n  casaria agora com a cotação #{dona['id']}" if dona
+                  else f"\n  não casaria agora ({desfecho}): {detalhe}")
+        return 0
 
     from dotenv import load_dotenv
 
