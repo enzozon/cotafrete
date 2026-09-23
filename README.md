@@ -12,6 +12,9 @@ Servidor.bat         <- publica na rede da empresa, na porta 8000
 ```
 
 Para instalar no servidor da empresa: [docs/DEPLOY_SERVIDOR.md](docs/DEPLOY_SERVIDOR.md).
+Depois de instalado, a produção se atualiza sozinha a cada merge na `main`
+(`Instalar-atualizacao.bat`, uma vez; ver
+[Atualização automática](docs/DEPLOY_SERVIDOR.md#atualização-automática)).
 O Server 2012 R2 não roda o Chromium das transportadoras — o guia explica por
 que, e como subir numa VM dentro do próprio servidor.
 
