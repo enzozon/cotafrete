@@ -32,15 +32,18 @@ SLUG = "dellavolpe"
 
 
 # ------------------------------------------------- ela esta ligada mesmo
-def test_dellavolpe_saiu_das_automaticas():
-    """Invertido em 31/08/2026. O site dela passou a exigir "confirme que e
-    humano" (Cloudflare Turnstile) e o envio automatico deixou de gerar
-    e-mail. Ver tests/test_dellavolpe_assistida.py para o fluxo novo.
+def test_dellavolpe_so_e_automatica_quando_o_env_liga():
+    """Saiu em 31/08/2026 (Turnstile) e pode voltar desde 22/09/2026 — mas
+    pelo .env, com a data do dia (ver carriers/dellavolpe/caixa.py). Este
+    teste segue o .env de quem roda: a lista e a chave têm de concordar.
 
     O arquivo continua existindo porque o que ele protege — a coerencia entre
     AUTOMATICAS, FABRICAS e o monitor, e a trava SEM_REPETICAO — vale para as
-    quatro que ficaram, e voltaria a valer para ela."""
-    assert SLUG not in app_web.AUTOMATICAS
+    outras, e vale para ela quando ligada."""
+    from carriers.dellavolpe import caixa
+
+    assert (SLUG in app_web.AUTOMATICAS) is caixa.automatica()
+    assert (SLUG in app_web.FABRICAS) is caixa.automatica()
 
 
 def test_o_monitor_enxerga_as_mesmas_automaticas():

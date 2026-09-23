@@ -58,16 +58,22 @@ def _criar(app) -> int:
 
 
 # ------------------------------------------------------ saiu das automáticas
-def test_dellavolpe_saiu_das_automaticas():
-    """Enquanto ela estivesse aqui, toda cotação gastaria uma vaga de
-    navegador para terminar em "barrado como spam" — um cartão vermelho que
-    ninguém consegue resolver."""
-    assert "dellavolpe" not in app_web.AUTOMATICAS
+def test_sem_a_chave_do_env_ela_fica_fora_das_automaticas():
+    """Enquanto a caixinha barrava tudo, cada cotação gastaria uma vaga de
+    navegador para terminar em "barrado como spam". Desde 22/09/2026 ela
+    pode voltar — mas só pelo .env (DV_AUTOMATICA_DESDE + trava liberada).
+    Sem as duas chaves, continua aqui, assistida."""
+    from web import transportadoras as t
+
+    assert "dellavolpe" not in t.automaticas({})
+    assert "dellavolpe" not in t.automaticas(
+        {"DV_ENVIO_REAL_AUTORIZADO": "sim"})
 
 
-def test_nao_sobrou_fabrica_tentando_enviar_sozinho():
+def test_fabrica_so_existe_com_ela_ligada():
     """Fábrica órfã não roda, mas fica de isca para quem reativar sem ler."""
-    assert "dellavolpe" not in app_web.FABRICAS
+    assert ("dellavolpe" in app_web.FABRICAS) is (
+        "dellavolpe" in app_web.AUTOMATICAS)
 
 
 # ------------------------------------------------- entrou em "Precisa de você"

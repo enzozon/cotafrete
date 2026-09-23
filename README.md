@@ -254,8 +254,48 @@ JADLOG_PAINEL_USUARIO / _SENHA             Jadlog Entregas
 TRANSLOVATO_CNPJ / _USUARIO / _SENHA       Translovato
 GENEROSO_USUARIO / GENEROSO_SENHA          Transporte Generoso
 DV_ENVIO_REAL_AUTORIZADO                   trava do envio real da Della Volpe
+DV_AUTOMATICA_DESDE                        liga a Della Volpe como automática
+DV_IMAP_HOST / _USUARIO / _SENHA           caixa do suporte (ingestor de e-mail)
 COTAFRETE_ADM_SENHA                        senha do painel /adm
 ```
+
+### Della Volpe: automática e ingestor de e-mail
+
+Ela não mostra preço no site: responde por e-mail com uma proposta em PDF.
+Duas chaves independentes no `.env`:
+
+**Caixa do suporte** — liga o ingestor (`carriers/dellavolpe/ingestor.py`),
+uma thread que sobe com o servidor e lê a caixa a cada minuto:
+
+```
+DV_IMAP_HOST=imap.exemplo.com.br
+DV_IMAP_USUARIO=suporte@ventura.com.br
+DV_IMAP_SENHA=...
+# opcionais: DV_IMAP_PORTA=993  DV_IMAP_PASTA=INBOX  DV_IMAP_INTERVALO_S=60
+#            DV_IMAP_DIAS=3  DV_EMAIL_RESPOSTA (se o usuário não for e-mail)
+```
+
+Com a caixa configurada, o formulário deles (automático **e** assistido)
+passa a mandar a resposta para o suporte, com o carimbo `(cot. N)` no nome.
+O ingestor acha o PDF, confere carimbo e rota e grava preço, prazo, validade
+e o PDF na cotação. Ele só busca e-mail de `dellavolpe.com.br`, nunca apaga
+nem move nada, e só marca como lido o que gravou. Sem a caixa, a resposta
+continua indo para o e-mail do vendedor, como antes.
+
+Conferir à mão, sem gravar nada:
+
+```
+.venv\Scripts\python.exe -m carriers.dellavolpe.ingestor            # só lê
+.venv\Scripts\python.exe -m carriers.dellavolpe.ingestor --pdf x.pdf  # um PDF
+.venv\Scripts\python.exe -m carriers.dellavolpe.ingestor --gravar   # grava
+```
+
+**Automática** — `DV_AUTOMATICA_DESDE` com a data e hora em que ela é ligada
+**neste servidor** (ex.: `2026-09-23T09:00:00`), junto de
+`DV_ENVIO_REAL_AUTORIZADO=sim`. A data impede a varredura de cotações
+interrompidas de carimbar o histórico antigo (as 118 linhas fantasma da
+Braspress). Se o site pedir a caixinha "confirme que é humano", nada é
+enviado e a cotação cai no cartão **Semiautomática**.
 
 **`GENEROSO_USUARIO`** é o "E-mail corporativo" da tela de login deles. Sem
 essas duas linhas a Generoso nem tenta: deslogada ela não mostra preço, só
@@ -285,8 +325,8 @@ validados; falta somá-los em `AUTOMATICAS` no `web/app.py`.
 > geraram nada; com janela real, passaram. Ou se aceita a janela abrindo a
 > cada cotação, ou ela fica fora da automação.
 
-**Fase 3 — depois.** Ingestor IMAP para ler as propostas em PDF e preencher
-o preço que a Generoso e a Della Volpe mandam por e-mail.
+**Fase 3 — em andamento.** Ingestor IMAP da Della Volpe pronto (ver
+"Della Volpe: automática e ingestor de e-mail"); a Generoso ainda não.
 
 ### Onde rodar
 

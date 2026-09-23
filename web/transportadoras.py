@@ -166,8 +166,27 @@ COTAM_POR_VOLUME = ("jadlog",)
 # sozinha. A Della Volpe SAIU em 31/08/2026 (ver POR_EMAIL acima) e por isso
 # não entra aqui, mesmo continuando cadastrada em NOMES_AUTOMATICAS para os
 # resultados antigos que ainda têm o nome dela para mostrar.
-AUTOMATICAS: tuple[str, ...] = (
+#
+# A Della Volpe VOLTA quando o .env disser (ver carriers/dellavolpe/caixa.py):
+# `DV_AUTOMATICA_DESDE` com a data em que foi ligada, e a trava de envio real
+# liberada. A decisão fica no .env, e não numa linha de código, por causa da
+# data: ela precisa ser a do dia em que a automática entra NO SERVIDOR, e
+# nenhum commit sabe esse dia.
+#
+# Sem as duas chaves, nada muda: ela continua assistida, pelo cartão
+# "Semiautomática" da tela da cotação.
+AUTOMATICAS_FIXAS: tuple[str, ...] = (
     "camilo", "jadlog", "translovato", "generoso", "braspress")
+
+
+def automaticas(ambiente=None) -> tuple[str, ...]:
+    from carriers.dellavolpe import caixa as dv
+
+    return AUTOMATICAS_FIXAS + (("dellavolpe",) if dv.automatica(ambiente)
+                                else ())
+
+
+AUTOMATICAS: tuple[str, ...] = automaticas()
 
 
 def cota_por_volume(slug: str, quantidade: int) -> bool:
