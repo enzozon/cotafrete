@@ -321,8 +321,14 @@ ESPERA_PELA_PROPOSTA_S = 30 * 60
 
 # Onde o vendedor instala o Tampermonkey (o gerenciador de scripts que roda o
 # preenchimento da Della Volpe — ver carriers/dellavolpe/bookmarklet.py).
+ID_TAMPERMONKEY = "dhdgffkkebhmkfjojejmpbldmpobfkfo"
 URL_TAMPERMONKEY = ("https://chromewebstore.google.com/detail/tampermonkey/"
-                    "dhdgffkkebhmkfjojejmpbldmpobfkfo")
+                    + ID_TAMPERMONKEY)
+# Os detalhes do Tampermonkey em chrome://extensions, direto na chave
+# "Permitir scripts de usuário". Vai para a área de transferência, e não num
+# link: o Chrome não abre chrome:// a partir de um site — o clique não faz
+# nada, e isso não tem configuração do nosso lado.
+URL_DETALHES_TAMPERMONKEY = f"chrome://extensions/?id={ID_TAMPERMONKEY}"
 
 # Erro técnico -> frase que o vendedor entende.
 #
@@ -1590,22 +1596,50 @@ def formulario_dellavolpe(cotacao_id: int,
 
   <div class="so-sem">
     <div class="passo-n" data-n="1"><b>Só na primeira vez, neste
-    computador:</b> instale o preenchimento automático. São dois cliques e
-    vale para todas as cotações daqui para a frente.</div>
+    computador:</b> instale o preenchimento automático. São três etapas
+    rápidas (a, b e c) e valem para todas as cotações daqui para a frente.</div>
     <div style="margin-left:46px">
-    <p>a) Instale a extensão <b>Tampermonkey</b> no Chrome:
+    <p><b>a) Instale a extensão Tampermonkey no Chrome.</b>
     <a class="botao2" href="{URL_TAMPERMONKEY}" target="_blank"
     rel="noopener">Abrir Tampermonkey na Chrome Web Store</a>
-    — clique em <b>"Usar no Chrome"</b>.</p>
-    <p>b) Libere os scripts: em <b>chrome://extensions</b>, abra
-    <b>Detalhes</b> do Tampermonkey e ligue <b>"Permitir scripts do
-    usuário"</b>. (Em Chrome mais antigo, a chave é o <b>"Modo do
-    desenvolvedor"</b>, no canto de cima da mesma tela.)</p>
-    <p>c) Instale o script do Cotafrete:
+    — na página que abrir, clique em <b>"Usar no Chrome"</b> e confirme.</p>
+    <img class="print" style="max-width:640px"
+    src="/ajuda/tampermonkey_1_loja.png"
+    alt="Print: página do Tampermonkey na Chrome Web Store, com uma seta no botão Usar no Chrome">
+
+    <p><b>b) Libere os scripts do Tampermonkey.</b> Clique para copiar o
+    endereço dos detalhes da extensão, cole na barra de endereço do Chrome
+    e aperte Enter:</p>
+    <p><code id="end-extensoes">{URL_DETALHES_TAMPERMONKEY}</code>
+    <button type="button" class="botao2" id="copiar-extensoes"
+    >Copiar endereço</button>
+    <span class="sub" id="copiou" hidden>✓ copiado — cole na barra de
+    endereço</span></p>
+    <p class="sub">Por que copiar, e não um link: o Chrome não deixa nenhum
+    site abrir as telas <code>chrome://</code> por clique — é uma trava de
+    segurança dele. Se preferir o caminho pelo menu: digite
+    <code>chrome://extensions</code> na barra de endereço e, no cartão do
+    Tampermonkey, clique em <b>"Saiba mais"</b> (em alguns Chrome o botão se
+    chama <b>"Detalhes"</b>):</p>
+    <img class="print" style="max-width:420px"
+    src="/ajuda/tampermonkey_2_cartao.png"
+    alt="Print: cartão do Tampermonkey em chrome://extensions, com uma seta no botão Saiba mais">
+    <p>Na tela de detalhes, ligue a chave <b>"Permitir scripts de
+    usuário"</b> (a do círculo no print). Em Chrome mais antigo essa chave não
+    existe: ligue o <b>"Modo do desenvolvedor"</b>, no canto de cima da tela
+    <code>chrome://extensions</code>.</p>
+    <img class="print" style="max-width:700px"
+    src="/ajuda/tampermonkey_3_permitir.png"
+    alt="Print: detalhes do Tampermonkey com a chave Permitir scripts de usuário ligada e circulada">
+
+    <p><b>c) Instale o script do Cotafrete.</b>
     <a class="botao2" href="{rota_script_versionada()}"
     target="_blank" rel="noopener">Instalar o script do Cotafrete</a>
-    — o Tampermonkey abre uma tela; clique em <b>"Instalar"</b>. Depois
+    — o Tampermonkey abre a tela abaixo; clique em <b>"Instalar"</b>. Depois
     volte aqui e recarregue esta página.</p>
+    <img class="print"
+    src="/ajuda/tampermonkey_4_instalar.png"
+    alt="Print: tela de instalação do Tampermonkey para o script Cotafrete — Della Volpe, com uma seta no botão Instalar">
     </div>
   </div>
 
@@ -1660,6 +1694,35 @@ def formulario_dellavolpe(cotacao_id: int,
 (mais lento)? <a href="/email/{cotacao_id}/dellavolpe">Abrir e-mail pronto</a>
 </p>
 <script>
+// "Copiar endereço". navigator.clipboard só existe em página segura
+// (https ou localhost); pelo IP da rede o servidor é http puro, e aí vale o
+// jeito antigo, com um textarea escondido.
+(function () {{
+  var botao = document.getElementById('copiar-extensoes');
+  if (!botao) return;
+  botao.addEventListener('click', function () {{
+    var texto = document.getElementById('end-extensoes').textContent;
+    function avisar() {{
+      document.getElementById('copiou').hidden = false;
+    }}
+    function antigo() {{
+      var t = document.createElement('textarea');
+      t.value = texto;
+      t.style.position = 'fixed';
+      t.style.opacity = '0';
+      document.body.appendChild(t);
+      t.select();
+      try {{ document.execCommand('copy'); avisar(); }} catch (e) {{}}
+      document.body.removeChild(t);
+    }}
+    if (navigator.clipboard && window.isSecureContext) {{
+      navigator.clipboard.writeText(texto).then(avisar, antigo);
+    }} else {{
+      antigo();
+    }}
+  }});
+}})();
+
 // O script do Tampermonkey roda depois que a página carrega e marca o
 // <html>. Olha por 3 segundos; sem marca, fica a versão "instale".
 (function () {{

@@ -121,7 +121,7 @@ def test_a_tela_ensina_a_instalar(app_web):
     assert (f'href="/extensao/cotafrete-dellavolpe-{dv.VERSAO_USERSCRIPT}'
             f'.user.js"') in html
     assert "chromewebstore.google.com/detail/tampermonkey" in html
-    assert "Permitir scripts do usuário" in html
+    assert "Permitir scripts de usuário" in html   # o texto do Chrome
     # o favorito continua como plano B
     assert "javascript:" in html
 
@@ -356,3 +356,66 @@ def test_script_em_dia_nao_pede_atualizacao(navegador, app_web):
 
     assert pg.locator("text=Atualizar o script").is_hidden()
     assert pg.locator(f"text=versão {dv.VERSAO_USERSCRIPT}").first.is_visible()
+
+
+# ------------------------------------------------ os prints e o "copiar"
+PRINTS_DA_INSTALACAO = ("tampermonkey_1_loja.png", "tampermonkey_2_cartao.png",
+                        "tampermonkey_3_permitir.png",
+                        "tampermonkey_4_instalar.png")
+
+
+def test_cada_passo_da_instalacao_tem_o_seu_print(app_web):
+    c = entrar(TestClient(app_web.app), app_web)
+    cid = app_web.banco.salvar_cotacao("enzo", COTACAO)
+
+    html = c.get(f"/dellavolpe/{cid}").text
+
+    for arquivo in PRINTS_DA_INSTALACAO:
+        assert f'src="/ajuda/{arquivo}"' in html, arquivo
+        imagem = c.get(f"/ajuda/{arquivo}")
+        assert imagem.status_code == 200, arquivo
+        assert imagem.content.startswith(b"\x89PNG"), arquivo
+
+
+def test_o_endereco_das_extensoes_e_o_dos_detalhes_do_tampermonkey(app_web):
+    """Direto na tela da chave "Permitir scripts de usuário", pulando a
+    lista de extensões."""
+    c = entrar(TestClient(app_web.app), app_web)
+    cid = app_web.banco.salvar_cotacao("enzo", COTACAO)
+
+    html = c.get(f"/dellavolpe/{cid}").text
+
+    assert ("chrome://extensions/?id=dhdgffkkebhmkfjojejmpbldmpobfkfo"
+            in html)
+    # Nunca como link: o Chrome não abre chrome:// a partir de um site, e um
+    # link que não faz nada ensina o vendedor a desconfiar da tela.
+    assert 'href="chrome://' not in html
+
+
+def test_o_botao_copia_o_endereco(navegador, app_web):
+    """O jeito que funciona em qualquer página, inclusive pelo IP da rede
+    (http, onde navigator.clipboard não existe)."""
+    c = entrar(TestClient(app_web.app), app_web)
+    cid = app_web.banco.salvar_cotacao("enzo", COTACAO)
+    pg = navegador.new_page()
+    pg.route("**/*", lambda rota: rota.fulfill(status=204))
+    pg.set_content(c.get(f"/dellavolpe/{cid}").text)
+    pg.evaluate("""() => {
+        window.__copiado = null;
+        const original = document.execCommand.bind(document);
+        document.execCommand = (cmd) => {
+            if (cmd === 'copy') {
+                window.__copiado = document.activeElement.value;
+                return true;
+            }
+            return original(cmd);
+        };
+        // força o caminho de página http, sem navigator.clipboard
+        Object.defineProperty(window, 'isSecureContext', {value: false});
+    }""")
+
+    pg.click("#copiar-extensoes")
+
+    assert pg.evaluate("window.__copiado") == (
+        "chrome://extensions/?id=dhdgffkkebhmkfjojejmpbldmpobfkfo")
+    assert pg.locator("#copiou").is_visible()
