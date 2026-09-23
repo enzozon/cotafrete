@@ -362,7 +362,9 @@ def processar(bruto: bytes, banco, *, gravar: bool,
         cid = cid if cid is not None else (p.cotacao_id if p else None)
         if gravar and registrar:
             banco.registrar_email(msg.message_id, SLUG, desfecho=desfecho,
-                                  cotacao_id=cid, detalhe=detalhe)
+                                  cotacao_id=cid, detalhe=detalhe,
+                                  assunto=msg.assunto,
+                                  recebido_em=_hora_local(msg.data))
         return Desfecho(msg.message_id, desfecho, cid, detalhe, p,
                         msg.assunto)
 
@@ -481,6 +483,12 @@ def varrer(cx: config.Caixa, banco, *, gravar: bool,
 
 
 # ------------------------------------------------------- rodando sozinho
+def _imprimir(linha: str) -> None:
+    """print com flush: no Servidor.bat a saída vai para log\\servidor.log, e
+    sem o flush a linha só chega ao arquivo quando o buffer enche."""
+    print(linha, flush=True)
+
+
 class Vigia(threading.Thread):
     """A thread que o servidor sobe junto com ele (web/app.py).
 
@@ -488,7 +496,7 @@ class Vigia(threading.Thread):
     causa é uma proposta ser lida um minuto depois, na próxima subida."""
 
     def __init__(self, cx: config.Caixa, banco,
-                 log: Callable[[str], None] = print) -> None:
+                 log: Callable[[str], None] = _imprimir) -> None:
         super().__init__(name="ingestor-dellavolpe", daemon=True)
         self.cx = cx
         self.banco = banco
@@ -525,7 +533,7 @@ class Vigia(threading.Thread):
             self.parar.wait(espera)
 
 
-def iniciar(banco, ambiente=None, log: Callable[[str], None] = print
+def iniciar(banco, ambiente=None, log: Callable[[str], None] = _imprimir
             ) -> Vigia | None:
     """Sobe a vigia se o .env descreve a caixa. None se não descreve."""
     cx = config.caixa(ambiente)

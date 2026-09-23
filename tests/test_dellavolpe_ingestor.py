@@ -124,6 +124,50 @@ def test_o_email_fica_registrado_como_processado(banco, cotacao, tmp_path):
     assert linha["cotacao_id"] == cotacao
 
 
+def test_o_registro_guarda_assunto_e_hora_do_email(banco, cotacao, tmp_path):
+    """É por eles que a tela /adm/dellavolpe acha o e-mail na caixa."""
+    ingestor.processar(email_bruto(texto_proposta(cid=cotacao)), banco,
+                       gravar=True, pasta=tmp_path)
+
+    [linha] = banco.emails_processados()
+    assert linha["assunto"] == "Proposta de frete"
+    # A hora do `Date:`, em hora local como o resto do banco.
+    from email.utils import parsedate_to_datetime
+    assert linha["recebido_em"] == ingestor._hora_local(
+        parsedate_to_datetime("Tue, 22 Sep 2026 14:05:00 -0300"))
+
+
+def test_banco_antigo_ganha_assunto_e_recebido_em(tmp_path):
+    """Quem já tinha email_processado de 23/09/2026 não perde nada."""
+    import sqlite3
+    caminho = tmp_path / "velho.db"
+    con = sqlite3.connect(caminho)
+    con.execute("CREATE TABLE email_processado (message_id TEXT PRIMARY KEY,"
+                " transportadora TEXT NOT NULL, cotacao_id INTEGER,"
+                " desfecho TEXT NOT NULL, detalhe TEXT,"
+                " processado_em TEXT NOT NULL)")
+    con.execute("INSERT INTO email_processado VALUES"
+                " ('<a@x>', 'dellavolpe', NULL, 'sem_pdf', NULL,"
+                " '2026-09-23T10:00:00')")
+    con.commit()
+    con.close()
+
+    [linha] = Banco(caminho).emails_processados()
+    assert linha["desfecho"] == "sem_pdf"
+    assert linha["assunto"] is None and linha["recebido_em"] is None
+
+
+def test_a_vigia_escreve_o_log_na_hora(banco, capsys, monkeypatch):
+    """No Servidor.bat a saída vai para um arquivo: sem flush, a linha do
+    ingestor só aparecia lá minutos depois."""
+    chamadas = []
+    monkeypatch.setattr("builtins.print",
+                        lambda *a, **k: chamadas.append(k))
+    ingestor._imprimir("[ingestor] teste")
+
+    assert chamadas == [{"flush": True}]
+
+
 def test_o_mesmo_email_nao_e_processado_duas_vezes(banco, cotacao, tmp_path):
     bruto = email_bruto(texto_proposta(cid=cotacao))
     ingestor.processar(bruto, banco, gravar=True, pasta=tmp_path)
