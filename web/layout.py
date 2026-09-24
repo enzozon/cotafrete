@@ -386,6 +386,9 @@ padding:0 var(--e2) 0 0;text-transform:uppercase;
 letter-spacing:var(--letra-rotulo);margin-left:-2px}
 .grid{display:grid;gap:var(--e3) var(--e4);
 grid-template-columns:repeat(auto-fit,minmax(168px,1fr))}
+/* Carga tem sete campos: no auto-fit da tela larga saíam 5 + 2, com um
+   buraco de três colunas. Quatro por linha fecha em 4 + 3. */
+@media(min-width:900px){.grid.g4{grid-template-columns:repeat(4,1fr)}}
 label{display:block;font-size:var(--t-mini);color:var(--tinta2);
 margin-bottom:var(--e1);font-weight:600;letter-spacing:.012em}
 input{width:100%;padding:11px 13px;border:1px solid var(--borda-forte);
@@ -948,7 +951,10 @@ background-image:url({MARCA_COMPACTA_CLARA})}
    CONTEUDO quando e longa. Sem isto o historico com tres linhas deixava o
    rodape boiando no meio da tela, com 300px de vazio embaixo dele. */
 body{min-height:100vh;display:flex;flex-direction:column}
-body>.wrap{flex:1 0 auto}
+/* width:100% porque, num flex em coluna, o margin:auto do .wrap desliga o
+   esticar e ele encolhia até o conteúdo: a tela de cotação ficava com 665px
+   no meio de um monitor de 1900, com cara de celular. */
+body>.wrap{flex:1 0 auto;width:100%}
 .rodape-site{border-top:1px solid var(--borda);margin-top:var(--e8);
 background:var(--papel);flex:none;position:relative}
 /* O mesmo filete da marca, agora fechando a página por baixo. O topo abria

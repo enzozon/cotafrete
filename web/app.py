@@ -1055,7 +1055,7 @@ def _render_formulario(v: dict, usuario: str, aviso: str) -> str:
   </div>
   {escolha_tipo_frete(v)}</fieldset>
 
-  <fieldset><legend>Carga</legend><div class="grid">
+  <fieldset><legend>Carga</legend><div class="grid g4">
     {campo("peso", "Peso de UM volume (kg)", v)}
     {campo("quantidade", "Quantidade de volumes", v)}
     {campo("comprimento", "Comprimento (cm)", v)}
