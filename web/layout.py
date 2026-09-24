@@ -526,6 +526,18 @@ border-left:3px solid var(--atencao);
 border-radius:var(--raio-pp) var(--raio-p) var(--raio-p) var(--raio-pp);
 padding:12px 14px;font-size:var(--t-base);margin-bottom:var(--e4);
 color:var(--atencao-tinta)}
+/* "Colar o pedido" (core/extrair_carga): a caixa em cima do formulário e o
+   destaque do campo que a IA preencheu — some quando o vendedor mexe nele.
+   Anel e não fundo: o fundo do input já muda com o tema, o anel não briga. */
+.colar-pedido{margin-bottom:var(--e4)}
+.colar-pedido>summary{cursor:pointer;list-style:none}
+.colar-pedido>summary::-webkit-details-marker{display:none}
+.colar-pedido textarea{width:100%;margin-top:var(--e3);padding:10px 12px;font:inherit;
+font-size:var(--t-base);border:1px solid var(--borda-forte);border-radius:var(--raio-p);
+background:var(--cova);color:var(--tinta);resize:vertical}
+.colar-acoes{display:flex;align-items:center;gap:var(--e3);flex-wrap:wrap;margin:var(--e3) 0}
+.colar-pedido ul{margin:6px 0 0 18px;padding:0}
+input.ia-preenchido{box-shadow:0 0 0 2px var(--marca);border-color:var(--marca)}
 .print{width:100%;margin-top:10px;border:1px solid var(--borda);
 border-radius:var(--raio-p);cursor:zoom-in;transition:box-shadow .16s}
 .print:hover{box-shadow:var(--sombra-2)}

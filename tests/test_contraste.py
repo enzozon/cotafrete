@@ -97,6 +97,7 @@ def site(monkeypatch, tmp_path):
     for m in (app_web, adm, me_ui):
         monkeypatch.setattr(m, "banco", b)
     monkeypatch.setenv("COTAFRETE_ADM_SENHA", SENHA)
+    monkeypatch.setenv("GROQ_API_KEY", "x")   # mostra a caixa "Colar o pedido" em /
     monkeypatch.setattr(me_ui, "FONTE", lambda c: lista.ler_busca(
         json.loads((FIX / f"lista_{c}.json").read_text(encoding="utf-8"))))
     monkeypatch.setattr(me_ui, "LEITOR", lambda c, n: [

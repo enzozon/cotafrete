@@ -37,8 +37,8 @@ from pathlib import Path
 from urllib.parse import quote
 
 from dotenv import load_dotenv
-from fastapi import Cookie, Depends, FastAPI, Form, HTTPException, Request
-from fastapi.responses import HTMLResponse, RedirectResponse, Response
+from fastapi import Body, Cookie, Depends, FastAPI, Form, HTTPException, Request
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 load_dotenv(override=False)
@@ -55,6 +55,7 @@ from carriers.translovato.adapter import TranslovatoAdapter
 from core import cep as buscador_cep
 from core import sessao
 from core import cnpj as buscador_cnpj
+from core import extrair_carga
 from core import ia
 from core import selecao
 from core.aceite import rotulo_validade, vencida
@@ -890,6 +891,72 @@ def painel_transportadoras() -> str:
         + '</details>')
 
 
+def colar_pedido() -> str:
+    """O cartão "Colar o pedido" em cima do formulário (core/extrair_carga).
+
+    Só aparece com a IA configurada: um botão que sempre responde
+    "indisponível" ensina o vendedor a não clicar nele."""
+    if not ia.configurada():
+        return ""
+    return f"""<details class="cartao colar-pedido" id="colar-pedido" open>
+<summary><b>Colar o pedido</b> <span class="sub">— a IA preenche o formulário; você confere</span></summary>
+<textarea id="ia-texto" rows="5" maxlength="{extrair_carga.MAX_TEXTO}"
+ placeholder="Cole aqui o e-mail ou a mensagem do cliente: endereço/CEP, CNPJ, volumes, peso, medidas, valor da nota…"></textarea>
+<div class="colar-acoes"><button type="button" id="ia-preencher">Preencher com IA</button>
+<span id="ia-status" class="sub" role="status" aria-live="polite"></span></div>
+<div id="ia-resultado"></div>
+</details>"""
+
+
+# Fora da f-string do formulário para não dobrar as chaves do JavaScript.
+JS_COLAR_PEDIDO = """<script>
+(() => {
+  const botao = document.getElementById('ia-preencher');
+  if (!botao) return;
+  const status = document.getElementById('ia-status');
+  const saida = document.getElementById('ia-resultado');
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  botao.addEventListener('click', async () => {
+    const texto = document.getElementById('ia-texto').value;
+    botao.disabled = true; saida.innerHTML = '';
+    status.textContent = 'Lendo o pedido… (alguns segundos)';
+    try {
+      const r = await fetch('/extrair', {method: 'POST', headers: {'Content-Type': 'application/json'},
+                                         body: JSON.stringify({texto})});
+      if (r.redirected || r.status === 401) { location.href = '/login'; return; }
+      const d = await r.json();
+      if (d.erro) { status.textContent = ''; saida.innerHTML = '<p class="alerta">' + esc(d.erro) + '</p>'; return; }
+      const preenchidos = [];
+      for (const [nome, valor] of Object.entries(d.campos)) {
+        if (nome === 'tipo_frete') {
+          const radio = document.querySelector('input[name="tipo_frete"][value="' + valor + '"]');
+          if (radio) { radio.checked = true; preenchidos.push(d.rotulos[nome] + ': ' + valor.toUpperCase()); }
+          continue;
+        }
+        const campo = document.getElementById(nome);
+        if (!campo) continue;
+        campo.value = valor;
+        campo.dispatchEvent(new Event('input', {bubbles: true}));   // máscaras de CEP/CNPJ
+        campo.classList.add('ia-preenchido');
+        campo.addEventListener('input', () => campo.classList.remove('ia-preenchido'), {once: true});
+        preenchidos.push(d.rotulos[nome] + ': ' + campo.value);
+      }
+      status.textContent = preenchidos.length
+        ? preenchidos.length + ' campos preenchidos (' + d.modelo + '). Confira antes de cotar.'
+        : 'Não achei dados de frete no texto.';
+      let html = '';
+      if (d.avisos.length) html += '<div class="aviso"><b>Confira:</b><ul>' + d.avisos.map(a => '<li>' + esc(a) + '</li>').join('') + '</ul></div>';
+      if (d.faltando.length) html += '<p class="sub">O texto não trouxe: ' + d.faltando.map(esc).join(', ') + '.</p>';
+      saida.innerHTML = html;
+    } catch (erro) {
+      status.textContent = '';
+      saida.innerHTML = '<p class="alerta">Não consegui falar com o servidor. Tente de novo.</p>';
+    } finally { botao.disabled = false; }
+  });
+})();
+</script>"""
+
+
 def _render_formulario(v: dict, usuario: str, aviso: str) -> str:
     # String CRUA (rf): o JS aqui embaixo usa \d e \D das regex de máscara.
     # Sem o `r`, o Python lê como escape dele, avisa "invalid escape sequence"
@@ -909,6 +976,7 @@ def _render_formulario(v: dict, usuario: str, aviso: str) -> str:
                f"transportadoras e deixamos a mensagem pronta para as "
                f"{len(transportadoras.com_whatsapp())} que atendem por "
                f"WhatsApp.")}
+{colar_pedido()}
 <form method="post" action="/cotar" class="cartao">
   <fieldset><legend>Rota</legend><div class="grid">
     {campo("cep_origem", "CEP de origem", v)}
@@ -990,7 +1058,7 @@ filtro.querySelectorAll("[data-todas]").forEach(a => a.onclick = ev => {{
   contar();
 }});
 contar();
-</script>""", usuario)
+</script>{JS_COLAR_PEDIDO}""", usuario)
 
 
 # -------------------------------------------------------------------- cotar
@@ -1029,6 +1097,26 @@ def montar_request(d: dict) -> CotacaoRequest:
         mercadoria=Mercadoria(tipo_material=d["material"]),
         nota_fiscal=NotaFiscal(valor_total=_num(d["valor_nf"])),
     )
+
+
+@app.post("/extrair")
+def extrair_pedido(dados: dict = Body(...), usuario: str | None = Depends(vendedor)):
+    """Texto colado → campos do formulário (core/extrair_carga). SÍNCRONO:
+    a chamada à IA bloqueia, e o FastAPI roda isto numa thread do pool.
+    Nunca cota nada: só devolve os campos para a tela preencher."""
+    if not usuario:
+        return JSONResponse({"erro": "Sessão expirada: entre de novo."}, status_code=401)
+    try:
+        x = extrair_carga.extrair(str(dados.get("texto") or ""))
+    except extrair_carga.TextoInvalido as exc:
+        return JSONResponse({"erro": str(exc)})
+    except ia.IAIndisponivel:
+        return JSONResponse({"erro": "A IA está indisponível agora (limite dos modelos grátis ou "
+                                     "provedor fora do ar). Preencha à mão ou tente em alguns minutos."})
+    except Exception as exc:   # defeito nosso: a tela avisa e o formulário segue
+        return JSONResponse({"erro": f"Não consegui ler o pedido ({type(exc).__name__})."})
+    return JSONResponse({"campos": x.campos, "avisos": x.avisos, "faltando": x.faltando,
+                         "modelo": x.modelo, "rotulos": extrair_carga.ROTULOS})
 
 
 @app.post("/voltar", response_class=HTMLResponse)
@@ -2227,6 +2315,25 @@ a tela para de atualizar e diz quem não respondeu.</p>
       palavras.</li>
   <li><b>Nome, e-mail e WhatsApp</b> — seus dados de contato, que entram
       na mensagem pronta das transportadoras que você aciona à mão.</li>
+</ul>
+
+<h2>Colar o pedido (IA)</h2>
+<p>Em cima do formulário tem a caixa <b>Colar o pedido</b>. Cole o e-mail ou a
+mensagem do cliente e clique em <b>Preencher com IA</b>: CEPs, CNPJs, tipo de
+frete, volumes, peso, medidas, valor da nota e material vão para os campos, com
+um contorno azul em cada um que a IA preencheu.</p>
+<ul>
+  <li><b>Confira sempre</b> antes de cotar. A IA não cota nada: só preenche.</li>
+  <li>Ela <b>não inventa</b>: o que o texto não diz fica em branco, e a lista
+      "o texto não trouxe" mostra o que falta (quase sempre o CEP de origem e o
+      CNPJ da Ventura).</li>
+  <li>CNPJ com dígito verificador errado e CEP incompleto <b>não entram</b>:
+      aparecem no quadro "Confira".</li>
+  <li>Se o pedido traz o peso <b>total</b>, o sistema divide pela quantidade e
+      avisa a conta — o campo é o peso de <b>um</b> volume.</li>
+  <li>Volumes de tamanhos diferentes aparecem no "Confira": o formulário aceita
+      um tamanho por vez.</li>
+  <li>Seus dados de contato não são tocados.</li>
 </ul>
 
 <h2>Os erros que mais custam caro</h2>
