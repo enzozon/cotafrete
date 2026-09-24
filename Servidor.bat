@@ -19,6 +19,10 @@ title Cotafrete SERVIDOR - NAO FECHE (fechar desliga para a empresa toda)
 chcp 65001 >nul
 set PYTHONUTF8=1
 set PYTHONIOENCODING=utf-8
+REM PYTHONUNBUFFERED: a saida vai para log\servidor.log (mais abaixo), e
+REM o Python so despeja num ARQUIVO de tempos em tempos. Sem isto a linha
+REM "[ingestor] Della Volpe: ..." aparecia no log minutos depois do fato.
+set PYTHONUNBUFFERED=1
 
 cd /d "%~dp0"
 

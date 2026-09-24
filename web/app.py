@@ -26,6 +26,7 @@ fora da rede local sem virar autenticação de verdade.
 
 from __future__ import annotations
 
+import threading
 import time
 import unicodedata
 from concurrent.futures import ThreadPoolExecutor
@@ -105,6 +106,8 @@ async def _vida(_app):
                   f"{me_ui.INTERVALO_S // 60} min.")
     if INGESTOR is None:
         INGESTOR = dv_ingestor.iniciar(banco)
+        # Para a tela /adm/dellavolpe mostrar se a caixa está abrindo.
+        adm.ingestor = INGESTOR
         if INGESTOR is not None:
             print(f"[cotafrete] Della Volpe: lendo as propostas em "
                   f"{INGESTOR.cx.usuario} a cada "
@@ -242,8 +245,41 @@ TODAS_AS_SLUGS = tuple(dict.fromkeys(
 # esperando thread livre em vez de esperar vaga de navegador. Quem limita o
 # peso na máquina é o semáforo NAVEGADORES_SIMULTANEOS, em core/retentativa.py;
 # o executor só precisa caber todo mundo.
-EXECUTOR = ThreadPoolExecutor(max_workers=len(AUTOMATICAS),
-                              thread_name_prefix="cotacao")
+class _ExecutorContado(ThreadPoolExecutor):
+    """O executor de sempre, sabendo quantos trabalhos ainda não acabaram
+    (na fila ou rodando).
+
+    É o que o `atualizar.py` pergunta, por GET /_ocupado, antes de reiniciar
+    o servidor sozinho depois de um merge: reiniciar no meio de uma cotação
+    mata as threads das transportadoras, e o cartão do vendedor termina em
+    "o sistema foi fechado durante a cotação"."""
+
+    def __init__(self, *a, **k) -> None:
+        super().__init__(*a, **k)
+        self._trava = threading.Lock()
+        self.em_curso = 0
+
+    def submit(self, fn, /, *args, **kwargs):
+        with self._trava:
+            self.em_curso += 1
+
+        def contado():
+            try:
+                return fn(*args, **kwargs)
+            finally:
+                with self._trava:
+                    self.em_curso -= 1
+
+        try:
+            return super().submit(contado)
+        except BaseException:
+            with self._trava:
+                self.em_curso -= 1
+            raise
+
+
+EXECUTOR = _ExecutorContado(max_workers=len(AUTOMATICAS),
+                            thread_name_prefix="cotacao")
 
 
 def automaticas_da(escolhidas: str | None) -> tuple[str, ...]:
@@ -262,7 +298,13 @@ def automaticas_da(escolhidas: str | None) -> tuple[str, ...]:
 # ("camilo", "jadlog") quando a Translovato entrou, e cotação interrompida
 # dela ficava girando para sempre. A Generoso é a mais lenta de todas — a
 # mais provável de estar no meio do caminho quando alguém fecha a janela.
-_orfas = banco.marcar_interrompidas(AUTOMATICA_DESDE)
+#
+# A Della Volpe fica de fora: desde 23/09/2026 ela só sai quando o vendedor
+# escolhe, na tela, para onde vai a proposta — e "ninguém escolheu" não é
+# cotação interrompida. O "enviando" dela que morreu com o processo é fechado
+# lá dentro, pelo relógio do clique (`pedido_em`).
+_orfas = banco.marcar_interrompidas(
+    {s: d for s, d in AUTOMATICA_DESDE.items() if s != "dellavolpe"})
 if _orfas:
     print(f"[cotafrete] {_orfas} cotação(ões) pendente(s) marcadas como "
           f"interrompidas — o sistema foi fechado durante elas.")
@@ -333,6 +375,17 @@ ESPERA_DO_EMAIL: dict[str, str] = {}
 # da proposta da Della Volpe. Ela chega em 2 a 5 minutos; meia hora cobre um
 # dia ruim sem deixar uma aba esquecida recarregando para sempre.
 ESPERA_PELA_PROPOSTA_S = 30 * 60
+
+# Onde o vendedor instala o Tampermonkey (o gerenciador de scripts que roda o
+# preenchimento da Della Volpe — ver carriers/dellavolpe/bookmarklet.py).
+ID_TAMPERMONKEY = "dhdgffkkebhmkfjojejmpbldmpobfkfo"
+URL_TAMPERMONKEY = ("https://chromewebstore.google.com/detail/tampermonkey/"
+                    + ID_TAMPERMONKEY)
+# Os detalhes do Tampermonkey em chrome://extensions, direto na chave
+# "Permitir scripts de usuário". Vai para a área de transferência, e não num
+# link: o Chrome não abre chrome:// a partir de um site — o clique não faz
+# nada, e isso não tem configuração do nosso lado.
+URL_DETALHES_TAMPERMONKEY = f"chrome://extensions/?id={ID_TAMPERMONKEY}"
 
 # Erro técnico -> frase que o vendedor entende.
 #
@@ -634,6 +687,16 @@ def _tela_login(erro: str = "", nome: str = "",
                  "o mais barato"),
         rodape="Sua conta é criada pelo administrador. A senha quem escolhe "
                "é você, no primeiro acesso.")
+
+
+@app.get("/_ocupado", include_in_schema=False)
+def ocupado() -> dict:
+    """Quantas cotações e agendamentos ainda estão rodando. Quem pergunta é o
+    `atualizar.py`, que só reinicia o servidor com zero.
+
+    Sem login de propósito: quem pergunta é um script da própria VM. E só
+    sai um número — nada de cliente, rota nem vendedor."""
+    return {"em_curso": EXECUTOR.em_curso}
 
 
 @app.get("/login", response_class=HTMLResponse)
@@ -1244,6 +1307,11 @@ def cotar(usuario: str | None = Depends(vendedor),
 
     # Dispara e NÃO espera: cada uma grava o próprio resultado ao terminar.
     for slug in automaticas_da(dados.get("transportadoras")):
+        # A Della Volpe espera o vendedor escolher, na tela da cotação, para
+        # onde vai a proposta (POST /cotacao/{id}/dellavolpe). O e-mail do
+        # formulário dela depende dessa escolha, então ela não pode sair antes.
+        if slug == "dellavolpe":
+            continue
         # O id vai amarrado na fábrica, e não como parâmetro do `_rodar`: a
         # retentativa chama `cotar_fn(req)` e não precisa saber de cotação.
         EXECUTOR.submit(_rodar, cotacao_id, slug,
@@ -1289,17 +1357,49 @@ def _cotar_braspress(req, cotacao_id=None):
     return BraspressAdapter().cotar(req, confirmar_envio=True)
 
 
-def _cotar_dellavolpe(req, cotacao_id=None):
+def _cotar_dellavolpe(req, cotacao_id=None, resposta_em="tela"):
     """Envia o formulário público deles — cai na fila de um vendedor da Della
     Volpe, e o preço volta por e-mail (carriers/dellavolpe/ingestor.py).
 
-    O e-mail do formulário é o do suporte quando o ingestor sabe ler aquela
-    caixa; senão continua sendo o do vendedor, que aí recebe a proposta ele
-    mesmo. O carimbo vai sempre: não atrapalha ninguém, e é o que o ingestor
-    procura."""
+    `resposta_em` é a escolha do vendedor na tela: "tela" põe o e-mail do
+    suporte no formulário (o ingestor lê e o preço aparece sozinho); "email"
+    põe o dele. Sem a caixa do suporte no .env, "tela" não tem como
+    funcionar e cai no e-mail do vendedor."""
+    email = dv_caixa.email_de_resposta() if resposta_em == "tela" else None
     return DellavolpeAdapter(workdir="teste_real/dellavolpe").cotar(
         req, confirmar_envio=True, cotacao_id=cotacao_id,
-        email_resposta=dv_caixa.email_de_resposta())
+        email_resposta=email)
+
+
+def request_da_cotacao(c: dict) -> CotacaoRequest:
+    """A cotação GRAVADA de volta no modelo central, sem consultar o CEP.
+
+    A Della Volpe sai depois do /cotar (quando o vendedor escolhe o destino
+    da proposta), e aí o pedido original já não existe mais. Cidade e UF
+    estão no banco desde o /cotar; consultar o CEP de novo só traria mais um
+    jeito de falhar."""
+    unitario = peso_por_volume(c)
+    qtd = int(c["quantidade"])
+    peso = unitario if unitario is not None else Decimal(c["peso_kg"]) / qtd
+    return CotacaoRequest(
+        solicitante=Solicitante(nome=c.get("nome_solicitante") or "Ventura",
+                                email=c.get("email") or "",
+                                whatsapp=c.get("whatsapp_solicitante") or ""),
+        servico=Servico.FRACIONADO_LTL,
+        origem=Local(uf=c["uf_origem"], cidade=c["cidade_origem"],
+                     cep=c["cep_origem"]),
+        destino=Local(uf=c["uf_destino"], cidade=c["cidade_destino"],
+                      cep=c["cep_destino"]),
+        remetente=Parte(cnpj=c["cnpj_remetente"]),
+        destinatario=Parte(cnpj=c["cnpj_destinatario"]),
+        tipo_frete=TipoFrete(c.get("tipo_frete") or "cif"),
+        volumes=[Volume(qtd=qtd, comprimento_cm=Decimal(c["comprimento_cm"]),
+                        largura_cm=Decimal(c["largura_cm"]),
+                        altura_cm=Decimal(c["altura_cm"]),
+                        peso_kg=Decimal(peso))],
+        mercadoria=Mercadoria(tipo_material=c.get("material") or ""),
+        nota_fiscal=NotaFiscal(valor_total=Decimal(c["valor_nf"])),
+    )
 
 
 # No módulo, e não dentro de /cotar: é o que permite a
@@ -1438,10 +1538,95 @@ def cartao_proposta_a_caminho() -> str:
     dele seria mandá-lo procurar uma coisa que nunca vai chegar lá."""
     return ('<div class="enviada">Cotação enviada</div>'
             '<div class="alerta email"><b>O preço aparece aqui sozinho.</b> '
-            'A Della Volpe responde por e-mail, em poucos minutos, para a '
+            'A Della Volpe responde por e-mail, em 2 a 5 minutos, para a '
             'caixa do suporte — o sistema lê a proposta e preenche esta '
             'linha com preço, prazo, validade e o PDF. Pode deixar a página '
             'aberta.</div>')
+
+
+def _idade(iso: str | None) -> float:
+    """Segundos desde um horário ISO do banco. Texto estragado conta como
+    agora: melhor a tela esperar um pouco mais do que desistir à toa."""
+    try:
+        return (datetime.now() - datetime.fromisoformat(iso)).total_seconds()
+    except (TypeError, ValueError):
+        return 0
+
+
+def _envio_expirou(r: dict) -> bool:
+    """O "enviando" da Della Volpe passou do teto sem gravar nada — o robô
+    morreu no meio. O relógio é o do clique, não o da cotação."""
+    return _idade(r.get("pedido_em")) > ESPERA_MAXIMA_S
+
+
+def _proposta_na_tela(r: dict) -> bool:
+    """A proposta desta linha vai para a caixa do suporte (e daí para a tela)?
+
+    Linha anterior à escolha (23/09/2026) não diz: vale o .env de hoje, que
+    era a regra daquela época."""
+    if r.get("resposta_em"):
+        return r["resposta_em"] == "tela"
+    return bool(dv_caixa.email_de_resposta())
+
+
+def escolha_da_dellavolpe(cotacao_id: int, email: str | None) -> str:
+    """Os dois botões da Della Volpe, na linha dela.
+
+    Ela é a única automática que manda a cotação para a fila de uma PESSOA,
+    e a resposta chega por e-mail — por isso o vendedor decide para onde. Sem
+    a caixa do suporte no .env, "aqui na tela" não tem como funcionar, e o
+    botão nem aparece."""
+    seu = f' ({e(email)})' if email else ''
+    botao_tela = (
+        '<button class="botao" name="destino" value="tela">Mostrar aqui '
+        '(2 a 5 min)</button> ' if dv_caixa.email_de_resposta() else '')
+    return (
+        f'<form method="post" action="/cotacao/{cotacao_id}/dellavolpe"'
+        f' class="escolha-dv">'
+        f'<div class="alerta email"><b>Para onde vai a proposta da Della '
+        f'Volpe?</b> O site dela não mostra o preço na hora: responde por '
+        f'e-mail, em 2 a 5 minutos, com um PDF.'
+        + (' <b>Mostrar aqui</b> manda para a caixa do suporte, e o preço e '
+           'o PDF aparecem nesta linha sozinhos.' if botao_tela else '')
+        + f' <b>Meu e-mail</b> manda para você{seu}.</div>'
+        f'<p>{botao_tela}<button class="botao2" name="destino" value="email">'
+        f'Mandar para o meu e-mail</button></p></form>')
+
+
+@app.post("/cotacao/{cotacao_id}/dellavolpe")
+def enviar_dellavolpe(cotacao_id: int, destino: str = Form(...),
+                      usuario: str | None = Depends(vendedor)):
+    """O clique num dos dois botões: reserva a linha e solta o robô.
+
+    A reserva vem ANTES do robô e é atômica (banco.reservar_envio): o segundo
+    clique, o F5 que reenvia o POST, a aba duplicada — nenhum deles manda a
+    mesma cotação duas vezes para a fila da Della Volpe."""
+    if not usuario:
+        return RedirectResponse("/login", status_code=303)
+    c = banco.buscar_cotacao(cotacao_id, usuario)
+    if c is None:
+        raise HTTPException(404, "Cotação não encontrada")
+    volta = RedirectResponse(f"/cotacao/{cotacao_id}", status_code=303)
+    if ("dellavolpe" not in automaticas_da(c.get("transportadoras"))
+            or destino not in ("tela", "email")):
+        return volta
+    if destino == "tela" and not dv_caixa.email_de_resposta():
+        # O .env perdeu a caixa entre a tela e o clique. Mandar para o
+        # suporte sem ninguém lendo seria perder a proposta.
+        destino = "email"
+    try:
+        req = request_da_cotacao(c)
+    except Exception as exc:
+        banco.salvar_resultado(cotacao_id, "dellavolpe", status="erro",
+                               erro=f"a cotação gravada não deu para "
+                                    f"reenviar: {type(exc).__name__}: {exc}")
+        return volta
+    if banco.reservar_envio(cotacao_id, "dellavolpe", resposta_em=destino):
+        EXECUTOR.submit(_rodar, cotacao_id, "dellavolpe",
+                        partial(FABRICAS.get("dellavolpe", _cotar_dellavolpe),
+                                cotacao_id=cotacao_id, resposta_em=destino),
+                        req)
+    return volta
 
 
 @app.get("/whatsapp/{cotacao_id}/{slug}")
@@ -1542,6 +1727,37 @@ function copiar(id) {{
 </script>""", usuario))
 
 
+def _url_formulario_dv(c: dict) -> str:
+    """O link do site da Della Volpe com os dados desta cotação.
+
+    O e-mail segue a escolha do vendedor: se ele pediu a proposta no
+    PRÓPRIO e-mail, o formulário vai com o dele; senão, com a caixa do
+    suporte (quando configurada), para a proposta cair no ingestor."""
+    dv_r = next((r for r in c["resultados"]
+                 if r["transportadora"] == "dellavolpe"), None)
+    escolheu_email = dv_r is not None and dv_r.get("resposta_em") == "email"
+    return dv_bookmarklet.url_formulario(
+        c, None if escolheu_email else dv_caixa.email_de_resposta())
+
+
+@app.get("/dellavolpe/{cotacao_id}/abrir")
+def abrir_formulario_dellavolpe(cotacao_id: int,
+                                usuario: str | None = Depends(vendedor)):
+    """O atalho do cartão "Semiautomática" quando o script está em dia: vai
+    direto para o site da Della Volpe já preenchido, sem a tela de instruções.
+
+    Passa por aqui, e não direto para o site, para REGISTRAR a abertura —
+    é o relógio que o ingestor usa para casar a proposta que chegar com esta
+    cotação (banco.candidatas_dellavolpe, a porta do formulário assistido)."""
+    if not usuario:
+        return RedirectResponse("/login", status_code=303)
+    c = banco.buscar_cotacao(cotacao_id, usuario)
+    if c is None:
+        return HTMLResponse("Não encontrado", status_code=404)
+    banco.marcar_whatsapp_aberto(cotacao_id, "dellavolpe", usuario)
+    return RedirectResponse(_url_formulario_dv(c), status_code=303)
+
+
 @app.get("/dellavolpe/{cotacao_id}", response_class=HTMLResponse)
 def formulario_dellavolpe(cotacao_id: int,
                           usuario: str | None = Depends(vendedor)):
@@ -1571,10 +1787,20 @@ def formulario_dellavolpe(cotacao_id: int,
     banco.marcar_whatsapp_aberto(cotacao_id, "dellavolpe", usuario)
     # A mesma caixa de resposta do envio automático: a proposta de um envio
     # feito à mão também precisa cair no ingestor.
-    url = dv_bookmarklet.url_formulario(c, dv_caixa.email_de_resposta())
+    url = _url_formulario_dv(c)
     href_favorito = dv_bookmarklet.href_bookmarklet()
 
+    # Duas versões da mesma tela, e quem escolhe é o NAVEGADOR: o script do
+    # Tampermonkey marca o <html> com data-cotafrete-dv quando está
+    # instalado, e aí o passo a passo da instalação some. Sem o script, a
+    # tela ensina a instalar — e guarda o favorito antigo como plano B.
     return HTMLResponse(pagina(f"Cotação {cotacao_id} — Della Volpe", f"""
+<style>
+  body:not(.com-script) .so-com {{ display: none; }}
+  body.com-script .so-sem {{ display: none; }}
+  body:not(.script-velho) .so-velho {{ display: none; }}
+  body.script-velho .so-em-dia {{ display: none; }}
+</style>
 {cabecalho("Della Volpe", tarja="Fluxo assistido",
            contexto=(("rota", f"{c['cidade_origem']}/{c['uf_origem']} → "
                               f"{c['cidade_destino']}/{c['uf_destino']}"),
@@ -1588,44 +1814,87 @@ def formulario_dellavolpe(cotacao_id: int,
   OFICIAL deles — o preenchimento só poupa a digitação, quem resolve o
   captcha e clica em enviar é você.</div>
 
-  <div class="passo-n" data-n="1"><b>Só na primeira vez:</b> arraste este
-  link para a barra de favoritos do navegador.</div>
-  <p><a class="botao2" href="{href_favorito}"
-  onclick="return confirm('Não clique — ARRASTE este link para a barra de favoritos.')"
-  >📋 Preencher cotação (Cotafrete)</a></p>
+  <div class="so-com">
+    <p class="sub so-em-dia">✓ O script do Cotafrete está instalado neste
+    navegador (versão {dv_bookmarklet.VERSAO_USERSCRIPT}).</p>
+    <div class="alerta so-velho"><b>O script deste navegador está
+    desatualizado</b> (versão <span id="versao-instalada"></span>; a atual
+    é a {dv_bookmarklet.VERSAO_USERSCRIPT}).
+    <a class="botao2" href="{rota_script_versionada()}" target="_blank"
+    rel="noopener">Atualizar o script</a> — o Tampermonkey abre uma tela;
+    clique em <b>"Atualizar"</b> e depois recarregue esta página.</div>
+  </div>
 
-  <img class="print" src="/ajuda/passo1_barra_favoritos.png"
-  alt="Print: o favorito salvo na barra do navegador, com uma seta apontando para ele">
-  <p class="sub">Depois de arrastar, o favorito "Preencher cotação
-  (Cotafrete)" fica salvo na barra do navegador (seta na imagem) — é nele que
-  você vai clicar no Passo 3, sempre na aba NOVA da Della Volpe.</p>
+  <div class="so-sem">
+    <div class="passo-n" data-n="1"><b>Só na primeira vez, neste
+    computador:</b> instale o preenchimento automático. São três etapas
+    rápidas (a, b e c) e valem para todas as cotações daqui para a frente.</div>
+    <div style="margin-left:46px">
+    <p><b>a) Instale a extensão Tampermonkey no Chrome.</b>
+    <a class="botao2" href="{URL_TAMPERMONKEY}" target="_blank"
+    rel="noopener">Abrir Tampermonkey na Chrome Web Store</a>
+    — na página que abrir, clique em <b>"Usar no Chrome"</b> e confirme.</p>
+    <img class="print" style="max-width:640px"
+    src="/ajuda/tampermonkey_1_loja.png"
+    alt="Print: página do Tampermonkey na Chrome Web Store, com uma seta no botão Usar no Chrome">
 
-  <div class="passo-n" data-n="2">Abra o formulário da Della Volpe nesta
-  aba nova.</div>
+    <p><b>b) Libere os scripts do Tampermonkey.</b> Clique para copiar o
+    endereço dos detalhes da extensão, cole na barra de endereço do Chrome
+    e aperte Enter:</p>
+    <p><code id="end-extensoes">{URL_DETALHES_TAMPERMONKEY}</code>
+    <button type="button" class="botao2" id="copiar-extensoes"
+    >Copiar endereço</button>
+    <span class="sub" id="copiou" hidden>✓ copiado — cole na barra de
+    endereço</span></p>
+    <p class="sub">Por que copiar, e não um link: o Chrome não deixa nenhum
+    site abrir as telas <code>chrome://</code> por clique — é uma trava de
+    segurança dele. Se preferir o caminho pelo menu: digite
+    <code>chrome://extensions</code> na barra de endereço e, no cartão do
+    Tampermonkey, clique em <b>"Saiba mais"</b> (em alguns Chrome o botão se
+    chama <b>"Detalhes"</b>):</p>
+    <img class="print" style="max-width:420px"
+    src="/ajuda/tampermonkey_2_cartao.png"
+    alt="Print: cartão do Tampermonkey em chrome://extensions, com uma seta no botão Saiba mais">
+    <p>Na tela de detalhes, ligue a chave <b>"Permitir scripts de
+    usuário"</b> (a do círculo no print). Em Chrome mais antigo essa chave não
+    existe: ligue o <b>"Modo do desenvolvedor"</b>, no canto de cima da tela
+    <code>chrome://extensions</code>.</p>
+    <img class="print" style="max-width:700px"
+    src="/ajuda/tampermonkey_3_permitir.png"
+    alt="Print: detalhes do Tampermonkey com a chave Permitir scripts de usuário ligada e circulada">
+
+    <p><b>c) Instale o script do Cotafrete.</b>
+    <a class="botao2" href="{rota_script_versionada()}"
+    target="_blank" rel="noopener">Instalar o script do Cotafrete</a>
+    — o Tampermonkey abre a tela abaixo; clique em <b>"Instalar"</b>. Depois
+    volte aqui e recarregue esta página.</p>
+    <img class="print"
+    src="/ajuda/tampermonkey_4_instalar.png"
+    alt="Print: tela de instalação do Tampermonkey para o script Cotafrete — Della Volpe, com uma seta no botão Instalar">
+    </div>
+  </div>
+
+  <div class="passo-n so-com" data-n="1">Abra o formulário da Della Volpe.
+  Ele já abre preenchido.</div>
+  <div class="passo-n so-sem" data-n="2">Abra o formulário da Della Volpe.
+  Ele abre preenchido quando o script do passo 1 estiver instalado.</div>
   <p><a class="botao2" href="{e(url)}" target="_blank" rel="noopener"
   >Abrir formulário da Della Volpe</a></p>
+  <p class="sub">Os campos enchem sozinhos alguns segundos depois de a
+  página abrir, e aparece um aviso do navegador confirmando — é só clicar
+  OK.</p>
 
-  <div class="passo-n" data-n="3"><b>Na aba nova</b>, clique no favorito
-  "Preencher cotação (Cotafrete)" que você salvou no passo 1. Os campos
-  enchem sozinhos, e aparece um aviso do navegador confirmando — é só
-  clicar OK.</div>
-
-  <img class="print" src="/ajuda/passo3_alerta_preenchido.png"
-  alt="Print: aviso do navegador dizendo que o Cotafrete preencheu os campos">
-  <p class="sub">É este o aviso que aparece depois do clique: "Cotafrete
-  preencheu os campos. Confira, resolva o captcha e clique em 'Pedir
-  orçamento'." Clique OK e siga para o Passo 4.</p>
-
-  <div class="passo-n" data-n="4">Confira os dados preenchidos e resolva o captcha da
-  Della Volpe ("confirme que é humano") — quando ele validar, aparece um
-  quadradinho verde escrito <b>"Sucesso!"</b>. Só depois clique em
-  "Pedir orçamento". Isso o sistema não faz por você — nem deveria.</div>
+  <div class="passo-n so-com" data-n="2">Confira os dados preenchidos e
+  resolva o captcha da Della Volpe ("confirme que é humano") — quando ele
+  validar, aparece um quadradinho verde escrito <b>"Sucesso!"</b>. Só
+  depois clique em "Pedir orçamento".</div>
+  <div class="passo-n so-sem" data-n="3">Confira os dados preenchidos e
+  resolva o captcha da Della Volpe ("confirme que é humano") — quando ele
+  validar, aparece um quadradinho verde escrito <b>"Sucesso!"</b>. Só
+  depois clique em "Pedir orçamento".</div>
 
   <img class="print" src="/ajuda/passo4_captcha_sucesso.png"
   alt="Print: captcha da Della Volpe resolvido, mostrando Sucesso em verde">
-  <p class="sub">É este quadradinho verde que confirma que o captcha foi
-  resolvido. Só depois dele aparecer o clique em "Pedir orçamento" envia de
-  verdade.</p>
 
   <div class="alerta"><b>É normal o primeiro clique em "Pedir orçamento"
   parecer que não fez nada.</b> Enquanto o captcha não terminar de validar
@@ -1635,12 +1904,115 @@ def formulario_dellavolpe(cotacao_id: int,
   <p class="sub">Anexo de planilha ou FISPQ não entra sozinho — o navegador
   não permite preencher esse tipo de campo por segurança. Anexe à mão se a
   carga precisar.</p>
+
+  <details class="so-sem">
+    <summary>Não dá para instalar agora? Use o favorito (jeito antigo)</summary>
+    <p>Arraste este link para a barra de favoritos:
+    <a class="botao2" href="{href_favorito}"
+    onclick="return confirm('Não clique — ARRASTE este link para a barra de favoritos.')"
+    >📋 Preencher cotação (Cotafrete)</a></p>
+    <img class="print" src="/ajuda/passo1_barra_favoritos.png"
+    alt="Print: o favorito salvo na barra do navegador">
+    <p class="sub">Depois abra o formulário (passo 2) e, <b>na aba nova da
+    Della Volpe</b>, clique no favorito. Os campos enchem e aparece o aviso
+    de confirmação.</p>
+    <img class="print" src="/ajuda/passo3_alerta_preenchido.png"
+    alt="Print: aviso do navegador dizendo que o Cotafrete preencheu os campos">
+  </details>
 </div>
 
 <p class="sub" style="margin-top:24px">Prefere continuar mandando por e-mail
 (mais lento)? <a href="/email/{cotacao_id}/dellavolpe">Abrir e-mail pronto</a>
 </p>
+<script>
+// "Copiar endereço". navigator.clipboard só existe em página segura
+// (https ou localhost); pelo IP da rede o servidor é http puro, e aí vale o
+// jeito antigo, com um textarea escondido.
+(function () {{
+  var botao = document.getElementById('copiar-extensoes');
+  if (!botao) return;
+  botao.addEventListener('click', function () {{
+    var texto = document.getElementById('end-extensoes').textContent;
+    function avisar() {{
+      document.getElementById('copiou').hidden = false;
+    }}
+    function antigo() {{
+      var t = document.createElement('textarea');
+      t.value = texto;
+      t.style.position = 'fixed';
+      t.style.opacity = '0';
+      document.body.appendChild(t);
+      t.select();
+      try {{ document.execCommand('copy'); avisar(); }} catch (e) {{}}
+      document.body.removeChild(t);
+    }}
+    if (navigator.clipboard && window.isSecureContext) {{
+      navigator.clipboard.writeText(texto).then(avisar, antigo);
+    }} else {{
+      antigo();
+    }}
+  }});
+}})();
+
+// O script do Tampermonkey roda depois que a página carrega e marca o
+// <html>. Olha por 3 segundos; sem marca, fica a versão "instale".
+(function () {{
+  var voltas = 15;
+  (function olhar() {{
+    var instalada = document.documentElement.getAttribute('data-cotafrete-dv');
+    if (instalada) {{
+      document.body.classList.add('com-script');
+      // O script marca o <html> com a PRÓPRIA versão. Diferente da do
+      // servidor, a tela oferece a atualização — sem depender de quando o
+      // Tampermonkey resolver procurar versão nova sozinho.
+      if (instalada !== '{dv_bookmarklet.VERSAO_USERSCRIPT}') {{
+        document.body.classList.add('script-velho');
+        document.getElementById('versao-instalada').textContent = instalada;
+      }}
+    }} else if (voltas-- > 0) {{
+      setTimeout(olhar, 200);
+    }}
+  }})();
+}})();
+</script>
 """, usuario))
+
+
+# O .user.js do Tampermonkey. SEM login de propósito: o Tampermonkey volta
+# aqui sozinho para buscar versão nova, sem o cookie do vendedor — e o
+# arquivo não tem dado nenhum, só o código de preencher o formulário.
+#
+# Dois endereços para o mesmo arquivo. O fixo é o que vai no @updateURL — o
+# Tampermonkey guarda esse e volta nele para sempre. O com a versão no nome é
+# o do botão da tela: endereço novo a cada versão, e nenhum cache no caminho
+# (do Chrome, do Tampermonkey, de um proxy) consegue devolver o arquivo
+# velho. Foi o que aconteceu em 23/09/2026: o botão abriu a 1.0.0 com a 1.1.0
+# já no servidor, e sem "Atualizar" o vendedor fica preso na versão errada.
+ROTA_SCRIPT = "/extensao/cotafrete-dellavolpe.user.js"
+
+
+def rota_script_versionada() -> str:
+    return (f"/extensao/cotafrete-dellavolpe-"
+            f"{dv_bookmarklet.VERSAO_USERSCRIPT}.user.js")
+
+
+def _entregar_script(request: Request) -> Response:
+    fixo = str(request.base_url).rstrip("/") + ROTA_SCRIPT
+    return Response(dv_bookmarklet.userscript(fixo),
+                    media_type="text/javascript; charset=utf-8",
+                    headers={"Cache-Control": "no-store, max-age=0"})
+
+
+@app.get(ROTA_SCRIPT)
+def script_tampermonkey(request: Request):
+    return _entregar_script(request)
+
+
+@app.get("/extensao/cotafrete-dellavolpe-{versao}.user.js")
+def script_tampermonkey_versionado(versao: str, request: Request):
+    """Qualquer versão no nome entrega a ATUAL: um link velho guardado em
+    algum lugar leva à versão nova, e não a um 404."""
+    return _entregar_script(request)
 
 
 # Rótulo e classe de cada estado. Um lugar só: a linha e a pílula têm de
@@ -1653,6 +2025,9 @@ ESTADOS = {
     "falha": ("Falhou", "estado-falha"),
     "intervencao": ("Precisa de alguém", "estado-falha"),
     "cotando": ("Cotando", "estado-cotando"),
+    # A Della Volpe esperando o vendedor escolher para onde vai a proposta.
+    # Nada saiu ainda: "Enviada" ali seria a mentira mais cara da tela.
+    "escolher": ("Falta escolher", "estado-aguardando"),
 }
 
 
@@ -1821,11 +2196,17 @@ def ver_cotacao(cotacao_id: int,
             # erro: lá embaixo tudo que não tem valor é tratado como problema.
             destaque, selo, estado = "", "", "aguardando"
             principal = '<span class="sem">preço por e-mail</span>'
-            if slug == "dellavolpe" and dv_caixa.email_de_resposta():
+            if slug == "dellavolpe" and _proposta_na_tela(r):
                 principal = '<span class="sem">aguardando proposta</span>'
                 avisos = cartao_proposta_a_caminho()
             else:
                 avisos = cartao_resposta_por_email(c.get("email"), slug)
+                if slug == "dellavolpe" and r["evidencia"]:
+                    # Escolheu o próprio e-mail: a única prova que ESTA tela
+                    # tem de que a cotação saiu é a confirmação do site.
+                    # Grande, e não só a miniatura da coluna "Print".
+                    avisos += (f'<div class="nota">Confirmação do site da '
+                               f'Della Volpe:</div>{_img(r["evidencia"])}')
         elif r["status"] == StatusCotacao.RECUSADO.value:
             # Recusa NÃO é defeito. O site recebeu a carga inteira, entendeu,
             # e disse não — com estas palavras. Cotação #20 (25/08/2026): a
@@ -1837,6 +2218,25 @@ def ver_cotacao(cotacao_id: int,
             principal = '<span class="sem">O site não cotou</span>'
             avisos = (f'<div class="alerta">'
                       f'{e((r["erro"] or "")[:LIMITE_MENSAGEM_ERRO])}</div>')
+        elif (slug == "dellavolpe"
+              and r["status"] == StatusCotacao.ENVIANDO.value
+              and not _envio_expirou(r)):
+            # O vendedor escolheu e o robô está no site dela agora.
+            destaque, selo, estado = "", "", "cotando"
+            principal = ('<span class="cotando"><span class="girando"></span>'
+                         'enviando…</span>')
+            avisos = (
+                '<div class="alerta email"><b>Cotando automaticamente na '
+                'Della Volpe.</b> O robô está preenchendo o formulário do '
+                'site dela. Depois do envio a proposta leva de 2 a 5 minutos '
+                'para chegar — o preço e o PDF aparecem nesta linha sozinhos. '
+                'Pode deixar a página aberta.</div>'
+                if r.get("resposta_em") == "tela" else
+                '<div class="alerta email"><b>Enviando para a Della '
+                'Volpe.</b> O robô está preenchendo o formulário do site '
+                'dela. A proposta vai para o seu e-mail, '
+                f'{e(c.get("email") or "o do formulário")}, em 2 a 5 '
+                'minutos.</div>')
         else:
             destaque, selo, estado = "", "", "falha"
             # Sempre dizer POR QUE não veio preço. "Não retornou preço" sozinho
@@ -1862,7 +2262,18 @@ def ver_cotacao(cotacao_id: int,
     # falhou ou se ainda está rodando.
     respondidas = {r["transportadora"] for r in c["resultados"]}
     escolhidas = c.get("transportadoras")
-    faltam = [s for s in automaticas_da(escolhidas) if s not in respondidas]
+    # A Della Volpe sem linha não está "faltando": está esperando o vendedor
+    # escolher para onde vai a proposta. Contá-la aqui faria a tela recarregar
+    # de 3 em 3 segundos e, passado o teto, dizer "Sem retorno" de uma
+    # transportadora que ninguém mandou cotar.
+    faltam = [s for s in automaticas_da(escolhidas)
+              if s not in respondidas and s != "dellavolpe"]
+    if "dellavolpe" in automaticas_da(escolhidas) \
+            and "dellavolpe" not in respondidas:
+        linhas += _linha_resultado(
+            "dellavolpe", '<span class="sem">escolha onde receber</span>',
+            "", "escolher", "", "", None,
+            escolha_da_dellavolpe(cotacao_id, c.get("email")))
 
     # Passado o teto, assume que não vem mais nada. Precisa ser decidido AQUI,
     # antes dos cartões: eles mudam de "cotando…" para "Sem retorno" conforme
@@ -1906,8 +2317,13 @@ def ver_cotacao(cotacao_id: int,
     esperando_proposta = (
         dv_r is not None and dv_r["valor"] is None
         and dv_r["status"] == StatusCotacao.AGUARDANDO_RETORNO.value
-        and INGESTOR is not None and idade < ESPERA_PELA_PROPOSTA_S)
-    if faltam and not desistiu:
+        and _proposta_na_tela(dv_r) and INGESTOR is not None
+        and _idade(dv_r.get("pedido_em") or c["criado_em"])
+        < ESPERA_PELA_PROPOSTA_S)
+    dv_enviando = (dv_r is not None
+                   and dv_r["status"] == StatusCotacao.ENVIANDO.value
+                   and not _envio_expirou(dv_r))
+    if (faltam and not desistiu) or dv_enviando:
         recarrega = '<meta http-equiv="refresh" content="3">'
     elif esperando_proposta:
         recarrega = '<meta http-equiv="refresh" content="20">'
@@ -1977,7 +2393,8 @@ def ver_cotacao(cotacao_id: int,
     dv_automatica = "dellavolpe" in automaticas_da(escolhidas)
     dv_resolvida = dv_r is not None and (
         dv_r["valor"] is not None
-        or dv_r["status"] == StatusCotacao.AGUARDANDO_RETORNO.value)
+        or dv_r["status"] == StatusCotacao.AGUARDANDO_RETORNO.value
+        or dv_enviando)
     # Vale também para a assistida cuja proposta já chegou (o vendedor
     # enviou à mão e o ingestor leu): não há o que enviar de novo. Já a
     # automática que passou do teto sem responder nada ("Sem retorno") volta
@@ -1989,9 +2406,8 @@ def ver_cotacao(cotacao_id: int,
     # confirmação do site às vezes não é lida. Sem esta ressalva, o
     # vendedor reenviaria às cegas.
     ressalva = ""
-    if dv_automatica and (desistiu and dv_r is None or dv_r is not None and
-                          dv_r["status"]
-                          != StatusCotacao.INTERVENCAO_NECESSARIA.value):
+    if dv_automatica and dv_r is not None and (
+            dv_r["status"] != StatusCotacao.INTERVENCAO_NECESSARIA.value):
         ressalva = (' <b>O envio automático falhou</b> — se a Della Volpe '
                     'responder mesmo assim, o preço aparece na tabela acima '
                     'e você não precisa enviar de novo.')
@@ -2007,6 +2423,11 @@ def ver_cotacao(cotacao_id: int,
             f'horas do e-mail avulso.{ressalva}</p>'
             f'<a class="zap zap-dv{" aberta" if dv.slug in abertas else ""}"'
             f' id="zap-{e(dv.slug)}" href="/dellavolpe/{cotacao_id}"'
+            # O destino final quem decide é o script do Tampermonkey (ver o
+            # <script> no fim da página): em dia, vai direto ao site
+            # preenchido; velho ou ausente, fica na tela de instruções.
+            f' data-direto="/dellavolpe/{cotacao_id}/abrir"'
+            f' data-versao="{e(dv_bookmarklet.VERSAO_USERSCRIPT)}"'
             f' target="_blank" rel="noopener">'
             f'<img class="marca" src="/logos/{e(dv.logo)}" alt="" loading="lazy">'
             f'<b>{e(dv.nome)}</b>'
@@ -2080,6 +2501,34 @@ def ver_cotacao(cotacao_id: int,
 <p class="sub" style="margin-top:24px"><a href="/">← nova cotação</a>
 &nbsp;·&nbsp; <a href="/historico">histórico</a></p>
 <script>
+// O botao da Della Volpe e o script do Tampermonkey. O script marca o <html>
+// com a PROPRIA versao (tambem nesta tela, desde a 1.2.0):
+//   - em dia: o botao vai direto ao site dela ja preenchido;
+//   - velho: vai para /dellavolpe/N, que explica como atualizar;
+//   - ausente (ou a 1.1.0, que nao roda aqui): idem, que ensina a instalar.
+// O padrao do HTML ja e o caminho seguro; isto so encurta quando da.
+(function () {{
+  var dv = document.getElementById('zap-dellavolpe');
+  if (!dv || !dv.dataset.direto) return;
+  var voltas = 15;
+  (function olhar() {{
+    var instalada = document.documentElement.getAttribute('data-cotafrete-dv');
+    if (!instalada) {{
+      if (voltas-- > 0) setTimeout(olhar, 200);
+      return;
+    }}
+    var rotulo = dv.querySelector('.ir');
+    if (instalada === dv.dataset.versao) {{
+      dv.href = dv.dataset.direto;
+      dv.dataset.modo = 'direto';
+      rotulo.textContent = 'Abrir formulário já preenchido';
+    }} else {{
+      dv.dataset.modo = 'atualizar';
+      rotulo.textContent = 'Atualizar o script e preencher';
+    }}
+  }})();
+}})();
+
 // O link abre em outra aba; ESTA pagina fica parada. Sem marcar na hora, o
 // vendedor volta e ve a lista igualzinha, sem saber onde parou. O servidor ja
 // registrou de qualquer jeito -- isto aqui e so o olho acompanhando o dedo.

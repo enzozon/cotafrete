@@ -196,8 +196,12 @@ def pedir(texto: str) -> ia.Resposta:
 
 
 def precisa(p: Proposta) -> bool:
-    """Só vale gastar a IA quando falta o que decide gravar: valor ou carimbo."""
-    return p.valor is None or p.cotacao_id is None
+    """Só vale gastar a IA quando falta o VALOR. O carimbo deixou de ser
+    necessário: desde 23/09/2026 a Della Volpe devolve o A/C vazio e o
+    ingestor casa a proposta com a cotação pela carga (main, PRs #30/#31).
+    Pedir a IA por falta de carimbo seria gastar um pedido em TODO e-mail
+    procurando no PDF algo que não está lá."""
+    return p.valor is None
 
 
 def completar(p: Proposta, texto: str, pedir_ia=None) -> Proposta:

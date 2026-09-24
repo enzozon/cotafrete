@@ -106,7 +106,8 @@ def test_resumo_sem_ia_junta_as_horas_de_todas_as_mensagens(banco):
     """Achado da prova com o banco real: "sem carimbo 2× (10h)" escondia o das 13h."""
     with closing(banco._conectar()) as con, con:
         for mid, detalhe, hora in (("<a>", "A/C: FULANO", "10:05"), ("<b>", "A/C: BELTRANO", "13:20")):
-            con.execute("INSERT INTO email_processado VALUES (?, 'dellavolpe', NULL, 'sem_carimbo', ?, ?)",
+            con.execute("INSERT INTO email_processado (message_id, transportadora, cotacao_id, desfecho,"
+                        " detalhe, processado_em) VALUES (?, 'dellavolpe', NULL, 'sem_carimbo', ?, ?)",
                         (mid, detalhe, f"{HOJE.isoformat()}T{hora}:00"))
     [linha] = RE.resumo_sem_ia(_fatos(banco))
     assert linha == "Della Volpe — e-mail sem preço (sem_carimbo): 2× (10h a 13h)."

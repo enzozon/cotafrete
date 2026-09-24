@@ -52,8 +52,34 @@ RE_DATA = re.compile(r"(\d{1,2})\s+de\s+([a-zç]+)\s+de\s+(\d{4})",
                      re.IGNORECASE)
 
 # "A/C: ENZO ZON (COT. 208)" — o carimbo que o Cotafrete põe no campo "Nome
-# completo" do formulário e que a Della Volpe devolve em maiúsculas.
-RE_DESTINATARIO = re.compile(r"A/C\s*:\s*(.+)")
+# completo" do formulário, quando a Della Volpe o devolve.
+#
+# Só a MESMA linha, e é por isso que o espaço aqui é [ \t] e não \s. No PDF
+# real de 23/09/2026 (proposta 15693/26) o A/C veio VAZIO, e o \s antigo
+# atravessava a quebra de linha e lia "ORIGEM: SAO CAETANO DO SUL/SP" como o
+# nome do destinatário.
+RE_DESTINATARIO = re.compile(r"A/C[ \t]*:[ \t]*([^\n]*)")
+
+# "CLIENTE: VENTURA INFORMATICA LTDA   A/C:" — quem paga, como a Della Volpe
+# cadastrou. Só para mostrar; não decide nada.
+RE_CLIENTE = re.compile(r"CLIENTE[ \t]*:[ \t]*(.*?)(?:[ \t]+A/C|[ \t]*$)",
+                        re.MULTILINE)
+
+# "PESO REAL: 935,00 kg" e "PESO CUBADO: 2.664,00 kg". Sem carimbo, são o que
+# liga a proposta à cotação: o real é o peso que o robô digitou, e o cubado
+# sai das medidas — duas cargas da mesma rota raramente empatam nos dois.
+RE_PESO_REAL = re.compile(r"PESO\s+REAL\s*:?\s*([\d.]*\d(?:,\d+)?)\s*kg",
+                          re.IGNORECASE)
+RE_PESO_CUBADO = re.compile(
+    r"PESO\s+CUBADO\s*:?\s*([\d.]*\d(?:,\d+)?)\s*kg", re.IGNORECASE)
+
+# "AD-VALOREM: R$658,00 0,20% SOBRE O VALOR TOTAL DA NOTA FISCAL". O PDF não
+# traz o valor da nota, mas traz o seguro E o percentual: 658 / 0,20% =
+# 329.000, exatamente o que foi digitado. É o desempate entre duas cargas da
+# mesma rota e do mesmo peso.
+RE_ADVALOREM = re.compile(
+    r"AD-?VALOREM\s*:?\s*R\$\s*([\d.]*\d,\d{2})\s*([\d]+(?:,\d+)?)\s*%",
+    re.IGNORECASE)
 RE_CARIMBO = re.compile(r"\(\s*COT\.?\s*(\d+)\s*\)", re.IGNORECASE)
 
 # "ORIGEM: BELO HORIZONTE/MG" e "DESTINO: VILA VELHA/ES". Servem de CONFERÊNCIA
@@ -82,10 +108,25 @@ class Proposta(NamedTuple):
     uf_origem: str | None = None
     destino: str = ""
     uf_destino: str | None = None
+    cliente: str = ""
+    peso_real: Decimal | None = None
+    peso_cubado: Decimal | None = None
+    # Estimado pelo ad-valorem. Aproximado: o seguro vem arredondado em
+    # centavos, e a Della Volpe pode ter mínimo de seguro. Só DESEMPATA.
+    nota_fiscal: Decimal | None = None
+
     # "" = lido por este arquivo (regex). "IA (modelo): valor, cotacao_id" =
     # o plano B de proposta_ia.py preencheu esses campos — conferidos no PDF,
     # mas vale o vendedor olhar o PDF anexado.
     lido_por: str = ""
+
+    @property
+    def cidade_origem(self) -> str:
+        return self.origem.rsplit("/", 1)[0] if self.origem else ""
+
+    @property
+    def cidade_destino(self) -> str:
+        return self.destino.rsplit("/", 1)[0] if self.destino else ""
 
 
 def _sem_acento(texto: str) -> str:
@@ -143,6 +184,16 @@ def ler_proposta(texto: str) -> Proposta:
     carimbo = RE_CARIMBO.search(_sem_acento(destinatario))
     origem = RE_ORIGEM.search(texto)
     destino = RE_DESTINO.search(texto)
+    cliente = RE_CLIENTE.search(texto)
+    peso_real = RE_PESO_REAL.search(plano)
+    peso_cubado = RE_PESO_CUBADO.search(plano)
+    advalorem = RE_ADVALOREM.search(plano)
+    nota = None
+    if advalorem:
+        seguro = _dinheiro(advalorem.group(1))
+        percentual = _dinheiro(advalorem.group(2))
+        if seguro and percentual:
+            nota = (seguro * 100 / percentual).quantize(Decimal("0.01"))
 
     return Proposta(
         valor=_dinheiro(valor.group(1)) if valor else None,
@@ -161,4 +212,8 @@ def ler_proposta(texto: str) -> Proposta:
         destino=(f"{destino.group(1).strip()}/{destino.group(2)}"
                  if destino else ""),
         uf_destino=destino.group(2) if destino else None,
+        cliente=cliente.group(1).strip() if cliente else "",
+        peso_real=_dinheiro(peso_real.group(1)) if peso_real else None,
+        peso_cubado=_dinheiro(peso_cubado.group(1)) if peso_cubado else None,
+        nota_fiscal=nota,
     )

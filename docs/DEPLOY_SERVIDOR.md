@@ -338,12 +338,57 @@ o IP mudar, o endereço quebra para todo mundo de uma vez.
 |---|---|
 | Sistema fora do ar | abra a VM pelo Hyper-V Manager e veja se o `Servidor.bat` está aberto. Se não, dê duplo clique nele |
 | Reiniciar o sistema | feche a janela do `Servidor.bat` e abra de novo |
-| Atualizar o código | dentro da VM: feche o `Servidor.bat`, `git pull`, `pip install -r requirements.txt`, abra de novo. Fora do horário de expediente |
+| Atualizar o código | **sozinho**, até 5 minutos depois do merge na `main` (ver [Atualização automática](#atualização-automática)). À mão, se a tarefa estiver desligada: feche o `Servidor.bat`, `git checkout main`, `git pull`, `pip install -r requirements.txt`, abra de novo |
+| Ver as atualizações | `log\atualizar.log`, na pasta de produção |
 | Ver quem está cotando | `Monitor.bat`, dentro da VM. Abre o banco em somente leitura, pode ficar aberto o dia todo |
 | Ver o que o servidor falou | `log\servidor.log`, na pasta de produção. O da execução anterior fica em `log\servidor-anterior.log` |
 
 **Nunca feche a janela do `Servidor.bat` durante o expediente** — ela é o
 sistema. Fechar desliga para a empresa inteira.
+
+---
+
+## Atualização automática
+
+Depois de cada merge na `main`, a pasta de produção se atualiza sozinha, em
+até 5 minutos. Quem faz é o `atualizar.py`, rodado pelo Agendador de
+Tarefas do Windows. Ele só age quando o GitHub tem commit novo, e nessa hora:
+
+1. espera as cotações em andamento terminarem, para não matar nenhuma no
+   meio;
+2. fecha a janela do `Servidor.bat`;
+3. faz o `git checkout main` e o `git pull`;
+4. roda o `pip install -r requirements.txt` e o `playwright install
+   chromium`, **só** se o `requirements.txt` mudou;
+5. abre o `Servidor.bat` de novo, numa janela nova, e espera a tela de login
+   responder;
+6. se ela não responder em 90 s, volta para a versão anterior e abre de novo.
+   A versão com defeito não é tentada outra vez; o próximo merge libera.
+
+O servidor fica fora do ar uns 10 segundos, ou mais quando há `pip`. Quem
+estiver com a tela aberta só precisa recarregar.
+
+Ele **não** atualiza e só avisa no log quando:
+
+- há arquivo versionado alterado à mão na pasta de produção;
+- a pasta tem commit que o GitHub não tem;
+- o GitHub não responde.
+
+**Ligar, uma vez só**, logado na conta que sobe o servidor (a do login
+automático): dê duplo clique em `Instalar-atualizacao.bat`, na pasta
+`cotafrete-producao`. Ele cria a tarefa "Cotafrete - atualizar sozinho".
+Para testar na hora, sem esperar os 5 minutos:
+
+```
+.venv\Scripts\python.exe atualizar.py
+```
+
+Desligar: `.venv\Scripts\python.exe atualizar.py --remover`.
+
+O `git pull` da tarefa usa a mesma senha do GitHub que o `git pull` à mão já
+usa, guardada no Windows. Se ela vencer, a tarefa não abre janela pedindo
+senha: registra "Não consegui falar com o GitHub" no `log\atualizar.log`, e
+basta dar um `git pull` à mão uma vez para renovar.
 
 ---
 

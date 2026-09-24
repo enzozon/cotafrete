@@ -225,3 +225,19 @@ def test_sem_plano_b_o_mesmo_email_se_perde(banco, tmp_path):
     cid = banco.salvar_cotacao("enzo", CARGA)
     d = ingestor.processar(email_bruto(layout_novo(cid)), banco, gravar=True, pasta=tmp_path / "pdf")
     assert d.desfecho in ("sem_valor", "sem_carimbo")
+
+
+def test_valor_lido_sem_carimbo_nao_gasta_ia(monkeypatch):
+    """Desde 23/09/2026 o A/C vem vazio e o ingestor casa pela carga (main):
+    faltar só o carimbo é o normal, e pedir a IA seria gastar um pedido em
+    todo e-mail procurando algo que não está no PDF."""
+    from decimal import Decimal as D
+    from carriers.dellavolpe import proposta_ia as pia
+    from carriers.dellavolpe.proposta import Proposta as P
+    monkeypatch.setattr(pia, "LIGADA", True)              # o conftest desliga; aqui é o assunto
+    chamadas = []
+    p = P(valor=D("196.40"), cotacao_id=None)
+    assert not pia.precisa(p)
+    assert pia.completar(p, "texto do pdf", pedir_ia=lambda t: chamadas.append(t)) is p
+    assert chamadas == []
+    assert pia.precisa(P(valor=None, cotacao_id=208))     # sem valor: aí sim

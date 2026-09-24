@@ -625,6 +625,16 @@ if (window.IntersectionObserver && secoes.length) {
   }, {rootMargin: '-15% 0px -75% 0px'});
   secoes.forEach(s => olho.observe(s));
 }
+
+// O #topo e o cabecalho grudado (sticky): ele nunca "entra" na tela para o
+// observador acima, e voltar ao alto deixava marcado o ultimo item visto.
+// No alto da pagina, quem esta na frente dos olhos e a visao geral.
+const marcarTopo = () => {
+  if (window.scrollY > 40) return;
+  document.querySelectorAll('.lateral a[data-secao]').forEach(a =>
+    a.classList.toggle('atual', a.dataset.secao === 'topo'));
+};
+window.addEventListener('scroll', marcarTopo, {passive: true});
 """
 
 
@@ -1286,3 +1296,155 @@ def remover_conta(nome: str = Form(...),
         return _voltar(erro="Conta não encontrada.")
     return _voltar(feito=f"{nome} não entra mais. As cotações dela seguem no "
                          f"histórico.")
+
+
+# ------------------------------------------ e-mails da Della Volpe (ingestor)
+
+# A thread do ingestor, para a tela mostrar se a caixa está abrindo. Chega por
+# injeção, como o `banco`: `web/app.py` a guarda aqui quando o servidor sobe.
+# None quando o .env não descreve a caixa (ou num teste sem servidor).
+ingestor = None
+
+# O que cada desfecho quer dizer, na língua de quem olha, e o tom da
+# pastilha. "precisa" = alguém tem de abrir o e-mail no suporte e lançar à
+# mão, porque o preço NÃO entrou em cotação nenhuma.
+DESFECHOS_DV = {
+    "gravado": ("Gravado", "ok", False,
+                "O preço entrou na cotação."),
+    "sem_pdf": ("Sem PDF", "neutro", False,
+                "É o segundo e-mail da Della Volpe, a confirmação sem a "
+                "proposta. Não há nada a fazer."),
+    "sem_par": ("Sem cotação", "atencao", True,
+                "Nenhuma cotação esperando proposta bate com a rota e o peso "
+                "do PDF."),
+    "ambigua": ("Mais de uma", "atencao", True,
+                "A proposta serve a mais de uma cotação e o sistema não "
+                "escolhe no chute."),
+    "sem_valor": ("PDF sem valor", "erro", True,
+                  "O PDF não traz o valor total do frete."),
+    "sem_cotacao": ("Cotação não existe", "erro", True,
+                    "O PDF aponta para uma cotação que não está no banco."),
+    "rota_diferente": ("Rota diferente", "erro", True,
+                       "O número da cotação bate, mas a rota do PDF não."),
+}
+
+
+def _pastilha_dv(desfecho: str) -> str:
+    rotulo, tom, _, _ = DESFECHOS_DV.get(
+        desfecho, (desfecho, "roxo", True, ""))
+    cor, fundo = ui.TOM[tom]
+    return (f'<span class="pilula" style="color:{cor};background:{fundo}">'
+            f'{e(rotulo)}</span>')
+
+
+def _precisa_de_gente(desfecho: str) -> bool:
+    return DESFECHOS_DV.get(desfecho, ("", "", True, ""))[2]
+
+
+def _hora_curta(iso: str | None) -> str:
+    """'2026-09-23T14:05:09' -> '23/09 14:05'."""
+    if not iso or len(iso) < 16:
+        return "—"
+    return f"{iso[8:10]}/{iso[5:7]} {iso[11:16]}"
+
+
+def _linha_email(m: dict) -> str:
+    cid = m["cotacao_id"]
+    cotacao = (f'<a href="/adm/cotacao/{int(cid)}">#{int(cid)}</a>'
+               if cid is not None else "—")
+    classe = ' class="precisa"' if _precisa_de_gente(m["desfecho"]) else ""
+    return (f'<tr{classe}>'
+            f'<td class="hora">{e(_hora_curta(m.get("recebido_em")))}</td>'
+            f'<td>{e(m.get("assunto") or m["message_id"])}</td>'
+            f'<td>{_pastilha_dv(m["desfecho"])}</td>'
+            f'<td class="id">{cotacao}</td>'
+            f'<td class="sub">{e(m["detalhe"] or "")}</td>'
+            f'<td class="hora">{e(_hora_curta(m["processado_em"]))}</td>'
+            '</tr>')
+
+
+def _estado_do_ingestor() -> str:
+    """Se a caixa do suporte está abrindo. É a primeira pergunta de quem
+    chega nesta tela porque "o preço não apareceu"."""
+    if ingestor is None:
+        return ('<p class="sub" style="margin:0">O ingestor está '
+                '<b>desligado</b>: o .env não traz DV_IMAP_HOST, '
+                'DV_IMAP_USUARIO e DV_IMAP_SENHA. Sem eles ninguém lê a '
+                'caixa do suporte, e a proposta só entra à mão.</p>')
+    volta = ingestor.ultima_volta
+    quando = volta.strftime("%d/%m %H:%M:%S") if volta else "ainda não"
+    caixa = (f"Lendo <b>{e(ingestor.cx.usuario)}</b> a cada "
+             f"{int(ingestor.cx.intervalo_s)} s. Última volta: "
+             f"<b>{e(quando)}</b>.")
+    if ingestor.ultimo_erro:
+        return (f'<p class="sub" style="margin:0">{caixa}</p>'
+                '<p class="erro" role="alert" style="margin:8px 0 0">'
+                'A última volta NÃO abriu a caixa: '
+                f'{e(ingestor.ultimo_erro)}</p>')
+    return f'<p class="sub" style="margin:0">{caixa} A caixa abriu.</p>'
+
+
+def _legenda_dv() -> str:
+    return ('<table class="emails-dv"><tbody>' + "".join(
+        f"<tr><td>{_pastilha_dv(chave)}</td><td class=\"sub\">"
+        f"{e(texto)}</td></tr>"
+        for chave, (_, _, _, texto) in DESFECHOS_DV.items())
+        + "</tbody></table>")
+
+
+@router.get("/dellavolpe", response_class=HTMLResponse)
+def emails_dellavolpe(adm: str | None = Cookie(None, alias=COOKIE_ADM)):
+    _exigir_montado()
+    if not autorizado(adm):
+        return RedirectResponse("/adm/entrar", status_code=303)
+
+    emails = banco.emails_processados(limite=100)
+    precisam = [m for m in emails if _precisa_de_gente(m["desfecho"])]
+
+    if emails:
+        tabela = (
+            '<div class="rolagem"><table class="emails-dv">'
+            "<thead><tr><th>recebido</th><th>assunto</th><th>desfecho</th>"
+            "<th>cotação</th><th>detalhe</th><th>lido em</th></tr></thead>"
+            "<tbody>" + "".join(_linha_email(m) for m in emails)
+            + "</tbody></table></div>")
+    else:
+        tabela = ('<p class="vazio">O ingestor ainda não leu nenhum e-mail '
+                  'da Della Volpe.</p>')
+
+    if precisam:
+        atencao = ui.cartao(
+            "Precisa de atenção",
+            f'<p class="sub" style="margin:0">{len(precisam)} e-mail'
+            f'{"s" if len(precisam) != 1 else ""} da Della Volpe com preço '
+            'que NÃO entrou em cotação nenhuma. Procure pelo assunto na '
+            'caixa do suporte e lance o valor à mão na cotação certa.</p>',
+            classe="c12", atraso=0.02)
+    else:
+        atencao = ""
+
+    grade = (
+        atencao
+        + ui.cartao("Caixa do suporte", _estado_do_ingestor(),
+                    classe="c12", atraso=0.05)
+        + ui.cartao("E-mails lidos", tabela,
+                    nota=f"os {len(emails)} mais recentes",
+                    classe="c12", atraso=0.10)
+        + ui.cartao("O que cada desfecho quer dizer", _legenda_dv(),
+                    classe="c12", atraso=0.15))
+
+    corpo = f"""
+<style>.emails-dv tr.precisa td{{background:var(--tom-atencao-fraco)}}
+.emails-dv td{{vertical-align:top;border-bottom:1px solid var(--borda)}}
+.emails-dv .hora{{color:var(--fraco);font-family:var(--fonte-num);
+white-space:nowrap}}
+.emails-dv td.sub{{min-width:240px}}</style>
+<div class="cabecalho" id="topo">
+  <div>{ui.voltar_para("/adm", "Painel")}<h1>E-mails da Della Volpe</h1>
+  <p class="sub">O que o ingestor fez com cada proposta que chegou na caixa
+  do suporte. E-mail de outro remetente não aparece aqui.</p></div>
+  <div class="direita">{ui.BOTAO_TEMA}</div>
+</div>
+<div class="grade">{grade}</div>"""
+    return HTMLResponse(ui.pagina_painel("E-mails da Della Volpe", corpo,
+                                         base="/adm"))

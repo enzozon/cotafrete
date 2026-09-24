@@ -152,8 +152,43 @@ document.getElementById('servico').addEventListener('change', e => {{
 </script></body></html>"""
 
 
+# A caixinha "confirme que é humano" do Cloudflare Turnstile, como o plugin
+# do Contact Form 7 a desenha: um placeholder .wpcf7-turnstile que vira
+# iframe de challenges.cloudflare.com. Só com ?turnstile=… — o formulário
+# padrão continua sem ela, como o site está desde 22/09/2026.
+#
+#   ?turnstile=antes   já na tela quando a página abre
+#   ?turnstile=depois  só aparece depois que o serviço é escolhido — o caso
+#                      que a segunda olhada do adapter, logo antes do
+#                      clique, existe para pegar
+_TURNSTILE = """
+<script>
+function mostrarTurnstile() {
+  const caixa = document.createElement('div');
+  caixa.className = 'wpcf7-turnstile cf-turnstile';
+  caixa.style.cssText = 'width:300px;height:65px;border:1px solid #999';
+  const f = document.createElement('iframe');
+  // data: e não o endereço real — o teste não pode depender de rede. O
+  // texto do src traz o que o adapter procura no iframe de verdade.
+  f.src = 'data:text/html,challenges.cloudflare.com/turnstile';
+  f.style.cssText = 'width:300px;height:65px;border:0';
+  caixa.appendChild(f);
+  document.querySelector('form').insertBefore(
+      caixa, document.querySelector('button[type=submit]'));
+}
+%s
+</script>"""
+
+
 @app.get("/", response_class=HTMLResponse)
-def formulario() -> str:
+def formulario(turnstile: str = "") -> str:
+    if turnstile == "antes":
+        return PAGINA.replace("</body>", _TURNSTILE % "mostrarTurnstile();"
+                              + "</body>")
+    if turnstile == "depois":
+        return PAGINA.replace("</body>", _TURNSTILE % (
+            "document.getElementById('servico').addEventListener("
+            "'change', mostrarTurnstile, {once: true});") + "</body>")
     return PAGINA
 
 

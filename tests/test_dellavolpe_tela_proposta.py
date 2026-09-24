@@ -264,8 +264,11 @@ def test_erro_no_automatico_oferece_o_formulario_com_ressalva(
 
 
 # ------------------------------------------------ enviada, esperando e-mail
-def _aguardando(app_web) -> int:
+def _aguardando(app_web, resposta_em: str | None = None) -> int:
     cid = app_web.banco.salvar_cotacao("enzo", CARGA)
+    if resposta_em:
+        app_web.banco.reservar_envio(cid, "dellavolpe",
+                                     resposta_em=resposta_em)
     app_web.banco.salvar_resultado(
         cid, "dellavolpe", status=StatusCotacao.AGUARDANDO_RETORNO.value)
     return cid
@@ -304,7 +307,7 @@ def test_esperando_a_proposta_a_tela_se_atualiza_devagar(app_web, cliente,
                                                          monkeypatch):
     monkeypatch.setattr(app_web, "INGESTOR", object())
     monkeypatch.setattr(app_web, "AUTOMATICAS", ("dellavolpe",))
-    cid = _aguardando(app_web)
+    cid = _aguardando(app_web, resposta_em="tela")
 
     html = cliente.get(f"/cotacao/{cid}").text
 
@@ -383,20 +386,22 @@ def test_a_ajuda_acompanha_o_estado_dela(app_web, monkeypatch):
     assert "agora quem envia é você" not in ajuda
 
 
-def test_automatica_sem_retorno_volta_a_oferecer_o_formulario(
+def test_envio_que_morreu_no_meio_volta_a_oferecer_o_formulario(
         app_web, cliente, monkeypatch):
-    """Passou o teto e o robô não gravou nada: ninguém sabe se saiu. Esconder
-    o formulário ali deixaria a cotação sem caminho nenhum."""
+    """O vendedor escolheu, o robô saiu e o "enviando" passou do teto sem
+    gravar nada: ninguém sabe se saiu. Esconder o formulário ali deixaria a
+    cotação sem caminho nenhum."""
     from datetime import datetime, timedelta
 
     monkeypatch.setattr(app_web, "AUTOMATICAS", ("dellavolpe",))
     cid = app_web.banco.salvar_cotacao("enzo", CARGA)
+    app_web.banco.reservar_envio(cid, "dellavolpe", resposta_em="email")
     velho = (datetime.now() - timedelta(hours=1)).isoformat(timespec="seconds")
     with app_web.banco._conectar() as con:
-        con.execute("UPDATE cotacao SET criado_em = ? WHERE id = ?",
-                    (velho, cid))
+        con.execute("UPDATE resultado SET pedido_em = ?", (velho,))
 
     html = _so_texto(cliente.get(f"/cotacao/{cid}").text)
 
     assert f'href="/dellavolpe/{cid}"' in html
     assert "O envio automático falhou" in html
+    assert 'http-equiv="refresh"' not in html

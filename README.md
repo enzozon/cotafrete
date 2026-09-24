@@ -12,6 +12,9 @@ Servidor.bat         <- publica na rede da empresa, na porta 8000
 ```
 
 Para instalar no servidor da empresa: [docs/DEPLOY_SERVIDOR.md](docs/DEPLOY_SERVIDOR.md).
+Depois de instalado, a produção se atualiza sozinha a cada merge na `main`
+(`Instalar-atualizacao.bat`, uma vez; ver
+[Atualização automática](docs/DEPLOY_SERVIDOR.md#atualização-automática)).
 O Server 2012 R2 não roda o Chromium das transportadoras — o guia explica por
 que, e como subir numa VM dentro do próprio servidor.
 
@@ -361,10 +364,14 @@ DV_IMAP_SENHA=...
 #            DV_IMAP_DIAS=3  DV_EMAIL_RESPOSTA (se o usuário não for e-mail)
 ```
 
-Com a caixa configurada, o formulário deles (automático **e** assistido)
-passa a mandar a resposta para o suporte, com o carimbo `(cot. N)` no nome.
-O ingestor acha o PDF, confere carimbo e rota e grava preço, prazo, validade
-e o PDF na cotação. Ele só busca e-mail de `dellavolpe.com.br`, nunca apaga
+Com a caixa configurada, a tela da cotação oferece dois botões na linha da
+Della Volpe: **Mostrar aqui** (a resposta vai para o suporte e o preço
+aparece na tela) ou **Mandar para o meu e-mail**. O PDF deles vem com o
+`A/C` vazio, então o ingestor casa a proposta pela carga: só entre as
+cotações esperando proposta no suporte, pedidas até 2 h antes do e-mail, com
+a mesma rota e o mesmo peso real; empate se resolve pela nota (estimada pelo
+ad-valorem) e pelo peso cubado. Se ainda assim sobrar mais de uma carga
+diferente, nada é gravado e o e-mail fica não lido. Ele só busca e-mail de `dellavolpe.com.br`, nunca apaga
 nem move nada, e só marca como lido o que gravou. Sem a caixa, a resposta
 continua indo para o e-mail do vendedor, como antes.
 
@@ -372,9 +379,15 @@ Conferir à mão, sem gravar nada:
 
 ```
 .venv\Scripts\python.exe -m carriers.dellavolpe.ingestor            # só lê
-.venv\Scripts\python.exe -m carriers.dellavolpe.ingestor --pdf x.pdf  # um PDF
+.venv\Scripts\python.exe -m carriers.dellavolpe.ingestor --pdf x.pdf  # um PDF, e com quem casaria
 .venv\Scripts\python.exe -m carriers.dellavolpe.ingestor --gravar   # grava
 ```
+
+Acompanhar sem comando: **`/adm/dellavolpe`** (menu "E-mails Della Volpe" do
+painel) lista cada e-mail lido e o desfecho, destaca o que tem preço e não
+entrou em cotação nenhuma (esse se lança à mão) e mostra se a caixa abriu na
+última volta. As linhas `[ingestor]` também vão para `log\servidor.log`, na
+hora em que acontecem.
 
 **Automática** — `DV_AUTOMATICA_DESDE` com a data e hora em que ela é ligada
 **neste servidor** (ex.: `2026-09-23T09:00:00`), junto de
