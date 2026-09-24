@@ -39,11 +39,12 @@ class Servidor:
     """Faz o papel do ME: GET da cotação devolve `html`; POSTs ficam gravados."""
 
     def __init__(self, html: str):
-        self.html, self.posts = html, []
+        self.html, self.posts, self.corpos = html, [], []
 
     def __call__(self, route, request):
         if request.method == "POST":
             self.posts.append(parse_qs(request.post_data or "").get("Acao"))
+            self.corpos.append(parse_qs(request.post_data or "", keep_blank_values=True))
         if "RespostaCotaItem.asp" in request.url:
             return route.fulfill(status=200, content_type="text/html; charset=utf-8", body=self.html)
         return route.fulfill(status=200, body="")
@@ -208,3 +209,81 @@ def test_confirm_de_recusa_e_cancelado_mesmo_durante_o_salvar(navegador, tmp_pat
         s.acao_em_curso = True
         resposta = s.page.evaluate("confirm('A cotação será recusada.Deseja continuar?')")
     assert resposta is False
+
+
+# ----------------------------------------------------- recusar item sem preço
+# Cópia, em JS puro, do HabilitarRecusa do ME (o original usa jQuery, que
+# offline não carrega): alterna o botão, limpa e trava os campos do item e
+# mostra a justificativa. Nenhuma requisição — como no ME.
+JS_RECUSA_FALSA = """
+function HabilitarRecusa(id){
+  const b = document.getElementById('btnNaoResponder_' + id);
+  const campos = document.querySelectorAll('#tdItem_' + id + ' input, #tdItem_' + id + ' select');
+  const just = document.getElementById('txtJustificativaRecusa_' + id);
+  if (b.value == 'Responder item') {
+    campos.forEach(c => c.removeAttribute('readonly'));
+    just.value = ''; just.style.display = 'none';
+    b.value = 'Deseja Recusar o Item? Clique Aqui';
+  } else {
+    campos.forEach(c => { c.value = ''; c.setAttribute('readonly', 'readonly'); });
+    just.style.display = 'inline'; just.removeAttribute('readonly');
+    b.value = 'Responder item';
+  }
+  return false;
+}"""
+
+
+def _pagina_dois_itens(item2_ja_recusado=False):
+    """A página falsa com os itens 10 (índice 1) e 20 (índice 2)."""
+    html = _pagina_falsa()
+    campos2 = "".join(f'<input name="{n}2">' for n in M.NOMES_ITEM.values() if n not in _SELECTS)
+    selects2 = "".join(
+        f'<select name="{n}2">' + "".join(f'<option value="{v}">{v}</option>' for v in ops)
+        + "</select>" for n, ops in _SELECTS.items())
+    valor_btn = "Responder item" if item2_ja_recusado else "Deseja Recusar o Item? Clique Aqui"
+    item2 = f"""<span id="spanItem_2">20.</span> OUTRO PRODUTO
+  Quantidade: 1,00 <input type="checkbox" id="chkItem_2" name="chkItem_2">
+  <table><tr><td id="tdItem_2">{campos2}{selects2}</td></tr></table>
+  <input type="button" id="btnNaoResponder_2" value="{valor_btn}" onclick="HabilitarRecusa('2')">
+  <input type="text" name="txtJustificativaRecusa_2" id="txtJustificativaRecusa_2" maxlength="200"
+    value="{'antiga' if item2_ja_recusado else ''}">
+  Campos Adicionais: End. entrega: Rua X, 1 - Vitoria - ES - 29000-000 Origem do Material: 0"""
+    btn1 = '<input type="button" id="btnNaoResponder_1" value="Deseja Recusar o Item? Clique Aqui">'
+    html = html.replace('name="MaxItem" value="1"', 'name="MaxItem" value="2"')
+    html = html.replace("</form>", f"{btn1}{item2}</form>")
+    return html.replace("<html><body>", f"<html><head><script>{JS_RECUSA_FALSA}</script></head><body>")
+
+
+def test_item_sem_preco_vai_recusado_no_mesmo_post_do_salvar(navegador, tmp_path):
+    s, srv = _sessao(navegador, tmp_path, _pagina_dois_itens())
+    with s:
+        r = B.salvar_cotacao(Conta.UNIAO, 1, [_item(10), _item(20, preco="", obs="fora de linha")],
+                             30, dry_run=False, hoje=HOJE, sessao=s)
+    assert r.salvo, r.erro
+    assert srv.posts == [["9"]]                      # um POST só, e é o Salvar
+    (corpo,) = srv.corpos
+    assert corpo["txtJustificativaRecusa_2"] == ["fora de linha"]
+    assert corpo["Preco2"] == [""] and corpo["Preco1"] == ["12,34"]
+    assert "chkItem_2" not in corpo and corpo.get("chkItem_1")
+
+
+def test_item_recusado_num_rascunho_antigo_volta_a_ser_respondido(navegador, tmp_path):
+    s, srv = _sessao(navegador, tmp_path, _pagina_dois_itens(item2_ja_recusado=True))
+    with s:
+        r = B.salvar_cotacao(Conta.UNIAO, 1, [_item(10), _item(20)], 30,
+                             dry_run=False, hoje=HOJE, sessao=s)
+    assert r.salvo, r.erro
+    (corpo,) = srv.corpos
+    assert corpo["txtJustificativaRecusa_2"] == [""] and corpo["Preco2"] == ["12,34"]
+
+
+def test_recusa_ja_feita_nao_e_desfeita_por_engano(navegador, tmp_path):
+    """Chamar HabilitarRecusa de novo DESFAZ a recusa: só chama se o estado
+    for o oposto do desejado."""
+    s, srv = _sessao(navegador, tmp_path, _pagina_dois_itens(item2_ja_recusado=True))
+    with s:
+        r = B.salvar_cotacao(Conta.UNIAO, 1, [_item(10), _item(20, preco="", obs="nova justificativa")],
+                             30, dry_run=False, hoje=HOJE, sessao=s)
+    assert r.salvo, r.erro
+    (corpo,) = srv.corpos
+    assert corpo["txtJustificativaRecusa_2"] == ["nova justificativa"]

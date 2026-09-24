@@ -72,12 +72,35 @@ def test_plano_limpa_a_base_dos_itens_sem_resposta():
     assert plano.campos["Preco1"] == "1,00"
 
 
-def test_item_sem_preco_fica_vazio_e_a_justificativa_vai_para_a_obs_geral():
-    sem = _item(numero=20, preco="", obs="fora de linha")
-    plano = M.plano_pagina(Conta.UNIAO, {1: _item(), 2: sem}, 30, HOJE)
-    assert plano.campos["BaseCalculo2"] == "" and "Preco2" not in plano.campos
+def test_item_sem_preco_e_recusado_no_me_com_a_obs_de_justificativa():
+    """Decisão do usuário (24/09/2026): item sem preço usa o "Recusar item" do
+    ME; a observação dele vira a justificativa. Nada dele é digitado."""
+    sem = _item(numero=20, preco="", obs="  fora   de linha ")
+    plano = M.plano_pagina(Conta.UNIAO, {1: _item(), 2: sem}, 30, HOJE, obs_geral="geral")
+    assert plano.recusar == {2: "fora de linha"}
+    assert plano.campos["txtJustificativaRecusa_2"] == "fora de linha"
+    assert not any(k.endswith("2") and not k.startswith("txt") for k in plano.campos)
     assert plano.marcar == [1]
-    assert "Item 20: fora de linha" in plano.campos["ObsForn"]
+    assert plano.campos["ObsForn"] == "geral"   # a justificativa não vai mais para a obs geral
+
+
+def test_item_fora_da_lista_fica_vazio_e_nao_e_recusado():
+    plano = M.plano_pagina(Conta.UNIAO, {1: _item(), 2: None}, 30, HOJE)
+    assert plano.campos["BaseCalculo2"] == "" and plano.recusar == {}
+
+
+def test_recusar_todos_os_itens_da_pagina_nao_passa():
+    """Seria a recusa da cotação inteira — coisa de humano, no site do ME."""
+    with pytest.raises(M.PlanoInvalido) as exc:
+        M.plano_pagina(Conta.UNIAO, {1: _item(numero=10, preco="", obs="sem estoque")}, 30, HOJE)
+    assert "cotação inteira" in str(exc.value)
+
+
+def test_justificativa_acima_do_limite_do_me():
+    longa = "x" * (M.MAX_JUSTIFICATIVA + 1)
+    with pytest.raises(M.PlanoInvalido) as exc:
+        M.plano_pagina(Conta.UNIAO, {1: _item(), 2: _item(numero=20, preco="", obs=longa)}, 30, HOJE)
+    assert "200" in str(exc.value)
 
 
 def test_plano_recusa_item_invalido():

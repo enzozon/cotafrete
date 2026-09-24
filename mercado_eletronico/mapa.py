@@ -47,6 +47,9 @@ CABECALHO_FIXO = {
 }
 
 
+MAX_JUSTIFICATIVA = 200  # maxlength do txtJustificativaRecusa_N no ME
+
+
 class PlanoInvalido(ValueError):
     """Entrada que o ME recusaria (ou que a empresa nunca definiu)."""
 
@@ -56,6 +59,10 @@ class PlanoPagina:
     campos: dict[str, str]
     marcar: list[int]  # índices com chkItem_N marcado (itens respondidos)
     avisos: list[str] = field(default_factory=list)
+    # índice → justificativa: itens sem preço, recusados pelo "Deseja Recusar
+    # o Item?" do ME (decisão do usuário, 24/09/2026). É só um estado da
+    # página; vai no MESMO POST do Salvar (Acao=9), nunca sozinho.
+    recusar: dict[int, str] = field(default_factory=dict)
 
 
 def _codigo(chave: str, valor: str) -> str:
@@ -84,22 +91,33 @@ def plano_pagina(conta: Conta, itens: dict[int, EntradaItem | None],
                  validade_dias: int | None, hoje: date, obs_geral: str = "") -> PlanoPagina:
     """Tudo o que o robô digita numa página. `itens`: índice → entrada (None = não responder).
 
-    Item sem resposta fica TOTALMENTE vazio: o ME traz BaseCalculo=100,00 e
-    trata isso como item começado. A justificativa de item sem preço vai para
-    a observação geral (o campo do item também contaria como começado)."""
+    Item fora da lista do usuário fica TOTALMENTE vazio: o ME traz
+    BaseCalculo=100,00 e trata isso como item começado.
+
+    Item sem preço (com a observação explicando, que `regras` exige) é
+    RECUSADO no ME com essa observação como justificativa — o "Deseja Recusar
+    o Item?" do próprio ME. O ME limpa e trava os campos dele; o robô não
+    digita nada neles."""
     if not validade_dias or validade_dias < 1:
         raise PlanoInvalido("Validade da proposta obrigatória (em dias).")
-    erros, avisos, justificativas = [], [], []
+    erros, avisos = [], []
     campos: dict[str, str] = {}
     marcar: list[int] = []
+    recusar: dict[int, str] = {}
     for indice, item in sorted(itens.items()):
-        if item is None or item.sem_cotacao:
+        if item is None:
             campos[f"BaseCalculo{indice}"] = ""
-            if item is not None:
-                r = R.validar_item(item, hoje)
-                erros += r.erros
-                if item.obs.strip():
-                    justificativas.append(f"Item {item.numero}: {item.obs.strip()}")
+            continue
+        if item.sem_cotacao:
+            r = R.validar_item(item, hoje)
+            erros += r.erros
+            justificativa = " ".join(item.obs.split())
+            if len(justificativa) > MAX_JUSTIFICATIVA:
+                erros.append(f"Item {item.numero}: justificativa da recusa passa de "
+                             f"{MAX_JUSTIFICATIVA} caracteres (limite do ME).")
+            elif justificativa:
+                recusar[indice] = justificativa
+                campos[f"txtJustificativaRecusa_{indice}"] = justificativa
             continue
         r = R.validar_item(item, hoje)
         erros += r.erros
@@ -107,7 +125,14 @@ def plano_pagina(conta: Conta, itens: dict[int, EntradaItem | None],
         if not r.erros:
             campos.update(campos_item(conta, item, indice, hoje))
             marcar.append(indice)
+    if recusar and len(recusar) == len(itens) and not marcar:
+        # Recusar todos os itens faz o ME perguntar "Você está recusando todos
+        # os itens..." e, aceito, virar RECUSA DA COTAÇÃO (RespCotaGrava.asp,
+        # vai ao comprador). A trava já cancela esse confirm e bloqueia a URL;
+        # isto aqui nem deixa chegar lá.
+        erros.append("Todos os itens da página sem preço: recusar tudo seria recusar a "
+                     "cotação inteira — isso é com um humano, pelo site do ME.")
     if erros:
         raise PlanoInvalido(" | ".join(erros))
-    obs = "\n".join(filter(None, [obs_geral.strip(), *justificativas]))
-    return PlanoPagina({**campos_cabecalho(validade_dias, hoje, obs), **campos}, marcar, avisos)
+    return PlanoPagina({**campos_cabecalho(validade_dias, hoje, obs_geral.strip()), **campos},
+                       marcar, avisos, recusar)

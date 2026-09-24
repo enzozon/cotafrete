@@ -140,10 +140,35 @@ def ler_valores(page, nomes: list[str]) -> dict[str, str]:
 
 
 # -------------------------------------------------------------- escrita
+# "Deseja Recusar o Item?" é um botão de JavaScript que só alterna o estado
+# do item na página (HabilitarRecusa: limpa e trava os campos, mostra a
+# justificativa). Nenhuma requisição sai dali. O robô chama a MESMA função
+# em vez de clicar num botão com "Recusar" no texto, e só quando o estado
+# atual é o oposto do desejado — chamar duas vezes desfaz.
+JS_ESTADO_RECUSA = """(i) => {
+  const b = document.getElementById('btnNaoResponder_' + i);
+  return b ? b.value === 'Responder item' : null;
+}"""
+
+
+def ajustar_recusas(page, plano: M.PlanoPagina) -> None:
+    """Deixa cada item recusado ou não conforme o plano, ANTES de digitar:
+    campo de item recusado fica readonly, e fill em readonly quebra."""
+    for indice in sorted(set(plano.recusar) | set(plano.marcar)):
+        recusado = page.evaluate(JS_ESTADO_RECUSA, indice)
+        if recusado is None:  # sem o botão: o item não tem como estar recusado
+            if indice in plano.recusar:
+                raise RoboRecusou(f"item {indice} sem o botão de recusa do ME")
+            continue
+        if recusado != (indice in plano.recusar):
+            page.evaluate("(i) => HabilitarRecusa(String(i))", indice)
+
+
 def preencher(page, plano: M.PlanoPagina) -> None:
     erro_ie = page.evaluate(JS_IE_UNICA)
     if erro_ie and erro_ie != "sem campo":
         raise RoboRecusou(erro_ie)
+    ajustar_recusas(page, plano)
     for nome, valor in plano.campos.items():
         loc = page.locator(f"[name='{nome}'], [name='{nome} ']").first
         if loc.count() == 0:
