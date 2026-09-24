@@ -211,7 +211,7 @@ def test_a_tela_preenche_o_formulario_de_verdade(cliente, prov):
         b.close()
     assert v == {"cep_destino": "29230-000", "cnpj_destinatario": "33.000.167/0001-01",
                  "quantidade": "3", "peso": "15", "comprimento": "60", "largura": "40",
-                 "altura": "30", "valor_nf": "12345,6", "material": "notebooks Dell",
+                 "altura": "30", "valor_nf": "12.345,60", "material": "notebooks Dell",
                  "cep_origem": ""}
     assert fob and destaque == 9
     assert "45 kg ÷ 3 volumes = 15 kg" in aviso and "CEP de origem" in aviso

@@ -937,6 +937,7 @@ JS_COLAR_PEDIDO = """<script>
         if (!campo) continue;
         campo.value = valor;
         campo.dispatchEvent(new Event('input', {bubbles: true}));   // máscaras de CEP/CNPJ
+        campo.dispatchEvent(new Event('change', {bubbles: true}));  // valor da nota: 1.234,56
         campo.classList.add('ia-preenchido');
         campo.addEventListener('input', () => campo.classList.remove('ia-preenchido'), {once: true});
         preenchidos.push(d.rotulos[nome] + ': ' + campo.value);
@@ -1034,6 +1035,50 @@ const fmtCep = (d) => d.replace(/^(\d{{5}})(\d)/, "$1-$2");
   id => mascara(document.getElementById(id), 14, fmtCnpj));
 ["cep_origem","cep_destino"].forEach(
   id => mascara(document.getElementById(id), 8, fmtCep));
+
+/* Valor da nota em reais: 1000 -> 1.000,00 e 32890 -> 32.890,00.
+   Reclamacao dos vendedores (24/09/2026): "1000" no campo nao deixava claro
+   se era mil ou dez reais. Formata ao SAIR do campo, e nao a cada tecla: a
+   mascara que empurra digitos pelos centavos (tipo caixa eletronico) faz
+   "1000" virar 10,00 — exatamente a confusao que se quer tirar. Enquanto
+   digita, o campo e do usuario; ao entrar, o valor todo fica selecionado
+   para trocar de uma vez, e da para editar reais e centavos a vontade.
+   Ponto: com virgula presente e milhar; sem virgula, ponto seguido de 3
+   digitos e milhar (1.500 = mil e quinhentos), senao e decimal (12.5).
+   O servidor le "32.890,00" do mesmo jeito (_num). */
+function fmtDinheiro(txt) {{
+  const t = String(txt).replace(/[^\d.,]/g, "");
+  if (!/\d/.test(t)) return "";
+  let inteiro, cent = "";
+  if (t.includes(",")) {{
+    const i = t.lastIndexOf(",");
+    inteiro = t.slice(0, i).replace(/\D/g, "");
+    cent = t.slice(i + 1).replace(/\D/g, "");
+  }} else {{
+    const partes = t.split(".").filter(p => p !== "");
+    const ultima = partes[partes.length - 1] || "";
+    if (partes.length > 1 && ultima.length !== 3) {{
+      inteiro = partes.slice(0, -1).join(""); cent = ultima;
+    }} else {{
+      inteiro = partes.join("");
+    }}
+  }}
+  const n = Number((inteiro || "0") + "." + (cent || "0"));
+  if (!isFinite(n)) return txt;
+  const [r, c] = n.toFixed(2).split(".");
+  return r.replace(/\B(?=(\d{{3}})+(?!\d))/g, ".") + "," + c;
+}}
+const valorNf = document.getElementById("valor_nf");
+valorNf.setAttribute("inputmode", "decimal");
+valorNf.setAttribute("placeholder", "0,00");
+const formatarValor = () => {{ valorNf.value = fmtDinheiro(valorNf.value); }};
+valorNf.addEventListener("blur", formatarValor);
+valorNf.addEventListener("change", formatarValor);   // a IA preenche e dispara change
+valorNf.addEventListener("focus", () => valorNf.select());
+// Enter com o cursor ainda no campo envia sem "sair" dele: sem isto "1.500"
+// chegava cru ao servidor, que le 1,5 (ponto como decimal) — mil vezes menos.
+valorNf.form.addEventListener("submit", formatarValor);
+formatarValor();   // "Repetir cotação" e "Voltar" chegam com 1500,00
 
 // Contador do filtro. O <details> abre e fecha sozinho (HTML puro);
 // isto aqui so mantem o resumo dizendo a verdade, e e o que impede o
@@ -2311,8 +2356,12 @@ a tela para de atualizar e diz quem não respondeu.</p>
       12 kg são <b>12</b> aqui e <b>3</b> na quantidade.</li>
   <li><b>Comprimento, largura e altura</b> — em <b>centímetros</b>, de uma
       caixa.</li>
-  <li><b>Valor da nota fiscal</b> e <b>Material</b> — o que é a carga, em
-      palavras.</li>
+  <li><b>Valor da nota fiscal</b> — em reais. Digite do jeito que quiser
+      (<b>1000</b>, <b>1.500</b>, <b>1234,5</b>); ao sair do campo ele fica
+      <b>1.000,00</b>, <b>1.500,00</b>, <b>1.234,50</b>, para não haver dúvida se
+      é mil ou dez reais. Clicando de novo, o valor todo fica selecionado para
+      trocar; dá para corrigir só os centavos também.</li>
+  <li><b>Material</b> — o que é a carga, em palavras.</li>
   <li><b>Nome, e-mail e WhatsApp</b> — seus dados de contato, que entram
       na mensagem pronta das transportadoras que você aciona à mão.</li>
 </ul>
