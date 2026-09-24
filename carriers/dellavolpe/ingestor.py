@@ -41,12 +41,14 @@ import unicodedata
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from decimal import ROUND_CEILING, Decimal, InvalidOperation
+from email.header import decode_header, make_header
 from email.message import Message
 from email.utils import parseaddr, parsedate_to_datetime
 from pathlib import Path
 from typing import Callable
 
 from carriers.dellavolpe import caixa as config
+from carriers.dellavolpe import proposta_ia
 from carriers.dellavolpe.proposta import Proposta, ler_proposta
 from core.models import StatusCotacao
 
@@ -109,6 +111,16 @@ def _message_id(msg: Message, bruto: bytes) -> str:
     return mid or "sha1:" + hashlib.sha1(bruto).hexdigest()
 
 
+def _cabecalho(valor) -> str:
+    """Cabeçalho de e-mail em texto: "=?utf-8?b?Q290YcOnw6Nv?=" → "Cotação".
+    Cru, o assunto codificado ia assim para o registro do desfecho `sem_pdf`.
+    Cabeçalho mal formado fica como veio — melhor feio do que perdido."""
+    try:
+        return str(make_header(decode_header(str(valor or ""))))
+    except Exception:
+        return str(valor or "")
+
+
 def ler_mensagem(bruto: bytes) -> Mensagem:
     msg = email.message_from_bytes(bruto)
     try:
@@ -128,7 +140,7 @@ def ler_mensagem(bruto: bytes) -> Mensagem:
     return Mensagem(
         message_id=_message_id(msg, bruto),
         remetente=parseaddr(msg.get("From", ""))[1].lower(),
-        assunto=str(msg.get("Subject", "")),
+        assunto=_cabecalho(msg.get("Subject", "")),
         data=data,
         pdfs=pdfs,
     )
@@ -306,12 +318,26 @@ def _melhor_proposta(pdfs: list[Anexo]) -> tuple[Proposta, Anexo | None, str]:
     só o primeiro faria uma proposta válida virar "sem_valor" por causa da
     ordem dos anexos."""
     melhor, dono, erros = Proposta(), None, []
+    lidos: list[tuple[Proposta, Anexo, str]] = []
     for anexo in pdfs:
         try:
-            p = ler_proposta(texto_do_pdf(anexo.dados))
+            texto = texto_do_pdf(anexo.dados)
+            p = ler_proposta(texto)
         except Exception as exc:              # PDF quebrado, cifrado, etc.
             erros.append(f"{anexo.nome}: {type(exc).__name__}")
             continue
+        # Valor lido basta: sem carimbo é o caso normal desde 23/09/2026 (o
+        # A/C vem vazio) e quem acha a cotação é `casar`, pela carga.
+        if p.valor is not None:
+            return p, anexo, ""
+        lidos.append((p, anexo, texto))
+    # Plano B (proposta_ia): o regex não achou o valor em nenhum PDF. A IA lê
+    # o que faltou, e o que ela disser só fica se o PDF provar. Primeiro o PDF que o regex já leu em parte, depois os outros.
+    # Com a IA desligada ou fora do ar, `completar` devolve `p` como veio e
+    # isto se comporta exatamente como antes.
+    lidos.sort(key=lambda t: t[0].valor is None and t[0].cotacao_id is None)
+    for p, anexo, texto in lidos:
+        p = proposta_ia.completar(p, texto)
         if p.valor is not None or p.cotacao_id is not None:
             return p, anexo, ""
         if dono is None:
@@ -397,6 +423,8 @@ def processar(bruto: bytes, banco, *, gravar: bool,
             (quando - JANELA_ANTES).isoformat(timespec="seconds"),
             (quando + JANELA_DEPOIS).isoformat(timespec="seconds")))
         cid = dona["id"] if dona else None
+    if p.lido_por:   # fica no registro do e-mail e no resumo do /adm
+        detalhe = f"{detalhe} — lido pela {p.lido_por}"
     if desfecho != "gravado" or not gravar:
         return fim(desfecho, detalhe, p, cid=cid)
 

@@ -136,7 +136,8 @@ def test_o_botao_de_tema_nao_e_pintado_como_botao_de_marca():
     # `button` no fim, com ou sem pseudo-classe atrás — é preciso casar as
     # duas formas: a certa (`button:not(.tema)`) e a errada (`button` puro),
     # senão o teste passa justamente quando o defeito volta.
-    alvo = re.compile(r"\bbutton(:[a-z-]+\([^)]*\))?$")
+    # Várias pseudo-classes em fila também (`button:not(.tema):not(.botao2)`).
+    alvo = re.compile(r"\bbutton(:[a-z-]+(\([^)]*\))?)*$")
     achados = [s.strip()
                for regra in re.findall(r"([^{}]+)\{", css)
                for s in regra.split(",")

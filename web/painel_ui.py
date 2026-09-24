@@ -679,7 +679,7 @@ top:8px;bottom:8px;width:3px;border-radius:0 3px 3px 0;
 background:var(--marca-grad)}
 .lateral .rodape{padding:var(--e3) var(--e5) 0;font-size:10.5px;
 letter-spacing:.06em;text-transform:uppercase;font-weight:600;
-border-top:1px solid var(--borda)}
+color:var(--fraco);border-top:1px solid var(--borda)}
 [data-tema="escuro"] .lateral .rodape{border-top-color:rgba(255,255,255,.08)}
 
 /* ---- 2. o cabeçalho -------------------------------------------------------
@@ -898,6 +898,7 @@ def _lateral(base: str = "") -> str:
   <div class="marca">{marca}<b>Painel</b></div>
   <div class="secao">Acompanhar</div>
   {itens}
+  <a href="/adm/me">{_icone(ICONES["alerta"])}<span>Mercado Eletrônico</span></a>
   <div class="secao">Administrar</div>
   <a href="/adm/contas">{_icone(ICONES["cotacoes"])}<span>Contas</span></a>
   <a href="/adm/dellavolpe">{_icone(ICONES["email"])}<span>E-mails Della Volpe</span></a>
@@ -1087,14 +1088,16 @@ def _y(valor: float, alto: int) -> float:
     return G_TOPO + (1 - valor / alto) * G_ALT
 
 
-def grafico_periodo(pontos: list[dict], unidade: str) -> str:
+def grafico_periodo(pontos: list[dict], unidade: str, *,
+                    rotulos: tuple[str, str] = ("cotações", "com preço"),
+                    vazio: str = "Nenhuma cotação no período.") -> str:
     """Barras de cotações com a linha de "com preço" por cima.
 
     Duas séries no mesmo desenho de propósito: a distância entre a barra e a
     linha É a pergunta do painel — quantas cotações não viraram preço. Em
     dois gráficos separados, o olho teria que fazer essa subtração sozinho."""
     if not pontos:
-        return '<p class="vazio">Nenhuma cotação no período.</p>'
+        return f'<p class="vazio">{e(vazio)}</p>'
 
     alto = teto(max(p["cotacoes"] for p in pontos))
     n = len(pontos)
@@ -1127,7 +1130,7 @@ def grafico_periodo(pontos: list[dict], unidade: str) -> str:
         x = centro(i) - largura / 2
         topo_barra = _y(p["cotacoes"], alto)
         dica = (f'{rotulo_do_balde(p["chave"], unidade)}: {p["cotacoes"]} '
-                f'cotações · {p["com_preco"]} com preço')
+                f'{rotulos[0]} · {p["com_preco"]} {rotulos[1]}')
         barras += (
             f'<g><title>{e(dica)}</title>'
             f'<rect class="fantasma" x="{x:.1f}" y="{G_TOPO}" '

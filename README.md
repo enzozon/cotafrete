@@ -115,6 +115,10 @@ próxima subida.
 | `/historico` | as cotações **da pessoa**, com o melhor preço de cada |
 | `/adm` | painel da empresa inteira — senha própria, no `.env` |
 | `/adm/cotacao/N` | a cotação de **qualquer** vendedor, inteira |
+| `/adm/me` | o **Mercado Eletrônico** no painel: erros do robô, leitura do ME, histórico — mesma senha do `/adm` |
+| `/adm/me/N` | uma cotação do ME inteira: itens, histórico, revisão por IA, prints do robô |
+| `/me` | cotações pendentes do **Mercado Eletrônico** (VENTURA e UNIÃO) |
+| `/me/N` | responder uma cotação do ME: preencher, revisar com IA, **salvar** no ME |
 
 **Separação por usuário:** cada um vê só as suas. Trocar o número na URL não
 abre a cotação alheia — o usuário entra na consulta ao banco.
@@ -188,7 +192,17 @@ carriers/
 
 web/
   app.py                 interface FastAPI
+  me_ui.py               tela /me do Mercado Eletrônico
   cotacao_whatsapp.html  página de WhatsApp, independente
+
+mercado_eletronico/
+  regras.py, feriados.py  impostos, datas, validação (puro)
+  lista.py, pagina.py     JSON da lista e HTML da resposta -> dados (puro)
+  painel.py               status nosso, prazo, alertas (puro)
+  mapa.py                 regras -> campos do formulário do ME (puro)
+  trava.py                as três travas contra envio
+  robo.py, ponte.py       Playwright: salvar; ler lista e páginas
+  revisao.py              revisão por IA (modelos grátis via core/ia.py, só alertas)
 ```
 
 **O que é puro roda sem internet e tem teste.** O que é browser é fino de
@@ -225,8 +239,21 @@ Decisões de interface do site: **`REGRAS_SITE_COTACAO.md`**.
 ## Testes
 
 ```bash
-python -m pytest tests\ -q      # 777 testes, nenhum usa internet
+python -m pytest tests\ -q      # a suíte inteira, nenhum usa internet
+python -m pytest tests -q -k "me_ or documentacao"   # só o Mercado Eletrônico
 ```
+
+No Windows o PowerShell **não expande** `tests/test_me_*.py` (o pytest recebe
+o asterisco literal e diz "file or directory not found"): use o `-k`.
+
+Numa máquina **sem tela** (servidor Linux, container da nuvem) duas famílias
+falham por causa do ambiente, não do código:
+- `test_generoso_*` (4): a Generoso roda com janela (`headless=False`, senão
+  o site vê "HeadlessChrome"). Rode com tela virtual: `xvfb-run -a python -m pytest tests -q`.
+- `test_dellavolpe_ingestor.py` (20): o `pypdf` carrega o `cryptography`; se
+  o do sistema estiver sem o `cffi` (Debian/Ubuntu com o pacote do apt), ele
+  cai com `PanicException`. `pip install cffi` resolve.
+No Windows com o `requirements.txt` instalado as duas passam.
 
 Cada teste tem o caso real que o gerou no docstring. Não são testes de
 fachada: todos foram escritos **antes** do fix, e cada um falhou primeiro.
@@ -260,7 +287,66 @@ DV_ENVIO_REAL_AUTORIZADO                   trava do envio real da Della Volpe
 DV_AUTOMATICA_DESDE                        liga a Della Volpe como automática
 DV_IMAP_HOST / _USUARIO / _SENHA           caixa do suporte (ingestor de e-mail)
 COTAFRETE_ADM_SENHA                        senha do painel /adm
+ME_VENTURA_LOGIN / ME_VENTURA_SENHA        Mercado Eletrônico, conta VENTURA
+ME_UNIAO_LOGIN / ME_UNIAO_SENHA            Mercado Eletrônico, conta UNIÃO
+GROQ_API_KEY / OPENROUTER_API_KEY          IA grátis (core/ia.py): revisão do ME
+DELLAVOLPE_IA=0                            opcional: desliga o plano B da proposta
+IA_MODELOS                                 opcional: a ordem dos modelos (ver abaixo)
 ```
+
+### Mercado Eletrônico
+
+A tela `/me` lista as cotações pendentes das duas contas e responde cada uma:
+o usuário preenche preço, NCM, prazo, marca, obs e origem; o sistema calcula
+impostos e datas, valida, pede uma revisão por IA (só alertas) e o robô
+**preenche e salva** no ME. **O envio é sempre humano** — Salvar e Confirmar
+do ME são o mesmo POST com `Acao` diferente, e o robô só deixa sair `Acao=9`
+(salvar) e a troca de página. Sem `ME_*` no `.env` a tela avisa e não lê
+nada; sem `GROQ_API_KEY`/`OPENROUTER_API_KEY` a revisão diz "indisponível" e o resto segue.
+**Limpar no ME** (na cotação) apaga do rascunho do ME tudo o que o robô
+escreve — itens, recusas, obs geral — com o mesmo Salvar; ficam só os campos
+do cabeçalho que o ME exige para salvar (frete, telefone, validade, moeda).
+Tudo (decisões, recon, provas no ME real) em
+[`docs/MERCADO_ELETRONICO.md`](docs/MERCADO_ELETRONICO.md).
+
+### IA (`core/ia.py`)
+
+Toda IA do sistema passa por `core/ia.py`: uma lista de modelos **grátis** do
+Groq e do OpenRouter, do melhor para o pior. Cada pedido começa do primeiro;
+o que estourar o limite fica de fora até o provedor liberar (o limite por
+minuto em segundos; o diário até a meia-noite UTC) e o pedido passa ao
+próximo. Quando o limite volta, o melhor volta a ser usado sozinho. Resposta
+fora do JSON pedido também passa ao próximo. O `/adm/me` mostra, por modelo,
+se está livre, as respostas, as falhas e o último erro.
+
+A ordem padrão está em `CADEIA_PADRAO`; para trocar sem mexer no código:
+`IA_MODELOS=groq:openai/gpt-oss-120b,openrouter:nvidia/nemotron-3-ultra-550b-a55b:free,...`
+(com os US$ 10 no OpenRouter — 1.000 pedidos/dia em vez de 50 — vale pôr os
+dele na frente). O arquivo não importa nada do cotafrete: serve para outros
+projetos.
+
+Onde a IA entra hoje: revisão da resposta do ME, **Colar o pedido** (preenche
+a cotação de frete, `core/extrair_carga.py`) e **Sugerir NCM** no ME
+(`mercado_eletronico/ncm.py`). Sempre sugestão: quem confirma é o vendedor.
+
+Mais dois, fora da tela do vendedor:
+
+- **Plano B da proposta da Della Volpe** (`carriers/dellavolpe/proposta_ia.py`,
+  registro "proposta Della Volpe"): quando o PDF chega num formato que o leitor
+  não entende, a IA lê o que faltou (valor, carimbo `cot. N`). Só entra o que
+  o PDF prova: o valor precisa vir com a linha de onde saiu, e essa linha tem
+  de estar no PDF, falar em "total" e não ser a da nota fiscal; o carimbo tem
+  de estar escrito no PDF. A regra de rota do ingestor continua valendo. O
+  e-mail registra "lido pela IA (modelo)". `DELLAVOLPE_IA=0` desliga.
+- **Resumo do dia no `/adm`** (`core/resumo_erros.py`, registro "resumo de
+  erros"): junta os erros de hoje — transportadoras, leitura e robô do ME,
+  e-mails da Della Volpe sem preço, IA falhando — e o botão **Explicar com IA**
+  escreve em português simples o que houve e o que fazer. Todo número que a IA
+  escrever tem de existir nos fatos, senão a resposta é recusada. Os números
+  crus aparecem sempre, mesmo sem IA; abrir o painel não gasta pedido.
+
+Testar as chaves: `python -m core.ia` (1 pedido pela lista, diz quem
+respondeu) ou `python -m core.ia --todos` (1 pedido por modelo).
 
 ### Della Volpe: automática e ingestor de e-mail
 

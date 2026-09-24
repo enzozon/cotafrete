@@ -496,3 +496,19 @@ def test_linha_de_comando_le_um_pdf_solto(tmp_path, capsys):
 
     saida = capsys.readouterr().out
     assert "196.40" in saida and "208" in saida
+
+
+def test_assunto_codificado_em_mime_e_lido_em_portugues():
+    """O Outlook manda "Cotação" como =?utf-8?b?Q290YcOnw6Nv?=. Cru, era isso
+    que ia para o registro do desfecho `sem_pdf` (achado da sessão local no
+    resumo do /adm, 24/09/2026)."""
+    from email.header import Header
+    from email.message import EmailMessage
+    from carriers.dellavolpe.ingestor import ler_mensagem
+    m = EmailMessage()
+    m["From"] = "comercial@dellavolpe.com.br"
+    m["Subject"] = Header("Cotação (cot. 12) — frete", "utf-8").encode()
+    m.set_content("sem anexo")
+    bruto = m.as_bytes()
+    assert b"=?utf-8?" in bruto                       # chegou codificado mesmo
+    assert ler_mensagem(bruto).assunto == "Cotação (cot. 12) — frete"

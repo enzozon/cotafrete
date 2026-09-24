@@ -192,6 +192,116 @@ CREATE TABLE IF NOT EXISTS config (
     chave TEXT PRIMARY KEY,
     valor TEXT NOT NULL
 );
+-- Mercado Eletrônico (ver docs/MERCADO_ELETRONICO.md). Uma linha por
+-- cotação do ME por conta (VENTURA/UNIÃO): o número é do ME, não nosso, e o
+-- mesmo número nunca aparece nas duas contas — mas a chave inclui a conta
+-- para não depender disso. `status` é mercado_eletronico/painel.Status;
+-- `status_resposta` é o `answerStatus` cru do ME. Os dois existem porque o
+-- ME não marca rascunho: "Salva no ME" só o nosso banco sabe.
+CREATE TABLE IF NOT EXISTS me_cotacao (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    conta           TEXT NOT NULL,
+    numero          INTEGER NOT NULL,
+    empresa         TEXT,
+    comprador       TEXT,
+    codigo          TEXT,
+    data_limite     TEXT,          -- ISO, hora de Brasília
+    status          TEXT NOT NULL,
+    status_resposta TEXT,
+    na_lista        INTEGER NOT NULL DEFAULT 1,
+    visto_em        TEXT,          -- primeira vez que a varredura achou
+    atualizado_em   TEXT,          -- última varredura que passou por ela
+    itens_lidos_em  TEXT,
+    validade_dias   INTEGER,
+    salvo_por       TEXT,
+    salvo_em        TEXT,
+    enviada_em      TEXT,
+    erro            TEXT,
+    evidencia       TEXT,
+    obs_comprador   TEXT,          -- texto geral do comprador (ObsComp)
+    revisao_ia      TEXT,          -- JSON de mercado_eletronico/revisao.Revisao
+    revisao_em      TEXT,
+    revisao_assinatura TEXT,       -- do preenchimento revisado: mudou = velha
+    UNIQUE (conta, numero)
+);
+
+-- Um item da cotação. As colunas de cima vêm da página do ME (só leitura);
+-- as de baixo são o que o usuário preencheu. Gravar de novo o que veio do
+-- ME nunca apaga o que o usuário digitou.
+CREATE TABLE IF NOT EXISTS me_item (
+    cotacao_id        INTEGER NOT NULL REFERENCES me_cotacao(id) ON DELETE CASCADE,
+    numero            INTEGER NOT NULL,    -- 10, 20, ... como o ME mostra
+    pagina            INTEGER NOT NULL,
+    indice            INTEGER NOT NULL,    -- N do Preco{N} naquela página
+    produto_id        TEXT,
+    descricao         TEXT,
+    quantidade        TEXT,
+    unidade           TEXT,
+    obs_comprador     TEXT,
+    campos_adicionais TEXT,
+    uf_destino        TEXT,
+    origem_pedida     INTEGER,
+    data_remessa      TEXT,
+    preco             TEXT,
+    ncm               TEXT,
+    prazo_dias        INTEGER,
+    marca             TEXT,
+    obs               TEXT,
+    origem            INTEGER,
+    ncm_pedido        TEXT,     -- o NCM que o COMPRADOR escreveu nos Campos Adicionais
+    ncm_origem        TEXT,     -- de onde veio o ncm acima: comprador / memoria / ia / NULL = digitado
+    ncm_nota          TEXT,     -- a IA: descrição da posição e a confiança
+    PRIMARY KEY (cotacao_id, numero)
+);
+
+CREATE TABLE IF NOT EXISTS me_historico (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    cotacao_id INTEGER NOT NULL REFERENCES me_cotacao(id) ON DELETE CASCADE,
+    quando     TEXT NOT NULL,
+    usuario    TEXT,                 -- NULL = o sistema (varredura, robô)
+    evento     TEXT NOT NULL,
+    detalhe    TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_me_historico ON me_historico(cotacao_id, id);
+
+-- Cada leitura da lista do ME (a varredura de 7 em 7 min e o "Atualizar
+-- agora"), por conta. É o que deixa o /adm/me mostrar "a leitura da UNIÃO
+-- está falhando desde as 14h" sem ninguém precisar abrir o ME. Antes ficava
+-- só na memória do servidor e sumia a cada reinício.
+CREATE TABLE IF NOT EXISTS me_varredura (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    quando     TEXT NOT NULL,
+    conta      TEXT NOT NULL,
+    ok         INTEGER NOT NULL,
+    cotacoes   INTEGER,              -- quantas pendentes a lista trouxe
+    duracao_s  REAL,
+    erro       TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_me_varredura ON me_varredura(conta, id);
+
+-- Cada tentativa de chamada à IA (core/ia.py): qual modelo, para quê, se
+-- respondeu. É o que diz ao administrador quem está respondendo e quando os
+-- modelos grátis estão chegando no limite.
+CREATE TABLE IF NOT EXISTS ia_chamada (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    quando     TEXT NOT NULL,
+    funcao     TEXT NOT NULL,        -- "revisão ME", ...
+    modelo     TEXT NOT NULL,        -- "groq:openai/gpt-oss-120b"
+    ok         INTEGER NOT NULL,
+    erro       TEXT,
+    duracao_s  REAL
+);
+CREATE INDEX IF NOT EXISTS idx_ia_chamada ON ia_chamada(quando);
+
+-- Memória por material: o NCM, a marca e a origem que alguém já digitou
+-- para o mesmo código voltam sozinhos na próxima cotação.
+CREATE TABLE IF NOT EXISTS me_material (
+    chave         TEXT PRIMARY KEY,
+    ncm           TEXT,
+    marca         TEXT,
+    origem        INTEGER,
+    atualizado_em TEXT NOT NULL
+);
 """
 
 CAMPOS_CARGA = (
@@ -214,6 +324,11 @@ CAMPOS_CARGA = (
 # Colunas de `resultado` que nasceram depois do banco. Mesma razão de
 # CAMPOS_CARGA: CREATE TABLE IF NOT EXISTS não altera tabela existente.
 CAMPOS_RESULTADO = ("respondido_em", "validade", "resposta_em", "pedido_em")
+
+# Colunas de `me_cotacao` que nasceram depois da tabela.
+CAMPOS_ME_ITEM_NOVOS = ("ncm_pedido", "ncm_origem", "ncm_nota")
+CAMPOS_ME_COTACAO_NOVOS = ("obs_comprador", "revisao_ia", "revisao_em",
+                           "revisao_assinatura")
 
 
 def _decimal(valor: str | None) -> Decimal | None:
@@ -258,6 +373,16 @@ class Banco:
         for coluna in CAMPOS_RESULTADO:
             if coluna not in existentes:
                 con.execute(f"ALTER TABLE resultado ADD COLUMN {coluna} TEXT")
+
+        existentes = {r["name"] for r in con.execute("PRAGMA table_info(me_cotacao)")}
+        for coluna in CAMPOS_ME_COTACAO_NOVOS:
+            if coluna not in existentes:
+                con.execute(f"ALTER TABLE me_cotacao ADD COLUMN {coluna} TEXT")
+
+        existentes = {r["name"] for r in con.execute("PRAGMA table_info(me_item)")}
+        for coluna in CAMPOS_ME_ITEM_NOVOS:
+            if coluna not in existentes:
+                con.execute(f"ALTER TABLE me_item ADD COLUMN {coluna} TEXT")
 
         # UMA linha por transportadora por cotação. Sem esta regra o banco
         # aceitava duas, e a tela desenhava as duas: foi assim que a #50
@@ -726,3 +851,183 @@ class Banco:
         with closing(self._conectar()) as con, con:
             cur = con.execute("DELETE FROM conta WHERE nome = ?", (nome,))
             return cur.rowcount == 1
+
+
+    # ------------------------------------------------ Mercado Eletrônico
+    # CRUD só. Quem decide status é mercado_eletronico/painel.py e quem
+    # orquestra é web/me_ui.py — mesma divisão das cotações de frete.
+    CAMPOS_ME_COTACAO = ("empresa", "comprador", "codigo", "data_limite",
+                         "status", "status_resposta", "na_lista", "visto_em",
+                         "atualizado_em", "itens_lidos_em", "validade_dias",
+                         "salvo_por", "salvo_em", "enviada_em", "erro",
+                         "evidencia", "obs_comprador", "revisao_ia",
+                         "revisao_em", "revisao_assinatura")
+    CAMPOS_ME_ENTRADA = ("preco", "ncm", "prazo_dias", "marca", "obs", "origem",
+                         "ncm_origem", "ncm_nota")
+
+    def me_cotacao_id(self, conta: str, numero: int) -> int | None:
+        with closing(self._conectar()) as con, con:
+            r = con.execute("SELECT id FROM me_cotacao WHERE conta = ? AND numero = ?",
+                            (conta, numero)).fetchone()
+            return int(r["id"]) if r else None
+
+    def me_criar(self, conta: str, numero: int, **campos) -> int:
+        """Cria se não existe; devolve o id de qualquer jeito."""
+        campos.setdefault("status", "pendente")
+        self._me_conferir(campos, self.CAMPOS_ME_COTACAO)
+        colunas = ["conta", "numero", *campos]
+        with closing(self._conectar()) as con, con:
+            con.execute(
+                f"INSERT OR IGNORE INTO me_cotacao ({', '.join(colunas)})"
+                f" VALUES ({', '.join('?' * len(colunas))})",
+                (conta, numero, *campos.values()))
+            return int(con.execute(
+                "SELECT id FROM me_cotacao WHERE conta = ? AND numero = ?",
+                (conta, numero)).fetchone()["id"])
+
+    def me_atualizar(self, cotacao_id: int, **campos) -> None:
+        if not campos:
+            return
+        self._me_conferir(campos, self.CAMPOS_ME_COTACAO)
+        with closing(self._conectar()) as con, con:
+            con.execute(
+                f"UPDATE me_cotacao SET {', '.join(f'{c} = ?' for c in campos)}"
+                " WHERE id = ?", (*campos.values(), cotacao_id))
+
+    def me_trocar_status(self, cotacao_id: int, de: tuple[str, ...], para: str,
+                         **campos) -> bool:
+        """Troca o status só se ele ainda for um dos `de`. É o que impede dois
+        cliques em "Salvar no ME" de soltar dois robôs na mesma cotação."""
+        self._me_conferir(campos, self.CAMPOS_ME_COTACAO)
+        sets = ["status = ?", *(f"{c} = ?" for c in campos)]
+        with closing(self._conectar()) as con, con:
+            cur = con.execute(
+                f"UPDATE me_cotacao SET {', '.join(sets)} WHERE id = ?"
+                f" AND status IN ({', '.join('?' * len(de))})",
+                (para, *campos.values(), cotacao_id, *de))
+            return cur.rowcount == 1
+
+    def me_cotacao(self, cotacao_id: int) -> dict | None:
+        with closing(self._conectar()) as con, con:
+            r = con.execute("SELECT * FROM me_cotacao WHERE id = ?",
+                            (cotacao_id,)).fetchone()
+            if not r:
+                return None
+            c = dict(r)
+            c["itens"] = [dict(i) for i in con.execute(
+                "SELECT * FROM me_item WHERE cotacao_id = ?"
+                " ORDER BY pagina, indice", (cotacao_id,))]
+            return c
+
+    def me_cotacoes(self, conta: str | None = None,
+                    status: str | None = None) -> list[dict]:
+        """Para a lista: abertas primeiro, pelo prazo mais curto."""
+        sql = ("SELECT c.*, (SELECT COUNT(*) FROM me_item i WHERE i.cotacao_id = c.id)"
+               " AS n_itens, (SELECT COUNT(*) FROM me_item i WHERE i.cotacao_id = c.id"
+               " AND COALESCE(i.preco, '') <> '') AS n_com_preco FROM me_cotacao c")
+        filtros, args = [], []
+        if conta:
+            filtros.append("c.conta = ?")
+            args.append(conta)
+        if status:
+            filtros.append("c.status = ?")
+            args.append(status)
+        if filtros:
+            sql += " WHERE " + " AND ".join(filtros)
+        sql += (" ORDER BY c.status IN ('enviada', 'recusada', 'vencida'),"
+                " c.data_limite IS NULL, c.data_limite, c.numero")
+        with closing(self._conectar()) as con, con:
+            return [dict(r) for r in con.execute(sql, args)]
+
+    def me_gravar_itens_do_me(self, cotacao_id: int, itens: list[dict]) -> None:
+        """O que veio da página do ME. Não toca no que o usuário preencheu."""
+        colunas = ("numero", "pagina", "indice", "produto_id", "descricao",
+                   "quantidade", "unidade", "obs_comprador", "campos_adicionais",
+                   "uf_destino", "origem_pedida", "data_remessa", "ncm_pedido")
+        atualiza = ", ".join(f"{c} = excluded.{c}" for c in colunas[1:])
+        with closing(self._conectar()) as con, con:
+            for item in itens:
+                con.execute(
+                    f"INSERT INTO me_item (cotacao_id, {', '.join(colunas)})"
+                    f" VALUES (?, {', '.join('?' * len(colunas))})"
+                    f" ON CONFLICT (cotacao_id, numero) DO UPDATE SET {atualiza}",
+                    (cotacao_id, *(item.get(c) for c in colunas)))
+
+    def me_gravar_entrada(self, cotacao_id: int, numero: int, **campos) -> None:
+        """O que o usuário digitou num item."""
+        self._me_conferir(campos, self.CAMPOS_ME_ENTRADA)
+        if not campos:
+            return
+        with closing(self._conectar()) as con, con:
+            con.execute(
+                f"UPDATE me_item SET {', '.join(f'{c} = ?' for c in campos)}"
+                " WHERE cotacao_id = ? AND numero = ?",
+                (*campos.values(), cotacao_id, numero))
+
+    def me_registrar(self, cotacao_id: int, evento: str, detalhe: str = "",
+                     usuario: str | None = None) -> None:
+        with closing(self._conectar()) as con, con:
+            con.execute(
+                "INSERT INTO me_historico (cotacao_id, quando, usuario, evento,"
+                " detalhe) VALUES (?, ?, ?, ?, ?)",
+                (cotacao_id, datetime.now().isoformat(timespec="seconds"),
+                 usuario, evento, detalhe or None))
+
+    def me_historico(self, cotacao_id: int) -> list[dict]:
+        with closing(self._conectar()) as con, con:
+            return [dict(r) for r in con.execute(
+                "SELECT * FROM me_historico WHERE cotacao_id = ? ORDER BY id",
+                (cotacao_id,))]
+
+    def me_registrar_varredura(self, conta: str, *, ok: bool, cotacoes: int | None = None,
+                               duracao_s: float | None = None, erro: str | None = None) -> None:
+        with closing(self._conectar()) as con, con:
+            con.execute(
+                "INSERT INTO me_varredura (quando, conta, ok, cotacoes, duracao_s, erro)"
+                " VALUES (?, ?, ?, ?, ?, ?)",
+                (datetime.now().isoformat(timespec="seconds"), conta, int(ok),
+                 cotacoes, duracao_s, erro))
+            # Leitura boa não interessa depois de 90 dias; a falha fica.
+            corte = (datetime.now() - timedelta(days=90)).isoformat(timespec="seconds")
+            con.execute("DELETE FROM me_varredura WHERE ok = 1 AND quando < ?", (corte,))
+
+    # ------------------------------------------------------------------ IA
+    def ia_registrar(self, *, funcao: str, modelo: str, ok: bool, erro: str | None = None,
+                     duracao_s: float | None = None) -> None:
+        with closing(self._conectar()) as con, con:
+            con.execute(
+                "INSERT INTO ia_chamada (quando, funcao, modelo, ok, erro, duracao_s)"
+                " VALUES (?, ?, ?, ?, ?, ?)",
+                (datetime.now().isoformat(timespec="seconds"), funcao, modelo, int(ok),
+                 erro, duracao_s))
+            corte = (datetime.now() - timedelta(days=90)).isoformat(timespec="seconds")
+            con.execute("DELETE FROM ia_chamada WHERE quando < ?", (corte,))
+
+    def me_material(self, chave: str) -> dict | None:
+        with closing(self._conectar()) as con, con:
+            r = con.execute("SELECT * FROM me_material WHERE chave = ?",
+                            (chave,)).fetchone()
+            return dict(r) if r else None
+
+    def me_lembrar_material(self, chave: str, *, ncm: str | None,
+                            marca: str | None, origem: int | None) -> None:
+        if not chave:
+            return
+        with closing(self._conectar()) as con, con:
+            con.execute(
+                "INSERT INTO me_material (chave, ncm, marca, origem, atualizado_em)"
+                " VALUES (?, ?, ?, ?, ?) ON CONFLICT (chave) DO UPDATE SET"
+                # Vazio não apaga o que já se sabia: o NCM palpite da IA não é
+                # lembrado (None), e isso não pode apagar o NCM bom anterior.
+                " ncm = COALESCE(excluded.ncm, me_material.ncm),"
+                " marca = COALESCE(excluded.marca, me_material.marca),"
+                " origem = COALESCE(excluded.origem, me_material.origem),"
+                " atualizado_em = excluded.atualizado_em",
+                (chave, ncm, marca, origem, datetime.now().isoformat(timespec="seconds")))
+
+    @staticmethod
+    def _me_conferir(campos: dict, validos: tuple[str, ...]) -> None:
+        # Os nomes de coluna entram no SQL por f-string: só os da lista.
+        estranhos = set(campos) - set(validos)
+        if estranhos:
+            raise ValueError(f"Campo desconhecido: {sorted(estranhos)}")

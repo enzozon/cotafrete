@@ -40,3 +40,5 @@ cotafrete.db
 # arquivos que o modo WAL cria ao lado do banco
 cotafrete.db-wal
 cotafrete.db-shm
+# prints gerados pelo tests/test_rebranding_visual.py a cada rodada
+docs/rebranding/

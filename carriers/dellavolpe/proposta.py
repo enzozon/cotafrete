@@ -115,6 +115,11 @@ class Proposta(NamedTuple):
     # centavos, e a Della Volpe pode ter mínimo de seguro. Só DESEMPATA.
     nota_fiscal: Decimal | None = None
 
+    # "" = lido por este arquivo (regex). "IA (modelo): valor, cotacao_id" =
+    # o plano B de proposta_ia.py preencheu esses campos — conferidos no PDF,
+    # mas vale o vendedor olhar o PDF anexado.
+    lido_por: str = ""
+
     @property
     def cidade_origem(self) -> str:
         return self.origem.rsplit("/", 1)[0] if self.origem else ""

@@ -174,7 +174,17 @@ JADLOG_TOKEN           JADLOG_CONTA        JADLOG_CONTRATO
 SSW_DOMINIO            SSW_CPF             SSW_USUARIO   SSW_SENHA
 TRANSLOVATO_CNPJ       TRANSLOVATO_USUARIO TRANSLOVATO_SENHA
 COTAFRETE_ADM_SENHA
+ME_VENTURA_LOGIN       ME_VENTURA_SENHA
+ME_UNIAO_LOGIN         ME_UNIAO_SENHA
+GROQ_API_KEY           OPENROUTER_API_KEY
+IA_MODELOS             (opcional)
 ```
+
+As `ME_*` ligam a tela `/me` do Mercado Eletrônico (sem elas a tela avisa e
+não lê nada). `GROQ_API_KEY` e `OPENROUTER_API_KEY` ligam a IA (revisão das respostas do
+ME) com modelos grátis — basta uma das duas; com as duas, uma cobre o limite
+da outra. Sem nenhuma, a revisão aparece como "indisponível" e o resto
+funciona. `IA_MODELOS` muda a ordem dos modelos (README, seção IA).
 
 Teste antes de seguir: rode `Servidor.bat` e abra `http://localhost:8000`
 dentro da própria VM. Faça uma cotação real e confira que as cinco

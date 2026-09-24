@@ -38,8 +38,8 @@ from pathlib import Path
 from urllib.parse import quote
 
 from dotenv import load_dotenv
-from fastapi import Cookie, Depends, FastAPI, Form, HTTPException, Request
-from fastapi.responses import HTMLResponse, RedirectResponse, Response
+from fastapi import Body, Cookie, Depends, FastAPI, Form, HTTPException, Request
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 load_dotenv(override=False)
@@ -56,6 +56,8 @@ from carriers.translovato.adapter import TranslovatoAdapter
 from core import cep as buscador_cep
 from core import sessao
 from core import cnpj as buscador_cnpj
+from core import extrair_carga
+from core import ia
 from core import selecao
 from core.aceite import rotulo_validade, vencida
 from carriers.generoso.mapping import Agendamento, validar_agendamento
@@ -64,7 +66,7 @@ from core.evidencias import limpar_antigas, montar_zip_de_prints
 from core.retentativa import (
     ESPERA_MAXIMA_S, SEM_REPETICAO, TENTATIVAS_MAXIMAS, cotar_com_retentativa,
 )
-from web import adm, transportadoras
+from web import adm, adm_me, me_ui, transportadoras
 from web.ficha_ui import (
     ficha_da_cotacao, kg as _kg, pagador_da_cotacao, peso_por_volume,
     quando as quando_humano, quem_e as _quem,
@@ -88,11 +90,20 @@ from core.models import (
 # brigaria com o servidor pelos mesmos e-mails. O lifespan só roda quando o
 # uvicorn sobe de verdade (o TestClient sem `with` nem o chama).
 INGESTOR: dv_ingestor.Vigia | None = None
+# A varredura da lista do Mercado Eletrônico (web/me_ui.py), pelo mesmo
+# motivo: só sobe com o uvicorn, nunca no import.
+VIGIA_ME = None
 
 
 @asynccontextmanager
 async def _vida(_app):
-    global INGESTOR
+    global INGESTOR, VIGIA_ME
+    if VIGIA_ME is None:
+        VIGIA_ME = me_ui.iniciar_vigia()
+        if VIGIA_ME is not None:
+            print(f"[cotafrete] Mercado Eletrônico: lendo as pendências de "
+                  f"{', '.join(me_ui.contas_configuradas())} a cada "
+                  f"{me_ui.INTERVALO_S // 60} min.")
     if INGESTOR is None:
         INGESTOR = dv_ingestor.iniciar(banco)
         # Para a tela /adm/dellavolpe mostrar se a caixa está abrindo.
@@ -104,6 +115,8 @@ async def _vida(_app):
     yield
     if INGESTOR is not None:
         INGESTOR.parar.set()
+    if VIGIA_ME is not None:
+        VIGIA_ME.set()
 
 
 app = FastAPI(title="Cotafrete — Ventura", lifespan=_vida)
@@ -117,6 +130,14 @@ app.include_router(adm.router)
 # O painel usa o MESMO banco do resto do sistema. Injetado aqui, e não
 # importado lá, porque `web/adm.py` importar `web/app.py` seria circular.
 adm.banco = banco
+app.include_router(me_ui.router)
+# O ME no painel do administrador (/adm/me): mesma senha e o mesmo banco do
+# /adm, que ele lê por `adm.banco`.
+app.include_router(adm_me.router)
+me_ui.banco = banco
+# Cada chamada à IA (core/ia.py) fica registrada no banco para o /adm/me
+# mostrar quem respondeu. Lambda, e não o método: os testes trocam `banco`.
+ia.REGISTRO = lambda **kw: banco.ia_registrar(**kw)
 
 # Quantas transportadoras rodam juntas, quantas vezes se tenta de novo e por
 # quanto tempo: tudo em core/retentativa.py, porque as três decisões dependem
@@ -608,6 +629,11 @@ def vendedor(usuario: str | None = Cookie(None, alias=COOKIE)) -> str | None:
     return nome
 
 
+
+# A tela do ME pergunta quem é a pessoa pela MESMA porta do vendedor.
+me_ui.vendedor = vendedor
+me_ui.COOKIE = COOKIE
+
 def _tela_login(erro: str = "", nome: str = "",
                 escolher_senha: bool = False) -> str:
     """A porta da frente, nos seus dois estados: entrar, ou escolher a senha
@@ -928,6 +954,73 @@ def painel_transportadoras() -> str:
         + '</details>')
 
 
+def colar_pedido() -> str:
+    """O cartão "Colar o pedido" em cima do formulário (core/extrair_carga).
+
+    Só aparece com a IA configurada: um botão que sempre responde
+    "indisponível" ensina o vendedor a não clicar nele."""
+    if not ia.configurada():
+        return ""
+    return f"""<details class="cartao colar-pedido" id="colar-pedido" open>
+<summary><b>Colar o pedido</b> <span class="sub">— a IA preenche o formulário; você confere</span></summary>
+<textarea id="ia-texto" rows="5" maxlength="{extrair_carga.MAX_TEXTO}"
+ placeholder="Cole aqui o e-mail ou a mensagem do cliente: endereço/CEP, CNPJ, volumes, peso, medidas, valor da nota…"></textarea>
+<div class="colar-acoes"><button type="button" id="ia-preencher">Preencher com IA</button>
+<span id="ia-status" class="sub" role="status" aria-live="polite"></span></div>
+<div id="ia-resultado"></div>
+</details>"""
+
+
+# Fora da f-string do formulário para não dobrar as chaves do JavaScript.
+JS_COLAR_PEDIDO = """<script>
+(() => {
+  const botao = document.getElementById('ia-preencher');
+  if (!botao) return;
+  const status = document.getElementById('ia-status');
+  const saida = document.getElementById('ia-resultado');
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  botao.addEventListener('click', async () => {
+    const texto = document.getElementById('ia-texto').value;
+    botao.disabled = true; saida.innerHTML = '';
+    status.textContent = 'Lendo o pedido… (alguns segundos)';
+    try {
+      const r = await fetch('/extrair', {method: 'POST', headers: {'Content-Type': 'application/json'},
+                                         body: JSON.stringify({texto})});
+      if (r.redirected || r.status === 401) { location.href = '/login'; return; }
+      const d = await r.json();
+      if (d.erro) { status.textContent = ''; saida.innerHTML = '<p class="alerta">' + esc(d.erro) + '</p>'; return; }
+      const preenchidos = [];
+      for (const [nome, valor] of Object.entries(d.campos)) {
+        if (nome === 'tipo_frete') {
+          const radio = document.querySelector('input[name="tipo_frete"][value="' + valor + '"]');
+          if (radio) { radio.checked = true; preenchidos.push(d.rotulos[nome] + ': ' + valor.toUpperCase()); }
+          continue;
+        }
+        const campo = document.getElementById(nome);
+        if (!campo) continue;
+        campo.value = valor;
+        campo.dispatchEvent(new Event('input', {bubbles: true}));   // máscaras de CEP/CNPJ
+        campo.dispatchEvent(new Event('change', {bubbles: true}));  // valor da nota: 1.234,56
+        campo.classList.add('ia-preenchido');
+        campo.addEventListener('input', () => campo.classList.remove('ia-preenchido'), {once: true});
+        preenchidos.push(d.rotulos[nome] + ': ' + campo.value);
+      }
+      status.textContent = preenchidos.length
+        ? preenchidos.length + ' campos preenchidos (' + d.modelo + '). Confira antes de cotar.'
+        : 'Não achei dados de frete no texto.';
+      let html = '';
+      if (d.avisos.length) html += '<div class="aviso"><b>Confira:</b><ul>' + d.avisos.map(a => '<li>' + esc(a) + '</li>').join('') + '</ul></div>';
+      if (d.faltando.length) html += '<p class="sub">O texto não trouxe: ' + d.faltando.map(esc).join(', ') + '.</p>';
+      saida.innerHTML = html;
+    } catch (erro) {
+      status.textContent = '';
+      saida.innerHTML = '<p class="alerta">Não consegui falar com o servidor. Tente de novo.</p>';
+    } finally { botao.disabled = false; }
+  });
+})();
+</script>"""
+
+
 def _render_formulario(v: dict, usuario: str, aviso: str) -> str:
     # String CRUA (rf): o JS aqui embaixo usa \d e \D das regex de máscara.
     # Sem o `r`, o Python lê como escape dele, avisa "invalid escape sequence"
@@ -947,6 +1040,7 @@ def _render_formulario(v: dict, usuario: str, aviso: str) -> str:
                f"transportadoras e deixamos a mensagem pronta para as "
                f"{len(transportadoras.com_whatsapp())} que atendem por "
                f"WhatsApp.")}
+{colar_pedido()}
 <form method="post" action="/cotar" class="cartao">
   <fieldset><legend>Rota</legend><div class="grid">
     {campo("cep_origem", "CEP de origem", v)}
@@ -1005,6 +1099,50 @@ const fmtCep = (d) => d.replace(/^(\d{{5}})(\d)/, "$1-$2");
 ["cep_origem","cep_destino"].forEach(
   id => mascara(document.getElementById(id), 8, fmtCep));
 
+/* Valor da nota em reais: 1000 -> 1.000,00 e 32890 -> 32.890,00.
+   Reclamacao dos vendedores (24/09/2026): "1000" no campo nao deixava claro
+   se era mil ou dez reais. Formata ao SAIR do campo, e nao a cada tecla: a
+   mascara que empurra digitos pelos centavos (tipo caixa eletronico) faz
+   "1000" virar 10,00 — exatamente a confusao que se quer tirar. Enquanto
+   digita, o campo e do usuario; ao entrar, o valor todo fica selecionado
+   para trocar de uma vez, e da para editar reais e centavos a vontade.
+   Ponto: com virgula presente e milhar; sem virgula, ponto seguido de 3
+   digitos e milhar (1.500 = mil e quinhentos), senao e decimal (12.5).
+   O servidor le "32.890,00" do mesmo jeito (_num). */
+function fmtDinheiro(txt) {{
+  const t = String(txt).replace(/[^\d.,]/g, "");
+  if (!/\d/.test(t)) return "";
+  let inteiro, cent = "";
+  if (t.includes(",")) {{
+    const i = t.lastIndexOf(",");
+    inteiro = t.slice(0, i).replace(/\D/g, "");
+    cent = t.slice(i + 1).replace(/\D/g, "");
+  }} else {{
+    const partes = t.split(".").filter(p => p !== "");
+    const ultima = partes[partes.length - 1] || "";
+    if (partes.length > 1 && ultima.length !== 3) {{
+      inteiro = partes.slice(0, -1).join(""); cent = ultima;
+    }} else {{
+      inteiro = partes.join("");
+    }}
+  }}
+  const n = Number((inteiro || "0") + "." + (cent || "0"));
+  if (!isFinite(n)) return txt;
+  const [r, c] = n.toFixed(2).split(".");
+  return r.replace(/\B(?=(\d{{3}})+(?!\d))/g, ".") + "," + c;
+}}
+const valorNf = document.getElementById("valor_nf");
+valorNf.setAttribute("inputmode", "decimal");
+valorNf.setAttribute("placeholder", "0,00");
+const formatarValor = () => {{ valorNf.value = fmtDinheiro(valorNf.value); }};
+valorNf.addEventListener("blur", formatarValor);
+valorNf.addEventListener("change", formatarValor);   // a IA preenche e dispara change
+valorNf.addEventListener("focus", () => valorNf.select());
+// Enter com o cursor ainda no campo envia sem "sair" dele: sem isto "1.500"
+// chegava cru ao servidor, que le 1,5 (ponto como decimal) — mil vezes menos.
+valorNf.form.addEventListener("submit", formatarValor);
+formatarValor();   // "Repetir cotação" e "Voltar" chegam com 1500,00
+
 // Contador do filtro. O <details> abre e fecha sozinho (HTML puro);
 // isto aqui so mantem o resumo dizendo a verdade, e e o que impede o
 // filtro de virar erro silencioso: a linha fica logo acima do botao.
@@ -1028,7 +1166,7 @@ filtro.querySelectorAll("[data-todas]").forEach(a => a.onclick = ev => {{
   contar();
 }});
 contar();
-</script>""", usuario)
+</script>{JS_COLAR_PEDIDO}""", usuario)
 
 
 # -------------------------------------------------------------------- cotar
@@ -1067,6 +1205,26 @@ def montar_request(d: dict) -> CotacaoRequest:
         mercadoria=Mercadoria(tipo_material=d["material"]),
         nota_fiscal=NotaFiscal(valor_total=_num(d["valor_nf"])),
     )
+
+
+@app.post("/extrair")
+def extrair_pedido(dados: dict = Body(...), usuario: str | None = Depends(vendedor)):
+    """Texto colado → campos do formulário (core/extrair_carga). SÍNCRONO:
+    a chamada à IA bloqueia, e o FastAPI roda isto numa thread do pool.
+    Nunca cota nada: só devolve os campos para a tela preencher."""
+    if not usuario:
+        return JSONResponse({"erro": "Sessão expirada: entre de novo."}, status_code=401)
+    try:
+        x = extrair_carga.extrair(str(dados.get("texto") or ""))
+    except extrair_carga.TextoInvalido as exc:
+        return JSONResponse({"erro": str(exc)})
+    except ia.IAIndisponivel:
+        return JSONResponse({"erro": "A IA está indisponível agora (limite dos modelos grátis ou "
+                                     "provedor fora do ar). Preencha à mão ou tente em alguns minutos."})
+    except Exception as exc:   # defeito nosso: a tela avisa e o formulário segue
+        return JSONResponse({"erro": f"Não consegui ler o pedido ({type(exc).__name__})."})
+    return JSONResponse({"campos": x.campos, "avisos": x.avisos, "faltando": x.faltando,
+                         "modelo": x.modelo, "rotulos": extrair_carga.ROTULOS})
 
 
 @app.post("/voltar", response_class=HTMLResponse)
@@ -2647,10 +2805,33 @@ a tela para de atualizar e diz quem não respondeu.</p>
       12 kg são <b>12</b> aqui e <b>3</b> na quantidade.</li>
   <li><b>Comprimento, largura e altura</b> — em <b>centímetros</b>, de uma
       caixa.</li>
-  <li><b>Valor da nota fiscal</b> e <b>Material</b> — o que é a carga, em
-      palavras.</li>
+  <li><b>Valor da nota fiscal</b> — em reais. Digite do jeito que quiser
+      (<b>1000</b>, <b>1.500</b>, <b>1234,5</b>); ao sair do campo ele fica
+      <b>1.000,00</b>, <b>1.500,00</b>, <b>1.234,50</b>, para não haver dúvida se
+      é mil ou dez reais. Clicando de novo, o valor todo fica selecionado para
+      trocar; dá para corrigir só os centavos também.</li>
+  <li><b>Material</b> — o que é a carga, em palavras.</li>
   <li><b>Nome, e-mail e WhatsApp</b> — seus dados de contato, que entram
       na mensagem pronta das transportadoras que você aciona à mão.</li>
+</ul>
+
+<h2>Colar o pedido (IA)</h2>
+<p>Em cima do formulário tem a caixa <b>Colar o pedido</b>. Cole o e-mail ou a
+mensagem do cliente e clique em <b>Preencher com IA</b>: CEPs, CNPJs, tipo de
+frete, volumes, peso, medidas, valor da nota e material vão para os campos, com
+um contorno azul em cada um que a IA preencheu.</p>
+<ul>
+  <li><b>Confira sempre</b> antes de cotar. A IA não cota nada: só preenche.</li>
+  <li>Ela <b>não inventa</b>: o que o texto não diz fica em branco, e a lista
+      "o texto não trouxe" mostra o que falta (quase sempre o CEP de origem e o
+      CNPJ da Ventura).</li>
+  <li>CNPJ com dígito verificador errado e CEP incompleto <b>não entram</b>:
+      aparecem no quadro "Confira".</li>
+  <li>Se o pedido traz o peso <b>total</b>, o sistema divide pela quantidade e
+      avisa a conta — o campo é o peso de <b>um</b> volume.</li>
+  <li>Volumes de tamanhos diferentes aparecem no "Confira": o formulário aceita
+      um tamanho por vez.</li>
+  <li>Seus dados de contato não são tocados.</li>
 </ul>
 
 <h2>Os erros que mais custam caro</h2>
@@ -2738,6 +2919,8 @@ para tentar de novo quem falhou.</p>
 
 <h2>Quem cota sozinho hoje</h2>
 <ul>{_lista_automaticas()}</ul>
+
+{me_ui.secao_documentacao()}
 </div>
 
 <p><a href="/">← nova cotação</a></p>"""
