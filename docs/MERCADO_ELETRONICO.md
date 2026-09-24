@@ -385,6 +385,28 @@ justificativa; a lista do ME seguiu "Não Respondida"; nova varredura da tela
 manteve "Salva no ME" (1/3 com preço). Depois as recusas de teste foram
 desfeitas (1 POST `Acao=9`): a cotação voltou a ter só o item 10 de teste.
 
+## Painel do administrador: /adm/me (24/09/2026)
+Pedido do usuário: acompanhar erros e histórico do ME sem entrar no ME.
+Link "Mercado Eletrônico" no menu lateral do `/adm`, mesma senha, ao vivo
+(atualiza a cada 10 s, só quando algo muda). `core/painel_me.py` (consultas)
++ `web/adm_me.py` (telas).
+- **Faixa:** abertas no ME, salvas sem enviar, com erro do robô, fecham em 24 h.
+- **Precisa de atenção:** robô falhou; "Salva no ME mas NÃO enviada" perto do
+  prazo (crítico); pendente fechando em 24 h; leitura da lista falhando
+  (crítico a partir de 3 seguidas), com o erro e desde quando.
+- **Movimento** (recebidas × salvas no ME), **Quem salvou no ME**, **Leitura
+  da lista do ME** por conta (agora, última, última que deu certo, erro).
+- **Cotações** com filtro de conta e status; **Histórico de eventos** de todas
+  as cotações + falhas de leitura, filtro "só problemas" e busca.
+- `/adm/me/N`: itens (recusados marcados), histórico, revisão por IA, prints.
+- Para ter histórico, passaram a ser gravados: cada leitura da lista
+  (`me_varredura`, ok/erro/duração; as boas somem após 90 dias) e o erro ao
+  ler itens (evento "erro ao ler itens do ME"). Problemas = `EVENTOS_PROBLEMA`
+  em `core/painel_me.py`.
+- Testes: `tests/test_adm_me.py`.
+- Windows: `python -m pytest tests -q -k "me_ or documentacao"` (o PowerShell
+  não expande `tests/test_me_*.py`).
+
 ## Próximos passos
 1. ~~Recon~~, ~~teste de Salvar~~ e ~~robô~~ (acima).
 2. ~~Robô com trava de envio e dry-run~~ feito (sessão local).

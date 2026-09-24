@@ -897,6 +897,7 @@ def _lateral(base: str = "") -> str:
   <div class="marca">{marca}<b>Painel</b></div>
   <div class="secao">Acompanhar</div>
   {itens}
+  <a href="/adm/me">{_icone(ICONES["alerta"])}<span>Mercado Eletrônico</span></a>
   <div class="secao">Administrar</div>
   <a href="/adm/contas">{_icone(ICONES["cotacoes"])}<span>Contas</span></a>
   <a href="/adm/sair">{_icone(ICONES["sair"])}<span>Sair do painel</span></a>
@@ -1066,14 +1067,16 @@ def _y(valor: float, alto: int) -> float:
     return G_TOPO + (1 - valor / alto) * G_ALT
 
 
-def grafico_periodo(pontos: list[dict], unidade: str) -> str:
+def grafico_periodo(pontos: list[dict], unidade: str, *,
+                    rotulos: tuple[str, str] = ("cotações", "com preço"),
+                    vazio: str = "Nenhuma cotação no período.") -> str:
     """Barras de cotações com a linha de "com preço" por cima.
 
     Duas séries no mesmo desenho de propósito: a distância entre a barra e a
     linha É a pergunta do painel — quantas cotações não viraram preço. Em
     dois gráficos separados, o olho teria que fazer essa subtração sozinho."""
     if not pontos:
-        return '<p class="vazio">Nenhuma cotação no período.</p>'
+        return f'<p class="vazio">{e(vazio)}</p>'
 
     alto = teto(max(p["cotacoes"] for p in pontos))
     n = len(pontos)
@@ -1106,7 +1109,7 @@ def grafico_periodo(pontos: list[dict], unidade: str) -> str:
         x = centro(i) - largura / 2
         topo_barra = _y(p["cotacoes"], alto)
         dica = (f'{rotulo_do_balde(p["chave"], unidade)}: {p["cotacoes"]} '
-                f'cotações · {p["com_preco"]} com preço')
+                f'{rotulos[0]} · {p["com_preco"]} {rotulos[1]}')
         barras += (
             f'<g><title>{e(dica)}</title>'
             f'<rect class="fantasma" x="{x:.1f}" y="{G_TOPO}" '

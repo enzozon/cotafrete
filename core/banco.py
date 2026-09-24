@@ -251,6 +251,21 @@ CREATE TABLE IF NOT EXISTS me_historico (
 );
 CREATE INDEX IF NOT EXISTS idx_me_historico ON me_historico(cotacao_id, id);
 
+-- Cada leitura da lista do ME (a varredura de 7 em 7 min e o "Atualizar
+-- agora"), por conta. É o que deixa o /adm/me mostrar "a leitura da UNIÃO
+-- está falhando desde as 14h" sem ninguém precisar abrir o ME. Antes ficava
+-- só na memória do servidor e sumia a cada reinício.
+CREATE TABLE IF NOT EXISTS me_varredura (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    quando     TEXT NOT NULL,
+    conta      TEXT NOT NULL,
+    ok         INTEGER NOT NULL,
+    cotacoes   INTEGER,              -- quantas pendentes a lista trouxe
+    duracao_s  REAL,
+    erro       TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_me_varredura ON me_varredura(conta, id);
+
 -- Memória por material: o NCM, a marca e a origem que alguém já digitou
 -- para o mesmo código voltam sozinhos na próxima cotação.
 CREATE TABLE IF NOT EXISTS me_material (
@@ -840,6 +855,18 @@ class Banco:
             return [dict(r) for r in con.execute(
                 "SELECT * FROM me_historico WHERE cotacao_id = ? ORDER BY id",
                 (cotacao_id,))]
+
+    def me_registrar_varredura(self, conta: str, *, ok: bool, cotacoes: int | None = None,
+                               duracao_s: float | None = None, erro: str | None = None) -> None:
+        with closing(self._conectar()) as con, con:
+            con.execute(
+                "INSERT INTO me_varredura (quando, conta, ok, cotacoes, duracao_s, erro)"
+                " VALUES (?, ?, ?, ?, ?, ?)",
+                (datetime.now().isoformat(timespec="seconds"), conta, int(ok),
+                 cotacoes, duracao_s, erro))
+            # Leitura boa não interessa depois de 90 dias; a falha fica.
+            corte = (datetime.now() - timedelta(days=90)).isoformat(timespec="seconds")
+            con.execute("DELETE FROM me_varredura WHERE ok = 1 AND quando < ?", (corte,))
 
     def me_material(self, chave: str) -> dict | None:
         with closing(self._conectar()) as con, con:

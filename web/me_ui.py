@@ -27,6 +27,7 @@ from __future__ import annotations
 import json
 import os
 import threading
+import time
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from typing import Any, Callable
@@ -161,11 +162,17 @@ def atualizar(contas: list[str] | None = None) -> None:
     VARREDURA.rodando = True
     try:
         for conta in contas if contas is not None else contas_configuradas():
+            inicio = time.monotonic()
             try:
-                sincronizar(conta, FONTE(conta))
+                pendentes = FONTE(conta)
+                sincronizar(conta, pendentes)
                 VARREDURA.erros.pop(conta, None)
+                banco.me_registrar_varredura(conta, ok=True, cotacoes=len(pendentes),
+                                             duracao_s=round(time.monotonic() - inicio, 1))
             except Exception as exc:  # a outra conta ainda roda
                 VARREDURA.erros[conta] = f"{type(exc).__name__}: {exc}"[:300]
+                banco.me_registrar_varredura(conta, ok=False, erro=VARREDURA.erros[conta],
+                                             duracao_s=round(time.monotonic() - inicio, 1))
         VARREDURA.ultima = agora()
     finally:
         VARREDURA.rodando = False
@@ -710,7 +717,9 @@ def ler_itens(cid: int, request: Request):
     try:
         n = carregar_itens(cid)
     except Exception as exc:
-        return _voltar(cid, f"Não consegui ler os itens do ME: {type(exc).__name__}: {exc}"[:300])
+        motivo = f"{type(exc).__name__}: {exc}"[:300]
+        banco.me_registrar(cid, "erro ao ler itens do ME", motivo, usuario)
+        return _voltar(cid, f"Não consegui ler os itens do ME: {motivo}")
     banco.me_registrar(cid, "itens lidos do ME", f"{n} itens", usuario)
     return _voltar(cid, f"{n} itens lidos do ME.")
 

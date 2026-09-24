@@ -112,6 +112,8 @@ próxima subida.
 | `/historico` | as cotações **da pessoa**, com o melhor preço de cada |
 | `/adm` | painel da empresa inteira — senha própria, no `.env` |
 | `/adm/cotacao/N` | a cotação de **qualquer** vendedor, inteira |
+| `/adm/me` | o **Mercado Eletrônico** no painel: erros do robô, leitura do ME, histórico — mesma senha do `/adm` |
+| `/adm/me/N` | uma cotação do ME inteira: itens, histórico, revisão por IA, prints do robô |
 | `/me` | cotações pendentes do **Mercado Eletrônico** (VENTURA e UNIÃO) |
 | `/me/N` | responder uma cotação do ME: preencher, revisar com IA, **salvar** no ME |
 
@@ -234,8 +236,12 @@ Decisões de interface do site: **`REGRAS_SITE_COTACAO.md`**.
 ## Testes
 
 ```bash
-python -m pytest tests\ -q      # 777 testes, nenhum usa internet
+python -m pytest tests\ -q      # a suíte inteira, nenhum usa internet
+python -m pytest tests -q -k "me_ or documentacao"   # só o Mercado Eletrônico
 ```
+
+No Windows o PowerShell **não expande** `tests/test_me_*.py` (o pytest recebe
+o asterisco literal e diz "file or directory not found"): use o `-k`.
 
 Cada teste tem o caso real que o gerou no docstring. Não são testes de
 fachada: todos foram escritos **antes** do fix, e cada um falhou primeiro.
