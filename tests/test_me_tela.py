@@ -251,3 +251,68 @@ def test_ligacao_padrao_com_o_robo_e_a_ponte(monkeypatch):
     me_ui._leitor_padrao("ventura", 1)
     me_ui._robo_padrao("uniao", 2, [], 30, True)
     assert chamadas == [("lista", "uniao"), ("ler", "ventura", 1), ("robo", Conta.UNIAO, 2, True)]
+
+
+def _revisor(alertas=None, erro=None):
+    from mercado_eletronico import revisao as rv
+    chamadas = []
+
+    def revisar(c, previa, erros, avisos, obs_geral=""):
+        chamadas.append((c["numero"], obs_geral))
+        return rv.Revisao([rv.Alerta(*a) for a in (alertas or [])], erro, "claude-opus-5")
+    return revisar, chamadas
+
+
+def test_revisao_por_ia_mostra_alertas_no_item_e_na_cotacao(cliente, monkeypatch):
+    revisar, chamadas = _revisor([(10, "critico", "marca DJI; comprador pediu outra"),
+                                  (None, "atencao", "validade curta")])
+    monkeypatch.setattr(me_ui, "REVISOR", revisar)
+    cliente.post("/me/atualizar")
+    cid = _id(23049227)
+    cliente.post(f"/me/{cid}/ler")
+    html = _preencher(cliente, cid, acao="revisar").text
+    # o texto geral do comprador vai junto
+    assert chamadas[0][0] == 23049227 and "Prezado Fornecedor" in chamadas[0][1]
+    assert "IA · Crítico: marca DJI; comprador pediu outra" in html
+    assert "Atenção: validade curta" in html
+    assert "revise de novo" not in html
+    # mudou o preenchimento → revisão marcada como velha
+    html = _preencher(cliente, cid, marca_10="Outra").text
+    assert "revise de novo" in html
+    assert "revisão IA: 2 alertas" in [h["evento"] for h in me_ui.banco.me_historico(cid)]
+
+
+def test_ia_indisponivel_nao_bloqueia_salvar(cliente, monkeypatch, robo):
+    revisar, _ = _revisor(erro="falta ANTHROPIC_API_KEY no .env")
+    monkeypatch.setattr(me_ui, "REVISOR", revisar)
+    cliente.post("/me/atualizar")
+    cid = _id(23049227)
+    cliente.post(f"/me/{cid}/ler")
+    html = _preencher(cliente, cid, acao="revisar").text
+    assert "Revisão IA indisponível: falta ANTHROPIC_API_KEY" in html
+    _preencher(cliente, cid, acao="salvar")
+    assert me_ui.banco.me_cotacao(cid)["status"] == "salva"
+
+
+def test_documentacao_com_os_numeros_do_codigo(cliente, monkeypatch):
+    """A aba Documentação explica o ME com os números que a tela usa: mudou a
+    constante, muda a ajuda — e nunca promete um botão de enviar."""
+    from mercado_eletronico import regras as rg
+    monkeypatch.setattr(me_ui, "INTERVALO_S", 9 * 60)
+    monkeypatch.setattr(me_ui, "MAX_OBS", 77)
+    html = cliente.get("/documentacao").text
+    assert "Mercado Eletrônico: responder cotações" in html
+    assert "a cada <b>9 minutos</b>" in html
+    assert f"até {rg.MAX_MARCA} caracteres" in html and "até 77)" in html
+    assert "Quem envia é sempre você" in html
+    assert 'href="/me"' in html
+
+
+def test_alerta_da_cotacao_inteira_aparece_uma_vez(cliente, monkeypatch):
+    revisar, _ = _revisor([(None, "atencao", "falta o nº da proposta")])
+    monkeypatch.setattr(me_ui, "REVISOR", revisar)
+    cliente.post("/me/atualizar")
+    cid = _id(23049227)
+    cliente.post(f"/me/{cid}/ler")
+    html = _preencher(cliente, cid, acao="revisar").text
+    assert html.count("falta o nº da proposta") == 1

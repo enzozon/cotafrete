@@ -208,6 +208,10 @@ CREATE TABLE IF NOT EXISTS me_cotacao (
     enviada_em      TEXT,
     erro            TEXT,
     evidencia       TEXT,
+    obs_comprador   TEXT,          -- texto geral do comprador (ObsComp)
+    revisao_ia      TEXT,          -- JSON de mercado_eletronico/revisao.Revisao
+    revisao_em      TEXT,
+    revisao_assinatura TEXT,       -- do preenchimento revisado: mudou = velha
     UNIQUE (conta, numero)
 );
 
@@ -279,6 +283,10 @@ CAMPOS_CARGA = (
 # CAMPOS_CARGA: CREATE TABLE IF NOT EXISTS não altera tabela existente.
 CAMPOS_RESULTADO = ("respondido_em", "validade")
 
+# Colunas de `me_cotacao` que nasceram depois da tabela.
+CAMPOS_ME_COTACAO_NOVOS = ("obs_comprador", "revisao_ia", "revisao_em",
+                           "revisao_assinatura")
+
 
 def _decimal(valor: str | None) -> Decimal | None:
     return Decimal(valor) if valor not in (None, "") else None
@@ -322,6 +330,11 @@ class Banco:
         for coluna in CAMPOS_RESULTADO:
             if coluna not in existentes:
                 con.execute(f"ALTER TABLE resultado ADD COLUMN {coluna} TEXT")
+
+        existentes = {r["name"] for r in con.execute("PRAGMA table_info(me_cotacao)")}
+        for coluna in CAMPOS_ME_COTACAO_NOVOS:
+            if coluna not in existentes:
+                con.execute(f"ALTER TABLE me_cotacao ADD COLUMN {coluna} TEXT")
 
         # UMA linha por transportadora por cotação. Sem esta regra o banco
         # aceitava duas, e a tela desenhava as duas: foi assim que a #50
@@ -710,7 +723,8 @@ class Banco:
                          "status", "status_resposta", "na_lista", "visto_em",
                          "atualizado_em", "itens_lidos_em", "validade_dias",
                          "salvo_por", "salvo_em", "enviada_em", "erro",
-                         "evidencia")
+                         "evidencia", "obs_comprador", "revisao_ia",
+                         "revisao_em", "revisao_assinatura")
     CAMPOS_ME_ENTRADA = ("preco", "ncm", "prazo_dias", "marca", "obs", "origem")
 
     def me_cotacao_id(self, conta: str, numero: int) -> int | None:

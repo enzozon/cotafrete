@@ -112,6 +112,8 @@ próxima subida.
 | `/historico` | as cotações **da pessoa**, com o melhor preço de cada |
 | `/adm` | painel da empresa inteira — senha própria, no `.env` |
 | `/adm/cotacao/N` | a cotação de **qualquer** vendedor, inteira |
+| `/me` | cotações pendentes do **Mercado Eletrônico** (VENTURA e UNIÃO) |
+| `/me/N` | responder uma cotação do ME: preencher, revisar com IA, **salvar** no ME |
 
 **Separação por usuário:** cada um vê só as suas. Trocar o número na URL não
 abre a cotação alheia — o usuário entra na consulta ao banco.
@@ -185,7 +187,17 @@ carriers/
 
 web/
   app.py                 interface FastAPI
+  me_ui.py               tela /me do Mercado Eletrônico
   cotacao_whatsapp.html  página de WhatsApp, independente
+
+mercado_eletronico/
+  regras.py, feriados.py  impostos, datas, validação (puro)
+  lista.py, pagina.py     JSON da lista e HTML da resposta -> dados (puro)
+  painel.py               status nosso, prazo, alertas (puro)
+  mapa.py                 regras -> campos do formulário do ME (puro)
+  trava.py                as três travas contra envio
+  robo.py, ponte.py       Playwright: salvar; ler lista e páginas
+  revisao.py              revisão por IA (API da Anthropic, só alertas)
 ```
 
 **O que é puro roda sem internet e tem teste.** O que é browser é fino de
@@ -257,7 +269,22 @@ DV_ENVIO_REAL_AUTORIZADO                   trava do envio real da Della Volpe
 DV_AUTOMATICA_DESDE                        liga a Della Volpe como automática
 DV_IMAP_HOST / _USUARIO / _SENHA           caixa do suporte (ingestor de e-mail)
 COTAFRETE_ADM_SENHA                        senha do painel /adm
+ME_VENTURA_LOGIN / ME_VENTURA_SENHA        Mercado Eletrônico, conta VENTURA
+ME_UNIAO_LOGIN / ME_UNIAO_SENHA            Mercado Eletrônico, conta UNIÃO
+ANTHROPIC_API_KEY                          revisão por IA das respostas do ME
 ```
+
+### Mercado Eletrônico
+
+A tela `/me` lista as cotações pendentes das duas contas e responde cada uma:
+o usuário preenche preço, NCM, prazo, marca, obs e origem; o sistema calcula
+impostos e datas, valida, pede uma revisão por IA (só alertas) e o robô
+**preenche e salva** no ME. **O envio é sempre humano** — Salvar e Confirmar
+do ME são o mesmo POST com `Acao` diferente, e o robô só deixa sair `Acao=9`
+(salvar) e a troca de página. Sem `ME_*` no `.env` a tela avisa e não lê
+nada; sem `ANTHROPIC_API_KEY` a revisão diz "indisponível" e o resto segue.
+Tudo (decisões, recon, provas no ME real) em
+[`docs/MERCADO_ELETRONICO.md`](docs/MERCADO_ELETRONICO.md).
 
 ### Della Volpe: automática e ingestor de e-mail
 

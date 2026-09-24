@@ -38,6 +38,7 @@ from core.banco import Banco
 from mercado_eletronico import pagina as pg
 from mercado_eletronico import painel as pn
 from mercado_eletronico import regras as rg
+from mercado_eletronico import revisao as rv
 from mercado_eletronico.painel import Status
 from web.layout import cabecalho, e, pagina
 
@@ -49,6 +50,7 @@ COOKIE = "cotafrete_usuario"
 
 CONTAS = {"ventura": "VENTURA", "uniao": "UNIÃO"}
 INTERVALO_S = 7 * 60   # a arquitetura pediu 5–10 min
+MAX_OBS = 100          # maxlength do Observacao{N} no ME (recon 23/09/2026)
 agora: Callable[[], datetime] = datetime.now
 
 router = APIRouter(prefix="/me", include_in_schema=False)
@@ -81,6 +83,8 @@ def _em_thread(fn: Callable, *args) -> None:
 DISPARAR: Callable[..., None] = _em_thread
 
 FONTE: Callable[[str], list] = _fonte_padrao
+REVISOR: Callable[..., rv.Revisao] = rv.revisar
+REVISANDO: set[int] = set()   # cotações com a IA trabalhando agora
 LEITOR: Callable[[str, int], list[str]] = _leitor_padrao
 ROBO: Callable[..., Any] = _robo_padrao
 
@@ -229,6 +233,8 @@ def _gravar_lidos(cid: int, c: dict, lidas: pg.PaginaDaCotacao, itens: list[dict
         extra["comprador"] = lidas.comprador
     if lidas.titulo and not c["codigo"]:
         extra["codigo"] = lidas.titulo
+    if lidas.obs_comprador:
+        extra["obs_comprador"] = lidas.obs_comprador
     banco.me_atualizar(cid, itens_lidos_em=agora().isoformat(timespec="seconds"), **extra)
     return len(itens)
 
@@ -255,8 +261,8 @@ def gravar_formulario(cid: int, form: dict) -> None:
             "preco": (form.get(f"preco_{n}") or "").strip(),
             "ncm": (form.get(f"ncm_{n}") or "").strip(),
             "prazo_dias": _int(form.get(f"prazo_{n}")),
-            "marca": (form.get(f"marca_{n}") or "").strip()[:20],
-            "obs": (form.get(f"obs_{n}") or "").strip()[:100],
+            "marca": (form.get(f"marca_{n}") or "").strip()[:rg.MAX_MARCA],
+            "obs": (form.get(f"obs_{n}") or "").strip()[:MAX_OBS],
             "origem": origem,
         }
         banco.me_gravar_entrada(cid, n, **campos)
@@ -288,6 +294,27 @@ def conferir(c: dict, hoje: date) -> tuple[rg.Resultado, dict[int, dict[str, str
             continue
         previa[item.numero] = rg.campos_do_item(conta, item, hoje)
     return resultado, previa
+
+
+def rodar_revisao(cid: int, usuario: str) -> None:
+    """Uma chamada à IA com o preenchimento atual. Nunca levanta."""
+    try:
+        c = banco.me_cotacao(cid)
+        resultado, previa = conferir(c, agora().date())
+        rev = REVISOR(c, previa, resultado.erros, resultado.avisos,
+                      obs_geral=c["obs_comprador"] or "")
+        banco.me_atualizar(cid, revisao_ia=rev.como_json(),
+                           revisao_em=agora().isoformat(timespec="seconds"),
+                           revisao_assinatura=rv.assinatura(c))
+        if rev.indisponivel:
+            banco.me_registrar(cid, "revisão IA indisponível", rev.erro, usuario)
+        else:
+            por_nivel = {n: sum(a.nivel == n for a in rev.alertas) for n in rv.NIVEIS}
+            banco.me_registrar(cid, f"revisão IA: {len(rev.alertas)} alertas",
+                               ", ".join(f"{v} {rv.ROTULO_NIVEL[n].lower()}" for n, v in por_nivel.items() if v),
+                               usuario)
+    finally:
+        REVISANDO.discard(cid)
 
 
 def _rodar_robo(cid: int, usuario: str, dry_run: bool, status_antes: str) -> None:
@@ -380,6 +407,10 @@ tr.me-urgente td{background:var(--alerta-fundo)}
 .me-err{color:var(--erro);font-size:12px}.me-av{color:var(--atencao);font-size:12px}
 .me-acoes{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}
 .me-mini{font-size:11px;padding:2px 6px;margin-top:4px}
+.me-painel-ia{padding:12px 16px;margin:0 0 12px}
+.me-ia{font-size:12px;font-weight:600}
+.me-ia-critico{color:var(--tom-erro)}.me-ia-atencao{color:var(--tom-atencao)}
+.me-ia-info{color:var(--tom-marca)}
 </style>"""
 
 
@@ -495,6 +526,13 @@ def ver(cid: int, request: Request, msg: str = ""):
             n = _int(m.split(":")[0].replace("Item", "")) if m.startswith("Item ") else None
             por_item.setdefault(n, []).append(f'<div class="me-{tipo}">{e(m)}</div>')
 
+    rev = rv.Revisao.de_json(c["revisao_ia"])
+    # Os da cotação inteira (item None) ficam só no quadro da revisão.
+    for a in (a for a in (rev.alertas if rev else []) if a.item is not None):
+        por_item.setdefault(a.item, []).append(
+            f'<div class="me-ia me-ia-{a.nivel}">IA · {e(rv.ROTULO_NIVEL[a.nivel])}: {e(a.mensagem)}</div>')
+    painel_ia = _painel_ia(c, rev, cid in REVISANDO)
+
     linhas = ""
     for i in c["itens"]:
         n = i["numero"]
@@ -514,8 +552,8 @@ def ver(cid: int, request: Request, msg: str = ""):
 <td><input name="preco_{n}" value="{e(i['preco'] or '')}" inputmode="decimal" placeholder="0,00"{trava}></td>
 <td><input name="ncm_{n}" value="{e(i['ncm'] or '')}" maxlength="10" placeholder="8 dígitos"{trava}></td>
 <td><input name="prazo_{n}" value="{e(i['prazo_dias'] or '')}" inputmode="numeric" data-copiar="prazo"{trava}></td>
-<td><input name="marca_{n}" value="{e(i['marca'] or '')}" maxlength="20" data-copiar="marca"{trava}></td>
-<td><input name="obs_{n}" value="{e(i['obs'] or '')}" maxlength="100"{trava}></td>
+<td><input name="marca_{n}" value="{e(i['marca'] or '')}" maxlength="{rg.MAX_MARCA}" data-copiar="marca"{trava}></td>
+<td><input name="obs_{n}" value="{e(i['obs'] or '')}" maxlength="{MAX_OBS}"{trava}></td>
 <td><select name="origem_{n}" data-copiar="origem"{trava}>{_opcoes_origem(i['origem'])}</select>
 <button type="button" class="botao2 me-mini" data-anterior{trava}>↑ copiar anterior</button></td>
 </tr><tr><td></td><td colspan="7">{prev}{''.join(por_item.get(n, []))}</td></tr>"""
@@ -544,16 +582,17 @@ def ver(cid: int, request: Request, msg: str = ""):
  <button type="button" class="botao2" data-aplicar="marca"{trava}>marca do 1º em todos</button>
  <button type="button" class="botao2" data-aplicar="origem"{trava}>origem do 1º em todos</button>
  <button type="button" class="botao2" data-aplicar="prazo"{trava}>prazo do 1º em todos</button></p>
-{gerais}
+{painel_ia}{gerais}
 <div class="cartao"><div class="rolagem-r"><table class="me-itens">
 <thead><tr><th>item</th><th>o que o comprador pediu</th><th>preço unit.</th><th>NCM</th>
-<th>prazo (dias)</th><th>marca (20)</th><th>obs (100)</th><th>origem</th></tr></thead>
+<th>prazo (dias)</th><th>marca ({rg.MAX_MARCA})</th><th>obs ({MAX_OBS})</th><th>origem</th></tr></thead>
 <tbody>{linhas}</tbody></table></div></div>
 <div class="me-acoes">
 <button type="submit" name="acao" value="conferir"{trava}>Guardar e conferir</button>
 <button type="submit" name="acao" value="salvar"{trava}
  onclick="return confirm('O robô vai preencher e SALVAR no ME. Ele não envia: depois alguém confere e envia pelo site do ME.')">Salvar no ME</button>
 <button type="submit" name="acao" value="dry_run" class="botao2"{trava}>Testar sem salvar</button>
+<button type="submit" name="acao" value="revisar" class="botao2"{trava}>Revisar com IA</button>
 </div></form>"""
 
     marcar = ("" if st in pn.FINAIS else
@@ -600,9 +639,34 @@ document.querySelectorAll("[data-anterior]").forEach(b => b.addEventListener("cl
   const meu = [...tr.querySelectorAll("input")].find(i => i.name.startsWith("ncm_"));
   if (ncm && meu) meu.value = ncm.value;
 }}));
-{'setTimeout(() => location.reload(), 5000);' if st is Status.SALVANDO else ''}
+{'setTimeout(() => location.reload(), 5000);' if st is Status.SALVANDO or cid in REVISANDO else ''}
 </script>"""
     return HTMLResponse(pagina(f"ME {c['numero']}", corpo, usuario))
+
+
+def _painel_ia(c: dict, rev: rv.Revisao | None, rodando: bool) -> str:
+    """O quadro da revisão por IA, acima dos itens. Os alertas de item vão
+    também na linha do item; aqui fica o resumo e os da cotação inteira."""
+    if rodando:
+        corpo = '<p class="sub">A IA está revisando… (a página recarrega sozinha)</p>'
+    elif rev is None:
+        corpo = ('<p class="sub">Ainda não revisada. "Revisar com IA" confere marca, '
+                 'local de entrega, NCM e preço contra o que o comprador pediu. '
+                 'Só aponta; não muda nada.</p>')
+    elif rev.indisponivel:
+        corpo = f'<p class="alerta">Revisão IA indisponível: {e(rev.erro)}. Pode salvar mesmo assim.</p>'
+    else:
+        contagem = " · ".join(
+            f'<span class="me-ia-{n}">{sum(a.nivel == n for a in rev.alertas)} {rv.ROTULO_NIVEL[n].lower()}</span>'
+            for n in rv.NIVEIS)
+        velha = ("" if c["revisao_assinatura"] == rv.assinatura(c) else
+                 '<p class="aviso">O preenchimento mudou depois desta revisão — revise de novo.</p>')
+        gerais = "".join(f'<li class="me-ia-{a.nivel}">{e(rv.ROTULO_NIVEL[a.nivel])}: {e(a.mensagem)}</li>'
+                         for a in rev.alertas if a.item is None)
+        corpo = (f'<p>{contagem if rev.alertas else "Nenhum alerta."} '
+                 f'<small>({e(_hora(c["revisao_em"]))}{", " + e(rev.modelo) if rev.modelo else ""})</small></p>'
+                 f'{velha}' + (f"<ul>{gerais}</ul>" if gerais else ""))
+    return f'<div class="cartao me-painel-ia"><b>Revisão por IA</b>{corpo}</div>'
 
 
 def _voltar(cid: int, msg: str = "") -> RedirectResponse:
@@ -621,6 +685,11 @@ async def guardar(cid: int, request: Request):
     form = dict(await request.form())
     gravar_formulario(cid, form)
     acao = form.get("acao", "conferir")
+    if acao == "revisar":
+        if cid not in REVISANDO:
+            REVISANDO.add(cid)
+            DISPARAR(rodar_revisao, cid, usuario)
+        return _voltar(cid, "Revisão por IA pedida. Os alertas aparecem aqui.")
     if acao in ("salvar", "dry_run"):
         motivo = mandar_robo(cid, usuario, dry_run=acao == "dry_run")
         return _voltar(cid, motivo or ("Robô testando (sem salvar)…" if acao == "dry_run"
@@ -655,3 +724,52 @@ def marcar_enviada(cid: int, request: Request):
                        enviada_em=agora().isoformat(timespec="seconds"))
     banco.me_registrar(cid, "marcada como enviada", "à mão, na tela", usuario)
     return _voltar(cid, "Marcada como enviada.")
+
+
+# ------------------------------------------------------------ documentação
+def secao_documentacao() -> str:
+    """A parte do Mercado Eletrônico na aba Documentação.
+
+    Os números saem das constantes que a tela usa de verdade (intervalo da
+    varredura, limites de caracteres do ME, janela de "fecha em breve"): é a
+    regra da aba inteira — ajuda com número velho faz errar com confiança."""
+    horas = int(pn.JANELA_URGENTE.total_seconds() // 3600)
+    return f"""<h2>Mercado Eletrônico: responder cotações</h2>
+<div class="alerta email">
+<p><b>O sistema preenche e SALVA a resposta no ME. Quem envia é sempre você</b>,
+pelo site do ME, depois de conferir. Não existe botão de enviar aqui — de
+propósito: o robô tem três travas que impedem o envio.</p>
+</div>
+<ol class="passo">
+<li>Abra <a href="/me">Mercado Eletrônico</a> no menu. A lista traz as cotações
+pendentes da <b>VENTURA</b> e da <b>UNIÃO</b>, com a data limite contando. Ela
+se atualiza sozinha a cada <b>{INTERVALO_S // 60} minutos</b>; o botão
+<b>Atualizar agora</b> lê o ME na hora.</li>
+<li>Clique no número da cotação e em <b>Ler itens do ME</b>. Cada item mostra
+o que o comprador pediu: descrição, quantidade, estado de entrega, origem e
+data de remessa, e o texto dele (abra "pedido do comprador").</li>
+<li>Preencha só o que muda: <b>preço unitário, NCM, prazo em dias corridos,
+marca (até {rg.MAX_MARCA} caracteres), observação (até {MAX_OBS}) e origem
+(0 ou 2)</b>, e a validade da proposta em dias. Impostos, data de entrega,
+frete, condição de pagamento e o resto o sistema calcula. NCM, marca e origem
+de um material que já apareceu voltam sozinhos.</li>
+<li><b>Guardar e conferir</b> mostra, embaixo de cada item, o que o robô vai
+digitar (ICMS, PIS, COFINS, data de entrega) e os problemas: em
+<span style="color:var(--erro)">vermelho</span> o que impede salvar, em
+amarelo o que vale conferir.</li>
+<li><b>Revisar com IA</b> (opcional) lê o pedido do comprador e a sua resposta
+e aponta o que a conta não pega: marca diferente da pedida, entrega em outro
+lugar, NCM que não combina, preço fora de escala. Ela <b>só aponta, nunca muda
+valor</b>. Se estiver indisponível, dá para salvar do mesmo jeito.</li>
+<li><b>Salvar no ME</b> (ou <b>Testar sem salvar</b>, que preenche sem gravar).
+Depois de salvar o robô reabre a página e confere campo a campo; se algo não
+bateu, a cotação fica em <b>Erro</b> com o motivo.</li>
+<li>Entre no ME, confira e <b>envie</b>. O sistema percebe o envio sozinho
+(o ME passa a dizer "Respondida", ou a cotação sai das pendências); se quiser
+adiantar, use <b>Marcar como enviada</b>.</li>
+</ol>
+<p><b>Status:</b> Pendente → Salva no ME → Enviada. Também: Erro (o robô
+falhou; o motivo aparece na cotação), Vencida (saiu do ME depois do prazo) e
+Recusada. Faltando menos de <b>{horas} horas</b>, a linha fica vermelha — e
+"<b>Salva no ME mas NÃO enviada</b>" é o aviso que não pode ser ignorado: o
+ME não trata rascunho como resposta.</p>"""

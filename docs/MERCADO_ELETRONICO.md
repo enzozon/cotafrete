@@ -315,10 +315,42 @@ Testes: `test_me_pagina.py`, `test_me_painel.py`, `test_me_banco.py`,
 `test_me_tela.py` (tela de ponta a ponta com a lista e as páginas reais e
 um robô falso).
 
+## Revisão por IA (sessão nuvem, 24/09/2026)
+`mercado_eletronico/revisao.py`, botão **Revisar com IA** na cotação.
+- Uma chamada por cotação: `claude-opus-5`, thinking adaptativo, saída em
+  JSON com esquema fixo (`alertas: [{item, nivel, mensagem}]`, níveis
+  critico/atencao/info) e `fallbacks: "default"` (beta
+  `server-side-fallback-2026-07-01`): se o classificador recusar, o servidor
+  refaz no modelo recomendado.
+- Vai para a IA: o pedido do comprador (descrição, quantidade, texto do item,
+  Campos Adicionais, **texto geral do comprador** — agora guardado em
+  `me_cotacao.obs_comprador`), o preenchimento, o que `regras` calculou e os
+  erros/avisos do código, como fato. Nada de credencial.
+- Procura o que o código não vê: marca pedida × oferecida ("não serão aceitas
+  similares"), "ENTREGAR EM BSB" × End. entrega ES, NCM × produto, preço fora
+  de escala, unidade/quantidade, prazo × remessa.
+- **Só alertas, nunca altera valor.** Falhou (sem chave, rede, recusa, JSON
+  ruim) → "Revisão IA indisponível: motivo" e o Salvar continua liberado.
+- Alertas por item aparecem na linha do item; os da cotação no quadro
+  "Revisão por IA". Mudou o preenchimento depois → "revise de novo"
+  (assinatura do preenchimento em `revisao_assinatura`).
+- **Falta a chave:** `ANTHROPIC_API_KEY` não existe no ambiente da nuvem nem
+  foi testada contra a API real — testes com cliente falso
+  (`tests/test_me_revisao.py`). Pôr a chave no `.env` do servidor.
+
+## Documentação
+Seção "Mercado Eletrônico: responder cotações" na aba **/documentacao**
+(`me_ui.secao_documentacao`, números lidos das constantes), README (rotas,
+chaves do `.env`, arquitetura) e `docs/DEPLOY_SERVIDOR.md` (chaves).
+
 ## Próximos passos
 1. ~~Recon~~, ~~teste de Salvar~~ e ~~robô~~ (acima).
-2. Robô `mercado_eletronico/robo.py` com trava de envio e dry-run + testes
-   contra HTML salvo do recon (sem acessar o ME real nos testes).
-3. ~~Banco + tela nova~~ feito (acima); falta ligar em `lista.pendencias`/`robo.*` quando existirem.
-4. Revisão por IA.
-5. Documentação na aba /documentacao e README.
+2. ~~Robô com trava de envio e dry-run~~ feito (sessão local).
+3. ~~Banco + tela nova~~ feito, ligado ao robô por `ponte.py` e `robo.salvar_cotacao`.
+4. ~~Revisão por IA~~ feito (falta a chave `ANTHROPIC_API_KEY` no servidor).
+5. ~~Documentação na aba /documentacao e README~~ feito.
+
+**Em aberto:** (a) ICMS de origem 2 fora do ES (12% × 4%), com a
+contabilidade; (b) item sem preço: hoje a justificativa vai para a obs geral;
+usar o "Recusar item" do ME? (c) primeiro "Salvar no ME" pela TELA contra o ME
+real (o robô já foi provado sozinho; a tela, com robô falso).

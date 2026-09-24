@@ -174,7 +174,14 @@ JADLOG_TOKEN           JADLOG_CONTA        JADLOG_CONTRATO
 SSW_DOMINIO            SSW_CPF             SSW_USUARIO   SSW_SENHA
 TRANSLOVATO_CNPJ       TRANSLOVATO_USUARIO TRANSLOVATO_SENHA
 COTAFRETE_ADM_SENHA
+ME_VENTURA_LOGIN       ME_VENTURA_SENHA
+ME_UNIAO_LOGIN         ME_UNIAO_SENHA
+ANTHROPIC_API_KEY
 ```
+
+As `ME_*` ligam a tela `/me` do Mercado Eletrônico (sem elas a tela avisa e
+não lê nada). `ANTHROPIC_API_KEY` liga a revisão por IA das respostas do ME;
+sem ela a revisão aparece como "indisponível" e o resto funciona.
 
 Teste antes de seguir: rode `Servidor.bat` e abra `http://localhost:8000`
 dentro da própria VM. Faça uma cotação real e confira que as cinco

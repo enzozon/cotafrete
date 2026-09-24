@@ -2307,6 +2307,8 @@ para tentar de novo quem falhou.</p>
 
 <h2>Quem cota sozinho hoje</h2>
 <ul>{_lista_automaticas()}</ul>
+
+{me_ui.secao_documentacao()}
 </div>
 
 <p><a href="/">← nova cotação</a></p>"""
