@@ -343,6 +343,33 @@ Seção "Mercado Eletrônico: responder cotações" na aba **/documentacao**
 (`me_ui.secao_documentacao`, números lidos das constantes), README (rotas,
 chaves do `.env`, arquitetura) e `docs/DEPLOY_SERVIDOR.md` (chaves).
 
+## Item sem preço → "Recusar item" do ME (24/09/2026)
+Decisão do usuário: item que não será cotado é **recusado no ME** ("Deseja
+Recusar o Item? Clique Aqui"), com a observação do usuário como justificativa
+(`txtJustificativaRecusa_N`, até 200 caracteres). Antes ia para a obs geral.
+- Na página, recusar é só JavaScript (`HabilitarRecusa(N)`): alterna o botão,
+  limpa e deixa readonly os campos do item e mostra a justificativa. **Não sai
+  requisição nenhuma**; a recusa vai no MESMO POST do Salvar (`Acao=9`).
+- O robô (`robo.ajustar_recusas`) chama essa função — não clica num botão com
+  "Recusar" no texto — e só quando o estado é o oposto do desejado (chamar de
+  novo desfaz). Faz isso ANTES de digitar: `fill` em campo readonly quebra.
+  Item que ganhou preço num rascunho antes recusado é "des-recusado".
+- **Perigo documentado no JS do ME:** se todos os itens da cotação forem
+  recusados, o Salvar pergunta "Você está recusando todos os itens…" e, se
+  aceito, vira **recusa da cotação** (`RespCotaGrava.asp`, vai ao comprador).
+  Três barreiras: `mapa` não monta plano com todos os itens da página
+  recusados; a trava cancela esse confirm; a rede bloqueia `RespCotaGrava.asp`.
+- **Provado no ME real (UNIÃO 23052403, texto "TESTE DO ROBO - NAO ENVIAR"):**
+  dry-run → item 20 recusado pelo `HabilitarRecusa` real, 0 POST; Salvar → 1
+  POST `Acao=9`, 0 divergências, e ao reabrir o item 20 **continuava recusado
+  com a justificativa** (o rascunho guarda a recusa); a lista seguiu "Não
+  Respondida". Depois a recusa de teste foi **desfeita** (mais 1 POST
+  `Acao=9`): a cotação voltou ao rascunho anterior (só o item 10 com os
+  valores de teste da sessão local).
+- Aprendido no desfazer manual: item vazio precisa de `BaseCalculo` vazio (o ME
+  traz 100,00 e exige preço, marcando o campo em vermelho, SEM alert). O robô
+  já faz isso; script avulso tem de fazer igual.
+
 ## Próximos passos
 1. ~~Recon~~, ~~teste de Salvar~~ e ~~robô~~ (acima).
 2. ~~Robô com trava de envio e dry-run~~ feito (sessão local).
@@ -351,6 +378,5 @@ chaves do `.env`, arquitetura) e `docs/DEPLOY_SERVIDOR.md` (chaves).
 5. ~~Documentação na aba /documentacao e README~~ feito.
 
 **Em aberto:** (a) ICMS de origem 2 fora do ES (12% × 4%), com a
-contabilidade; (b) item sem preço: hoje a justificativa vai para a obs geral;
-usar o "Recusar item" do ME? (c) primeiro "Salvar no ME" pela TELA contra o ME
+contabilidade; (b) ~~item sem preço~~ → "Recusar item" (acima); (c) primeiro "Salvar no ME" pela TELA contra o ME
 real (o robô já foi provado sozinho; a tela, com robô falso).
