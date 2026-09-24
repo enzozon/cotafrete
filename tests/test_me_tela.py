@@ -316,3 +316,16 @@ def test_alerta_da_cotacao_inteira_aparece_uma_vez(cliente, monkeypatch):
     cliente.post(f"/me/{cid}/ler")
     html = _preencher(cliente, cid, acao="revisar").text
     assert html.count("falta o nº da proposta") == 1
+
+
+def test_item_sem_preco_aparece_como_recusado_na_previa(cliente):
+    cliente.post("/me/atualizar")
+    cid = _id(23052403)
+    cliente.post(f"/me/{cid}/ler")
+    form = {"validade_dias": "30", "acao": "conferir",
+            "preco_10": "10,00", "ncm_10": "48219000", "prazo_10": "30", "marca_10": "X", "obs_10": "", "origem_10": "0",
+            "preco_20": "", "ncm_20": "", "prazo_20": "", "marca_20": "", "obs_20": "fora de linha", "origem_20": "",
+            "preco_30": "", "ncm_30": "", "prazo_30": "", "marca_30": "", "obs_30": "sem estoque", "origem_30": ""}
+    html = cliente.post(f"/me/{cid}", data=form).text
+    assert html.count("será <b>recusado no ME</b>") == 2
+    assert 'justificativa "fora de linha"' in html

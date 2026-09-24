@@ -545,6 +545,9 @@ def ver(cid: int, request: Request, msg: str = ""):
         prev = (f'<div class="me-prev">ICMS {p["icms"]}% · PIS {p["pis"]} {p["pis_incluso"]} · '
                 f'COFINS {p["cofins"]} {p["cofins_incluso"]} · entrega {p["data_entrega"]}</div>'
                 if p else "")
+        if not (i["preco"] or "").strip() and (i["obs"] or "").strip():
+            prev = (f'<div class="me-prev">Sem preço: será <b>recusado no ME</b> ("Recusar '
+                    f'item"), com a justificativa "{e(" ".join(i["obs"].split()))}".</div>')
         linhas += f"""<tr data-item="{n}">
 <td><b>{n}</b></td>
 <td class="me-desc"><b>{e(i['descricao'])}</b><br><small>{e(i['quantidade'])} {e(i['unidade'])} · {e(pedido)}</small>
@@ -750,7 +753,9 @@ o que o comprador pediu: descrição, quantidade, estado de entrega, origem e
 data de remessa, e o texto dele (abra "pedido do comprador").</li>
 <li>Preencha só o que muda: <b>preço unitário, NCM, prazo em dias corridos,
 marca (até {rg.MAX_MARCA} caracteres), observação (até {MAX_OBS}) e origem
-(0 ou 2)</b>, e a validade da proposta em dias. Impostos, data de entrega,
+(0 ou 2)</b>, e a validade da proposta em dias. Item que você não vai cotar:
+deixe o preço vazio e escreva o motivo na observação — o robô usa o
+<b>"Recusar item"</b> do ME com esse motivo como justificativa. Impostos, data de entrega,
 frete, condição de pagamento e o resto o sistema calcula. NCM, marca e origem
 de um material que já apareceu voltam sozinhos.</li>
 <li><b>Guardar e conferir</b> mostra, embaixo de cada item, o que o robô vai

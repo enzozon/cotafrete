@@ -134,7 +134,7 @@ def montar_pedido(cotacao: dict, previa: dict[int, dict[str, str]],
                 "campos_adicionais": i["campos_adicionais"],
             },
             "resposta_do_fornecedor": {
-                "preco_unitario": i["preco"] or "(sem preço — não cotado)",
+                "preco_unitario": i["preco"] or "(sem preço — o item será RECUSADO no ME, com a observação como justificativa)",
                 "ncm": i["ncm"], "prazo_dias": i["prazo_dias"], "marca": i["marca"],
                 "observacao": i["obs"], "origem": i["origem"],
             },
