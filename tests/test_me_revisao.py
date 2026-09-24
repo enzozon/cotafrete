@@ -1,15 +1,17 @@
-"""Revisão por IA — sem rede: um cliente falso registra o pedido e devolve
-respostas prontas. Confere o formato do pedido (modelo, fallback, esquema)
-e que toda falha vira "revisão IA indisponível" em vez de exceção."""
+"""Revisão por IA — sem rede: o provedor falso de tests/test_ia.py responde
+no lugar do Groq/OpenRouter. Confere o pedido (texto do comprador e cálculos
+vão junto, esquema no formato certo) e que toda falha vira "revisão IA
+indisponível" em vez de exceção."""
 
 from __future__ import annotations
 
 import json
-from types import SimpleNamespace
 
 import pytest
 
+from core import ia
 from mercado_eletronico import revisao as rv
+from tests.test_ia import Provedor, Resp
 
 COTACAO = {
     "conta": "ventura", "numero": 23039029, "empresa": "Samarco Mineração",
@@ -25,73 +27,89 @@ COTACAO = {
 PREVIA = {10: {"icms": "17,00", "data_entrega": "23/10/2026"}}
 
 
-class Falso:
-    def __init__(self, texto=None, stop="end_turn", erro=None, modelo="claude-opus-5"):
-        self.pedidos = []
-        self._r = SimpleNamespace(stop_reason=stop, model=modelo,
-                                  content=[SimpleNamespace(type="text", text=texto or "")])
-        self._erro = erro
-        self.beta = SimpleNamespace(messages=SimpleNamespace(create=self._create))
-
-    def _create(self, **kw):
-        self.pedidos.append(kw)
-        if self._erro:
-            raise self._erro
-        return self._r
+@pytest.fixture
+def prov(monkeypatch):
+    p = Provedor()
+    monkeypatch.setattr(ia, "POST", p)
+    monkeypatch.setattr(ia, "_castigo", {})
+    monkeypatch.setattr(ia, "REGISTRO", None)
+    monkeypatch.setenv("IA_MODELOS", "groq:melhor,openrouter:reserva:free")
+    monkeypatch.setenv("GROQ_API_KEY", "x")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "y")
+    return p
 
 
 def _json(*alertas):
     return json.dumps({"alertas": [dict(zip(("item", "nivel", "mensagem"), a)) for a in alertas]})
 
 
-def test_pedido_no_formato_certo():
-    f = Falso(_json())
-    rv.revisar(COTACAO, PREVIA, [], ["Item 10: aviso x"], "NÃO SERÃO ACEITAS MARCAS SIMILARES", cliente=f)
-    (p,) = f.pedidos
-    assert p["model"] == "claude-opus-5"
-    assert p["thinking"] == {"type": "adaptive"}
-    assert p["fallbacks"] == "default" and p["betas"] == ["server-side-fallback-2026-07-01"]
-    assert p["output_config"]["format"]["schema"] == rv.ESQUEMA
-    texto = p["messages"][0]["content"]
+def test_pedido_no_formato_certo(prov, monkeypatch):
+    monkeypatch.setattr(ia, "COM_ESQUEMA", {"groq:melhor"})
+    prov.roteiro["melhor"] = [Resp(conteudo=_json())]
+    rv.revisar(COTACAO, PREVIA, [], ["Item 10: aviso x"], "NÃO SERÃO ACEITAS MARCAS SIMILARES")
+    ((provedor, modelo, corpo),) = prov.pedidos
+    assert (provedor, modelo) == ("groq", "melhor")
+    assert corpo["response_format"]["json_schema"]["schema"] == rv.ESQUEMA
+    assert corpo["messages"][0]["content"] == rv.SISTEMA
+    texto = corpo["messages"][1]["content"]
     for trecho in ("ENTREGAR EM BSB", "Bortolini", "Genérica", "NÃO SERÃO ACEITAS MARCAS SIMILARES",
                    "Item 10: aviso x", "17,00"):
         assert trecho in texto
 
 
-def test_alertas_ordenados_por_gravidade():
-    f = Falso(_json((10, "info", "detalhe"), (10, "critico", "marca Genérica, pedida Bortolini"),
-                    (None, "atencao", "entrega em BSB × ES")))
-    r = rv.revisar(COTACAO, PREVIA, [], [], cliente=f)
-    assert not r.indisponivel and r.modelo == "claude-opus-5"
+def test_o_esquema_vale_no_modo_estrito():
+    """Groq estrito: todo campo `required` e `additionalProperties: false`."""
+    def conferir(esq):
+        if esq.get("type") == "object":
+            assert esq["additionalProperties"] is False
+            assert set(esq["required"]) == set(esq["properties"])
+            for v in esq["properties"].values():
+                conferir(v)
+        if esq.get("type") == "array":
+            conferir(esq["items"])
+    conferir(rv.ESQUEMA)
+
+
+def test_alertas_ordenados_por_gravidade(prov):
+    prov.roteiro["melhor"] = [Resp(conteudo=_json(
+        (10, "info", "detalhe"), (10, "critico", "marca Genérica, pedida Bortolini"),
+        (None, "atencao", "entrega em BSB × ES")))]
+    r = rv.revisar(COTACAO, PREVIA, [], [])
+    assert not r.indisponivel and r.modelo == "groq:melhor"
     assert [a.nivel for a in r.alertas] == ["critico", "atencao", "info"]
     assert r.alertas[1].item is None
 
 
-def test_nivel_desconhecido_e_mensagem_vazia_somem():
-    f = Falso(_json((10, "urgente", "x"), (10, "info", "  ")))
-    assert rv.revisar(COTACAO, PREVIA, [], [], cliente=f).alertas == []
-
-
-@pytest.mark.parametrize("falso, motivo", [
-    (Falso(stop="refusal"), "recusou"),
-    (Falso("{", stop="max_tokens"), "cortada"),
-    (Falso("não é json"), "ilegível"),
-    (Falso(erro=ConnectionError("sem rede")), "ConnectionError"),
-])
-def test_falha_vira_indisponivel(falso, motivo):
-    r = rv.revisar(COTACAO, PREVIA, [], [], cliente=falso)
-    assert r.indisponivel and motivo in r.erro and r.alertas == []
-
-
-def test_sem_chave_nem_tenta(monkeypatch):
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    monkeypatch.delenv("ANTHROPIC_AUTH_TOKEN", raising=False)
+def test_nivel_desconhecido_e_mensagem_vazia_somem(prov):
+    prov.roteiro["melhor"] = [Resp(conteudo=_json((10, "urgente", "x"), (10, "info", "  "), ("20", "info", "y")))]
     r = rv.revisar(COTACAO, PREVIA, [], [])
-    assert r.indisponivel and "ANTHROPIC_API_KEY" in r.erro
+    assert [(a.item, a.mensagem) for a in r.alertas] == [(20, "y")]   # "20" em texto vira 20
+
+
+def test_resposta_ruim_passa_para_o_proximo_modelo(prov):
+    prov.roteiro["melhor"] = [Resp(conteudo="Não encontrei problemas.")]
+    prov.roteiro["reserva:free"] = [Resp(conteudo=_json((10, "critico", "marca")))]
+    r = rv.revisar(COTACAO, PREVIA, [], [])
+    assert r.modelo == "openrouter:reserva:free" and len(r.alertas) == 1
+
+
+def test_todos_falharam_vira_indisponivel_com_o_motivo(prov):
+    prov.roteiro["melhor"] = [Resp(429, headers={"retry-after": "20"})]
+    prov.roteiro["reserva:free"] = [Resp(503)]
+    r = rv.revisar(COTACAO, PREVIA, [], [])
+    assert r.indisponivel and r.alertas == []
+    assert "groq:melhor: limite por minuto" in r.erro and "fora do ar (503)" in r.erro
+
+
+def test_sem_chave_nem_tenta(prov, monkeypatch):
+    monkeypatch.delenv("GROQ_API_KEY")
+    monkeypatch.delenv("OPENROUTER_API_KEY")
+    r = rv.revisar(COTACAO, PREVIA, [], [])
+    assert r.indisponivel and "GROQ_API_KEY" in r.erro and prov.pedidos == []
 
 
 def test_ida_e_volta_pelo_banco():
-    r = rv.Revisao([rv.Alerta(10, "critico", "x")], None, "claude-opus-5")
+    r = rv.Revisao([rv.Alerta(10, "critico", "x")], None, "groq:openai/gpt-oss-120b")
     assert rv.Revisao.de_json(r.como_json()) == r
     assert rv.Revisao.de_json("lixo") is None and rv.Revisao.de_json(None) is None
 

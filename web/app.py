@@ -55,6 +55,7 @@ from carriers.translovato.adapter import TranslovatoAdapter
 from core import cep as buscador_cep
 from core import sessao
 from core import cnpj as buscador_cnpj
+from core import ia
 from core import selecao
 from core.aceite import rotulo_validade, vencida
 from carriers.generoso.mapping import Agendamento, validar_agendamento
@@ -130,6 +131,9 @@ app.include_router(me_ui.router)
 # /adm, que ele lê por `adm.banco`.
 app.include_router(adm_me.router)
 me_ui.banco = banco
+# Cada chamada à IA (core/ia.py) fica registrada no banco para o /adm/me
+# mostrar quem respondeu. Lambda, e não o método: os testes trocam `banco`.
+ia.REGISTRO = lambda **kw: banco.ia_registrar(**kw)
 
 # Quantas transportadoras rodam juntas, quantas vezes se tenta de novo e por
 # quanto tempo: tudo em core/retentativa.py, porque as três decisões dependem

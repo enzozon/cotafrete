@@ -199,7 +199,7 @@ mercado_eletronico/
   mapa.py                 regras -> campos do formulário do ME (puro)
   trava.py                as três travas contra envio
   robo.py, ponte.py       Playwright: salvar; ler lista e páginas
-  revisao.py              revisão por IA (API da Anthropic, só alertas)
+  revisao.py              revisão por IA (modelos grátis via core/ia.py, só alertas)
 ```
 
 **O que é puro roda sem internet e tem teste.** O que é browser é fino de
@@ -286,7 +286,8 @@ DV_IMAP_HOST / _USUARIO / _SENHA           caixa do suporte (ingestor de e-mail)
 COTAFRETE_ADM_SENHA                        senha do painel /adm
 ME_VENTURA_LOGIN / ME_VENTURA_SENHA        Mercado Eletrônico, conta VENTURA
 ME_UNIAO_LOGIN / ME_UNIAO_SENHA            Mercado Eletrônico, conta UNIÃO
-ANTHROPIC_API_KEY                          revisão por IA das respostas do ME
+GROQ_API_KEY / OPENROUTER_API_KEY          IA grátis (core/ia.py): revisão do ME
+IA_MODELOS                                 opcional: a ordem dos modelos (ver abaixo)
 ```
 
 ### Mercado Eletrônico
@@ -297,12 +298,31 @@ impostos e datas, valida, pede uma revisão por IA (só alertas) e o robô
 **preenche e salva** no ME. **O envio é sempre humano** — Salvar e Confirmar
 do ME são o mesmo POST com `Acao` diferente, e o robô só deixa sair `Acao=9`
 (salvar) e a troca de página. Sem `ME_*` no `.env` a tela avisa e não lê
-nada; sem `ANTHROPIC_API_KEY` a revisão diz "indisponível" e o resto segue.
+nada; sem `GROQ_API_KEY`/`OPENROUTER_API_KEY` a revisão diz "indisponível" e o resto segue.
 **Limpar no ME** (na cotação) apaga do rascunho do ME tudo o que o robô
 escreve — itens, recusas, obs geral — com o mesmo Salvar; ficam só os campos
 do cabeçalho que o ME exige para salvar (frete, telefone, validade, moeda).
 Tudo (decisões, recon, provas no ME real) em
 [`docs/MERCADO_ELETRONICO.md`](docs/MERCADO_ELETRONICO.md).
+
+### IA (`core/ia.py`)
+
+Toda IA do sistema passa por `core/ia.py`: uma lista de modelos **grátis** do
+Groq e do OpenRouter, do melhor para o pior. Cada pedido começa do primeiro;
+o que estourar o limite fica de fora até o provedor liberar (o limite por
+minuto em segundos; o diário até a meia-noite UTC) e o pedido passa ao
+próximo. Quando o limite volta, o melhor volta a ser usado sozinho. Resposta
+fora do JSON pedido também passa ao próximo. O `/adm/me` mostra, por modelo,
+se está livre, as respostas, as falhas e o último erro.
+
+A ordem padrão está em `CADEIA_PADRAO`; para trocar sem mexer no código:
+`IA_MODELOS=groq:openai/gpt-oss-120b,openrouter:nvidia/nemotron-3-ultra-550b-a55b:free,...`
+(com os US$ 10 no OpenRouter — 1.000 pedidos/dia em vez de 50 — vale pôr os
+dele na frente). O arquivo não importa nada do cotafrete: serve para outros
+projetos.
+
+Testar as chaves: `python -m core.ia` (1 pedido pela lista, diz quem
+respondeu) ou `python -m core.ia --todos` (1 pedido por modelo).
 
 ### Della Volpe: automática e ingestor de e-mail
 

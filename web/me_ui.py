@@ -324,7 +324,10 @@ def rodar_revisao(cid: int, usuario: str) -> None:
         else:
             por_nivel = {n: sum(a.nivel == n for a in rev.alertas) for n in rv.NIVEIS}
             banco.me_registrar(cid, f"revisão IA: {len(rev.alertas)} alertas",
-                               ", ".join(f"{v} {rv.ROTULO_NIVEL[n].lower()}" for n, v in por_nivel.items() if v),
+                               " · ".join(x for x in (
+                                   ", ".join(f"{v} {rv.ROTULO_NIVEL[n].lower()}"
+                                             for n, v in por_nivel.items() if v),
+                                   rev.modelo or "") if x),
                                usuario)
     finally:
         REVISANDO.discard(cid)

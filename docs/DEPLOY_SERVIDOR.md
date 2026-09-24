@@ -176,12 +176,15 @@ TRANSLOVATO_CNPJ       TRANSLOVATO_USUARIO TRANSLOVATO_SENHA
 COTAFRETE_ADM_SENHA
 ME_VENTURA_LOGIN       ME_VENTURA_SENHA
 ME_UNIAO_LOGIN         ME_UNIAO_SENHA
-ANTHROPIC_API_KEY
+GROQ_API_KEY           OPENROUTER_API_KEY
+IA_MODELOS             (opcional)
 ```
 
 As `ME_*` ligam a tela `/me` do Mercado Eletrônico (sem elas a tela avisa e
-não lê nada). `ANTHROPIC_API_KEY` liga a revisão por IA das respostas do ME;
-sem ela a revisão aparece como "indisponível" e o resto funciona.
+não lê nada). `GROQ_API_KEY` e `OPENROUTER_API_KEY` ligam a IA (revisão das respostas do
+ME) com modelos grátis — basta uma das duas; com as duas, uma cobre o limite
+da outra. Sem nenhuma, a revisão aparece como "indisponível" e o resto
+funciona. `IA_MODELOS` muda a ordem dos modelos (README, seção IA).
 
 Teste antes de seguir: rode `Servidor.bat` e abra `http://localhost:8000`
 dentro da própria VM. Faça uma cotação real e confira que as cinco

@@ -1,7 +1,8 @@
 """Revisão por IA da resposta de cotação do ME — só alertas, nunca valores.
 
-Uma chamada por cotação à API da Anthropic (`claude-opus-5`, decisão do
-usuário em 23/09/2026). A IA lê o que o comprador pediu (descrição, texto
+Uma chamada por cotação, pela cadeia de modelos grátis de `core/ia.py`
+(Groq e OpenRouter; decisão do usuário em 24/09/2026 — antes era a API da
+Anthropic). A IA lê o que o comprador pediu (descrição, texto
 do item, Campos Adicionais, observação geral) e o que o usuário preencheu,
 e devolve alertas em três níveis: info, atenção, crítico.
 
@@ -14,8 +15,8 @@ estranhas, texto de observação com erro.
 Regras que não mudam:
 - Nunca altera valor: o resultado é lista de frases. Nada daqui é digitado
   no ME.
-- Falhou (sem chave, rede, recusa, JSON estranho) → `Revisao.indisponivel`
-  com o motivo, e o fluxo segue. A IA não bloqueia salvar.
+- Falhou (sem chave, todos os modelos no limite, JSON estranho) →
+  `Revisao.indisponivel` com o motivo, e o fluxo segue. A IA não bloqueia salvar.
 - Os cálculos de `regras` (impostos, datas, erros e avisos) vão junto no
   pedido, como FATO: a IA não refaz conta, comenta o que o código não vê.
 """
@@ -24,11 +25,11 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 from dataclasses import dataclass, field
 from typing import Any
 
-MODELO = "claude-opus-5"
+from core import ia
+
 NIVEIS = ("critico", "atencao", "info")
 ROTULO_NIVEL = {"critico": "Crítico", "atencao": "Atenção", "info": "Info"}
 
@@ -153,43 +154,33 @@ def montar_pedido(cotacao: dict, previa: dict[int, dict[str, str]],
             + json.dumps(dados, ensure_ascii=False, indent=1))
 
 
-def _cliente():
-    import anthropic
-    return anthropic.Anthropic()
+def _alertas(dados: Any) -> list[Alerta]:
+    """Valida o JSON do modelo. Levantar aqui = próximo modelo da cadeia."""
+    brutos = dados["alertas"]
+    if not isinstance(brutos, list):
+        raise TypeError("'alertas' não é lista")
+    alertas = []
+    for a in brutos:
+        item, nivel = a.get("item"), a.get("nivel")
+        mensagem = str(a.get("mensagem") or "").strip()
+        if nivel not in NIVEIS or not mensagem:
+            continue   # nível inventado ou frase vazia: descarta o alerta, não a resposta
+        if isinstance(item, str):
+            item = int(item) if item.strip().isdigit() else None
+        alertas.append(Alerta(item if isinstance(item, int) else None, nivel, mensagem))
+    return sorted(alertas, key=lambda a: (NIVEIS.index(a.nivel), a.item or 0))
 
 
 def revisar(cotacao: dict, previa: dict[int, dict[str, str]], erros: list[str],
-            avisos: list[str], obs_geral: str = "", cliente: Any = None) -> Revisao:
+            avisos: list[str], obs_geral: str = "") -> Revisao:
     """Chama a IA. Nunca levanta: qualquer falha vira Revisao(erro=...)."""
-    if cliente is None and not (os.getenv("ANTHROPIC_API_KEY") or os.getenv("ANTHROPIC_AUTH_TOKEN")):
-        return Revisao(erro="falta ANTHROPIC_API_KEY no .env")
+    if not ia.configurada():
+        return Revisao(erro="falta GROQ_API_KEY ou OPENROUTER_API_KEY no .env")
     try:
-        cliente = cliente or _cliente()
-        resposta = cliente.beta.messages.create(
-            model=MODELO,
-            max_tokens=16000,
-            system=SISTEMA,
-            thinking={"type": "adaptive"},
-            output_config={"format": {"type": "json_schema", "schema": ESQUEMA}},
-            # Se o classificador de segurança recusar, o próprio servidor
-            # refaz no modelo recomendado para aquela categoria.
-            betas=["server-side-fallback-2026-07-01"],
-            fallbacks="default",
-            messages=[{"role": "user", "content": montar_pedido(cotacao, previa, erros, avisos, obs_geral)}],
-        )
-    except Exception as exc:  # rede, chave, limite: segue sem IA
+        r = ia.completar_json(SISTEMA, montar_pedido(cotacao, previa, erros, avisos, obs_geral),
+                              ESQUEMA, funcao="revisão ME", validar=_alertas)
+    except ia.IAIndisponivel as exc:
+        return Revisao(erro=str(exc)[:500])
+    except Exception as exc:   # defeito inesperado: a revisão nunca derruba a tela
         return Revisao(erro=f"{type(exc).__name__}: {exc}"[:300])
-
-    if resposta.stop_reason == "refusal":
-        return Revisao(erro="a IA recusou revisar esta cotação", modelo=resposta.model)
-    if resposta.stop_reason == "max_tokens":
-        return Revisao(erro="resposta da IA cortada no meio", modelo=resposta.model)
-    texto = next((b.text for b in resposta.content if b.type == "text"), "")
-    try:
-        brutos = json.loads(texto)["alertas"]
-        alertas = [Alerta(a.get("item"), a["nivel"], str(a["mensagem"]).strip())
-                   for a in brutos if a.get("nivel") in NIVEIS and str(a.get("mensagem", "")).strip()]
-    except (ValueError, KeyError, TypeError) as exc:
-        return Revisao(erro=f"resposta da IA ilegível ({type(exc).__name__})", modelo=resposta.model)
-    alertas.sort(key=lambda a: (NIVEIS.index(a.nivel), a.item or 0))
-    return Revisao(alertas=alertas, modelo=resposta.model)
+    return Revisao(alertas=r.dados, modelo=r.modelo)

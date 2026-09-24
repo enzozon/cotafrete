@@ -149,7 +149,7 @@ def _cenario(banco, monkeypatch):
     monkeypatch.setattr(me_ui, "ROBO", lambda *a: SimpleNamespace(
         ok=False, divergencias=[], prints=[], erro="TimeoutError: o Salvar não gerou o POST", avisos=[]))
     me_ui.mandar_robo(ids[23052403], "enzo", False)
-    monkeypatch.setattr(me_ui, "REVISOR", lambda *a, **k: rv.Revisao(erro="falta ANTHROPIC_API_KEY no .env"))
+    monkeypatch.setattr(me_ui, "REVISOR", lambda *a, **k: rv.Revisao(erro="falta GROQ_API_KEY ou OPENROUTER_API_KEY no .env"))
     me_ui.rodar_revisao(ids[23049227], "leandro")
     return ids
 
@@ -210,7 +210,7 @@ def test_tela_de_uma_cotacao(monkeypatch, banco, cliente):
     assert "erro do robô" in html
     assert "RespostaCotaItem.asp?Cotacao=23052403" in html      # abrir no ME
     html2 = cliente.get(f"/adm/me/{ids[23049227]}").text
-    assert "Revisão IA indisponível: falta ANTHROPIC_API_KEY" in html2
+    assert "Revisão IA indisponível: falta GROQ_API_KEY" in html2
     assert cliente.get("/adm/me/99999").status_code == 404
 
 
@@ -218,3 +218,36 @@ def test_painel_do_adm_nao_mudou(monkeypatch, banco, cliente):
     """O /adm de fretes continua lá, agora com o link do ME no menu."""
     html = cliente.get("/adm").text
     assert "Painel" in html and 'href="/adm/me"' in html
+
+
+# ------------------------------------------------------------ IA — modelos
+def test_cartao_da_ia_mostra_quem_respondeu_e_quem_esta_no_limite(monkeypatch, banco, cliente):
+    """A revisão passa pela cadeia de core/ia.py de verdade (provedor falso):
+    o 1º estoura o limite, o 2º responde. O painel mostra os dois."""
+    from core import ia
+    from tests.test_ia import Provedor, Resp
+    prov = Provedor()
+    prov.roteiro["melhor"] = [Resp(429, headers={"retry-after": "600"})]
+    prov.roteiro["reserva:free"] = [Resp(conteudo='{"alertas": []}')]
+    monkeypatch.setattr(ia, "POST", prov)
+    monkeypatch.setattr(ia, "_castigo", {})
+    monkeypatch.setattr(ia, "REGISTRO", lambda **kw: banco.ia_registrar(**kw))
+    monkeypatch.setenv("IA_MODELOS", "groq:melhor,openrouter:reserva:free")
+    monkeypatch.setenv("GROQ_API_KEY", "x")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "y")
+    monkeypatch.setattr(me_ui, "REVISOR", rv.revisar)
+
+    me_ui.atualizar(["ventura"])
+    cid = _id(banco, 23049227)
+    me_ui.carregar_itens(cid)
+    me_ui.rodar_revisao(cid, "leandro")
+
+    with banco._conectar() as con:
+        (m1, m2) = pm.ia_modelos(con, 30)
+    assert (m1["modelo"], m1["estado"], m1["falhas"]) == ("groq:melhor", "castigo", 1)
+    assert (m2["modelo"], m2["estado"], m2["respostas"]) == ("openrouter:reserva:free", "livre", 1)
+    html = cliente.get("/adm/me").text
+    assert "IA — modelos" in html and "limite por minuto atingido" in html and "fora até" in html
+    # o histórico da cotação diz qual modelo revisou
+    assert any("openrouter:reserva:free" in (h["detalhe"] or "") for h in banco.me_historico(cid))
+    assert "ia" in cliente.get("/adm/me/agora").json()

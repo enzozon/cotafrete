@@ -283,13 +283,13 @@ def test_revisao_por_ia_mostra_alertas_no_item_e_na_cotacao(cliente, monkeypatch
 
 
 def test_ia_indisponivel_nao_bloqueia_salvar(cliente, monkeypatch, robo):
-    revisar, _ = _revisor(erro="falta ANTHROPIC_API_KEY no .env")
+    revisar, _ = _revisor(erro="falta GROQ_API_KEY ou OPENROUTER_API_KEY no .env")
     monkeypatch.setattr(me_ui, "REVISOR", revisar)
     cliente.post("/me/atualizar")
     cid = _id(23049227)
     cliente.post(f"/me/{cid}/ler")
     html = _preencher(cliente, cid, acao="revisar").text
-    assert "Revisão IA indisponível: falta ANTHROPIC_API_KEY" in html
+    assert "Revisão IA indisponível: falta GROQ_API_KEY" in html
     _preencher(cliente, cid, acao="salvar")
     assert me_ui.banco.me_cotacao(cid)["status"] == "salva"
 

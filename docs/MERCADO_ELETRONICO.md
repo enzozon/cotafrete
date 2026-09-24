@@ -74,8 +74,8 @@ Por cotação: validade (dias).
   Filtros por conta e status.
 - Pós-salvar: reler a página e comparar campo a campo (`regras.conferir`).
 - Modo **dry-run** (preenche sem salvar).
-- IA: uma chamada por cotação, API da Anthropic, `claude-opus-5`
-  (~US$ 0,08/cotação; Sonnet 5 ~US$ 0,03 se quiser economizar).
+- IA: uma chamada por cotação — hoje modelos grátis do Groq/OpenRouter via
+  `core/ia.py` (decisão de 24/09/2026; ver "Revisão por IA").
 - UX: lembrar NCM/marca/origem por código de material; "aplicar a todos";
   copiar do item anterior; prévia em tabela com alertas na linha; contagem
   regressiva até a data limite.
@@ -316,11 +316,13 @@ um robô falso).
 
 ## Revisão por IA (sessão nuvem, 24/09/2026)
 `mercado_eletronico/revisao.py`, botão **Revisar com IA** na cotação.
-- Uma chamada por cotação: `claude-opus-5`, thinking adaptativo, saída em
-  JSON com esquema fixo (`alertas: [{item, nivel, mensagem}]`, níveis
-  critico/atencao/info) e `fallbacks: "default"` (beta
-  `server-side-fallback-2026-07-01`): se o classificador recusar, o servidor
-  refaz no modelo recomendado.
+- Uma chamada por cotação, saída em JSON com esquema fixo (`alertas: [{item,
+  nivel, mensagem}]`, níveis critico/atencao/info).
+- **Provedor (24/09/2026, decisão do usuário):** modelos GRÁTIS do Groq e do
+  OpenRouter pela cadeia de `core/ia.py` — o melhor livre responde; limite
+  estourado → próximo; o limite volta → o melhor volta. O usuário aceitou que
+  provedores grátis podem guardar os dados enviados. Antes era a API da
+  Anthropic (`claude-opus-5`), que nunca chegou a ter chave.
 - Vai para a IA: o pedido do comprador (descrição, quantidade, texto do item,
   Campos Adicionais, **texto geral do comprador** — agora guardado em
   `me_cotacao.obs_comprador`), o preenchimento, o que `regras` calculou e os
@@ -333,9 +335,10 @@ um robô falso).
 - Alertas por item aparecem na linha do item; os da cotação no quadro
   "Revisão por IA". Mudou o preenchimento depois → "revise de novo"
   (assinatura do preenchimento em `revisao_assinatura`).
-- **Falta a chave:** `ANTHROPIC_API_KEY` não existe no ambiente da nuvem nem
-  foi testada contra a API real — testes com cliente falso
-  (`tests/test_me_revisao.py`). Pôr a chave no `.env` do servidor.
+- Chaves `GROQ_API_KEY`/`OPENROUTER_API_KEY` no `.env` do cotafrete-dev
+  (24/09). A nuvem não tem as chaves: os testes usam um provedor falso
+  (`tests/test_ia.py`, `tests/test_me_revisao.py`). Cada chamada fica em
+  `ia_chamada`; o `/adm/me` tem o cartão "IA — modelos".
 
 ## Documentação
 Seção "Mercado Eletrônico: responder cotações" na aba **/documentacao**
@@ -439,16 +442,13 @@ rascunho do ME tudo o que o robô escreve e confere depois. É o mesmo Salvar
 1. ~~Recon~~, ~~teste de Salvar~~ e ~~robô~~ (acima).
 2. ~~Robô com trava de envio e dry-run~~ feito (sessão local).
 3. ~~Banco + tela nova~~ feito, ligado ao robô por `ponte.py` e `robo.salvar_cotacao`.
-4. ~~Revisão por IA~~ feito (falta a chave `ANTHROPIC_API_KEY` no servidor).
+4. ~~Revisão por IA~~ feito (modelos grátis Groq/OpenRouter, `core/ia.py`).
 5. ~~Documentação na aba /documentacao e README~~ feito.
 
 **Em aberto:** (a) ~~ICMS de origem 2 fora do ES~~ → 4% (24/09); (b) ~~item sem preço~~ → "Recusar item" (acima); (c) ~~primeiro "Salvar no ME" pela tela~~ feito (acima);
-(d) `ANTHROPIC_API_KEY` no servidor. Os valores de teste da UNIÃO
+(d) ~~chave da IA~~ → Groq/OpenRouter grátis (24/09). Os valores de teste da UNIÃO
 23052403 foram **limpos em 24/09** (1 POST `Acao=9`): o item 10 voltou ao
 estado de cotação nova (preço 0,00, campos vazios); o cabeçalho ficou com os
 valores fixos reais da empresa (FOB, 60DDL, telefone, BRL, IE, "Frete FOB",
-validade). Continua "Não Respondida". **Próxima conversa:** escolher o
-provedor/modelo da revisão por IA para o `.env` — o usuário pensa numa API
-gratuita que alterna entre vários modelos. Hoje `revisao.py` usa o SDK da
-Anthropic (`claude-opus-5`); outro provedor pede mudar o cliente ali, e a
-revisão continua só alertando (falha → "indisponível").
+validade). Continua "Não Respondida". A revisão por IA usa a cadeia grátis de
+`core/ia.py` (acima); falta a primeira revisão real no cotafrete-dev.

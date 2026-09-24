@@ -266,6 +266,20 @@ CREATE TABLE IF NOT EXISTS me_varredura (
 );
 CREATE INDEX IF NOT EXISTS idx_me_varredura ON me_varredura(conta, id);
 
+-- Cada tentativa de chamada à IA (core/ia.py): qual modelo, para quê, se
+-- respondeu. É o que diz ao administrador quem está respondendo e quando os
+-- modelos grátis estão chegando no limite.
+CREATE TABLE IF NOT EXISTS ia_chamada (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    quando     TEXT NOT NULL,
+    funcao     TEXT NOT NULL,        -- "revisão ME", ...
+    modelo     TEXT NOT NULL,        -- "groq:openai/gpt-oss-120b"
+    ok         INTEGER NOT NULL,
+    erro       TEXT,
+    duracao_s  REAL
+);
+CREATE INDEX IF NOT EXISTS idx_ia_chamada ON ia_chamada(quando);
+
 -- Memória por material: o NCM, a marca e a origem que alguém já digitou
 -- para o mesmo código voltam sozinhos na próxima cotação.
 CREATE TABLE IF NOT EXISTS me_material (
@@ -867,6 +881,18 @@ class Banco:
             # Leitura boa não interessa depois de 90 dias; a falha fica.
             corte = (datetime.now() - timedelta(days=90)).isoformat(timespec="seconds")
             con.execute("DELETE FROM me_varredura WHERE ok = 1 AND quando < ?", (corte,))
+
+    # ------------------------------------------------------------------ IA
+    def ia_registrar(self, *, funcao: str, modelo: str, ok: bool, erro: str | None = None,
+                     duracao_s: float | None = None) -> None:
+        with closing(self._conectar()) as con, con:
+            con.execute(
+                "INSERT INTO ia_chamada (quando, funcao, modelo, ok, erro, duracao_s)"
+                " VALUES (?, ?, ?, ?, ?, ?)",
+                (datetime.now().isoformat(timespec="seconds"), funcao, modelo, int(ok),
+                 erro, duracao_s))
+            corte = (datetime.now() - timedelta(days=90)).isoformat(timespec="seconds")
+            con.execute("DELETE FROM ia_chamada WHERE quando < ?", (corte,))
 
     def me_material(self, chave: str) -> dict | None:
         with closing(self._conectar()) as con, con:

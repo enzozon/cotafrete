@@ -173,6 +173,43 @@ def eventos(con: sqlite3.Connection, dias: int, conta: str | None = None,
     return linhas[:limite]
 
 
+def ia_modelos(con: sqlite3.Connection, dias: int) -> list[dict]:
+    """Cada modelo da cadeia de core/ia.py, na ordem de preferência, com o
+    estado AGORA (livre / de castigo até quando / sem chave) e o que ele fez
+    no período. Modelo que saiu da cadeia mas respondeu no período aparece no
+    fim, para o histórico não sumir quando a lista muda."""
+    import os
+    from core import ia
+    uso = {r["modelo"]: dict(r) for r in con.execute(
+        "SELECT modelo, SUM(ok) AS respostas, SUM(1 - ok) AS falhas,"
+        " MAX(CASE WHEN ok = 1 THEN quando END) AS ultima_ok,"
+        " MAX(CASE WHEN ok = 0 THEN quando END) AS ultima_falha,"
+        " ROUND(AVG(CASE WHEN ok = 1 THEN duracao_s END), 1) AS media_s"
+        " FROM ia_chamada WHERE quando >= ? GROUP BY modelo", (_desde(dias),))}
+    erros = {r["modelo"]: r["erro"] for r in con.execute(
+        "SELECT modelo, erro FROM ia_chamada WHERE id IN"
+        " (SELECT MAX(id) FROM ia_chamada WHERE ok = 0 AND quando >= ? GROUP BY modelo)",
+        (_desde(dias),))}
+    fora = ia.castigados()
+    cadeia = ia.cadeia()
+    saida = []
+    for pos, modelo in enumerate(cadeia + sorted(set(uso) - set(cadeia)), start=1):
+        provedor = modelo.split(":", 1)[0]
+        tem_chave = bool(os.getenv(ia.PROVEDORES.get(provedor, ("", ""))[1] or "-"))
+        u = uso.get(modelo, {})
+        saida.append({
+            "ordem": pos if modelo in cadeia else None, "modelo": modelo,
+            "estado": ("sem chave" if not tem_chave else "fora da lista" if modelo not in cadeia
+                       else "castigo" if modelo in fora else "livre"),
+            "volta_em": datetime.fromtimestamp(fora[modelo][0]) if modelo in fora else None,
+            "motivo": fora[modelo][1] if modelo in fora else None,
+            "respostas": u.get("respostas") or 0, "falhas": u.get("falhas") or 0,
+            "ultima_ok": u.get("ultima_ok"), "media_s": u.get("media_s"),
+            "ultimo_erro": erros.get(modelo),
+        })
+    return saida
+
+
 def serie(con: sqlite3.Connection, dias: int) -> dict:
     """Cotações que apareceram no ME × salvas pelo robô, por balde de tempo."""
     unidade = unidade_do_periodo(dias)
@@ -203,6 +240,7 @@ def versao(con: sqlite3.Connection) -> str:
     return _assinatura(*con.execute(
         "SELECT (SELECT COALESCE(MAX(id), 0) FROM me_historico),"
         "       (SELECT COALESCE(MAX(id), 0) FROM me_varredura),"
+        "       (SELECT COALESCE(MAX(id), 0) FROM ia_chamada),"
         "       (SELECT COUNT(*) FROM me_cotacao),"
         "       (SELECT COALESCE(MAX(atualizado_em), '') FROM me_cotacao)").fetchone())
 

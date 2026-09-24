@@ -172,6 +172,31 @@ def _leitura(linhas: list[dict]) -> str:
             f'<tbody>{corpo}</tbody></table></div>')
 
 
+def _ia(linhas: list[dict]) -> str:
+    if not linhas:
+        return '<p class="vazio">Nenhum modelo configurado (IA_MODELOS).</p>'
+    corpo = ""
+    for l in linhas:
+        if l["estado"] == "livre":
+            cor, fraca = ui.TOM["ok"]
+            estado = f'<span class="pilula" style="color:{cor};background:{fraca}">livre</span>'
+        elif l["estado"] == "castigo":
+            cor, fraca = ui.TOM["atencao"]
+            estado = (f'<span class="pilula" style="color:{cor};background:{fraca}">'
+                      f'fora até {l["volta_em"]:%d/%m %H:%M}</span> <small>{e(l["motivo"])}</small>')
+        else:
+            estado = f'<span class="sem-dado">{e(l["estado"])}</span>'
+        corpo += (f'<tr><td class="num">{l["ordem"] or "—"}</td><td class="material">{e(l["modelo"])}</td>'
+                  f'<td>{estado}</td><td class="num">{l["respostas"]}</td><td class="num">{l["falhas"]}</td>'
+                  f'<td class="hora">{e(_hora(l["ultima_ok"]))}'
+                  + (f' <small>({l["media_s"]} s)</small>' if l["media_s"] else "")
+                  + f'</td><td class="material" title="{e(l["ultimo_erro"] or "")}">'
+                  f'{e(l["ultimo_erro"] or "")}</td></tr>')
+    return ('<div class="rolagem"><table class="saude"><thead><tr><th>ordem</th><th>modelo</th>'
+            '<th>agora</th><th>respostas</th><th>falhas</th><th>última resposta</th>'
+            f'<th>último erro</th></tr></thead><tbody>{corpo}</tbody></table></div>')
+
+
 def _dados(con, dias: int, conta: str, status: str, problemas: bool) -> dict:
     momento = agora()
     return {
@@ -181,6 +206,7 @@ def _dados(con, dias: int, conta: str, status: str, problemas: bool) -> dict:
         "cotacoes": _cotacoes(pm.cotacoes(con, dias, conta or None, status or None), momento),
         "eventos": _eventos(pm.eventos(con, dias, conta or None, problemas)),
         "leitura": _leitura(pm.leitura_por_conta(con, tuple(CONTAS))),
+        "ia": _ia(pm.ia_modelos(con, dias)),
     }
 
 
@@ -225,7 +251,7 @@ async function pulsar() {
     if (r.status === 204 || !r.ok) return;
     const d = await r.json();
     versao = d.v;
-    for (const k of ['faixa', 'atencao', 'cotacoes', 'eventos', 'leitura']) {
+    for (const k of ['faixa', 'atencao', 'cotacoes', 'eventos', 'leitura', 'ia']) {
       const alvo = document.getElementById('me-' + k);
       if (alvo) alvo.innerHTML = d[k];
     }
@@ -290,6 +316,8 @@ def painel(adm_cookie: str | None = Cookie(None, alias=adm.COOKIE_ADM), dias: in
                     classe="c4", atraso=0.10)
         + ui.cartao("Leitura da lista do ME", f'<div id="me-leitura">{d["leitura"]}</div>',
                     nota="a cada 7 min, por conta", classe="c12", atraso=0.15)
+        + ui.cartao("IA — modelos", f'<div id="me-ia">{d["ia"]}</div>',
+                    nota=f"a lista em ordem de preferência · {rotulo}", classe="c12", atraso=0.18)
         + ui.cartao("Cotações", filtros + f'<div id="me-cotacoes">{d["cotacoes"]}</div>',
                     nota=f"abertas e as vistas em {rotulo}", classe="c12", atraso=0.20)
         + ui.cartao("Histórico de eventos", filtro_eventos + f'<div id="me-eventos">{d["eventos"]}</div>',
