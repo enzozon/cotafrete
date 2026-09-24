@@ -82,6 +82,10 @@ class Proposta(NamedTuple):
     uf_origem: str | None = None
     destino: str = ""
     uf_destino: str | None = None
+    # "" = lido por este arquivo (regex). "IA (modelo): valor, cotacao_id" =
+    # o plano B de proposta_ia.py preencheu esses campos — conferidos no PDF,
+    # mas vale o vendedor olhar o PDF anexado.
+    lido_por: str = ""
 
 
 def _sem_acento(texto: str) -> str:

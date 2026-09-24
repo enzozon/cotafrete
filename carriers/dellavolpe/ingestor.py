@@ -45,6 +45,7 @@ from pathlib import Path
 from typing import Callable
 
 from carriers.dellavolpe import caixa as config
+from carriers.dellavolpe import proposta_ia
 from carriers.dellavolpe.proposta import Proposta, ler_proposta
 from core.models import StatusCotacao
 
@@ -184,12 +185,25 @@ def _melhor_proposta(pdfs: list[Anexo]) -> tuple[Proposta, Anexo | None, str]:
     só o primeiro faria uma proposta válida virar "sem_valor" por causa da
     ordem dos anexos."""
     melhor, dono, erros = Proposta(), None, []
+    lidos: list[tuple[Proposta, Anexo, str]] = []
     for anexo in pdfs:
         try:
-            p = ler_proposta(texto_do_pdf(anexo.dados))
+            texto = texto_do_pdf(anexo.dados)
+            p = ler_proposta(texto)
         except Exception as exc:              # PDF quebrado, cifrado, etc.
             erros.append(f"{anexo.nome}: {type(exc).__name__}")
             continue
+        if p.valor is not None and p.cotacao_id is not None:
+            return p, anexo, ""
+        lidos.append((p, anexo, texto))
+    # Plano B (proposta_ia): o regex não achou valor E carimbo juntos em
+    # nenhum PDF. A IA lê o que faltou, e o que ela disser só fica se o PDF
+    # provar. Primeiro o PDF que o regex já leu em parte, depois os outros.
+    # Com a IA desligada ou fora do ar, `completar` devolve `p` como veio e
+    # isto se comporta exatamente como antes.
+    lidos.sort(key=lambda t: t[0].valor is None and t[0].cotacao_id is None)
+    for p, anexo, texto in lidos:
+        p = proposta_ia.completar(p, texto)
         if p.valor is not None or p.cotacao_id is not None:
             return p, anexo, ""
         if dono is None:
@@ -251,6 +265,8 @@ def processar(bruto: bytes, banco, *, gravar: bool,
     carga = (banco.carga_da_cotacao(p.cotacao_id)
              if p.cotacao_id is not None else None)
     desfecho, detalhe = decidir(p, carga)
+    if p.lido_por:   # fica no registro do e-mail e no resumo do /adm
+        detalhe = f"{detalhe} — lido pela {p.lido_por}"
     if desfecho != "gravado" or not gravar:
         return fim(desfecho, detalhe, p)
 
