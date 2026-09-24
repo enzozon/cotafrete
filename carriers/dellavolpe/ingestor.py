@@ -39,6 +39,7 @@ import sys
 import threading
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
+from email.header import decode_header, make_header
 from email.message import Message
 from email.utils import parseaddr, parsedate_to_datetime
 from pathlib import Path
@@ -108,6 +109,16 @@ def _message_id(msg: Message, bruto: bytes) -> str:
     return mid or "sha1:" + hashlib.sha1(bruto).hexdigest()
 
 
+def _cabecalho(valor) -> str:
+    """Cabeçalho de e-mail em texto: "=?utf-8?b?Q290YcOnw6Nv?=" → "Cotação".
+    Cru, o assunto codificado ia assim para o registro do desfecho `sem_pdf`.
+    Cabeçalho mal formado fica como veio — melhor feio do que perdido."""
+    try:
+        return str(make_header(decode_header(str(valor or ""))))
+    except Exception:
+        return str(valor or "")
+
+
 def ler_mensagem(bruto: bytes) -> Mensagem:
     msg = email.message_from_bytes(bruto)
     try:
@@ -127,7 +138,7 @@ def ler_mensagem(bruto: bytes) -> Mensagem:
     return Mensagem(
         message_id=_message_id(msg, bruto),
         remetente=parseaddr(msg.get("From", ""))[1].lower(),
-        assunto=str(msg.get("Subject", "")),
+        assunto=_cabecalho(msg.get("Subject", "")),
         data=data,
         pdfs=pdfs,
     )
