@@ -370,6 +370,22 @@ Recusar o Item? Clique Aqui"), com a observação do usuário como justificativa
   traz 100,00 e exige preço, marcando o campo em vermelho, SEM alert). O robô
   já faz isso; script avulso tem de fazer igual.
 
+## Primeiro "Salvar no ME" pela TELA (24/09/2026, autorizado)
+O app de verdade (banco temporário, ME real, robô real), usado por um
+navegador como uma pessoa usaria, na UNIÃO 23052403 (cotação de teste):
+1. `/me` → "Atualizar agora": a lista real das duas contas (23049227
+   VENTURA, 23052403 UNIÃO).
+2. "Ler itens do ME": 3 itens.
+3. Item 10 com valores de teste (1,00, TESTE, NCM 48219000); 20 e 30 sem
+   preço, obs "TESTE DO ROBO - NAO ENVIAR". Prévia: ICMS 12% (MG), PIS/COFINS
+   isentos (UNIÃO), 20 e 30 "será recusado no ME".
+4. "Testar sem salvar" → "teste sem salvar: ok".
+5. "Salvar no ME" → **Salva no ME**, "conferida campo a campo depois de salvar".
+Conferido por fora, só lendo: item 10 gravado; 20 e 30 recusados com a
+justificativa; a lista do ME seguiu "Não Respondida"; nova varredura da tela
+manteve "Salva no ME" (1/3 com preço). Depois as recusas de teste foram
+desfeitas (1 POST `Acao=9`): a cotação voltou a ter só o item 10 de teste.
+
 ## Próximos passos
 1. ~~Recon~~, ~~teste de Salvar~~ e ~~robô~~ (acima).
 2. ~~Robô com trava de envio e dry-run~~ feito (sessão local).
@@ -378,5 +394,7 @@ Recusar o Item? Clique Aqui"), com a observação do usuário como justificativa
 5. ~~Documentação na aba /documentacao e README~~ feito.
 
 **Em aberto:** (a) ICMS de origem 2 fora do ES (12% × 4%), com a
-contabilidade; (b) ~~item sem preço~~ → "Recusar item" (acima); (c) primeiro "Salvar no ME" pela TELA contra o ME
-real (o robô já foi provado sozinho; a tela, com robô falso).
+contabilidade; (b) ~~item sem preço~~ → "Recusar item" (acima); (c) ~~primeiro "Salvar no ME" pela tela~~ feito (acima);
+(d) `ANTHROPIC_API_KEY` no servidor. **Antes de responder a UNIÃO 23052403 de
+verdade:** o item 10 tem valores de teste ("TESTE DO ROBO - NAO ENVIAR", 1,00)
+— trocar antes de enviar.
