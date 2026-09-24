@@ -7,7 +7,10 @@ morasse no robô, um teste de tela nunca a pegaria errada.
 Decisões do usuário (23/09/2026):
 
 - UNIÃO cobra só ICMS; VENTURA cobra tudo menos IPI.
-- ICMS: origem 0 ou 2 → 17% dentro do ES, 12% fora. Outras origens a empresa
+- ICMS: dentro do ES, 17% (origem 0 ou 2). Fora do ES: origem 0 → 12%;
+  origem 2 (estrangeira comprada no mercado interno) → 4%, a alíquota
+  interestadual de importados da Res. Senado 13/2012 (decisão de 24/09/2026).
+  Outras origens a empresa
   não usa: bloqueiam, em vez de chutar uma alíquota.
 - Prazo em dias CORRIDOS (é como o ME conta); se a data cair em fim de semana
   ou feriado, vai para o próximo dia útil.
@@ -133,7 +136,9 @@ def aliquota_icms(origem: int, uf_destino: str) -> Decimal:
     uf = (uf_destino or "").strip().upper()
     if uf not in UFS:
         raise RegraDesconhecida(f"UF de destino desconhecida: {uf_destino!r}")
-    return Decimal("17") if uf == UF_EMPRESA else Decimal("12")
+    if uf == UF_EMPRESA:
+        return Decimal("17")
+    return Decimal("4") if origem == 2 else Decimal("12")
 
 
 def impostos(conta: Conta, origem: int, uf_destino: str) -> Impostos:

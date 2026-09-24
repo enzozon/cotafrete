@@ -104,11 +104,12 @@ def test_dry_run_na_pagina_real_preenche_confere_e_nao_manda_nada(navegador, tmp
     with s:
         r = B.salvar_cotacao(Conta.UNIAO, 23052403, [_item(10), _item(30, origem=2)], 45,
                              dry_run=True, hoje=HOJE, sessao=s)
-        valores = B.ler_valores(s.page, ["Preco1", "ICMS1", "OrigMat3", "BaseCalculo2",
+        valores = B.ler_valores(s.page, ["Preco1", "ICMS1", "OrigMat3", "ICMS3", "BaseCalculo2",
                                          "InscricaoEstadual", "DataEntregaItemAux1"])
     assert r.erro is None and r.divergencias == [] and r.ok
     assert not r.salvo and srv.posts == [] and r.posts_liberados == 0
-    assert valores == {"Preco1": "12,34", "ICMS1": "12,00", "OrigMat3": "994",
+    # item 30 é origem 2 entregando em MG: 4%, não 12%
+    assert valores == {"Preco1": "12,34", "ICMS1": "12,00", "OrigMat3": "994", "ICMS3": "4,00",
                        "BaseCalculo2": "", "InscricaoEstadual": "083049428",
                        "DataEntregaItemAux1": "23/10/2026"}
 

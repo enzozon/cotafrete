@@ -33,7 +33,7 @@ https://www.me.com.br/RespostaCotaItem.asp?Cotacao=23039029&SuperCleanPage=
 |---|---|
 | Prazo de entrega | dias **corridos** (como o ME conta); se cair em fim de semana/feriado → próximo dia útil |
 | Feriados | nacionais + móveis (Carnaval, Sexta Santa, Corpus Christi); **sem** municipais |
-| ICMS | origem 0 ou 2: **17% dentro do ES, 12% fora**. A empresa só usa origens 0 e 2; outras bloqueiam |
+| ICMS | dentro do ES **17%**; fora do ES **origem 0 → 12%, origem 2 → 4%** (Res. Senado 13/2012, decidido em 24/09). A empresa só usa origens 0 e 2; outras bloqueiam |
 | Impostos VENTURA | todos menos IPI: PIS 0,65 sim; COFINS 3,00 sim; ICMS sim |
 | Impostos UNIÃO | só ICMS: PIS 0 Isento; COFINS 0 Isento |
 | IPI | sempre 0 / Isento |
@@ -45,9 +45,8 @@ https://www.me.com.br/RespostaCotaItem.asp?Cotacao=23039029&SuperCleanPage=
 | Onde roda | servidor da empresa (VM com Chromium, como as transportadoras) |
 | IA de revisão | só alertas (info/atenção/crítico), nunca altera valor; falhou → segue com "revisão IA indisponível" |
 
-**Em aberto:** origem 2 para fora do ES costuma ser 4% (Res. Senado
-13/2012), mas o usuário pediu 12%. Implementado 12%; usuário vai confirmar com
-a contabilidade. Mudança de uma linha em `aliquota_icms`.
+**Resolvido em 24/09/2026:** origem 2 para fora do ES usa **4%** (Res. Senado
+13/2012); antes estava 12%. Mudança em `regras.aliquota_icms`.
 
 ## Campos do usuário (por item)
 Preço, Cód. NCM, Prazo (dias), Fabricante/Marca, Observações, Origem (0/2).
@@ -393,8 +392,7 @@ desfeitas (1 POST `Acao=9`): a cotação voltou a ter só o item 10 de teste.
 4. ~~Revisão por IA~~ feito (falta a chave `ANTHROPIC_API_KEY` no servidor).
 5. ~~Documentação na aba /documentacao e README~~ feito.
 
-**Em aberto:** (a) ICMS de origem 2 fora do ES (12% × 4%), com a
-contabilidade; (b) ~~item sem preço~~ → "Recusar item" (acima); (c) ~~primeiro "Salvar no ME" pela tela~~ feito (acima);
+**Em aberto:** (a) ~~ICMS de origem 2 fora do ES~~ → 4% (24/09); (b) ~~item sem preço~~ → "Recusar item" (acima); (c) ~~primeiro "Salvar no ME" pela tela~~ feito (acima);
 (d) `ANTHROPIC_API_KEY` no servidor. **Antes de responder a UNIÃO 23052403 de
 verdade:** o item 10 tem valores de teste ("TESTE DO ROBO - NAO ENVIAR", 1,00)
 — trocar antes de enviar.

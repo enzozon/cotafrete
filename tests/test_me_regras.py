@@ -83,9 +83,13 @@ def test_validade_e_hoje_mais_dias_corridos():
 
 
 # ----------------------------------------------------------------- impostos
-@pytest.mark.parametrize("origem", [0, 2])
-@pytest.mark.parametrize("uf, esperado", [("ES", "17"), ("es", "17"), ("SP", "12"), ("MG", "12")])
+@pytest.mark.parametrize("origem, uf, esperado", [
+    (0, "ES", "17"), (0, "es", "17"), (0, "SP", "12"), (0, "MG", "12"),
+    (2, "ES", "17"), (2, "es", "17"), (2, "SP", "4"), (2, "MG", "4"),
+])
 def test_icms_por_origem_e_destino(origem, uf, esperado):
+    """Fora do ES a origem 2 (importado comprado aqui) paga 4% — Res. Senado
+    13/2012, decisão do usuário em 24/09/2026. Dentro do ES, 17% para as duas."""
     assert R.aliquota_icms(origem, uf) == Decimal(esperado)
 
 
@@ -112,7 +116,7 @@ def test_ventura_cobra_tudo_menos_ipi():
 def test_uniao_cobra_so_icms():
     c = R.impostos(Conta.UNIAO, 2, "RJ").como_campos()
     assert c == {
-        "icms": "12,00", "icms_incluso": "sim",
+        "icms": "4,00", "icms_incluso": "sim",   # origem 2 fora do ES
         "pis": "0,00", "pis_incluso": "Isento",
         "cofins": "0,00", "cofins_incluso": "Isento",
     }
