@@ -393,6 +393,12 @@ desfeitas (1 POST `Acao=9`): a cotação voltou a ter só o item 10 de teste.
 5. ~~Documentação na aba /documentacao e README~~ feito.
 
 **Em aberto:** (a) ~~ICMS de origem 2 fora do ES~~ → 4% (24/09); (b) ~~item sem preço~~ → "Recusar item" (acima); (c) ~~primeiro "Salvar no ME" pela tela~~ feito (acima);
-(d) `ANTHROPIC_API_KEY` no servidor. **Antes de responder a UNIÃO 23052403 de
-verdade:** o item 10 tem valores de teste ("TESTE DO ROBO - NAO ENVIAR", 1,00)
-— trocar antes de enviar.
+(d) `ANTHROPIC_API_KEY` no servidor. Os valores de teste da UNIÃO
+23052403 foram **limpos em 24/09** (1 POST `Acao=9`): o item 10 voltou ao
+estado de cotação nova (preço 0,00, campos vazios); o cabeçalho ficou com os
+valores fixos reais da empresa (FOB, 60DDL, telefone, BRL, IE, "Frete FOB",
+validade). Continua "Não Respondida". **Próxima conversa:** escolher o
+provedor/modelo da revisão por IA para o `.env` — o usuário pensa numa API
+gratuita que alterna entre vários modelos. Hoje `revisao.py` usa o SDK da
+Anthropic (`claude-opus-5`); outro provedor pede mudar o cliente ali, e a
+revisão continua só alertando (falha → "indisponível").
