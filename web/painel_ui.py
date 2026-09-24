@@ -679,7 +679,7 @@ top:8px;bottom:8px;width:3px;border-radius:0 3px 3px 0;
 background:var(--marca-grad)}
 .lateral .rodape{padding:var(--e3) var(--e5) 0;font-size:10.5px;
 letter-spacing:.06em;text-transform:uppercase;font-weight:600;
-border-top:1px solid var(--borda)}
+color:var(--fraco);border-top:1px solid var(--borda)}
 [data-tema="escuro"] .lateral .rodape{border-top-color:rgba(255,255,255,.08)}
 
 /* ---- 2. o cabeçalho -------------------------------------------------------

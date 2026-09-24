@@ -242,7 +242,12 @@ border-color:var(--atencao-borda)}
    `.tema` (0,1,0) e pintava o ícone do sol de #0b0f1c, que é a cor do fundo
    da página: o sol ficava desenhado em preto sobre preto, presente na tela e
    invisível para quem olha. */
-[data-tema="escuro"] button:not(.tema){color:var(--sobre-marca)}
+/* `:not(.botao2)` pelo mesmo motivo: o botão secundário é contorno sobre o
+   papel, com o texto na cor da marca. Sem ele, a regra pintava o texto de
+   #061021 sobre o papel #101b30 (1.1:1) — "Reler itens do ME", "Testar sem
+   salvar", "Marcar como enviada"... todos presentes e ilegíveis (print do
+   usuário, 24/09/2026). */
+[data-tema="escuro"] button:not(.tema):not(.botao2){color:var(--sobre-marca)}
 [data-tema="escuro"] .selo-zap{background:var(--ok-fraco)}
 [data-tema="escuro"] .zap.aberta{background:#13203a;border-color:#22503b}
 
@@ -315,7 +320,7 @@ scroll-behavior:auto !important}}
    cinco links; sem isto, quem navega pelo teclado atravessa os cinco em toda
    tela antes de chegar no formulário. */
 .pular{position:absolute;left:var(--e4);top:-100px;z-index:60;
-background:var(--marca);color:#fff;padding:10px 16px;
+background:var(--marca);color:var(--sobre-marca);padding:10px 16px;
 border-radius:var(--raio-p);font-size:var(--t-p);font-weight:600;
 text-decoration:none;transition:top .16s var(--suave)}
 .pular:focus{top:var(--e2)}
@@ -412,6 +417,16 @@ box-shadow:0 2px 4px rgba(12,21,38,.2),0 16px 30px -12px var(--brilho-marca)}
    minutos, o retorno imediato do botão é o que diz "recebi" antes de a
    primeira transportadora responder. */
 button:active{transform:translateY(1px);box-shadow:var(--sombra-1)}
+/* Desabilitado tem que PARECER desabilitado e continuar legível. Antes o
+   botão travado era idêntico ao ativo, e o campo travado ficava no cinza do
+   navegador (1.8:1 no escuro). Tudo em token: vale para os dois temas. */
+button:disabled,button:disabled:hover{background:var(--borda-forte);color:var(--tinta);
+box-shadow:none;transform:none;cursor:not-allowed}
+[data-tema="escuro"] button:disabled:not(.tema):not(.botao2){color:var(--tinta)}
+.botao2:disabled,.botao2:disabled:hover{background:var(--papel);color:var(--fraco);
+border-color:var(--borda);border-style:dashed}
+:is(input,select,textarea):disabled{background:var(--cova);color:var(--fraco);
+border-color:var(--borda);opacity:1;cursor:not-allowed}
 /* UM anel de foco para tudo que recebe teclado, e não só para botão, link e
    summary. A lista curta deixava de fora `<input type=checkbox>` (as vinte
    caixas do filtro de transportadoras), `<textarea>`, `[tabindex]` e as
@@ -1095,7 +1110,7 @@ text-wrap:pretty}
    botão ficaria com texto branco sobre fundo branco. A marca é a mesma
    família de azul do <button> comum, que já vive bem nos dois temas. */
 .aceite-botao{display:inline-block;margin-top:5px;padding:5px 12px;
-border-radius:7px;background:var(--marca);color:#fff;font-size:12px;
+border-radius:7px;background:var(--marca);color:var(--sobre-marca);font-size:12px;
 font-weight:700;text-decoration:none;white-space:nowrap}
 .aceite-botao:hover{background:var(--marca-forte)}
 /* Pedida e confirmada. Sem botão nenhum — botão apagado ainda parece que um
@@ -1314,7 +1329,7 @@ line-height:var(--ent);margin:var(--e5) 0 0}
 .passo-n::before{content:attr(data-n);position:absolute;left:0;top:-4px;
 width:30px;height:30px;border-radius:50%;display:grid;place-items:center;
 font-family:var(--fonte-num);font-size:13px;font-weight:700;
-background:var(--marca);color:#fff;
+background:var(--marca);color:var(--sobre-marca);
 box-shadow:0 0 0 4px color-mix(in srgb,var(--marca) 14%,transparent)}
 /* O filete que liga um passo ao próximo. O último não tem para onde ligar. */
 .passo-n::after{content:"";position:absolute;left:15px;top:30px;bottom:0;

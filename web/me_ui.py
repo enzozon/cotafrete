@@ -451,7 +451,7 @@ tr.me-urgente td{background:var(--alerta-fundo)}
 .me-filtros{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:0 0 12px}
 .me-filtros a{padding:4px 10px;border:1px solid var(--borda);border-radius:99px;
  text-decoration:none;color:var(--tinta2);font-size:13px}
-.me-filtros a.ativo{background:var(--marca);border-color:var(--marca);color:#fff}
+.me-filtros a.ativo{background:var(--marca);border-color:var(--marca);color:var(--sobre-marca)}
 .me-itens input,.me-itens select{width:100%;min-width:0;padding:4px 6px}
 .me-itens td{vertical-align:top}
 .me-itens .me-desc{max-width:280px}
