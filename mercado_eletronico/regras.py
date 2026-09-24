@@ -177,8 +177,16 @@ class PedidoDoComprador:
 _RE_UF = re.compile(
     r"End\.?\s*entrega:.*?-\s*([A-Z]{2})\s*-\s*\d{5}-?\d{3}", re.IGNORECASE | re.DOTALL
 )
+_RE_NCM = re.compile(r"NCM:\s*(\d{4}\.?\d{2}\.?\d{2})(?!\d)", re.IGNORECASE)
 _RE_ORIGEM = re.compile(r"Origem\s+do\s+Material:\s*(\d)", re.IGNORECASE)
 _RE_REMESSA = re.compile(r"Data\s+de\s+Remessa:\s*(\d{2})[./](\d{2})[./](\d{4})", re.IGNORECASE)
+
+
+def ncm_do_comprador(texto: str) -> str | None:
+    """O "NCM: 8507.60.00" que o comprador escreve nos Campos Adicionais,
+    formatado como o ME mostra. Item genérico vem com "NCM:" vazio → None."""
+    m = _RE_NCM.search(" ".join((texto or "").split()))
+    return formatar_ncm(m.group(1)) if m else None
 
 
 def ler_campos_adicionais(texto: str) -> PedidoDoComprador:

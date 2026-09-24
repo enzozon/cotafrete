@@ -35,7 +35,9 @@ from typing import Any, Callable
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
+from core import ia
 from core.banco import Banco
+from mercado_eletronico import ncm as sugestor_ncm
 from mercado_eletronico import pagina as pg
 from mercado_eletronico import painel as pn
 from mercado_eletronico import regras as rg
@@ -227,18 +229,28 @@ def _item_para_banco(item: pg.ItemDaPagina, pagina_n: int) -> dict:
         "uf_destino": item.pedido.uf_destino,
         "origem_pedida": item.pedido.origem,
         "data_remessa": item.pedido.data_remessa.isoformat() if item.pedido.data_remessa else None,
+        "ncm_pedido": rg.ncm_do_comprador(item.campos_adicionais),
     }
 
 
 def _gravar_lidos(cid: int, c: dict, lidas: pg.PaginaDaCotacao, itens: list[dict]) -> int:
     banco.me_gravar_itens_do_me(cid, itens)
-    # Memória por material: preenche o que o usuário ainda não digitou.
+    # Preenche só o que o usuário ainda não digitou. NCM: o que o COMPRADOR
+    # escreveu vem antes da memória (é o que ele vai conferir); marca e
+    # origem, da memória do material.
     for item in banco.me_cotacao(cid)["itens"]:
+        campos = {}
+        if not item["ncm"] and item["ncm_pedido"]:
+            campos |= {"ncm": item["ncm_pedido"], "ncm_origem": "comprador", "ncm_nota": None}
         lembrado = banco.me_material(pn.chave_material(item["descricao"]))
         if lembrado:
-            banco.me_gravar_entrada(cid, item["numero"], **{
-                k: lembrado[k] for k in ("ncm", "marca", "origem")
-                if item[k] in (None, "") and lembrado[k] not in (None, "")})
+            for k in ("ncm", "marca", "origem"):
+                if item[k] in (None, "") and k not in campos and lembrado[k] not in (None, ""):
+                    campos[k] = lembrado[k]
+                    if k == "ncm":
+                        campos["ncm_origem"] = "memoria"
+        if campos:
+            banco.me_gravar_entrada(cid, item["numero"], **campos)
     extra = {}
     if lidas.data_limite and not c["data_limite"]:
         extra["data_limite"] = lidas.data_limite.isoformat(timespec="minutes")
@@ -278,10 +290,17 @@ def gravar_formulario(cid: int, form: dict) -> None:
             "obs": (form.get(f"obs_{n}") or "").strip()[:MAX_OBS],
             "origem": origem,
         }
+        if campos["ncm"] != (item["ncm"] or ""):
+            # Mexeu no NCM: agora é dele — sai a etiqueta "sugerido pela IA".
+            campos |= {"ncm_origem": None, "ncm_nota": None}
         banco.me_gravar_entrada(cid, n, **campos)
-        if campos["ncm"] or campos["marca"] or origem is not None:
+        # NCM sugerido pela IA e ainda não conferido não vira memória do
+        # material: um palpite errado voltaria sozinho em toda cotação.
+        palpite = campos["ncm"] == (item["ncm"] or "") and item.get("ncm_origem") == "ia"
+        ncm_lembrar = None if palpite else campos["ncm"] or None
+        if ncm_lembrar or campos["marca"] or origem is not None:
             banco.me_lembrar_material(pn.chave_material(item["descricao"]),
-                                      ncm=campos["ncm"] or None,
+                                      ncm=ncm_lembrar,
                                       marca=campos["marca"] or None, origem=origem)
 
 
@@ -333,6 +352,40 @@ def rodar_revisao(cid: int, usuario: str) -> None:
         REVISANDO.discard(cid)
 
 
+SUGERIR_NCM: Callable[..., Any] = sugestor_ncm.sugerir   # os testes trocam
+
+
+def sugerir_ncm(cid: int, usuario: str) -> str:
+    """IA nos itens que continuam SEM NCM (nem digitado, nem do comprador,
+    nem lembrado). Preenche e etiqueta "sugerido pela IA"; nunca sobrescreve.
+    Devolve a mensagem para a tela."""
+    c = banco.me_cotacao(cid)
+    vazios = [i for i in c["itens"] if not (i["ncm"] or "").strip()]
+    if not vazios:
+        return "Todos os itens já têm NCM."
+    try:
+        sugestoes, modelo = SUGERIR_NCM(vazios)
+    except ia.IAIndisponivel:
+        banco.me_registrar(cid, "sugestão de NCM indisponível", "nenhum modelo de IA respondeu", usuario)
+        return "A IA está indisponível agora. Preencha o NCM à mão ou tente em alguns minutos."
+    for numero, s in sugestoes.items():
+        banco.me_gravar_entrada(cid, numero, ncm=s.ncm, ncm_origem="ia", ncm_nota=s.nota())
+    faltam = len(vazios) - len(sugestoes)
+    banco.me_registrar(cid, f"NCM sugerido pela IA: {len(sugestoes)} itens",
+                       f"{modelo}" + (f" · {faltam} sem sugestão" if faltam else ""), usuario)
+    return (f"A IA sugeriu o NCM de {len(sugestoes)} de {len(vazios)} itens. Confira cada um "
+            "(etiqueta \"IA\" embaixo do campo) antes de salvar.")
+
+
+def _lembrar_ncm_conferido(c: dict) -> None:
+    """Salvou no ME com o NCM que a IA sugeriu: agora é resposta dada, vira
+    memória do material (antes disso era palpite e não entrava)."""
+    for i in c["itens"]:
+        if i.get("ncm_origem") == "ia" and i["ncm"]:
+            banco.me_lembrar_material(pn.chave_material(i["descricao"]), ncm=i["ncm"],
+                                      marca=None, origem=None)
+
+
 def _rodar_robo(cid: int, usuario: str, dry_run: bool, status_antes: str) -> None:
     c = banco.me_cotacao(cid)
     try:
@@ -360,6 +413,7 @@ def _rodar_robo(cid: int, usuario: str, dry_run: bool, status_antes: str) -> Non
                                salvo_por=usuario, salvo_em=carimbo, erro=None,
                                evidencia=evidencia)
         banco.me_registrar(cid, "salva no ME", "conferida campo a campo depois de salvar", usuario)
+        _lembrar_ncm_conferido(c)
     else:
         motivo = erro or ("divergência depois de salvar: " + "; ".join(divergencias))
         banco.me_trocar_status(cid, (Status.SALVANDO.value,), Status.ERRO.value,
@@ -463,6 +517,8 @@ tr.me-urgente td{background:var(--alerta-fundo)}
 .me-err{color:var(--erro);font-size:12px}.me-av{color:var(--atencao);font-size:12px}
 .me-acoes{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}
 .me-mini{font-size:11px;padding:2px 6px;margin-top:4px}
+.me-ncm{display:block;font-size:11px;color:var(--fraco);margin-top:3px;line-height:1.3}
+.me-ncm-ia{color:var(--tom-roxo)}
 .me-painel-ia{padding:12px 16px;margin:0 0 12px}
 .me-ia{font-size:12px;font-weight:600}
 .me-ia-critico{color:var(--tom-erro)}.me-ia-atencao{color:var(--tom-atencao)}
@@ -555,6 +611,24 @@ def _cotacao_ou_404(cid: int) -> dict:
     return c
 
 
+def _etiqueta_ncm(i: dict) -> str:
+    """De onde veio o NCM do campo, embaixo dele. E o alerta que não precisa
+    de IA: o comprador escreveu um NCM e o campo tem outro."""
+    rg_ncm = rg.normalizar_ncm
+    partes = []
+    if i.get("ncm_origem") == "comprador":
+        partes.append('<small class="me-ncm">do comprador</small>')
+    elif i.get("ncm_origem") == "memoria":
+        partes.append('<small class="me-ncm">lembrado deste material</small>')
+    elif i.get("ncm_origem") == "ia":
+        partes.append(f'<small class="me-ncm me-ncm-ia" title="{e(i.get("ncm_nota") or "")}">'
+                      f'IA · {e(i.get("ncm_nota") or "")} — confira</small>')
+    if (i.get("ncm_pedido") and i.get("ncm")
+            and rg_ncm(i["ncm"]) != rg_ncm(i["ncm_pedido"])):
+        partes.append(f'<small class="me-av">o comprador pediu {e(i["ncm_pedido"])}</small>')
+    return "".join(partes)
+
+
 def _opcoes_origem(valor) -> str:
     return "".join(
         f'<option value="{v}"{" selected" if str(valor) == v else ""}>{r}</option>'
@@ -609,7 +683,7 @@ def ver(cid: int, request: Request, msg: str = ""):
 <td class="me-desc"><b>{e(i['descricao'])}</b><br><small>{e(i['quantidade'])} {e(i['unidade'])} · {e(pedido)}</small>
 <details><summary>pedido do comprador</summary>{e(i['obs_comprador'])}<br><i>{e(i['campos_adicionais'])}</i></details></td>
 <td><input name="preco_{n}" value="{e(i['preco'] or '')}" inputmode="decimal" placeholder="0,00"{trava}></td>
-<td><input name="ncm_{n}" value="{e(i['ncm'] or '')}" maxlength="10" placeholder="8 dígitos"{trava}></td>
+<td><input name="ncm_{n}" value="{e(i['ncm'] or '')}" maxlength="10" placeholder="8 dígitos"{trava}>{_etiqueta_ncm(i)}</td>
 <td><input name="prazo_{n}" value="{e(i['prazo_dias'] or '')}" inputmode="numeric" data-copiar="prazo"{trava}></td>
 <td><input name="marca_{n}" value="{e(i['marca'] or '')}" maxlength="{rg.MAX_MARCA}" data-copiar="marca"{trava}></td>
 <td><input name="obs_{n}" value="{e(i['obs'] or '')}" maxlength="{MAX_OBS}"{trava}></td>
@@ -630,6 +704,11 @@ def ver(cid: int, request: Request, msg: str = ""):
         except ValueError:
             prints = ""
 
+    sem_ncm = sum(not (i["ncm"] or "").strip() for i in c["itens"])
+    botao_ncm = (f'<button type="submit" name="acao" value="ncm" class="botao2"{trava}'
+                 f' title="A IA sugere o NCM dos {sem_ncm} itens sem NCM; você confere">'
+                 f'Sugerir NCM com IA ({sem_ncm})</button>'
+                 if sem_ncm and ia.configurada() else "")
     if not c["itens"]:
         itens_html = (f'<p class="sub">Os itens ainda não foram lidos do ME.</p>'
                       f'<form method="post" action="/me/{cid}/ler"><button type="submit">'
@@ -640,7 +719,8 @@ def ver(cid: int, request: Request, msg: str = ""):
  inputmode="numeric" style="width:6em"{trava}></label>
  <button type="button" class="botao2" data-aplicar="marca"{trava}>marca do 1º em todos</button>
  <button type="button" class="botao2" data-aplicar="origem"{trava}>origem do 1º em todos</button>
- <button type="button" class="botao2" data-aplicar="prazo"{trava}>prazo do 1º em todos</button></p>
+ <button type="button" class="botao2" data-aplicar="prazo"{trava}>prazo do 1º em todos</button>
+ {botao_ncm}</p>
 {painel_ia}{gerais}
 <div class="cartao"><div class="rolagem-r"><table class="me-itens">
 <thead><tr><th>item</th><th>o que o comprador pediu</th><th>preço unit.</th><th>NCM</th>
@@ -755,6 +835,8 @@ async def guardar(cid: int, request: Request):
             REVISANDO.add(cid)
             DISPARAR(rodar_revisao, cid, usuario)
         return _voltar(cid, "Revisão por IA pedida. Os alertas aparecem aqui.")
+    if acao == "ncm":
+        return _voltar(cid, sugerir_ncm(cid, usuario))
     if acao in ("salvar", "dry_run"):
         motivo = mandar_robo(cid, usuario, dry_run=acao == "dry_run")
         return _voltar(cid, motivo or ("Robô testando (sem salvar)…" if acao == "dry_run"
@@ -832,6 +914,12 @@ deixe o preço vazio e escreva o motivo na observação — o robô usa o
 <b>"Recusar item"</b> do ME com esse motivo como justificativa. Impostos, data de entrega,
 frete, condição de pagamento e o resto o sistema calcula. NCM, marca e origem
 de um material que já apareceu voltam sozinhos.</li>
+<li><b>NCM:</b> quando o comprador escreve o NCM no pedido, ele já vem no campo
+(etiqueta "do comprador"). Se você trocar por outro, a tela lembra qual o
+comprador pediu. Para os itens que ficarem sem NCM, <b>Sugerir NCM com IA</b>
+preenche só os vazios, com a etiqueta "IA", a descrição da posição e a
+confiança — <b>confira cada um</b>. O NCM sugerido só passa a ser lembrado para
+aquele material depois que você salva no ME com ele ou o corrige.</li>
 <li><b>Guardar e conferir</b> mostra, embaixo de cada item, o que o robô vai
 digitar (ICMS, PIS, COFINS, data de entrega) e os problemas: em
 <span style="color:var(--erro)">vermelho</span> o que impede salvar, em

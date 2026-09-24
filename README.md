@@ -321,6 +321,10 @@ A ordem padrão está em `CADEIA_PADRAO`; para trocar sem mexer no código:
 dele na frente). O arquivo não importa nada do cotafrete: serve para outros
 projetos.
 
+Onde a IA entra hoje: revisão da resposta do ME, **Colar o pedido** (preenche
+a cotação de frete, `core/extrair_carga.py`) e **Sugerir NCM** no ME
+(`mercado_eletronico/ncm.py`). Sempre sugestão: quem confirma é o vendedor.
+
 Testar as chaves: `python -m core.ia` (1 pedido pela lista, diz quem
 respondeu) ou `python -m core.ia --todos` (1 pedido por modelo).
 

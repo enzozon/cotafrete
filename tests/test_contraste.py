@@ -122,6 +122,9 @@ def site(monkeypatch, tmp_path):
     me_ui.gravar_formulario(ids[23052403], {
         "validade_dias": "30", "preco_10": "5,00", "ncm_10": "123", "prazo_10": "30",
         "marca_10": "3M", "obs_10": "", "origem_10": "2", "preco_20": "", "obs_20": "fora de linha"})
+    # as etiquetas do NCM: do comprador (vem da leitura), IA e "o comprador pediu"
+    b.me_gravar_entrada(ids[23052403], 20, ncm="4202.12.00", ncm_origem="ia",
+                        ncm_nota="Mochilas de plástico — confiança média. confira o material")
     b.me_registrar(ids[23052403], "erro do robô", "TimeoutError: o Salvar não gerou o POST", "enzo")
     b.me_trocar_status(ids[23052403], ("pendente",), "erro", erro="TimeoutError")
     # a do print do usuário: robô trabalhando, botões travados

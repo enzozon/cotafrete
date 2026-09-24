@@ -438,6 +438,28 @@ rascunho do ME tudo o que o robô escreve e confere depois. É o mesmo Salvar
   exatamente como cotação nova, nenhum recusado, obs geral vazia; conferência
   0 divergências; a lista seguiu **"Não Respondida"**.
 
+## NCM: do comprador, da memória e sugerido pela IA (24/09/2026)
+Passo 2 da IA no site. Ordem, e nada sobrescreve o que o vendedor digitou:
+1. **Do comprador** (sem IA): itens com código de material trazem "NCM:
+   8507.60.00" nos Campos Adicionais (as 3 da UNIÃO e a da VENTURA nas cópias);
+   `regras.ncm_do_comprador` lê, `me_item.ncm_pedido` guarda, e "Ler itens"
+   preenche o campo com a etiqueta "do comprador". Trocou por outro → aviso
+   "o comprador pediu …" na linha.
+2. **Memória do material** (`me_material`), como antes — etiqueta "lembrado".
+3. **IA** — botão "Sugerir NCM com IA (n)" só com itens vazios e IA configurada.
+   `mercado_eletronico/ncm.py`: uma chamada por até 25 itens (descrição, texto
+   do comprador, quantidade, marca oferecida) → NCM + descrição da posição +
+   confiança + motivo. O código descarta NCM sem 8 dígitos, capítulo que não
+   existe (fora de 01–97, ou 77) e item não pedido. Etiqueta "IA · … —
+   confira" (`me_item.ncm_origem`/`ncm_nota`).
+- Palpite da IA **não vira memória** enquanto não é conferido: entra quando a
+  cotação é salva no ME com ele, ou quando o vendedor o corrige. A memória
+  passou a ignorar vazio (`COALESCE`): não lembrar o palpite não apaga um NCM
+  bom de antes.
+- Os itens genéricos (os 18 da 23039029: "POSTO DUPLO", "TV65"...) chegam com
+  "NCM:" vazio — são o caso da IA.
+- Testes: `tests/test_me_ncm.py`.
+
 ## Próximos passos
 1. ~~Recon~~, ~~teste de Salvar~~ e ~~robô~~ (acima).
 2. ~~Robô com trava de envio e dry-run~~ feito (sessão local).

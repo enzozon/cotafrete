@@ -238,6 +238,9 @@ CREATE TABLE IF NOT EXISTS me_item (
     marca             TEXT,
     obs               TEXT,
     origem            INTEGER,
+    ncm_pedido        TEXT,     -- o NCM que o COMPRADOR escreveu nos Campos Adicionais
+    ncm_origem        TEXT,     -- de onde veio o ncm acima: comprador / memoria / ia / NULL = digitado
+    ncm_nota          TEXT,     -- a IA: descrição da posição e a confiança
     PRIMARY KEY (cotacao_id, numero)
 );
 
@@ -313,6 +316,7 @@ CAMPOS_CARGA = (
 CAMPOS_RESULTADO = ("respondido_em", "validade")
 
 # Colunas de `me_cotacao` que nasceram depois da tabela.
+CAMPOS_ME_ITEM_NOVOS = ("ncm_pedido", "ncm_origem", "ncm_nota")
 CAMPOS_ME_COTACAO_NOVOS = ("obs_comprador", "revisao_ia", "revisao_em",
                            "revisao_assinatura")
 
@@ -364,6 +368,11 @@ class Banco:
         for coluna in CAMPOS_ME_COTACAO_NOVOS:
             if coluna not in existentes:
                 con.execute(f"ALTER TABLE me_cotacao ADD COLUMN {coluna} TEXT")
+
+        existentes = {r["name"] for r in con.execute("PRAGMA table_info(me_item)")}
+        for coluna in CAMPOS_ME_ITEM_NOVOS:
+            if coluna not in existentes:
+                con.execute(f"ALTER TABLE me_item ADD COLUMN {coluna} TEXT")
 
         # UMA linha por transportadora por cotação. Sem esta regra o banco
         # aceitava duas, e a tela desenhava as duas: foi assim que a #50
@@ -754,7 +763,8 @@ class Banco:
                          "salvo_por", "salvo_em", "enviada_em", "erro",
                          "evidencia", "obs_comprador", "revisao_ia",
                          "revisao_em", "revisao_assinatura")
-    CAMPOS_ME_ENTRADA = ("preco", "ncm", "prazo_dias", "marca", "obs", "origem")
+    CAMPOS_ME_ENTRADA = ("preco", "ncm", "prazo_dias", "marca", "obs", "origem",
+                         "ncm_origem", "ncm_nota")
 
     def me_cotacao_id(self, conta: str, numero: int) -> int | None:
         with closing(self._conectar()) as con, con:
@@ -834,7 +844,7 @@ class Banco:
         """O que veio da página do ME. Não toca no que o usuário preencheu."""
         colunas = ("numero", "pagina", "indice", "produto_id", "descricao",
                    "quantidade", "unidade", "obs_comprador", "campos_adicionais",
-                   "uf_destino", "origem_pedida", "data_remessa")
+                   "uf_destino", "origem_pedida", "data_remessa", "ncm_pedido")
         atualiza = ", ".join(f"{c} = excluded.{c}" for c in colunas[1:])
         with closing(self._conectar()) as con, con:
             for item in itens:
@@ -908,8 +918,12 @@ class Banco:
             con.execute(
                 "INSERT INTO me_material (chave, ncm, marca, origem, atualizado_em)"
                 " VALUES (?, ?, ?, ?, ?) ON CONFLICT (chave) DO UPDATE SET"
-                " ncm = excluded.ncm, marca = excluded.marca,"
-                " origem = excluded.origem, atualizado_em = excluded.atualizado_em",
+                # Vazio não apaga o que já se sabia: o NCM palpite da IA não é
+                # lembrado (None), e isso não pode apagar o NCM bom anterior.
+                " ncm = COALESCE(excluded.ncm, me_material.ncm),"
+                " marca = COALESCE(excluded.marca, me_material.marca),"
+                " origem = COALESCE(excluded.origem, me_material.origem),"
+                " atualizado_em = excluded.atualizado_em",
                 (chave, ncm, marca, origem, datetime.now().isoformat(timespec="seconds")))
 
     @staticmethod
