@@ -33,6 +33,7 @@ import hmac
 import os
 import time
 from contextlib import closing
+from datetime import date
 from itertools import groupby
 from urllib.parse import quote
 
@@ -43,7 +44,7 @@ from fastapi.responses import (HTMLResponse, JSONResponse,
 from core import sessao
 from core.banco import Banco
 from core.evidencias import montar_zip_de_prints
-from core import painel as contas
+from core import ia, painel as contas, resumo_erros
 from web import painel_ui as ui, transportadoras
 from web.ficha_ui import ficha_da_cotacao, lugar, quando as _quando
 from web.layout import e, entrada, moeda, print_embutido
@@ -635,9 +636,63 @@ if (window.IntersectionObserver && secoes.length) {
 VENDEDORES_NO_FILTRO = 8
 
 
+# ------------------------------------------------------ resumo do dia (IA)
+_GRAVIDADE = {"critico": "Crítico", "atencao": "Atenção", "info": "Info"}
+
+
+def _resumo_do_dia(con, hoje, erro: str = "") -> str:
+    """O cartão "Resumo do dia": os fatos (sempre) + o texto da IA (se pedido).
+
+    Abrir a página NÃO chama a IA — só o botão. O resumo guardado mostra de
+    quando é; se os fatos mudaram depois dele, a tela avisa."""
+    fatos = resumo_erros.fatos_do_dia(con, hoje, transportadoras.nome_de)
+    if not resumo_erros.tem_problema(fatos):
+        return '<p class="vazio">Nenhum erro registrado hoje.</p>'
+    salvo = resumo_erros.guardado(con, hoje)
+    partes = []
+    if erro:
+        partes.append(f'<p class="porque" style="margin:0 0 10px">{e(erro)}</p>')
+    if salvo and salvo.get("itens"):
+        velho = salvo["assinatura"] != resumo_erros.assinatura(fatos)
+        itens = "".join(
+            f'<div class="alerta-linha"><div class="diz">'
+            f'<b>{e(_GRAVIDADE[i["gravidade"]])} · {e(i["texto"])}</b>'
+            f'<p class="porque">O que fazer: {e(i["o_que_fazer"])}</p></div></div>'
+            for i in salvo["itens"])
+        quando = (salvo["gerado_em"] or "")[11:16]
+        partes.append(
+            f'<p style="margin:0 0 10px"><b>{e(salvo["manchete"])}</b></p>'
+            f'<div class="alertas">{itens}</div>'
+            f'<p class="quando" style="font-size:11.5px;margin:8px 0 0">'
+            f'Resumo da IA das {e(quando)} ({e(salvo["modelo"] or "")})'
+            + (" — <b>há problemas novos desde então</b>" if velho else "") + '</p>')
+    rotulo = "Gerar de novo" if salvo else "Explicar com IA"
+    botao = ("" if not ia.configurada() else
+             f'<form method="post" action="/adm/resumo-ia" style="margin:10px 0">'
+             f'<button type="submit" class="botao2">{rotulo}</button></form>')
+    linhas = "".join(f"<li>{e(l)}</li>" for l in resumo_erros.resumo_sem_ia(fatos))
+    fatos_html = (f'<details{"" if salvo else " open"}><summary>Os números do dia</summary>'
+                  f'<ul style="margin:6px 0 0;padding-left:18px;font-size:13px">{linhas}</ul></details>')
+    return "".join(partes) + botao + fatos_html
+
+
+@router.post("/resumo-ia")
+def gerar_resumo_ia(adm: str | None = Cookie(None, alias=COOKIE_ADM)):
+    """Pede à IA o resumo de hoje e volta ao painel. Falhou: volta com o motivo."""
+    _exigir_montado()
+    if not autorizado(adm):
+        return RedirectResponse("/adm/entrar", status_code=303)
+    try:
+        with closing(banco._conectar()) as con:
+            resumo_erros.gerar(con, date.today(), transportadoras.nome_de)
+    except ia.IAIndisponivel:
+        return RedirectResponse("/adm?resumo_ia=indisponivel#resumo", status_code=303)
+    return RedirectResponse("/adm#resumo", status_code=303)
+
+
 @router.get("", response_class=HTMLResponse)
 def painel(adm: str | None = Cookie(None, alias=COOKIE_ADM),
-           dias: int = 30, quem: str = "", falhas: int = 0):
+           dias: int = 30, quem: str = "", falhas: int = 0, resumo_ia: str = ""):
     _exigir_montado()
     if not autorizado(adm):
         return RedirectResponse("/adm/entrar", status_code=303)
@@ -666,6 +721,11 @@ def painel(adm: str | None = Cookie(None, alias=COOKIE_ADM),
         # empresa inteira para quem pediu uma pessoa.
         linhas = contas.historico(con, dias=dias, usuario=quem or None,
                                   so_com_falha=so_falhas)
+        resumo_html = _resumo_do_dia(
+            con, date.today(),
+            "A IA não respondeu agora (limite ou fora do ar). Os números abaixo "
+            "continuam valendo; tente de novo em alguns minutos."
+            if resumo_ia == "indisponivel" else "")
 
     rotulo = dict(PERIODOS)[dias]
     busca = ('<label class="busca">'
@@ -687,6 +747,8 @@ def painel(adm: str | None = Cookie(None, alias=COOKIE_ADM),
                    ui.alertas(avisos, transportadoras.nome_de),
                    nota="falhas seguidas, sem sucesso no meio",
                    classe="c12", atraso=0.02) if avisos else "")
+        + ui.cartao("Resumo do dia", resumo_html, ident="resumo",
+                    nota="erros de hoje em português simples", classe="c12", atraso=0.04)
         + ui.cartao(
             "Movimento", ui.grafico_periodo(serie["pontos"], serie["unidade"]),
             ident="movimento", nota=f"por {serie['unidade']} · {rotulo}",

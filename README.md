@@ -287,6 +287,7 @@ COTAFRETE_ADM_SENHA                        senha do painel /adm
 ME_VENTURA_LOGIN / ME_VENTURA_SENHA        Mercado Eletrônico, conta VENTURA
 ME_UNIAO_LOGIN / ME_UNIAO_SENHA            Mercado Eletrônico, conta UNIÃO
 GROQ_API_KEY / OPENROUTER_API_KEY          IA grátis (core/ia.py): revisão do ME
+DELLAVOLPE_IA=0                            opcional: desliga o plano B da proposta
 IA_MODELOS                                 opcional: a ordem dos modelos (ver abaixo)
 ```
 
@@ -324,6 +325,22 @@ projetos.
 Onde a IA entra hoje: revisão da resposta do ME, **Colar o pedido** (preenche
 a cotação de frete, `core/extrair_carga.py`) e **Sugerir NCM** no ME
 (`mercado_eletronico/ncm.py`). Sempre sugestão: quem confirma é o vendedor.
+
+Mais dois, fora da tela do vendedor:
+
+- **Plano B da proposta da Della Volpe** (`carriers/dellavolpe/proposta_ia.py`,
+  registro "proposta Della Volpe"): quando o PDF chega num formato que o leitor
+  não entende, a IA lê o que faltou (valor, carimbo `cot. N`). Só entra o que
+  o PDF prova: o valor precisa vir com a linha de onde saiu, e essa linha tem
+  de estar no PDF, falar em "total" e não ser a da nota fiscal; o carimbo tem
+  de estar escrito no PDF. A regra de rota do ingestor continua valendo. O
+  e-mail registra "lido pela IA (modelo)". `DELLAVOLPE_IA=0` desliga.
+- **Resumo do dia no `/adm`** (`core/resumo_erros.py`, registro "resumo de
+  erros"): junta os erros de hoje — transportadoras, leitura e robô do ME,
+  e-mails da Della Volpe sem preço, IA falhando — e o botão **Explicar com IA**
+  escreve em português simples o que houve e o que fazer. Todo número que a IA
+  escrever tem de existir nos fatos, senão a resposta é recusada. Os números
+  crus aparecem sempre, mesmo sem IA; abrir o painel não gasta pedido.
 
 Testar as chaves: `python -m core.ia` (1 pedido pela lista, diz quem
 respondeu) ou `python -m core.ia --todos` (1 pedido por modelo).
