@@ -329,3 +329,82 @@ def test_item_sem_preco_aparece_como_recusado_na_previa(cliente):
     html = cliente.post(f"/me/{cid}", data=form).text
     assert html.count("será <b>recusado no ME</b>") == 2
     assert 'justificativa "fora de linha"' in html
+
+
+# ------------------------------------------------ limpar o que o robô escreveu
+class LimpadorFalso:
+    def __init__(self, resultado=None):
+        self.chamadas = []
+        self.resultado = resultado or SimpleNamespace(ok=True, salvo=True, divergencias=[],
+                                                      prints=["limpa.png"], erro=None)
+
+    def __call__(self, conta, numero, dry_run):
+        self.chamadas.append((conta, numero, dry_run))
+        return self.resultado
+
+
+def _salva(cliente):
+    cliente.post("/me/atualizar")
+    cid = _id(23049227)
+    cliente.post(f"/me/{cid}/ler")
+    _preencher(cliente, cid, acao="salvar")
+    assert me_ui.banco.me_cotacao(cid)["status"] == "salva"
+    return cid
+
+
+def test_limpar_no_me_apaga_o_rascunho_e_volta_a_pendente(cliente, monkeypatch):
+    limpador = LimpadorFalso()
+    monkeypatch.setattr(me_ui, "LIMPADOR", limpador)
+    cid = _salva(cliente)
+    assert "Limpar no ME" in cliente.get(f"/me/{cid}").text
+    html = cliente.post(f"/me/{cid}/limpar").text
+    assert limpador.chamadas == [("ventura", 23049227, False)]      # de verdade, nunca envia
+    c = me_ui.banco.me_cotacao(cid)
+    assert c["status"] == "pendente" and c["salvo_por"] is None and c["salvo_em"] is None
+    assert c["itens"][0]["preco"] == "1.234,50"                    # o preenchimento da tela fica
+    eventos = [h["evento"] for h in me_ui.banco.me_historico(cid)]
+    assert eventos[-2:] == ["robô: limpar no ME", "limpa no ME"]
+    assert "limpa no ME" in html
+
+
+def test_limpeza_que_falha_antes_de_gravar_nao_muda_o_status(cliente, monkeypatch):
+    monkeypatch.setattr(me_ui, "LIMPADOR", LimpadorFalso(SimpleNamespace(
+        ok=False, salvo=False, divergencias=[], prints=[], erro="TimeoutError: o ME não abriu")))
+    cid = _salva(cliente)
+    cliente.post(f"/me/{cid}/limpar")
+    c = me_ui.banco.me_cotacao(cid)
+    assert c["status"] == "salva"                                   # o rascunho do ME está intacto
+    (ultimo,) = me_ui.banco.me_historico(cid)[-1:]
+    assert ultimo["evento"] == "erro do robô"
+    assert "limpeza: TimeoutError" in ultimo["detalhe"] and "nada foi gravado" in ultimo["detalhe"]
+
+
+def test_limpeza_gravada_com_divergencia_vira_erro(cliente, monkeypatch):
+    monkeypatch.setattr(me_ui, "LIMPADOR", LimpadorFalso(SimpleNamespace(
+        ok=False, salvo=True, divergencias=["p1 Preco1: enviado '0,00', gravado '1,00'"],
+        prints=[], erro=None)))
+    cid = _salva(cliente)
+    cliente.post(f"/me/{cid}/limpar")
+    c = me_ui.banco.me_cotacao(cid)
+    assert c["status"] == "erro" and "divergência depois de limpar" in c["erro"]
+
+
+def test_limpar_so_em_cotacao_aberta(cliente, monkeypatch):
+    limpador = LimpadorFalso()
+    monkeypatch.setattr(me_ui, "LIMPADOR", limpador)
+    cliente.post("/me/atualizar")
+    cid = _id(23049227)
+    cliente.post(f"/me/{cid}/enviada")
+    assert "Limpar no ME" not in cliente.get(f"/me/{cid}").text
+    assert "não está aberta" in cliente.post(f"/me/{cid}/limpar").text
+    assert limpador.chamadas == []
+
+
+def test_ligacao_padrao_da_limpeza(monkeypatch):
+    from mercado_eletronico import robo
+    from mercado_eletronico.regras import Conta
+    chamadas = []
+    monkeypatch.setattr(robo, "limpar_cotacao",
+                        lambda conta, n, *, dry_run: chamadas.append((conta, n, dry_run)))
+    me_ui._limpador_padrao("uniao", 23052403, False)
+    assert chamadas == [(Conta.UNIAO, 23052403, False)]

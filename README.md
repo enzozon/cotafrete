@@ -243,6 +243,15 @@ python -m pytest tests -q -k "me_ or documentacao"   # só o Mercado Eletrônico
 No Windows o PowerShell **não expande** `tests/test_me_*.py` (o pytest recebe
 o asterisco literal e diz "file or directory not found"): use o `-k`.
 
+Numa máquina **sem tela** (servidor Linux, container da nuvem) duas famílias
+falham por causa do ambiente, não do código:
+- `test_generoso_*` (4): a Generoso roda com janela (`headless=False`, senão
+  o site vê "HeadlessChrome"). Rode com tela virtual: `xvfb-run -a python -m pytest tests -q`.
+- `test_dellavolpe_ingestor.py` (20): o `pypdf` carrega o `cryptography`; se
+  o do sistema estiver sem o `cffi` (Debian/Ubuntu com o pacote do apt), ele
+  cai com `PanicException`. `pip install cffi` resolve.
+No Windows com o `requirements.txt` instalado as duas passam.
+
 Cada teste tem o caso real que o gerou no docstring. Não são testes de
 fachada: todos foram escritos **antes** do fix, e cada um falhou primeiro.
 
@@ -289,6 +298,9 @@ impostos e datas, valida, pede uma revisão por IA (só alertas) e o robô
 do ME são o mesmo POST com `Acao` diferente, e o robô só deixa sair `Acao=9`
 (salvar) e a troca de página. Sem `ME_*` no `.env` a tela avisa e não lê
 nada; sem `ANTHROPIC_API_KEY` a revisão diz "indisponível" e o resto segue.
+**Limpar no ME** (na cotação) apaga do rascunho do ME tudo o que o robô
+escreve — itens, recusas, obs geral — com o mesmo Salvar; ficam só os campos
+do cabeçalho que o ME exige para salvar (frete, telefone, validade, moeda).
 Tudo (decisões, recon, provas no ME real) em
 [`docs/MERCADO_ELETRONICO.md`](docs/MERCADO_ELETRONICO.md).
 

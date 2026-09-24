@@ -407,6 +407,34 @@ Link "Mercado Eletrônico" no menu lateral do `/adm`, mesma senha, ao vivo
 - Windows: `python -m pytest tests -q -k "me_ or documentacao"` (o PowerShell
   não expande `tests/test_me_*.py`).
 
+## Limpar no ME (24/09/2026, pedido do usuário)
+Botão **Limpar no ME** no topo de `/me/N` (com confirmação): apaga do
+rascunho do ME tudo o que o robô escreve e confere depois. É o mesmo Salvar
+(`Acao=9`, mais `Acao=1x` para passar de página): **nunca envia**.
+- `mapa.plano_limpeza(indices)` → cada item como uma cotação nova (cópias da
+  VENTURA 23049227/23039029): tudo vazio, `Preco`=0,00, `TipoImposto`=0,
+  Base de cálculo **vazia** (senão o ME exige preço), sem recusa
+  (`HabilitarRecusa` desfeito), `chkItem` desmarcado; e `ObsForn` vazio.
+- `robo.limpar_cotacao(conta, numero, dry_run=...)`; tela: `me_ui.LIMPADOR`,
+  `POST /me/{id}/limpar`. Deu certo → status volta a **Pendente** (o
+  preenchimento da tela fica, para salvar de novo), evento "limpa no ME".
+  Falhou → evento "erro do robô" (aparece no `/adm/me`); se nada foi gravado
+  o status não muda, se gravou e não bateu vira **Erro**.
+- **O cabeçalho não fica vazio**: o validador do ME (JS externo) exige, para
+  o Salvar, `IcoTerms`, "* Frete", telefone, validade e moeda — vazio, ele
+  pinta o campo de vermelho, põe o foco nele e **não grava, sem alert**.
+  Descoberto campo a campo com o `form.submit` neutralizado (0 POST).
+  Esses ficam com os valores fixos da empresa.
+- Sem nenhum item marcado o Salvar mostra "Para salvar previamente é
+  necessario… ao menos 1 item" mas **grava assim mesmo** (o JS avisa e segue).
+- O "Valor ST" em branco vira "0,00" pela máscara na tela e volta gravado
+  vazio: a conferência depois de salvar aceita isso.
+- **Provado no ME real (UNIÃO 23052403):** robô salvou valores "TESTE DO ROBO"
+  + item 20 recusado + obs geral (1 POST `Acao=9`); limpeza em teste → 0 POST,
+  0 divergências; limpeza de verdade → 1 POST `Acao=9`; reaberta: os 3 itens
+  exatamente como cotação nova, nenhum recusado, obs geral vazia; conferência
+  0 divergências; a lista seguiu **"Não Respondida"**.
+
 ## Próximos passos
 1. ~~Recon~~, ~~teste de Salvar~~ e ~~robô~~ (acima).
 2. ~~Robô com trava de envio e dry-run~~ feito (sessão local).

@@ -63,6 +63,9 @@ class PlanoPagina:
     # o Item?" do ME (decisão do usuário, 24/09/2026). É só um estado da
     # página; vai no MESMO POST do Salvar (Acao=9), nunca sozinho.
     recusar: dict[int, str] = field(default_factory=dict)
+    # índices a deixar como cotação nova: sem recusa e com o chkItem_N
+    # DESmarcado (só a limpeza usa; ver plano_limpeza)
+    limpar: list[int] = field(default_factory=list)
 
 
 def _codigo(chave: str, valor: str) -> str:
@@ -136,3 +139,29 @@ def plano_pagina(conta: Conta, itens: dict[int, EntradaItem | None],
         raise PlanoInvalido(" | ".join(erros))
     return PlanoPagina({**campos_cabecalho(validade_dias, hoje, obs_geral.strip()), **campos},
                        marcar, avisos, recusar)
+
+
+# ----------------------------------------------------------------- limpeza
+# Como o ME mostra uma cotação que ninguém tocou (cópias reais da VENTURA
+# 23049227/23039029, 23/09/2026): tudo vazio, Preço "0,00", tipo de imposto
+# "0". Exceções: a Base de cálculo — o ME traz 100,00, mas com ela cheia o
+# item conta como começado e o Salvar exige preço; vai vazia, como o robô já
+# faz com item não respondido (volta a 100,00 sozinha na recarga) — e o
+# Valor ST, que a máscara do ME transforma de "" em "0,00" no blur.
+ITEM_LIMPO = {nome: "" for nome in NOMES_ITEM.values()} | {
+    "Preco": "0,00", "TipoImposto": "0", "ValorSubstituicaoTributaria": "0,00"}
+# Cabeçalho: só a obs geral sai. Frete (IcoTerms), "* Frete", telefone,
+# validade e moeda o ME EXIGE para o Salvar passar — vazios, ele pinta o
+# campo de vermelho e não grava, sem alert (ME real, 24/09/2026). Ficam com
+# os valores fixos da empresa, que não são resposta a nada.
+CABECALHO_LIMPO = {"ObsForn": ""}
+
+
+def plano_limpeza(indices: list[int]) -> PlanoPagina:
+    """Desfaz no rascunho do ME o que o robô escreve numa página: cada item
+    volta a "cotação nova" (sem preço, sem recusa, sem marcar) e a obs geral
+    some. Vai no Salvar (Acao=9), nunca envia."""
+    campos: dict[str, str] = dict(CABECALHO_LIMPO)
+    for i in sorted(indices):
+        campos.update({f"{nome}{i}": valor for nome, valor in ITEM_LIMPO.items()})
+    return PlanoPagina(campos, marcar=[], limpar=sorted(indices))

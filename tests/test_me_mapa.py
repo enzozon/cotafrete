@@ -117,3 +117,15 @@ def test_plano_sem_validade_recusado():
 def test_avisos_seguem_no_plano_sem_bloquear():
     plano = M.plano_pagina(Conta.UNIAO, {1: _item(marca="")}, 30, HOJE)
     assert any("marca" in a for a in plano.avisos)
+
+
+def test_plano_de_limpeza_deixa_cada_item_como_cotacao_nova():
+    p = M.plano_limpeza([1, 2])
+    assert p.marcar == [] and p.recusar == {} and p.limpar == [1, 2]
+    assert p.campos["Preco1"] == "0,00" and p.campos["TipoImposto2"] == "0"
+    assert p.campos["BaseCalculo1"] == "" and p.campos["Observacao2"] == ""
+    assert set(M.NOMES_ITEM.values()) == {k[:-1] for k in p.campos if k.endswith("1")}
+    assert p.campos["ObsForn"] == "" and p.campos["ValorSubstituicaoTributaria1"] == "0,00"
+    # o ME não salva sem estes: a limpeza não mexe neles
+    assert not {"IcoTerms", "NumFoneCota", "ValidadePropostaAux", "MoedaCot",
+                "atrib_CidadeEstado_1_1_0_0", "CondicaoPagamento"} & set(p.campos)

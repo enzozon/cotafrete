@@ -75,6 +75,11 @@ def _robo_padrao(conta: str, numero: int, itens: list[rg.EntradaItem],
     return robo.salvar_cotacao(rg.Conta(conta), numero, itens, validade_dias, dry_run=dry_run)
 
 
+def _limpador_padrao(conta: str, numero: int, dry_run: bool):
+    from mercado_eletronico import robo
+    return robo.limpar_cotacao(rg.Conta(conta), numero, dry_run=dry_run)
+
+
 def _em_thread(fn: Callable, *args) -> None:
     threading.Thread(target=fn, args=args, daemon=True).start()
 
@@ -88,6 +93,7 @@ REVISOR: Callable[..., rv.Revisao] = rv.revisar
 REVISANDO: set[int] = set()   # cotações com a IA trabalhando agora
 LEITOR: Callable[[str, int], list[str]] = _leitor_padrao
 ROBO: Callable[..., Any] = _robo_padrao
+LIMPADOR: Callable[..., Any] = _limpador_padrao
 
 
 def contas_configuradas() -> list[str]:
@@ -373,6 +379,46 @@ def mandar_robo(cid: int, usuario: str, dry_run: bool) -> str | None:
     return None
 
 
+def _rodar_limpeza(cid: int, usuario: str, status_antes: str) -> None:
+    c = banco.me_cotacao(cid)
+    try:
+        r = LIMPADOR(c["conta"], c["numero"], False)
+    except Exception as exc:
+        r, erro = None, f"{type(exc).__name__}: {exc}"[:500]
+    else:
+        erro = _campo(r, "erro")
+    divergencias = list(_campo(r, "divergencias", []) or []) if r is not None else []
+    prints = list(_campo(r, "prints", []) or []) if r is not None else []
+    evidencia = {"evidencia": json.dumps([str(p) for p in prints])} if prints else {}
+    if r is not None and _campo(r, "ok", False) and not divergencias:
+        # O rascunho do ME voltou a ser cotação nova: para nós, pendente de
+        # novo. O preenchimento desta tela fica, para salvar outra vez.
+        banco.me_trocar_status(cid, (Status.SALVANDO.value,), Status.PENDENTE.value,
+                               salvo_por=None, salvo_em=None, erro=None, **evidencia)
+        banco.me_registrar(cid, "limpa no ME",
+                           "rascunho apagado (itens, recusas e obs geral) e conferido", usuario)
+        return
+    salvou = r is not None and _campo(r, "salvo", False)
+    motivo = "limpeza: " + (erro or "divergência depois de limpar: " + "; ".join(divergencias))
+    if not salvou:
+        motivo += " (nada foi gravado no ME)"
+    banco.me_trocar_status(cid, (Status.SALVANDO.value,),
+                           Status.ERRO.value if salvou or status_antes == Status.ERRO.value
+                           else status_antes, erro=motivo[:500], **evidencia)
+    banco.me_registrar(cid, "erro do robô", motivo[:500], usuario)
+
+
+def mandar_limpeza(cid: int, usuario: str) -> str | None:
+    """Solta o robô para apagar do rascunho do ME o que ele escreveu."""
+    c = banco.me_cotacao(cid)
+    abertos = (Status.PENDENTE.value, Status.SALVA.value, Status.ERRO.value)
+    if not banco.me_trocar_status(cid, abertos, Status.SALVANDO.value):
+        return "Esta cotação não está aberta (ou o robô já está nela)."
+    banco.me_registrar(cid, "robô: limpar no ME", "", usuario)
+    DISPARAR(_rodar_limpeza, cid, usuario, c["status"])
+    return None
+
+
 # ------------------------------------------------------------------ telas
 def _usuario(request: Request) -> str | None:
     return vendedor(request.cookies.get(COOKIE)) if vendedor else None
@@ -612,6 +658,12 @@ def ver(cid: int, request: Request, msg: str = ""):
     ler_de_novo = (f'<form method="post" action="/me/{cid}/ler" style="margin:0">'
                    f'<button type="submit" class="botao2">Reler itens do ME</button></form>'
                    if c["itens"] and editavel else "")
+    limpar = (f'<form method="post" action="/me/{cid}/limpar" style="margin:0" '
+              f'onsubmit="return confirm(\'O robô vai APAGAR no ME tudo o que ele escreve nesta cotação '
+              f'(preços, impostos, NCM, prazo, marca, obs, recusas de item e a obs geral) e salvar. '
+              f'Não envia nada. Continuar?\')">'
+              f'<button type="submit" class="botao2">Limpar no ME</button></form>'
+              if editavel else "")
     link_me = (f'<a class="botao2" target="_blank" rel="noopener" '
                f'href="https://www.me.com.br/RespostaCotaItem.asp?Cotacao={c["numero"]}&SuperCleanPage=">'
                f'Abrir no ME</a>')
@@ -624,7 +676,7 @@ def ver(cid: int, request: Request, msg: str = ""):
            sub=sub, contexto=(("prazo", f"{_hora(c['data_limite'])} ({pz.texto})"),
                               ("empresa", c["empresa"] or "—"), ("comprador", c["comprador"] or "—"),
                               ("título", c["codigo"] or "—")),
-           acoes=link_me + ler_de_novo + marcar)}
+           acoes=link_me + ler_de_novo + limpar + marcar)}
 {f'<p class="aviso">{e(msg)}</p>' if msg else ""}
 {'' if editavel else '<p class="aviso">Edição fechada neste status.</p>'}
 {itens_html}
@@ -724,6 +776,16 @@ def ler_itens(cid: int, request: Request):
     return _voltar(cid, f"{n} itens lidos do ME.")
 
 
+@router.post("/{cid}/limpar")
+def limpar_no_me(cid: int, request: Request):
+    usuario = _usuario(request)
+    if not usuario:
+        return RedirectResponse("/login", status_code=303)
+    _cotacao_ou_404(cid)
+    motivo = mandar_limpeza(cid, usuario)
+    return _voltar(cid, motivo or "Robô limpando no ME… (a página recarrega sozinha)")
+
+
 @router.post("/{cid}/enviada")
 def marcar_enviada(cid: int, request: Request):
     usuario = _usuario(request)
@@ -778,6 +840,12 @@ valor</b>. Se estiver indisponível, dá para salvar do mesmo jeito.</li>
 <li><b>Salvar no ME</b> (ou <b>Testar sem salvar</b>, que preenche sem gravar).
 Depois de salvar o robô reabre a página e confere campo a campo; se algo não
 bateu, a cotação fica em <b>Erro</b> com o motivo.</li>
+<li>Precisa desfazer? <b>Limpar no ME</b> (no topo da cotação) apaga do
+rascunho do ME tudo o que o robô escreve: preços, impostos, NCM, prazo, marca,
+observações, recusas de item e a observação geral. Os itens voltam a ficar
+como a cotação chegou e ela volta a <b>Pendente</b>; o que você digitou aqui
+continua, para salvar de novo. Frete, telefone, validade e moeda ficam — o ME
+não deixa salvar sem eles. Também é um Salvar: não envia nada.</li>
 <li>Entre no ME, confira e <b>envie</b>. O sistema percebe o envio sozinho
 (o ME passa a dizer "Respondida", ou a cotação sai das pendências); se quiser
 adiantar, use <b>Marcar como enviada</b>.</li>

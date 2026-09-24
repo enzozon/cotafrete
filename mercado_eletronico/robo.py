@@ -154,7 +154,7 @@ JS_ESTADO_RECUSA = """(i) => {
 def ajustar_recusas(page, plano: M.PlanoPagina) -> None:
     """Deixa cada item recusado ou não conforme o plano, ANTES de digitar:
     campo de item recusado fica readonly, e fill em readonly quebra."""
-    for indice in sorted(set(plano.recusar) | set(plano.marcar)):
+    for indice in sorted(set(plano.recusar) | set(plano.marcar) | set(plano.limpar)):
         recusado = page.evaluate(JS_ESTADO_RECUSA, indice)
         if recusado is None:  # sem o botão: o item não tem como estar recusado
             if indice in plano.recusar:
@@ -180,6 +180,8 @@ def preencher(page, plano: M.PlanoPagina) -> None:
         loc.evaluate(JS_DISPARAR)
     for indice in plano.marcar:
         page.locator(f"#chkItem_{indice}").check()
+    for indice in plano.limpar:
+        page.locator(f"#chkItem_{indice}").uncheck()
 
 
 def _clicar_salvar(page) -> None:
@@ -389,3 +391,81 @@ def _executar(s: Sessao, res: ResultadoRobo, conta: Conta, numero: int,
         res.divergencias += [f"p{pagina} {d}" for d in _conferir(s.page, plano, so_respondidos=True)]
         if pagina < len(planos):
             s.acao(lambda p=pagina: _clicar_pagina(s.page, p + 1))
+
+
+# ------------------------------------------------------------------ limpeza
+def _conferir_limpeza(page, plano: M.PlanoPagina, recarregada: bool) -> list[str]:
+    """Os campos do plano + cada item sem marca e sem recusa. Na página
+    recarregada o ME devolve BaseCalculo=100,00 — é o normal, não conta — e
+    o Valor ST que a máscara pôs em "0,00" volta gravado vazio."""
+    if recarregada:
+        plano = replace(plano, campos={
+            k: ("" if k.startswith("ValorSubstituicaoTributaria") else v)
+            for k, v in plano.campos.items()})
+    diverg = _conferir(page, plano, so_respondidos=recarregada)
+    extras = {f"chkItem_{i}": "false" for i in plano.limpar}
+    extras |= {f"txtJustificativaRecusa_{i}": "" for i in plano.limpar}
+    lido = ler_valores(page, list(extras))  # item sem o botão de recusa não tem justificativa
+    diverg += R.conferir({k: v for k, v in extras.items() if k in lido}, lido)
+    diverg += [f"item {i} continua recusado" for i in plano.limpar
+               if page.evaluate(JS_ESTADO_RECUSA, i)]
+    return diverg
+
+
+def limpar_cotacao(conta: Conta, numero: int, *, dry_run: bool = True,
+                   sessao: Sessao | None = None, headless: bool = True) -> ResultadoRobo:
+    """Apaga do RASCUNHO do ME tudo o que o robô escreve: preços, impostos,
+    NCM, prazo, marca, obs, recusas de item e a obs geral. Os itens voltam a
+    ficar como chegaram; do cabeçalho ficam só os campos fixos da empresa que
+    o ME exige para salvar (mapa.CABECALHO_LIMPO). É um Salvar (Acao=9) —
+    nunca envia.
+
+    ME real (24/09/2026, UNIÃO 23052403): o Salvar sem nenhum item marcado
+    só mostra "Para salvar previamente é necessario…" e grava mesmo assim —
+    o JS do ME avisa mas não para."""
+    res = ResultadoRobo(dry_run=dry_run)
+    dono = sessao is None
+    s = sessao or Sessao(conta, headless=headless)
+    if dono:
+        s.__enter__()
+    try:
+        s.abrir(numero)
+        total = paginas(s.page)
+        planos: list[M.PlanoPagina] = []
+        for pagina in range(1, total + 1):
+            plano = M.plano_limpeza([i.indice for i in ler_itens(s.page)])
+            preencher(s.page, plano)
+            planos.append(plano)
+            if dry_run:
+                res.divergencias += _conferir_limpeza(s.page, plano, recarregada=False)
+                res.prints.append(s.print(f"{numero}_p{pagina}_limpeza_dryrun"))
+                if total > 1:
+                    res.avisos.append(f"teste parou na página 1 de {total}: ir à próxima grava o rascunho.")
+                break
+            if pagina < total and s.acao(lambda p=pagina: _clicar_pagina(s.page, p + 1)) != 1:
+                raise RoboRecusou(f"passagem para a página {pagina + 1} não gravou")
+        if not dry_run:
+            if s.acao(lambda: _clicar_salvar(s.page)) != 1:
+                raise RoboRecusou("o Salvar não gerou o POST esperado — nada garantido no ME")
+            res.salvo = True
+            res.prints.append(s.print(f"{numero}_limpa"))
+            s.abrir(numero)
+            for pagina, plano in enumerate(planos, start=1):
+                res.divergencias += [f"p{pagina} {d}"
+                                     for d in _conferir_limpeza(s.page, plano, recarregada=True)]
+                if pagina < len(planos):
+                    s.acao(lambda p=pagina: _clicar_pagina(s.page, p + 1))
+    except RoboRecusou as exc:
+        res.erro = str(exc)
+    except Exception as exc:
+        res.erro = f"{type(exc).__name__}: {exc}"
+        try:
+            res.prints.append(s.print("erro_limpeza"))
+        except Exception:
+            pass
+    finally:
+        res.posts_liberados, res.bloqueios = s.liberados, list(s.bloqueios)
+        if dono:
+            s.__exit__(None, None, None)
+    res.ok = res.erro is None and not res.divergencias
+    return res

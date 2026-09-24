@@ -288,3 +288,57 @@ def test_recusa_ja_feita_nao_e_desfeita_por_engano(navegador, tmp_path):
     assert r.salvo, r.erro
     (corpo,) = srv.corpos
     assert corpo["txtJustificativaRecusa_2"] == ["nova justificativa"]
+
+
+# -------------------------------------------- limpar o que o robô escreveu
+def test_limpeza_em_teste_na_pagina_real_apaga_o_rascunho_sem_mandar_nada(navegador, tmp_path):
+    """A cópia da UNIÃO 23052403 tem o rascunho do teste real (preço 1,00,
+    "TESTE DO ROBO"): a limpeza deixa tudo como a VENTURA 23049227 chegou."""
+    html = (FIX / "23052403_p1.html").read_text(encoding="utf-8")
+    s, srv = _sessao(navegador, tmp_path, html)
+    with s:
+        r = B.limpar_cotacao(Conta.UNIAO, 23052403, dry_run=True, sessao=s)
+        v = B.ler_valores(s.page, ["Preco1", "Fabricante1", "Observacao1", "NCM1", "TipoImposto1",
+                                   "OrigMat1", "BaseCalculo1", "ObsForn", "IcoTerms",
+                                   "ValidadePropostaAux", "NumFoneCota", "MoedaCot",
+                                   "CondicaoPagamento", "InscricaoEstadual"])
+    assert r.ok and r.erro is None and r.divergencias == [], (r.erro, r.divergencias)
+    assert srv.posts == [] and not r.salvo
+    assert v == {"Preco1": "0,00", "Fabricante1": "", "Observacao1": "", "NCM1": "",
+                 "TipoImposto1": "0", "OrigMat1": "", "BaseCalculo1": "", "ObsForn": "",
+                 # o ME exige estes para salvar: ficam os fixos da empresa
+                 "IcoTerms": "FOB", "ValidadePropostaAux": "23/10/2026", "NumFoneCota": "2732991664",
+                 "MoedaCot": "BRL", "CondicaoPagamento": "F060", "InscricaoEstadual": "083049428"}
+
+
+def _pagina_suja():
+    """Dois itens: o 10 respondido e marcado, o 20 recusado; cabeçalho cheio."""
+    html = _pagina_dois_itens(item2_ja_recusado=True)
+    html = html.replace('<input name="Preco1">', '<input name="Preco1" value="12,34">')
+    html = html.replace('<input name="Fabricante1">', '<input name="Fabricante1" value="MARCA">')
+    html = html.replace('id="chkItem_1" name="chkItem_1"', 'id="chkItem_1" name="chkItem_1" checked')
+    html = html.replace('<textarea name="ObsForn"></textarea>', '<textarea name="ObsForn">obs</textarea>')
+    return html.replace('<input name="NumFoneCota">', '<input name="NumFoneCota" value="2732991664">')
+
+
+def test_limpar_de_verdade_e_um_post_acao_9_com_tudo_vazio(navegador, tmp_path):
+    s, srv = _sessao(navegador, tmp_path, _pagina_suja())
+    with s:
+        r = B.limpar_cotacao(Conta.UNIAO, 1, dry_run=False, sessao=s)
+    assert r.salvo, r.erro
+    assert srv.posts == [["9"]]                         # um POST só, e é o Salvar
+    (corpo,) = srv.corpos
+    assert corpo["Preco1"] == ["0,00"] and corpo["Fabricante1"] == [""]
+    assert corpo["Preco2"] == ["0,00"] and corpo["txtJustificativaRecusa_2"] == [""]
+    assert "chkItem_1" not in corpo and "chkItem_2" not in corpo
+    assert corpo["ObsForn"] == [""] and corpo["NumFoneCota"] == ["2732991664"]
+    # a página falsa devolve o rascunho sujo de novo: a conferência TEM de acusar
+    assert not r.ok and any("Preco1" in d for d in r.divergencias)
+
+
+def test_limpeza_nao_passa_da_trava_se_o_salvar_virar_enviar(navegador, tmp_path):
+    html = _pagina_suja().replace("document.RespCota.Acao.value='9'", "document.RespCota.Acao.value='1'")
+    s, srv = _sessao(navegador, tmp_path, html, timeout_ms=2_000)
+    with s:
+        r = B.limpar_cotacao(Conta.UNIAO, 1, dry_run=False, sessao=s)
+    assert not r.salvo and r.erro and srv.posts == []
