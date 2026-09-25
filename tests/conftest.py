@@ -13,11 +13,22 @@ Quem testa o plano B religa com `monkeypatch.setattr(proposta_ia, "LIGADA", True
 
 from __future__ import annotations
 
+import os
 import threading
 
 import pytest
 
-from carriers.dellavolpe import proposta_ia
+# A Della Volpe só é automática com DV_AUTOMATICA_DESDE no .env — e o .env é
+# o de QUEM RODA os testes. Numa máquina com ela ligada, os testes que supõem
+# "assistida" quebravam; numa sem, quebravam os que supõem "automática". Os
+# testes rodam sempre como numa máquina SEM ela ligada: vazio aqui, antes de
+# qualquer import, e o load_dotenv(override=False) do app e de
+# web/transportadoras.py não sobrescreve. Quem testa o modo automático liga
+# com monkeypatch.setenv (ver test_dellavolpe_caixa.py). Só esta variável:
+# IA_MODELOS e as chaves de IA ficam como estão.
+os.environ["DV_AUTOMATICA_DESDE"] = ""
+
+from carriers.dellavolpe import proposta_ia  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
