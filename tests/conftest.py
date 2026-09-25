@@ -13,6 +13,8 @@ Quem testa o plano B religa com `monkeypatch.setattr(proposta_ia, "LIGADA", True
 
 from __future__ import annotations
 
+import threading
+
 import pytest
 
 from carriers.dellavolpe import proposta_ia
@@ -21,3 +23,24 @@ from carriers.dellavolpe import proposta_ia
 @pytest.fixture(autouse=True)
 def _plano_b_della_volpe_desligado(monkeypatch):
     monkeypatch.setattr(proposta_ia, "LIGADA", False)
+
+
+# Os vigias que o LIFESPAN do app liga (web/app.py, _vida): a varredura do
+# Mercado Eletrônico e o leitor da caixa do suporte da Della Volpe. Com as
+# senhas do .env da máquina, um teste que sobe o uvicorn sem lifespan="off"
+# entra no ME de verdade e lê a caixa de e-mail de verdade — e as threads
+# sobram rodando, atropelando os testes seguintes (a falha intermitente do
+# test_me_tela, 25/09/2026). Esta trava reprova o teste que os deixou vivos.
+VIGIAS = ("me-vigia", "ingestor-dellavolpe")
+_ja_acusados: set[int] = set()
+
+
+@pytest.fixture(autouse=True)
+def _nenhum_vigia_real_sobrando():
+    yield
+    vivos = [t for t in threading.enumerate()
+             if t.name in VIGIAS and t.is_alive() and t.ident not in _ja_acusados]
+    if vivos:
+        _ja_acusados.update(t.ident for t in vivos)
+        pytest.fail(f"o teste deixou rodando {[t.name for t in vivos]}: suba o uvicorn "
+                    "com lifespan=\"off\" (ver tests/conftest.py)", pytrace=False)

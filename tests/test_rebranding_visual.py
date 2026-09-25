@@ -87,8 +87,10 @@ def servidor(tmp_path_factory):
     import os
     os.environ["COTAFRETE_ADM_SENHA"] = "print-sintetico"
 
+    # lifespan="off": ver tests/test_adm_visao_geral.py — o lifespan liga os
+    # vigias do ME e da caixa do suporte com as senhas reais do .env.
     config = uvicorn.Config(modulo.app, host="127.0.0.1", port=0,
-                            log_level="error")
+                            log_level="error", lifespan="off")
     servidor = uvicorn.Server(config)
     thread = threading.Thread(target=servidor.run, daemon=True)
     thread.start()
