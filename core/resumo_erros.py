@@ -121,13 +121,8 @@ def _agrupar(linhas: list[tuple[str | None, str | None]]) -> list[dict]:
 def _legivel(texto: str | None) -> str | None:
     """Assunto de e-mail gravado ainda em MIME ("=?utf-8?b?Q290YcOnw6Nv?=")
     → "Cotação". O ingestor guarda o `Subject` cru no desfecho `sem_pdf`."""
-    if not texto or "=?" not in texto:
-        return texto
-    try:
-        from email.header import decode_header, make_header
-        return str(make_header(decode_header(texto)))
-    except Exception:
-        return texto
+    from carriers.dellavolpe.ingestor import texto_do_cabecalho
+    return texto_do_cabecalho(texto) if texto else texto
 
 
 def _tabela_existe(con: sqlite3.Connection, nome: str) -> bool:
