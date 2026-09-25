@@ -111,14 +111,21 @@ def _message_id(msg: Message, bruto: bytes) -> str:
     return mid or "sha1:" + hashlib.sha1(bruto).hexdigest()
 
 
-def _cabecalho(valor) -> str:
+def texto_do_cabecalho(valor) -> str:
     """Cabeçalho de e-mail em texto: "=?utf-8?b?Q290YcOnw6Nv?=" → "Cotação".
-    Cru, o assunto codificado ia assim para o registro do desfecho `sem_pdf`.
-    Cabeçalho mal formado fica como veio — melhor feio do que perdido."""
+
+    Usado na leitura (o assunto já entra legível no banco) e na TELA: os
+    e-mails lidos antes desta correção (24/09/2026, antes das 15:43) ficaram
+    gravados crus, e gravado não se conserta sozinho. Texto sem "=?" passa
+    intacto — detalhe como "R$ 250.30 na cotação #229" não é cabeçalho.
+    Cabeçalho mal formado fica como veio: melhor feio do que perdido."""
+    texto = str(valor or "")
+    if "=?" not in texto:
+        return texto
     try:
-        return str(make_header(decode_header(str(valor or ""))))
+        return str(make_header(decode_header(texto)))
     except Exception:
-        return str(valor or "")
+        return texto
 
 
 def ler_mensagem(bruto: bytes) -> Mensagem:
@@ -140,7 +147,7 @@ def ler_mensagem(bruto: bytes) -> Mensagem:
     return Mensagem(
         message_id=_message_id(msg, bruto),
         remetente=parseaddr(msg.get("From", ""))[1].lower(),
-        assunto=_cabecalho(msg.get("Subject", "")),
+        assunto=texto_do_cabecalho(msg.get("Subject", "")),
         data=data,
         pdfs=pdfs,
     )

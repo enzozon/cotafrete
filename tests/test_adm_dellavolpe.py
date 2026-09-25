@@ -110,6 +110,48 @@ def test_assunto_e_detalhe_saem_escapados(app_web, chefe):
     assert "&lt;script&gt;" in html
 
 
+# Copiados da tela de produção (24/09/2026): e-mails lidos ANTES da
+# correção do ingestor (8db966b) ficaram gravados com o assunto cru em MIME,
+# e o detalhe do sem_pdf É o assunto. Gravado está gravado: quem tem de
+# mostrar legível é a tela.
+ASSUNTO_CRU = ("=?utf-8?b?Q290YcOnw6Nv?= Della Volpe - Dados preenchidos no "
+               "=?utf-8?b?Rm9ybXVsw6FyaW8=?= - 13:45:02 24/09/2026")
+AGUARDANDO_CRU = "Proposta de Frete Della Volpe 15731/26 aguardando =?utf-8?b?YXByb3Zhw6fDo28=?="
+
+
+def test_email_gravado_antes_da_correcao_aparece_legivel(app_web, chefe):
+    _registrar(app_web.banco, "<e@dv>", "sem_pdf", assunto=ASSUNTO_CRU, detalhe=ASSUNTO_CRU)
+    _registrar(app_web.banco, "<f@dv>", "sem_pdf", assunto=AGUARDANDO_CRU, detalhe=AGUARDANDO_CRU)
+
+    html = chefe.get("/adm/dellavolpe").text
+
+    assert html.count("Cotação Della Volpe - Dados preenchidos no Formulário - 13:45:02") == 2
+    assert html.count("Proposta de Frete Della Volpe 15731/26 aguardando aprovação") == 2
+    assert "=?utf-8?" not in html
+
+
+def test_codigo_escondido_no_mime_continua_escapado(app_web, chefe):
+    # base64 de "<script>alert(3)</script>": decodificar não pode abrir brecha
+    escondido = "=?utf-8?b?PHNjcmlwdD5hbGVydCgzKTwvc2NyaXB0Pg==?="
+    _registrar(app_web.banco, "<g@dv>", "sem_pdf", assunto=escondido, detalhe=escondido)
+
+    html = chefe.get("/adm/dellavolpe").text
+
+    assert "<script>alert(3)</script>" not in html
+    assert "&lt;script&gt;alert(3)&lt;/script&gt;" in html
+
+
+@pytest.mark.parametrize("texto", [
+    "R$ 1873.91 na cotação #219",
+    "o A/C do PDF não tem '(cot. N)': ENZO ZON",
+    "origem do PDF é MG, a cotação #208 é SP",
+    "", None,
+])
+def test_texto_que_nao_e_mime_passa_intacto(texto):
+    from carriers.dellavolpe.ingestor import texto_do_cabecalho
+    assert texto_do_cabecalho(texto) == (texto or "")
+
+
 def test_sem_email_ainda_diz_isso(chefe):
     html = chefe.get("/adm/dellavolpe").text
 
