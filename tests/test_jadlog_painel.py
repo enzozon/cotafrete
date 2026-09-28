@@ -214,3 +214,24 @@ def test_banner_de_cookies_tardio_nao_trava_mais_o_login(navegador, adapter):
     page.get_by_role("button", name="Entrar").click()
 
     assert page.inner_text("#estado") == "painel"
+
+
+# ------------------------------------------ recusa do servidor no cálculo
+# 28/09/2026: com o CEP 29010-000 o servidor da Jadlog responde na hora
+# 400 {"CepNotFound":true}; a tela só pinta "Cep inválido" e o robô ficava
+# 45 s esperando preço, e repetia tudo mais duas vezes.
+@pytest.mark.parametrize("status, corpo, recusa", [
+    (400, '{"CepNotFound":true}', True),
+    (400, '{"CepNotFound": TRUE}', True),
+    (400, '{"CepNotFound":false}', False),
+    (400, '{"Message":"erro interno"}', False),      # não sabemos: continua erro
+    (500, '{"CepNotFound":true}', False),            # servidor caído não é recusa
+    (200, '[{"OrcarmentoFreteId":"0"}]', False),
+    (400, "", False),
+])
+def test_motivo_da_recusa_so_quando_a_jadlog_diz_cep_nao_encontrado(status, corpo, recusa):
+    from carriers.jadlog.painel import motivo_da_recusa
+    motivo = motivo_da_recusa(status, corpo)
+    assert bool(motivo) is recusa
+    if recusa:
+        assert "CEP" in motivo and "cote pelas outras" in motivo

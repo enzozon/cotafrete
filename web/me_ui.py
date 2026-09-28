@@ -201,7 +201,13 @@ def iniciar_vigia() -> threading.Event | None:
 
     def laco():
         while not parar.is_set():
-            atualizar()
+            # Cada volta numa thread NOVA: se uma leitura deixar o Playwright
+            # meio aberto, a sujeira morre com ela e não derruba as próximas
+            # (28/09/2026: uma volta envenenou a thread e 91 seguidas falharam
+            # com "Sync API inside the asyncio loop"; ver robo.Sessao).
+            volta = threading.Thread(target=atualizar, name="me-vigia-volta", daemon=True)
+            volta.start()
+            volta.join()
             parar.wait(INTERVALO_S)
 
     threading.Thread(target=laco, name="me-vigia", daemon=True).start()

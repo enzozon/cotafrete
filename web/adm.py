@@ -44,6 +44,7 @@ from fastapi.responses import (HTMLResponse, JSONResponse,
 from core import sessao
 from core.banco import Banco
 from core.evidencias import montar_zip_de_prints
+from carriers.dellavolpe.ingestor import texto_do_cabecalho
 from core import ia, painel as contas, resumo_erros
 from web import painel_ui as ui, transportadoras
 from web.ficha_ui import ficha_da_cotacao, lugar, quando as _quando
@@ -1355,10 +1356,13 @@ def _linha_email(m: dict) -> str:
     classe = ' class="precisa"' if _precisa_de_gente(m["desfecho"]) else ""
     return (f'<tr{classe}>'
             f'<td class="hora">{e(_hora_curta(m.get("recebido_em")))}</td>'
-            f'<td>{e(m.get("assunto") or m["message_id"])}</td>'
+            # Assunto e detalhe passam por texto_do_cabecalho: o que foi lido
+            # antes de 24/09/2026 15:43 está gravado cru ("=?utf-8?b?...?=").
+            # Decodifica ANTES de escapar — o texto decodificado é de fora.
+            f'<td>{e(texto_do_cabecalho(m.get("assunto")) or m["message_id"])}</td>'
             f'<td>{_pastilha_dv(m["desfecho"])}</td>'
             f'<td class="id">{cotacao}</td>'
-            f'<td class="sub">{e(m["detalhe"] or "")}</td>'
+            f'<td class="sub">{e(texto_do_cabecalho(m["detalhe"]))}</td>'
             f'<td class="hora">{e(_hora_curta(m["processado_em"]))}</td>'
             '</tr>')
 

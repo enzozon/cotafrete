@@ -236,31 +236,63 @@ class Sessao:
         d.accept() if aceita else d.dismiss()
 
     # --- ciclo de vida
+    # O Playwright síncrono deixa um laço asyncio "rodando" na thread enquanto
+    # não recebe stop(). Se a sessão falhar no meio da abertura (navegador que
+    # não sobe, estado.json estragado) ou do fechamento (navegador que caiu),
+    # e o stop() não rodar, TODA sessão seguinte na mesma thread morre com
+    # "It looks like you are using Playwright Sync API inside the asyncio
+    # loop". Foi o que aconteceu com o vigia do ME em 28/09/2026: 91 leituras
+    # seguidas falhando em cada conta, de madrugada, sem ninguém mexer. Por
+    # isso abrir e fechar arrumam a própria bagunça, passo a passo.
     def __enter__(self) -> "Sessao":
         from playwright.sync_api import sync_playwright
 
         self.pasta.mkdir(parents=True, exist_ok=True)
         estado = self.pasta / "estado.json"
-        if self._browser_externo is None:
-            self._pw = sync_playwright().start()
-            self._browser = self._pw.chromium.launch(headless=self.headless)
-        else:
-            self._pw, self._browser = None, self._browser_externo
-        self.ctx = self._browser.new_context(
-            locale="pt-BR", timezone_id="America/Sao_Paulo", viewport={"width": 1500, "height": 950},
-            storage_state=str(estado) if estado.exists() else None)
-        self.ctx.add_init_script(T.JS_TRAVA_FORM)
-        self.ctx.route("**/*", self._rota)
-        self.page = self.ctx.new_page()
-        self.page.set_default_timeout(self.timeout_ms)
-        self.page.on("dialog", self._dialogo)
+        self._pw = self._browser = self.ctx = None
+        try:
+            if self._browser_externo is None:
+                self._pw = sync_playwright().start()
+                self._browser = self._pw.chromium.launch(headless=self.headless)
+            else:
+                self._browser = self._browser_externo
+            self.ctx = self._abrir_contexto(estado)
+            self.ctx.add_init_script(T.JS_TRAVA_FORM)
+            self.ctx.route("**/*", self._rota)
+            self.page = self.ctx.new_page()
+            self.page.set_default_timeout(self.timeout_ms)
+            self.page.on("dialog", self._dialogo)
+        except BaseException:
+            self._fechar()
+            raise
         return self
 
+    def _abrir_contexto(self, estado: Path):
+        opcoes = dict(locale="pt-BR", timezone_id="America/Sao_Paulo",
+                      viewport={"width": 1500, "height": 950})
+        if estado.exists():
+            try:
+                return self._browser.new_context(storage_state=str(estado), **opcoes)
+            except Exception:
+                # estado.json estragado (gravação cortada no meio): sem ele a
+                # sessão só faz login de novo — melhor do que parar para sempre.
+                estado.unlink(missing_ok=True)
+        return self._browser.new_context(**opcoes)
+
+    def _fechar(self) -> None:
+        """Fecha o que foi aberto, na ordem, e o stop() do Playwright SEMPRE
+        roda — mesmo com o navegador já morto."""
+        for passo in (lambda: self.ctx and self.ctx.close(),
+                      lambda: self._pw and self._browser and self._browser.close(),
+                      lambda: self._pw and self._pw.stop()):
+            try:
+                passo()
+            except Exception:
+                pass
+        self._pw = self._browser = self.ctx = None
+
     def __exit__(self, *exc) -> None:
-        self.ctx.close()
-        if self._pw:
-            self._browser.close()
-            self._pw.stop()
+        self._fechar()
 
     def print(self, nome: str) -> str:
         caminho = self.pasta / f"{time.strftime('%Y%m%d-%H%M%S')}_{nome}.png"
