@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import os
 import re
+import time
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
@@ -75,6 +76,32 @@ ROTULO_LARGURA = "Largura (cm)"
 ROTULO_COMPRIMENTO = "Comprimento (cm)"
 
 RE_VALOR = re.compile(r"R\$\s*([\d.]+,\d{2}|\d+,\d{2})")
+
+# O cálculo de verdade, achado no tráfego em 28/09/2026:
+#   POST https://apigwjadlogentregas.azure-api.net/api/Calculadora/CalcularFrete
+#        -> 200 [ {...opções...} ]           cotou
+#        -> 400 {"CepNotFound": true}         a Jadlog não conhece um dos CEPs
+# Medido com CEPs reais: 29164-018 (a Ventura) cota para SP e RJ; 29010-000
+# (centro de Vitória) volta CepNotFound sempre — é cadastro DELA, não falha.
+API_CALCULO = "Calculadora/CalcularFrete"
+
+# Quanto esperar a calculadora aparecer antes de abri-la de novo (uma vez).
+ESPERA_CALCULADORA_MS = 20_000
+
+
+def motivo_da_recusa(status: int, corpo: str) -> str | None:
+    """Resposta do cálculo -> frase de recusa, ou None se não é recusa. PURA.
+
+    Só o que a Jadlog DISSE com todas as letras vira recusa (e recusa não se
+    repete, ver core/retentativa.py). Qualquer outro erro continua sendo
+    "não sabemos", e aí repetir pode resolver."""
+    if status != 400:
+        return None
+    if re.search(r'"CepNotFound"\s*:\s*true', corpo or "", re.IGNORECASE):
+        return ("A Jadlog não encontrou o CEP de origem ou de destino no sistema "
+                "dela e não calcula esta rota. Confira os CEPs; se estiverem "
+                "certos, é cadastro da Jadlog — cote pelas outras.")
+    return None
 
 
 @dataclass
@@ -325,6 +352,46 @@ class JadlogPainelAdapter:
                 return campo
         raise RuntimeError(f"campo não encontrado pelo rótulo: {rotulo!r}")
 
+    def _esperar_calculadora(self, page) -> None:
+        """O campo do CEP de origem à vista antes de preencher.
+
+        28/09/2026, 10h: uma cotação morreu com 45 s esperando esse campo — a
+        calculadora não terminou de abrir. Esperar um pouco e, se não vier,
+        abrir a calculadora de novo custa menos que as três tentativas
+        inteiras (login incluso) do retentativa."""
+        campo = page.get_by_placeholder("Digite o CEP de Origem").first
+        for tentativa in range(2):
+            try:
+                campo.wait_for(state="visible", timeout=ESPERA_CALCULADORA_MS)
+                return
+            except PlaywrightTimeoutError:
+                if tentativa:
+                    raise
+                page.goto(URL_CALCULADORA, wait_until="domcontentloaded")
+                self._fechar_cookies(page)
+
+    def _esperar_resultado(self, page, calculos: list[tuple[int, str]]) -> str | None:
+        """Espera a tabela de preços OU a recusa do servidor. Devolve o motivo
+        da recusa, ou None quando o preço apareceu.
+
+        Antes era só esperar o preço: com o CEP que a Jadlog não conhece, o
+        servidor responde na hora `400 {"CepNotFound":true}`, a tela nunca
+        mostra preço, e o robô ficava os 45 s inteiros parado — e ainda
+        repetia duas vezes, porque timeout conta como erro."""
+        prazo = time.monotonic() + self.timeout_ms / 1000
+        while time.monotonic() < prazo:
+            for status, corpo in calculos:
+                motivo = motivo_da_recusa(status, corpo)
+                if motivo:
+                    return motivo
+            if page.evaluate("""() => /R\\$\\s*[\\d.,]+/.test(document.body.innerText)
+                                       && /comprar/i.test(document.body.innerText)"""):
+                return None
+            page.wait_for_timeout(500)
+        raise PlaywrightTimeoutError(
+            f"a calculadora da Jadlog não mostrou preço em {self.timeout_ms // 1000}s "
+            f"(respostas do cálculo: {[s for s, _ in calculos] or 'nenhuma'})")
+
     def _preencher(self, page, campos: dict[str, str]) -> None:
         page.get_by_placeholder("Digite o CEP de Origem").first.fill(
             campos["cep_origem"])
@@ -400,14 +467,31 @@ class JadlogPainelAdapter:
                     raise RuntimeError("sessão não persistiu até a calculadora")
                 self._fechar_cookies(page)
 
+                self._esperar_calculadora(page)
                 self._preencher(page, campos)
+
+                # O que o servidor da Jadlog respondeu ao cálculo. É por aqui
+                # que a recusa aparece: a tela só pinta "Cep inválido" nos
+                # dois campos e deixa o botão parado, sem dizer mais nada.
+                calculos: list[tuple[int, str]] = []
+
+                def anotar_calculo(resposta) -> None:
+                    if API_CALCULO in resposta.url:
+                        try:
+                            calculos.append((resposta.status, resposta.text()))
+                        except Exception:
+                            calculos.append((resposta.status, ""))
+
+                page.on("response", anotar_calculo)
                 page.get_by_role("button", name="Calcular Envio").first.click()
 
-                # a tabela de opções só aparece depois do cálculo
-                page.wait_for_function(
-                    """() => /R\\$\\s*[\\d.,]+/.test(document.body.innerText)
-                             && /comprar/i.test(document.body.innerText)""",
-                    timeout=self.timeout_ms)
+                recusa = self._esperar_resultado(page, calculos)
+                if recusa:
+                    return ResultadoCotacao(
+                        transportadora=self.slug, status=StatusCotacao.RECUSADO,
+                        motivo_recusa=recusa, enviado_em=enviado,
+                        respondido_em=datetime.now(),
+                        evidencias=print_seguro(page, run / "jadlog_recusa.png"))
                 page.wait_for_timeout(1200)
 
                 texto = page.locator("body").inner_text()
