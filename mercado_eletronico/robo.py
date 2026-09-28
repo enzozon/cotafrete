@@ -365,8 +365,10 @@ def _conferir(page, plano: M.PlanoPagina, so_respondidos: bool) -> list[str]:
 
 def salvar_cotacao(conta: "Conta | L.Login | str", numero: int, itens: list[EntradaItem], validade_dias: int,
                    *, dry_run: bool = True, hoje: date | None = None, obs_geral: str = "",
-                   sessao: Sessao | None = None, headless: bool = True) -> ResultadoRobo:
-    """Preenche a cotação e (se não for dry-run) SALVA. Nunca envia."""
+                   sessao: Sessao | None = None, headless: bool = True,
+                   frete: str = "FOB") -> ResultadoRobo:
+    """Preenche a cotação e (se não for dry-run) SALVA. Nunca envia.
+    `frete`: CIF ou FOB, de `regras.tipo_frete`."""
     hoje = hoje or date.today()
     res = ResultadoRobo(dry_run=dry_run)
     dono = sessao is None
@@ -375,7 +377,7 @@ def salvar_cotacao(conta: "Conta | L.Login | str", numero: int, itens: list[Entr
         s.__enter__()
     try:
         _executar(s, res, L.de(conta).empresa, numero, {i.numero: i for i in itens},
-                  validade_dias, hoje, obs_geral, dry_run)
+                  validade_dias, hoje, obs_geral, dry_run, frete)
     except (RoboRecusou, M.PlanoInvalido, R.RegraDesconhecida) as exc:
         res.erro = str(exc)
     except Exception as exc:  # navegador/ME: registra com print para quem for olhar
@@ -394,13 +396,13 @@ def salvar_cotacao(conta: "Conta | L.Login | str", numero: int, itens: list[Entr
 
 def _executar(s: Sessao, res: ResultadoRobo, conta: Conta, numero: int,
               entradas: dict[int, EntradaItem], validade: int, hoje: date,
-              obs: str, dry_run: bool) -> None:
+              obs: str, dry_run: bool, frete: str = "FOB") -> None:
     s.abrir(numero)
     total = paginas(s.page)
     planos: list[M.PlanoPagina] = []
     for pagina in range(1, total + 1):
         plano = M.plano_pagina(conta, _itens_por_indice(ler_itens(s.page), entradas),
-                               validade, hoje, obs)
+                               validade, hoje, obs, frete)
         res.avisos += plano.avisos
         preencher(s.page, plano)
         planos.append(plano)

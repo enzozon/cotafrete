@@ -88,7 +88,7 @@ def test_leitura_do_me_e_eventos_de_problema(banco):
     banco.me_registrar(cid, "salvo no ME", "ok")          # não é problema
     f = _fatos(banco)
     [leitura] = f["leitura_mercado_eletronico"]
-    assert (leitura["conta"], leitura["leituras"], leitura["falhas"]) == ("UNIÃO", 3, 2)
+    assert (leitura["conta"], leitura["leituras"], leitura["falhas"]) == ("ME geral · UNIÃO", 3, 2)
     [evento] = f["problemas_mercado_eletronico"]
     assert evento["evento"] == "erro do robô" and evento["vezes"] == 1
     assert evento["cotacoes_me"] == [23052403]
@@ -136,7 +136,7 @@ def test_resumo_sem_ia_sai_so_dos_fatos(banco):
     banco.me_registrar_varredura("uniao", ok=False, erro="TimeoutError")
     linhas = RE.resumo_sem_ia(_fatos(banco))
     assert linhas[0].startswith("Generoso: 5 falha(s) em 5 resultado(s)") and "5× (14h)" in linhas[0]
-    assert linhas[1].startswith("Leitura do ME (UNIÃO): 1 de 1 falharam")
+    assert linhas[1].startswith("Leitura do ME (ME geral · UNIÃO): 1 de 1 falharam")
 
 
 # -------------------------------------------------------------- a IA

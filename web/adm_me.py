@@ -34,7 +34,7 @@ from web.layout import e, print_embutido
 
 router = APIRouter(prefix="/adm/me", include_in_schema=False)
 
-CONTAS = {"ventura": "VENTURA", "uniao": "UNIÃO"}
+from mercado_eletronico.logins import ROTULOS as CONTAS  # noqa: E402
 PERIODOS = adm.PERIODOS
 agora = datetime.now   # trocável no teste
 

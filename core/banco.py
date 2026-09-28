@@ -222,6 +222,7 @@ CREATE TABLE IF NOT EXISTS me_cotacao (
     revisao_ia      TEXT,          -- JSON de mercado_eletronico/revisao.Revisao
     revisao_em      TEXT,
     revisao_assinatura TEXT,       -- do preenchimento revisado: mudou = velha
+    avisos_comprador TEXT,         -- JSON: os "Atenção: ..." da página do ME
     UNIQUE (conta, numero)
 );
 
@@ -251,6 +252,7 @@ CREATE TABLE IF NOT EXISTS me_item (
     ncm_pedido        TEXT,     -- o NCM que o COMPRADOR escreveu nos Campos Adicionais
     ncm_origem        TEXT,     -- de onde veio o ncm acima: comprador / memoria / ia / NULL = digitado
     ncm_nota          TEXT,     -- a IA: descrição da posição e a confiança
+    local_entrega     TEXT,     -- "Local de Entrega:" do item na página do ME
     PRIMARY KEY (cotacao_id, numero)
 );
 
@@ -326,9 +328,9 @@ CAMPOS_CARGA = (
 CAMPOS_RESULTADO = ("respondido_em", "validade", "resposta_em", "pedido_em")
 
 # Colunas de `me_cotacao` que nasceram depois da tabela.
-CAMPOS_ME_ITEM_NOVOS = ("ncm_pedido", "ncm_origem", "ncm_nota")
+CAMPOS_ME_ITEM_NOVOS = ("ncm_pedido", "ncm_origem", "ncm_nota", "local_entrega")
 CAMPOS_ME_COTACAO_NOVOS = ("obs_comprador", "revisao_ia", "revisao_em",
-                           "revisao_assinatura")
+                           "revisao_assinatura", "avisos_comprador")
 
 
 def _decimal(valor: str | None) -> Decimal | None:
@@ -861,7 +863,7 @@ class Banco:
                          "atualizado_em", "itens_lidos_em", "validade_dias",
                          "salvo_por", "salvo_em", "enviada_em", "erro",
                          "evidencia", "obs_comprador", "revisao_ia",
-                         "revisao_em", "revisao_assinatura")
+                         "revisao_em", "revisao_assinatura", "avisos_comprador")
     CAMPOS_ME_ENTRADA = ("preco", "ncm", "prazo_dias", "marca", "obs", "origem",
                          "ncm_origem", "ncm_nota")
 
@@ -943,7 +945,8 @@ class Banco:
         """O que veio da página do ME. Não toca no que o usuário preencheu."""
         colunas = ("numero", "pagina", "indice", "produto_id", "descricao",
                    "quantidade", "unidade", "obs_comprador", "campos_adicionais",
-                   "uf_destino", "origem_pedida", "data_remessa", "ncm_pedido")
+                   "uf_destino", "origem_pedida", "data_remessa", "ncm_pedido",
+                   "local_entrega")
         atualiza = ", ".join(f"{c} = excluded.{c}" for c in colunas[1:])
         with closing(self._conectar()) as con, con:
             for item in itens:

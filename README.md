@@ -289,6 +289,8 @@ DV_IMAP_HOST / _USUARIO / _SENHA           caixa do suporte (ingestor de e-mail)
 COTAFRETE_ADM_SENHA                        senha do painel /adm
 ME_VENTURA_LOGIN / ME_VENTURA_SENHA        Mercado Eletrônico, conta VENTURA
 ME_UNIAO_LOGIN / ME_UNIAO_SENHA            Mercado Eletrônico, conta UNIÃO
+NESTLE_*, WEG_*, ME_AUTOGLASS, OITAMERICA_*,
+PROFARMA_*, EDP_* (_LOGIN / _SENHA)        os outros 12 logins do ME (mercado_eletronico/logins.py)
 GROQ_API_KEY / OPENROUTER_API_KEY          IA grátis (core/ia.py): revisão do ME
 DELLAVOLPE_IA=0                            opcional: desliga o plano B da proposta
 IA_MODELOS                                 opcional: a ordem dos modelos (ver abaixo)
@@ -296,7 +298,10 @@ IA_MODELOS                                 opcional: a ordem dos modelos (ver ab
 
 ### Mercado Eletrônico
 
-A tela `/me` lista as cotações pendentes das duas contas e responde cada uma:
+A tela `/me` lista as cotações pendentes dos 14 logins
+(`mercado_eletronico/logins.py`: ME geral a cada 7 min, os de cliente a cada
+15, uma conta de cada vez e dando a vez ao frete; cada cotação nova é anotada
+em `log/me_chegadas.txt`) e responde cada uma:
 o usuário preenche preço, NCM, prazo, marca, obs e origem; o sistema calcula
 impostos e datas, valida, pede uma revisão por IA (só alertas) e o robô
 **preenche e salva** no ME. **O envio é sempre humano** — Salvar e Confirmar
@@ -306,6 +311,11 @@ nada; sem `GROQ_API_KEY`/`OPENROUTER_API_KEY` a revisão diz "indisponível" e o
 **Limpar no ME** (na cotação) apaga do rascunho do ME tudo o que o robô
 escreve — itens, recusas, obs geral — com o mesmo Salvar; ficam só os campos
 do cabeçalho que o ME exige para salvar (frete, telefone, validade, moeda).
+Na cotação, um quadro mostra o frete (CIF/FOB e o porquê), os avisos do
+comprador e quantos itens estão prontos; cada linha se completa (impostos,
+entrega, total) assim que a origem é escolhida. O robô de salvar só entra nos
+logins do ME geral — nos outros o formulário muda com o comprador e ainda não
+foi conferido.
 Tudo (decisões, recon, provas no ME real) em
 [`docs/MERCADO_ELETRONICO.md`](docs/MERCADO_ELETRONICO.md).
 

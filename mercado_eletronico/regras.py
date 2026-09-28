@@ -42,6 +42,41 @@ class Conta(str, Enum):
     ALIANCA = "alianca"
 
 
+# ------------------------------------------------------------------- frete
+# Aviso do comprador que fala do frete ("Atenção: Frete Padrão: CIF", EDP em
+# 28/09/2026) manda. Sem aviso, a regra que os vendedores que usam o ME
+# passaram ao Enzo (28/09/2026): Nestlé, Autoglass e EDP sempre CIF, WEG FOB.
+# O resto continua FOB, como era antes.
+CLIENTES_CIF = ("NESTLE", "AUTOGLASS", "EDP")
+CLIENTES_FOB = ("WEG",)
+_RE_FRETE_AVISO = re.compile(r"\bfrete\b[^.;\n]{0,40}?\b(CIF|FOB)\b", re.IGNORECASE)
+
+
+def _sem_acento(texto: str) -> str:
+    import unicodedata
+    return "".join(c for c in unicodedata.normalize("NFD", texto or "")
+                   if not unicodedata.combining(c)).upper()
+
+
+def tipo_frete(avisos: list[str], empresa: str | None,
+               formulario: str = "") -> tuple[str, str]:
+    """("CIF" | "FOB", de onde veio) — o motivo aparece na tela.
+
+    Ordem: aviso do comprador, o formulário pedindo preço CIF, o cliente,
+    e só então o padrão FOB."""
+    for aviso in avisos or []:
+        if m := _RE_FRETE_AVISO.search(aviso):
+            return m.group(1).upper(), f"aviso do comprador: \"{aviso}\""
+    if formulario == "CIF":
+        return "CIF", "o formulário do comprador pede \"Preço a Prazo CIF\""
+    nome = _sem_acento(empresa or "")
+    for clientes, frete in ((CLIENTES_CIF, "CIF"), (CLIENTES_FOB, "FOB")):
+        for cliente in clientes:
+            if re.search(rf"\b{cliente}\b", nome):
+                return frete, f"{cliente.title()} é sempre {frete}"
+    return "FOB", "padrão da empresa"
+
+
 class RegraDesconhecida(ValueError):
     """Combinação que a empresa nunca definiu — melhor parar do que chutar."""
 

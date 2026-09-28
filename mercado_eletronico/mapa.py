@@ -84,14 +84,20 @@ def campos_item(conta: Conta, item: EntradaItem, indice: int, hoje: date) -> dic
     return {f"{NOMES_ITEM[k]}{indice}": _codigo(k, v) for k, v in negocio.items()}
 
 
-def campos_cabecalho(validade_dias: int, hoje: date, obs: str) -> dict[str, str]:
+def campos_cabecalho(validade_dias: int, hoje: date, obs: str,
+                     frete: str = "FOB") -> dict[str, str]:
+    """`frete` vem de `regras.tipo_frete` (aviso do comprador ou cliente)."""
+    if frete not in ("CIF", "FOB"):
+        raise PlanoInvalido(f"tipo de frete {frete!r}: só CIF ou FOB")
     validade = R.validade_proposta(validade_dias, hoje)
-    return {**CABECALHO_FIXO, "ValidadePropostaAux": validade.strftime("%d/%m/%Y"),
-            "ObsForn": obs}
+    return {**CABECALHO_FIXO, "IcoTerms": frete,
+            "atrib_CidadeEstado_1_1_0_0": f"Frete {frete}",
+            "ValidadePropostaAux": validade.strftime("%d/%m/%Y"), "ObsForn": obs}
 
 
 def plano_pagina(conta: Conta, itens: dict[int, EntradaItem | None],
-                 validade_dias: int | None, hoje: date, obs_geral: str = "") -> PlanoPagina:
+                 validade_dias: int | None, hoje: date, obs_geral: str = "",
+                 frete: str = "FOB") -> PlanoPagina:
     """Tudo o que o robô digita numa página. `itens`: índice → entrada (None = não responder).
 
     Item fora da lista do usuário fica TOTALMENTE vazio: o ME traz
@@ -137,7 +143,8 @@ def plano_pagina(conta: Conta, itens: dict[int, EntradaItem | None],
                      "cotação inteira — isso é com um humano, pelo site do ME.")
     if erros:
         raise PlanoInvalido(" | ".join(erros))
-    return PlanoPagina({**campos_cabecalho(validade_dias, hoje, obs_geral.strip()), **campos},
+    return PlanoPagina({**campos_cabecalho(validade_dias, hoje, obs_geral.strip(), frete),
+                        **campos},
                        marcar, avisos, recusar)
 
 
