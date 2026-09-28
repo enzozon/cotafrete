@@ -139,14 +139,14 @@ def _cenario(banco, monkeypatch):
     me_ui.gravar_formulario(ids[23049227], {
         "validade_dias": "30", "preco_10": "1.234,50", "ncm_10": "85076000", "prazo_10": "45",
         "marca_10": "DJI", "obs_10": "", "origem_10": "2"})
-    monkeypatch.setattr(me_ui, "ROBO", lambda *a: SimpleNamespace(
+    monkeypatch.setattr(me_ui, "ROBO", lambda *a, **k: SimpleNamespace(
         ok=True, divergencias=[], prints=[], erro=None, avisos=[]))
     assert me_ui.mandar_robo(ids[23049227], "leandro", False) is None
     me_ui.gravar_formulario(ids[23052403], {
         "validade_dias": "30", "preco_10": "5,00", "ncm_10": "48219000", "prazo_10": "30",
         "marca_10": "3M", "obs_10": "", "origem_10": "0",
         "preco_20": "", "obs_20": "fora de linha", "preco_30": "", "obs_30": "sem estoque"})
-    monkeypatch.setattr(me_ui, "ROBO", lambda *a: SimpleNamespace(
+    monkeypatch.setattr(me_ui, "ROBO", lambda *a, **k: SimpleNamespace(
         ok=False, divergencias=[], prints=[], erro="TimeoutError: o Salvar não gerou o POST", avisos=[]))
     me_ui.mandar_robo(ids[23052403], "enzo", False)
     monkeypatch.setattr(me_ui, "REVISOR", lambda *a, **k: rv.Revisao(erro="falta GROQ_API_KEY ou OPENROUTER_API_KEY no .env"))
@@ -205,7 +205,7 @@ def test_ao_vivo_so_manda_quando_muda(monkeypatch, banco, cliente):
 def test_tela_de_uma_cotacao(monkeypatch, banco, cliente):
     ids = _cenario(banco, monkeypatch)
     html = cliente.get(f"/adm/me/{ids[23052403]}").text
-    assert "Cotação 23052403 · UNIÃO" in html
+    assert "Cotação 23052403 · ME geral · UNIÃO" in html
     assert "recusado:</b> fora de linha" in html
     assert "erro do robô" in html
     assert "RespostaCotaItem.asp?Cotacao=23052403" in html      # abrir no ME

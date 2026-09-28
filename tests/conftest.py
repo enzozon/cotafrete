@@ -28,6 +28,18 @@ import pytest
 # IA_MODELOS e as chaves de IA ficam como estão.
 os.environ["DV_AUTOMATICA_DESDE"] = ""
 
+# Mesmo motivo para os logins do ME dos clientes (Nestlé, WEG...; 28/09/2026):
+# com eles no .env de quem roda, a varredura dos testes tentaria ler 12 contas
+# que as fixtures não têm. Vazio = login não configurado (logins.credenciais).
+# O ME geral (ME_VENTURA/ME_UNIAO) fica como estava: os testes o ligam com
+# monkeypatch.setenv. Quem testa um login de cliente liga do mesmo jeito.
+from mercado_eletronico import logins as _logins_me  # noqa: E402
+
+for _l in _logins_me.LOGINS:
+    if _l.chave not in ("ventura", "uniao"):
+        os.environ[f"{_l.prefixo}_LOGIN"] = ""
+        os.environ[f"{_l.prefixo}_SENHA"] = ""
+
 from carriers.dellavolpe import proposta_ia  # noqa: E402
 
 

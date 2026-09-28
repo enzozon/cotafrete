@@ -40,7 +40,7 @@ FALHA = ("erro", "intervencao_necessaria")          # core/painel.FALHA
 MAX_GRUPOS = 6       # mensagens distintas por fonte que vão para a IA
 MAX_ITENS = 8
 GRAVIDADES = ("critico", "atencao", "info")
-CONTAS_ME = {"ventura": "VENTURA", "uniao": "UNIÃO"}
+from mercado_eletronico.logins import ROTULOS as CONTAS_ME  # noqa: E402
 
 ESQUEMA = {
     "type": "object",

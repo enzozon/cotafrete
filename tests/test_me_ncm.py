@@ -190,7 +190,7 @@ def test_palpite_da_ia_so_vira_memoria_depois_de_conferido(cliente, prov, monkey
     assert me_ui.banco.me_material(chave)["ncm"] is None    # palpite: não lembrado
     assert _itens(cid)[170]["ncm_origem"] == "ia"
     # salvou no ME com ele: agora é resposta dada
-    monkeypatch.setattr(me_ui, "ROBO", lambda *a: SimpleNamespace(ok=True, divergencias=[], prints=[],
+    monkeypatch.setattr(me_ui, "ROBO", lambda *a, **k: SimpleNamespace(ok=True, divergencias=[], prints=[],
                                                                   erro=None, avisos=[]))
     outros = {f"obs_{n}": "fora de linha" for n in _itens(cid) if n != 170}
     outros |= {f"preco_{n}": "" for n in _itens(cid) if n != 170}

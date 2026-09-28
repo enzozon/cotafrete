@@ -6,7 +6,7 @@ morasse no robô, um teste de tela nunca a pegaria errada.
 
 Decisões do usuário (23/09/2026):
 
-- UNIÃO cobra só ICMS; VENTURA cobra tudo menos IPI.
+- UNIÃO e ALIANÇA cobram só ICMS; VENTURA cobra tudo menos IPI.
 - ICMS: dentro do ES, 17% (origem 0 ou 2). Fora do ES: origem 0 → 12%;
   origem 2 (estrangeira comprada no mercado interno) → 4%, a alíquota
   interestadual de importados da Res. Senado 13/2012 (decisão de 24/09/2026).
@@ -39,6 +39,42 @@ UFS = frozenset(
 class Conta(str, Enum):
     VENTURA = "ventura"
     UNIAO = "uniao"
+    ALIANCA = "alianca"
+
+
+# ------------------------------------------------------------------- frete
+# Aviso do comprador que fala do frete ("Atenção: Frete Padrão: CIF", EDP em
+# 28/09/2026) manda. Sem aviso, a regra que os vendedores que usam o ME
+# passaram ao Enzo (28/09/2026): Nestlé, Autoglass e EDP sempre CIF, WEG FOB.
+# O resto continua FOB, como era antes.
+CLIENTES_CIF = ("NESTLE", "AUTOGLASS", "EDP")
+CLIENTES_FOB = ("WEG",)
+_RE_FRETE_AVISO = re.compile(r"\bfrete\b[^.;\n]{0,40}?\b(CIF|FOB)\b", re.IGNORECASE)
+
+
+def _sem_acento(texto: str) -> str:
+    import unicodedata
+    return "".join(c for c in unicodedata.normalize("NFD", texto or "")
+                   if not unicodedata.combining(c)).upper()
+
+
+def tipo_frete(avisos: list[str], empresa: str | None,
+               formulario: str = "") -> tuple[str, str]:
+    """("CIF" | "FOB", de onde veio) — o motivo aparece na tela.
+
+    Ordem: aviso do comprador, o formulário pedindo preço CIF, o cliente,
+    e só então o padrão FOB."""
+    for aviso in avisos or []:
+        if m := _RE_FRETE_AVISO.search(aviso):
+            return m.group(1).upper(), f"aviso do comprador: \"{aviso}\""
+    if formulario == "CIF":
+        return "CIF", "o formulário do comprador pede \"Preço a Prazo CIF\""
+    nome = _sem_acento(empresa or "")
+    for clientes, frete in ((CLIENTES_CIF, "CIF"), (CLIENTES_FOB, "FOB")):
+        for cliente in clientes:
+            if re.search(rf"\b{cliente}\b", nome):
+                return frete, f"{cliente.title()} é sempre {frete}"
+    return "FOB", "padrão da empresa"
 
 
 class RegraDesconhecida(ValueError):
@@ -145,7 +181,8 @@ def impostos(conta: Conta, origem: int, uf_destino: str) -> Impostos:
     icms = aliquota_icms(origem, uf_destino)
     if conta is Conta.VENTURA:
         return Impostos(icms, "sim", Decimal("0.65"), "sim", Decimal("3.00"), "sim")
-    if conta is Conta.UNIAO:
+    # ALIANÇA: só ICMS, igual à UNIÃO (Enzo, 28/09/2026; IE 082417377-ES).
+    if conta in (Conta.UNIAO, Conta.ALIANCA):
         return Impostos(icms, "sim", Decimal("0"), "Isento", Decimal("0"), "Isento")
     raise RegraDesconhecida(f"Conta desconhecida: {conta!r}")
 

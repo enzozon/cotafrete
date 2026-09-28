@@ -18,10 +18,13 @@ from __future__ import annotations
 
 import html as _html
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime
 
-from mercado_eletronico.regras import PedidoDoComprador, ler_campos_adicionais
+from mercado_eletronico.regras import UFS, PedidoDoComprador, ler_campos_adicionais
+
+# "... GOIANIA - GO - 74672-400": a UF logo antes do CEP.
+_RE_UF_DO_LOCAL = re.compile(r"-\s*(" + "|".join(sorted(UFS)) + r")\s*-\s*\d{2}\.?\d{3}-?\d{3}")
 
 
 @dataclass(frozen=True)
@@ -35,6 +38,7 @@ class ItemDaPagina:
     obs_comprador: str
     campos_adicionais: str
     pedido: PedidoDoComprador = field(default_factory=PedidoDoComprador)
+    local_entrega: str = ""
 
 
 @dataclass(frozen=True)
@@ -48,6 +52,12 @@ class PaginaDaCotacao:
     pagina: int
     paginas: list[int]
     itens: list[ItemDaPagina]
+    # Os "Atenção: ..." do comprador no alto da página (frete padrão, anexos
+    # obrigatórios, horário de recebimento), sem o "Atenção:".
+    avisos: list[str] = field(default_factory=list)
+    # "CIF" quando o próprio formulário pede o preço CIF ("Preço a Prazo
+    # CIF", Alpek em 28/09/2026); "" quando não diz.
+    frete_formulario: str = ""
 
 
 def _texto(fragmento: str) -> str:
@@ -78,7 +88,13 @@ def _item(bloco: str, indice: int) -> ItemDaPagina:
     unidade = re.search(r"<td>\s*Unidade:\s*([^<]*)</td>", bloco)
     obs = re.search(r"Observação(?:&nbsp;|\s)*</td>\s*<td>(.*?)</td>", bloco, re.S)
     adic = re.search(r"Campos Adicionais:</b>.*?<th[^>]*>(.*?)</th>", bloco, re.S)
+    local = re.search(r"Local de Entrega:(.*?)</td>", bloco, re.S)
     campos = _texto(adic.group(1)) if adic else ""
+    entrega = _texto(local.group(1)).strip(" -") if local else ""
+    pedido = ler_campos_adicionais(campos)
+    if pedido.uf_destino is None and (m := _RE_UF_DO_LOCAL.search(entrega)):
+        # EDP (28/09/2026): sem Campos Adicionais; a UF só está no endereço.
+        pedido = replace(pedido, uf_destino=m.group(1))
     return ItemDaPagina(
         indice=indice,
         numero=int(numero.group(1)) if numero else 0,
@@ -88,8 +104,28 @@ def _item(bloco: str, indice: int) -> ItemDaPagina:
         unidade=_texto(unidade.group(1)) if unidade else "",
         obs_comprador=_texto(obs.group(1)) if obs else "",
         campos_adicionais=campos,
-        pedido=ler_campos_adicionais(campos),
+        pedido=pedido,
+        local_entrega=entrega,
     )
+
+
+def ler_avisos(html: str) -> list[str]:
+    """Os avisos do comprador, na ordem, sem repetir (a Alpek repete os do
+    alto no pé da página)."""
+    vistos: list[str] = []
+    for bloco in re.findall(r'<div class="me-info"[^>]*>(.*?)</div>', html, re.S):
+        texto = re.sub(r"^Aten[çc][ãa]o:\s*", "", _texto(bloco), flags=re.I).strip()
+        if texto and texto not in vistos and not texto.startswith(_AVISO_DO_ME):
+            vistos.append(texto)
+    return vistos
+
+
+# Rodapé que o ME põe em TODA cotação — não é do comprador, e fala em "enviar".
+_AVISO_DO_ME = "Após preencher em todas as páginas"
+
+
+def ler_frete_formulario(html: str) -> str:
+    return "CIF" if re.search(r"Pre[çc]o\s+a\s+Prazo\s+CIF", html, re.I) else ""
 
 
 def ler(html: str) -> PaginaDaCotacao:
@@ -115,6 +151,8 @@ def ler(html: str) -> PaginaDaCotacao:
         pagina=int(_oculto(html, "CurrentPage") or 1),
         paginas=paginas,
         itens=itens,
+        avisos=ler_avisos(html),
+        frete_formulario=ler_frete_formulario(html),
     )
 
 
@@ -124,5 +162,8 @@ def juntar(paginas: list[PaginaDaCotacao]) -> PaginaDaCotacao:
         raise ValueError("Nenhuma página.")
     base = min(paginas, key=lambda p: p.pagina)
     itens = [i for p in sorted(paginas, key=lambda p: p.pagina) for i in p.itens]
-    return PaginaDaCotacao(**{**base.__dict__, "itens": itens,
+    avisos = list(dict.fromkeys(a for p in paginas for a in p.avisos))
+    frete = next((p.frete_formulario for p in paginas if p.frete_formulario), "")
+    return PaginaDaCotacao(**{**base.__dict__, "itens": itens, "avisos": avisos,
+                              "frete_formulario": frete,
                               "paginas": sorted({p.pagina for p in paginas} | set(base.paginas))})

@@ -474,3 +474,44 @@ estado de cotação nova (preço 0,00, campos vazios); o cabeçalho ficou com os
 valores fixos reais da empresa (FOB, 60DDL, telefone, BRL, IE, "Frete FOB",
 validade). Continua "Não Respondida". A revisão por IA usa a cadeia grátis de
 `core/ia.py` (acima); falta a primeira revisão real no cotafrete-dev.
+
+
+## 28/09/2026 — 14 logins, frete CIF/FOB e a cotação completa na tela
+
+**Logins** (`mercado_eletronico/logins.py`): um por (cliente, empresa). A
+empresa decide os impostos; o login, onde entrar. ALIANÇA (nova): **só ICMS**,
+como a UNIÃO, IE 082417377-ES; Autoglass é da ALIANÇA. VENTURA e UNIÃO do
+"ME geral" mantêm as chaves `ventura`/`uniao` (cotações já no banco).
+
+**Recon só leitura das 12 contas novas** (nenhum POST, nenhum bloqueio da
+trava): todas entram; ~35 s na primeira vez (login), **~6 s** depois.
+- O nome do login não é o comprador: "Nestlé · VENTURA" recebe cotação da
+  **EDP**; "EDP · ALIANÇA" recebe da **WEG Linhares**. A lista mostra a
+  empresa compradora de verdade.
+- O **formulário muda com o comprador**: EDP pede "Preço unitário",
+  Unidade e Ref. Fabricante; Alpek pede "Preço a Prazo CIF", DIFAL/ST e ficha
+  técnica. Por isso `robo_liberado` só no ME geral: nos outros o robô não
+  salva nem limpa até o formulário ser mapeado e testado com um Salvar real
+  autorizado.
+- Nestlé · ALIANÇA mostra "Planos do Marketplace Privado pendentes"
+  (Nestlé, Profarma, Elera, Socicam — R$ 0,00). Aderir é decisão humana.
+
+**Varredura**: o vigia acorda a cada minuto e lê os logins vencidos (ME
+geral 7 min, clientes 15 min), um de cada vez, pegando vaga em
+`core.retentativa.VAGA_NAVEGADOR` (frete primeiro). 3 falhas seguidas →
+aquele login só a cada 30 min. Cada cotação nova vai para
+`log/me_chegadas.txt` (as que já estavam lá na 1ª leitura do login vêm
+marcadas), para afinar os intervalos com dado real.
+
+**Frete** (`regras.tipo_frete`), nesta ordem: aviso do comprador que fala de
+frete ("Atenção: Frete Padrão: CIF") → formulário que pede "Preço a Prazo
+CIF" → cliente (Nestlé, Autoglass, EDP **CIF**; WEG **FOB**, regra dos
+vendedores) → FOB. O robô digita `IcoTerms` e "Frete CIF/FOB" conforme.
+
+**Tela da cotação**: quadro com frete e motivo, login, condição, telefone,
+moeda, validade, avisos e observação do comprador, e "N de M itens prontos".
+Cada linha mostra o local de entrega e, escolhida a origem, se completa com
+ICMS/PIS/COFINS, IPI, ST, base, unidade, entrega, NCM, marca e total — pela
+rota `GET /me/{id}/linha/{n}`, que usa as mesmas regras do robô e não grava
+nada. Sem "Campos Adicionais" (EDP), a UF de entrega sai do endereço.
+Prova: `tests/test_me_linha_navegador.py` (navegador real, fixture da EDP).
