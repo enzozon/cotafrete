@@ -250,6 +250,8 @@ class EntradaItem:
     obs: str = ""
     origem: int | None = None
     pedido: PedidoDoComprador = field(default_factory=PedidoDoComprador)
+    # Só para quem exige (EDP, 28/09/2026): o código/modelo do fabricante.
+    ref_fabricante: str = ""
 
     @property
     def sem_cotacao(self) -> bool:

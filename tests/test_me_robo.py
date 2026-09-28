@@ -183,7 +183,7 @@ def test_salvar_adulterado_para_enviar_nao_sai_do_navegador(navegador, tmp_path)
     with s:
         r = B.salvar_cotacao(Conta.UNIAO, 1, [_item(10)], 30, dry_run=False, hoje=HOJE, sessao=s)
     assert not r.salvo and r.erro
-    assert "Timeout" in r.erro or "Salvar não gerou" in r.erro  # parou NO clique, não antes
+    assert "não aceitou o Salvar" in r.erro or "Salvar não gerou" in r.erro  # parou NO clique
     assert srv.posts == []
 
 
@@ -191,7 +191,7 @@ def test_botao_com_outro_title_nao_e_clicado(navegador, tmp_path):
     s, srv = _sessao(navegador, tmp_path, _pagina_falsa(titulo="Salvar e enviar ao comprador"))
     with s:
         r = B.salvar_cotacao(Conta.UNIAO, 1, [_item(10)], 30, dry_run=False, hoje=HOJE, sessao=s)
-    assert "Salvar esperado" in r.erro and srv.posts == []
+    assert "UM botão Salvar" in r.erro and "achei 0" in r.erro and srv.posts == []
 
 
 def test_confirmar_clicado_por_engano_nao_sai(navegador, tmp_path):

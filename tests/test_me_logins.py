@@ -41,10 +41,18 @@ def test_quatorze_logins_com_chave_unica_e_o_me_geral_com_a_chave_antiga():
     assert L.de("uniao").prefixo == "ME_UNIAO"
 
 
-def test_autoglass_e_da_alianca_e_so_o_me_geral_tem_robo():
+def test_autoglass_e_da_alianca_e_o_robo_vale_em_todos_os_logins():
     assert L.de("autoglass").empresa is Conta.ALIANCA
     assert L.de("autoglass").prefixo == "ME_AUTOGLASS"
-    assert {l.chave for l in L.LOGINS if l.robo_liberado} == {"ventura", "uniao"}
+    # Desde 28/09/2026 o robô lê o formulário de cada comprador (formulario.py).
+    assert all(l.robo_liberado for l in L.LOGINS)
+
+
+@pytest.fixture
+def nestle_sem_robo(monkeypatch):
+    from dataclasses import replace
+    monkeypatch.setitem(L._POR_CHAVE, "nestle_ventura",
+                        replace(L.de("nestle_ventura"), robo_liberado=False))
 
 
 def test_chave_desconhecida_para_em_vez_de_entrar_em_outra_conta():
@@ -165,7 +173,7 @@ def test_sem_log_configurado_nao_grava_nada(monkeypatch, tmp_path):
 
 
 # ------------------------------------------------------------ robô liberado
-def test_robo_nao_entra_em_login_nao_liberado(monkeypatch, tmp_path):
+def test_robo_nao_entra_em_login_nao_liberado(monkeypatch, tmp_path, nestle_sem_robo):
     banco = Banco(tmp_path / "t.db")
     monkeypatch.setattr(me_ui, "banco", banco)
     disparos = []
@@ -180,7 +188,7 @@ def test_robo_recebe_o_frete_da_cotacao(monkeypatch, tmp_path):
     banco = Banco(tmp_path / "t.db")
     monkeypatch.setattr(me_ui, "banco", banco)
     recebido = {}
-    monkeypatch.setattr(me_ui, "ROBO", lambda *a, frete: recebido.setdefault("frete", frete)
+    monkeypatch.setattr(me_ui, "ROBO", lambda *a, frete, anexos: recebido.setdefault("frete", frete)
                         and SimpleNamespace(ok=True, divergencias=[], prints=[], erro=None))
     cid = banco.me_criar("uniao", 7, status="salvando",
                          avisos_comprador='{"avisos": ["Frete Padrão: CIF"]}')
@@ -243,7 +251,8 @@ def test_previa_pede_login(cliente):
     assert cliente.get("/me/1/linha/10").status_code == 401
 
 
-def test_login_sem_robo_liberado_nao_mostra_salvar_nem_limpar(monkeypatch, tmp_path, cliente):
+def test_login_sem_robo_liberado_nao_mostra_salvar_nem_limpar(monkeypatch, tmp_path, cliente,
+                                                             nestle_sem_robo):
     cid = me_ui.banco.me_criar("nestle_ventura", 23050183, status="pendente")
     monkeypatch.setattr(me_ui, "LEITOR", lambda conta, n: [
         (FIX / "edp_23050183.html").read_text(encoding="utf-8")])

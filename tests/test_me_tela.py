@@ -39,7 +39,7 @@ class RoboFalso:
         self.chamadas = []
         self.resultado = resultado or SimpleNamespace(ok=True, divergencias=[], prints=["p.png"], erro=None)
 
-    def __call__(self, conta, numero, itens, validade_dias, dry_run, frete="FOB"):
+    def __call__(self, conta, numero, itens, validade_dias, dry_run, frete="FOB", anexos=None):
         self.chamadas.append((conta, numero, itens, validade_dias, dry_run))
         self.frete = frete
         return self.resultado
@@ -247,7 +247,7 @@ def test_ligacao_padrao_com_o_robo_e_a_ponte(monkeypatch):
     monkeypatch.setattr(ponte, "pendencias", lambda conta: chamadas.append(("lista", conta)) or [])
     monkeypatch.setattr(ponte, "ler_paginas", lambda conta, n: chamadas.append(("ler", conta, n)) or [])
     monkeypatch.setattr(robo, "salvar_cotacao",
-                        lambda conta, n, itens, validade, *, dry_run, frete: chamadas.append(("robo", conta, n, dry_run)))
+                        lambda conta, n, itens, validade, *, dry_run, frete, anexos: chamadas.append(("robo", conta, n, dry_run)))
     me_ui._fonte_padrao("uniao")
     me_ui._leitor_padrao("ventura", 1)
     me_ui._robo_padrao("uniao", 2, [], 30, True)

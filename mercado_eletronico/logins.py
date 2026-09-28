@@ -39,12 +39,11 @@ class Login:
     empresa: Conta
     prefixo: str
     intervalo_s: int = INTERVALO_CLIENTE_S
-    # O robô de SALVAR só entra onde o formulário foi mapeado e testado com um
-    # Salvar real autorizado. O recon de 28/09/2026 mostrou que o formulário
-    # muda com o COMPRADOR (EDP pede "Preço unitário", Unidade e Ref
-    # Fabricante; Alpek pede "Preço a Prazo CIF", DIFAL e ficha técnica), e
-    # que o login "Nestlé" recebe cotação da EDP. Até mapear, a conta só lê.
-    robo_liberado: bool = False
+    # Desliga o robô de SALVAR num login (a tela só lê). Desde 28/09/2026 é
+    # True em todos: o formulário muda com o COMPRADOR, não com o login, e o
+    # robô lê o formulário de cada página (formulario.py) — o que ele não sabe
+    # responder, ele recusa com o motivo, antes de digitar.
+    robo_liberado: bool = True
 
     @property
     def rotulo(self) -> str:
@@ -57,8 +56,8 @@ class Login:
 
 
 LOGINS: tuple[Login, ...] = (
-    Login("ventura", "ME geral", Conta.VENTURA, "ME_VENTURA", INTERVALO_GERAL_S, True),
-    Login("uniao", "ME geral", Conta.UNIAO, "ME_UNIAO", INTERVALO_GERAL_S, True),
+    Login("ventura", "ME geral", Conta.VENTURA, "ME_VENTURA", INTERVALO_GERAL_S),
+    Login("uniao", "ME geral", Conta.UNIAO, "ME_UNIAO", INTERVALO_GERAL_S),
     Login("nestle_alianca", "Nestlé", Conta.ALIANCA, "NESTLE_ALIANCA"),
     Login("nestle_uniao", "Nestlé", Conta.UNIAO, "NESTLE_UNIAO"),
     Login("nestle_ventura", "Nestlé", Conta.VENTURA, "NESTLE_VENTURA"),

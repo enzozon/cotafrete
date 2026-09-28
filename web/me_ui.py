@@ -25,10 +25,13 @@ Quem fala com o ME: `mercado_eletronico.ponte.pendencias(conta)` e
 from __future__ import annotations
 
 import json
+import re
+import shutil
 import threading
 import time
 from dataclasses import dataclass, field, replace
 from datetime import date, datetime
+from pathlib import Path
 from typing import Any, Callable
 
 from fastapi import APIRouter, Request
@@ -83,10 +86,11 @@ def _leitor_padrao(conta: str, numero: int) -> list[str]:
 
 
 def _robo_padrao(conta: str, numero: int, itens: list[rg.EntradaItem],
-                 validade_dias: int, dry_run: bool, frete: str = "FOB"):
+                 validade_dias: int, dry_run: bool, frete: str = "FOB",
+                 anexos: dict[str, str] | None = None):
     from mercado_eletronico import robo
     return robo.salvar_cotacao(conta, numero, itens, validade_dias, dry_run=dry_run,
-                               frete=frete)
+                               frete=frete, anexos={t: Path(a) for t, a in (anexos or {}).items()})
 
 
 def _limpador_padrao(conta: str, numero: int, dry_run: bool):
@@ -320,7 +324,8 @@ def _gravar_lidos(cid: int, c: dict, lidas: pg.PaginaDaCotacao, itens: list[dict
     if lidas.obs_comprador:
         extra["obs_comprador"] = lidas.obs_comprador
     extra["avisos_comprador"] = json.dumps(
-        {"avisos": lidas.avisos, "frete_formulario": lidas.frete_formulario}, ensure_ascii=False)
+        {"avisos": lidas.avisos, "frete_formulario": lidas.frete_formulario,
+         "anexos": lidas.anexos, "exige": list(lidas.exige)}, ensure_ascii=False)
     banco.me_atualizar(cid, itens_lidos_em=agora().isoformat(timespec="seconds"), **extra)
     return len(itens)
 
@@ -338,6 +343,9 @@ def gravar_formulario(cid: int, form: dict) -> None:
     c = banco.me_cotacao(cid)
     if "validade_dias" in form:
         banco.me_atualizar(cid, validade_dias=_int(form["validade_dias"]))
+    if "uf_entrega" in form:
+        uf = (form.get("uf_entrega") or "").strip().upper()
+        banco.me_atualizar(cid, uf_entrega=uf if uf in rg.UFS else None)
     for item in c["itens"]:
         n = item["numero"]
         if f"preco_{n}" not in form:
@@ -351,6 +359,8 @@ def gravar_formulario(cid: int, form: dict) -> None:
             "obs": (form.get(f"obs_{n}") or "").strip()[:MAX_OBS],
             "origem": origem,
         }
+        if f"ref_{n}" in form:
+            campos["ref_fabricante"] = (form.get(f"ref_{n}") or "").strip()[:150] or None
         if campos["ncm"] != (item["ncm"] or ""):
             # Mexeu no NCM: agora é dele — sai a etiqueta "sugerido pela IA".
             campos |= {"ncm_origem": None, "ncm_nota": None}
@@ -384,19 +394,47 @@ def frete_de(c: dict) -> tuple[str, str]:
                          _lido_da_pagina(c).get("frete_formulario") or "")
 
 
-def _entrada(i: dict) -> rg.EntradaItem:
+def anexos_de(c: dict) -> list[dict]:
+    """Os anexos que o comprador marcou com "*" ([{"nome", "tipo"}])."""
+    return list(_lido_da_pagina(c).get("anexos") or [])
+
+
+def exige_de(c: dict) -> set[str]:
+    return set(_lido_da_pagina(c).get("exige") or [])
+
+
+def anexos_locais(c: dict) -> dict[str, dict]:
+    """Os arquivos que o vendedor subiu aqui, por TipoAnexo do ME."""
+    try:
+        dados = json.loads(c.get("anexos_locais") or "{}")
+    except ValueError:
+        return {}
+    return dados if isinstance(dados, dict) else {}
+
+
+def _entrada(i: dict, uf_padrao: str | None = None) -> rg.EntradaItem:
     return rg.EntradaItem(
         numero=i["numero"], preco=i["preco"] or "", ncm=i["ncm"] or "",
         prazo_dias=i["prazo_dias"], marca=i["marca"] or "", obs=i["obs"] or "",
-        origem=i["origem"],
+        origem=i["origem"], ref_fabricante=i.get("ref_fabricante") or "",
+        # A UF escolhida na tela vale só onde a página não disse (WEG).
         pedido=rg.PedidoDoComprador(
-            i["uf_destino"], i["origem_pedida"],
+            i["uf_destino"] or uf_padrao, i["origem_pedida"],
             date.fromisoformat(i["data_remessa"]) if i["data_remessa"] else None),
     )
 
 
 def entradas(c: dict) -> list[rg.EntradaItem]:
-    return [_entrada(i) for i in c["itens"]]
+    return [_entrada(i, c.get("uf_entrega")) for i in c["itens"]]
+
+
+def validar(c: dict, item: rg.EntradaItem, hoje: date) -> rg.Resultado:
+    """`regras.validar_item` + o que ESTE comprador exige a mais."""
+    r = rg.validar_item(item, hoje)
+    if ("ref_fabricante" in exige_de(c) and not item.sem_cotacao
+            and not item.ref_fabricante.strip()):
+        r.erros.append(f"Item {item.numero}: este comprador exige a Ref. Fabricante.")
+    return r
 
 
 _ORIGENS = {0: "0 - Nacional", 2: "2 - Estrangeira (merc. interno)"}
@@ -409,8 +447,8 @@ def linha_previa(c: dict, i: dict, hoje: date) -> str:
     e da UF de entrega); prazo, preço e NCM completam o resto. Mesmo cálculo
     do robô (`regras`), para a tela nunca mostrar um número e o robô digitar
     outro. `data-pronta="1"` quando o item passa na validação."""
-    item = _entrada(i)
-    val = rg.validar_item(item, hoje)
+    item = _entrada(i, c.get("uf_entrega"))
+    val = validar(c, item, hoje)
     pronta = ' data-pronta="1"' if not val.erros else ' data-pronta="0"'
     if item.sem_cotacao and not item.obs.strip():
         # Sem preço a validação só reclama do preço; na tela vale mostrar
@@ -455,7 +493,7 @@ def linha_previa(c: dict, i: dict, hoje: date) -> str:
     return f'<div class="me-linha"{pronta}><div class="me-campos">{campos}</div>{msgs}</div>'
 
 
-def _quadro_cotacao(c: dict, hoje: date) -> str:
+def _quadro_cotacao(c: dict, hoje: date, trava: str = "") -> str:
     """Tudo o que vale para a cotação inteira, num lugar só: o frete (com o
     porquê), o que o robô preenche no cabeçalho, os avisos e a observação do
     comprador, e quantos itens já estão prontos."""
@@ -464,10 +502,16 @@ def _quadro_cotacao(c: dict, hoje: date) -> str:
     fixo = rg.CAMPOS_FIXOS_COTACAO
     validade = (f"{c['validade_dias']} dias (até {rg.validade_proposta(c['validade_dias'], hoje):%d/%m/%Y})"
                 if c["validade_dias"] else "—")
-    dados = (("login", login.rotulo), ("condição de pagamento", fixo["condicao_pagamento"]),
-             ("telefone", fixo["telefone_contato"]), ("moeda", fixo["moeda"]),
+    dados = (("login", login.rotulo),
+             ("condição de pagamento", "a que o comprador já marcou; se vazia, 60 dias"),
+             ("telefone", fixo["telefone_contato"]), ("moeda", "Real"),
              ("validade da proposta", validade))
-    prontos = sum(not rg.validar_item(_entrada(i), hoje).erros for i in c["itens"])
+    sem_uf = any(not i["uf_destino"] for i in c["itens"])
+    uf = (f'<p><label><b>UF de entrega</b> (a página do ME não diz; vale para os itens sem UF) '
+          f'<select name="uf_entrega"{trava}><option value="">—</option>'
+          + "".join(f'<option{" selected" if c.get("uf_entrega") == u else ""}>{u}</option>'
+                    for u in sorted(rg.UFS)) + "</select></label></p>") if sem_uf else ""
+    prontos = sum(not validar(c, it, hoje).erros for it in entradas(c))
     avisos = avisos_de(c)
     robo = ("" if login.robo_liberado else
             '<p class="me-err">O robô ainda não preenche este login: o formulário deste '
@@ -476,11 +520,59 @@ def _quadro_cotacao(c: dict, hoje: date) -> str:
 <div class="me-frete me-frete-{frete.lower()}">Frete {frete}</div><small>{e(motivo)}</small>
 <p><b id="me-prontos">{prontos}</b> de {len(c['itens'])} itens prontos</p>
 <dl class="me-dados">{''.join(f'<dt>{e(k)}</dt><dd>{e(v)}</dd>' for k, v in dados)}</dl>
-{robo}
+{uf}{robo}
 {('<h3>Avisos do comprador</h3><ul class="me-avisos">'
   + ''.join(f'<li>{e(a)}</li>' for a in avisos) + '</ul>') if avisos else ''}
 {f'<h3>Observação do comprador</h3><p class="me-obs">{e(c["obs_comprador"])}</p>' if c.get("obs_comprador") else ''}
 </div>"""
+
+
+# ------------------------------------------------------ anexos (28/09/2026)
+# EDP e Oitamérica só deixam salvar com a proposta anexada. O vendedor sobe o
+# arquivo aqui; o robô o anexa no ME ao salvar (robo.anexar). Fica em runs/,
+# fora do Git, como os prints do robô.
+PASTA_ANEXOS = Path(__file__).resolve().parent.parent / "runs" / "me" / "anexos"
+EXTENSOES_ANEXO = (".pdf", ".doc", ".docx", ".xls", ".xlsx", ".jpg", ".jpeg", ".png", ".zip")
+MAX_ANEXO = 20 * 1024 * 1024   # o ME aceita 100 MB; proposta passa longe disso
+
+
+def nome_seguro(nome: str) -> str:
+    """Só o nome (nunca um caminho), sem acento nem espaço estranho: é o que o
+    comprador vai ver na lista de anexos do ME."""
+    base = Path(str(nome or "").replace("\\", "/")).name
+    raiz, ext = (base.rsplit(".", 1) + [""])[:2] if "." in base else (base, "")
+    import unicodedata
+    raiz = "".join(ch for ch in unicodedata.normalize("NFD", raiz) if not unicodedata.combining(ch))
+    raiz = re.sub(r"[^A-Za-z0-9_-]+", "_", raiz).strip("_")[:80] or "anexo"
+    return f"{raiz}.{ext.lower()}" if ext else raiz
+
+
+def _quadro_anexos(c: dict, trava: str) -> str:
+    exigidos = anexos_de(c)
+    marketplace = "Marketplace Privado" in (c.get("erro") or "")
+    if not exigidos and not marketplace:
+        return ""
+    locais = anexos_locais(c)
+    linhas = ""
+    for a in exigidos:
+        local = locais.get(a["tipo"])
+        if local:
+            estado = f'<span class="me-ok">✓ {e(local["nome"])} — o robô anexa no ME ao salvar</span>'
+        elif a.get("qtd"):
+            estado = '<span class="me-ok">✓ já está no ME</span>'
+        else:
+            estado = '<span class="me-err">falta — sem ele o ME não deixa salvar</span>'
+        linhas += (f'<li><b>{e(a["nome"])}</b>: {estado}'
+                   f'<form method="post" action="/me/{c["id"]}/anexo" enctype="multipart/form-data" '
+                   f'class="me-anexo-form"><input type="hidden" name="tipo" value="{e(a["tipo"])}">'
+                   f'<input type="file" name="arquivo" accept="{",".join(EXTENSOES_ANEXO)}" required{trava}>'
+                   f'<button type="submit" class="botao2"{trava}>Guardar arquivo</button></form></li>')
+    aviso_mp = ('<p class="me-err">O ME só deixa responder este comprador depois da adesão ao '
+                'Marketplace Privado — o termo tem taxa sobre os pedidos. É decisão da empresa, '
+                'pelo site do ME.</p>' if marketplace else "")
+    return (f'<div class="cartao me-quadro"><h3>Antes de salvar</h3>{aviso_mp}'
+            + (f'<p>Anexos obrigatórios deste comprador:</p><ul class="me-avisos me-anexos">{linhas}</ul>'
+               if linhas else "") + "</div>")
 
 
 def conferir(c: dict, hoje: date) -> tuple[rg.Resultado, dict[int, dict[str, str]]]:
@@ -490,7 +582,10 @@ def conferir(c: dict, hoje: date) -> tuple[rg.Resultado, dict[int, dict[str, str
     conta = L.de(c["conta"]).empresa
     previa = {}
     for item in itens:
-        if item.sem_cotacao or rg.validar_item(item, hoje).erros:
+        extras = [m for m in validar(c, item, hoje).erros
+                  if m not in rg.validar_item(item, hoje).erros]
+        resultado.erros += extras
+        if item.sem_cotacao or rg.validar_item(item, hoje).erros or extras:
             continue
         previa[item.numero] = rg.campos_do_item(conta, item, hoje)
     return resultado, previa
@@ -558,7 +653,8 @@ def _rodar_robo(cid: int, usuario: str, dry_run: bool, status_antes: str) -> Non
     c = banco.me_cotacao(cid)
     try:
         r = ROBO(c["conta"], c["numero"], entradas(c), c["validade_dias"], dry_run,
-                 frete=frete_de(c)[0])
+                 frete=frete_de(c)[0],
+                 anexos={t: a["arquivo"] for t, a in anexos_locais(c).items()})
     except Exception as exc:
         r = None
         erro = f"{type(exc).__name__}: {exc}"[:500]
@@ -590,6 +686,13 @@ def _rodar_robo(cid: int, usuario: str, dry_run: bool, status_antes: str) -> Non
         banco.me_registrar(cid, "erro do robô", motivo, usuario)
 
 
+def anexos_faltando(c: dict) -> list[str]:
+    """Anexo obrigatório que ainda não está no ME (na última leitura) e para o
+    qual ninguém subiu arquivo aqui: sem ele o ME não deixa nem salvar."""
+    locais = anexos_locais(c)
+    return [a["nome"] for a in anexos_de(c) if not a.get("qtd") and a["tipo"] not in locais]
+
+
 NAO_LIBERADO = ("O robô ainda não foi liberado para este login: o formulário do ME muda "
                 "com o comprador e este ainda não foi conferido. Preencha pelo site do ME.")
 
@@ -599,6 +702,9 @@ def mandar_robo(cid: int, usuario: str, dry_run: bool) -> str | None:
     c = banco.me_cotacao(cid)
     if not L.de(c["conta"]).robo_liberado:
         return NAO_LIBERADO
+    if not dry_run and (faltam := anexos_faltando(c)):
+        return ("Este comprador exige anexo para salvar: " + ", ".join(faltam)
+                + ". Suba o arquivo no quadro \"Anexos obrigatórios\" e salve de novo.")
     resultado, _ = conferir(c, agora().date())
     if resultado.erros:
         return "Corrija os erros antes: " + " ".join(resultado.erros[:3])
@@ -713,6 +819,8 @@ tr.me-urgente td{background:var(--alerta-fundo)}
 .me-campos small{color:var(--fraco);font-family:inherit}
 .me-falta{color:var(--fraco);font-style:italic}
 .me-local{display:block;font-size:11px;color:var(--fraco)}
+.me-ref{margin-top:4px}.me-ok{color:var(--tom-ok);font-weight:600}
+.me-anexo-form{display:flex;gap:8px;align-items:center;margin:4px 0 8px}
 </style>"""
 
 
@@ -866,6 +974,9 @@ def ver(cid: int, request: Request, msg: str = ""):
             f"remessa {date.fromisoformat(i['data_remessa']):%d/%m/%Y}" if i["data_remessa"] else "",
         ) if x)
         prev = f'<div id="linha-{n}">{linha_previa(c, i, momento.date())}</div>'
+        ref = (f'<input name="ref_{n}" value="{e(i.get("ref_fabricante") or "")}" maxlength="150" '
+               f'placeholder="ref. fabricante" title="Este comprador exige a Ref. Fabricante" '
+               f'class="me-ref"{trava}>' if "ref_fabricante" in exige_de(c) else "")
         local = (f'<span class="me-local">entrega em {e(i["local_entrega"])}</span>'
                  if i.get("local_entrega") else "")
         linhas += f"""<tr data-item="{n}">
@@ -875,7 +986,7 @@ def ver(cid: int, request: Request, msg: str = ""):
 <td><input name="preco_{n}" value="{e(i['preco'] or '')}" inputmode="decimal" placeholder="0,00"{trava}></td>
 <td><input name="ncm_{n}" value="{e(i['ncm'] or '')}" maxlength="10" placeholder="8 dígitos"{trava}>{_etiqueta_ncm(i)}</td>
 <td><input name="prazo_{n}" value="{e(i['prazo_dias'] or '')}" inputmode="numeric" data-copiar="prazo"{trava}></td>
-<td><input name="marca_{n}" value="{e(i['marca'] or '')}" maxlength="{rg.MAX_MARCA}" data-copiar="marca"{trava}></td>
+<td><input name="marca_{n}" value="{e(i['marca'] or '')}" maxlength="{rg.MAX_MARCA}" data-copiar="marca"{trava}>{ref}</td>
 <td><input name="obs_{n}" value="{e(i['obs'] or '')}" maxlength="{MAX_OBS}"{trava}></td>
 <td><select name="origem_{n}" data-copiar="origem"{trava}>{_opcoes_origem(i['origem'])}</select>
 <button type="button" class="botao2 me-mini" data-anterior{trava}>↑ copiar anterior</button></td>
@@ -911,7 +1022,7 @@ def ver(cid: int, request: Request, msg: str = ""):
  <button type="button" class="botao2" data-aplicar="origem"{trava}>origem do 1º em todos</button>
  <button type="button" class="botao2" data-aplicar="prazo"{trava}>prazo do 1º em todos</button>
  {botao_ncm}</p>
-{_quadro_cotacao(c, momento.date())}{painel_ia}{gerais}
+{_quadro_cotacao(c, momento.date(), trava)}{painel_ia}{gerais}
 <div class="cartao"><div class="rolagem-r"><table class="me-itens">
 <thead><tr><th>item</th><th>o que o comprador pediu</th><th>preço unit.</th><th>NCM</th>
 <th>prazo (dias)</th><th>marca ({rg.MAX_MARCA})</th><th>obs ({MAX_OBS})</th><th>origem</th></tr></thead>
@@ -952,7 +1063,7 @@ def ver(cid: int, request: Request, msg: str = ""):
            acoes=link_me + ler_de_novo + limpar + marcar)}
 {f'<p class="aviso">{e(msg)}</p>' if msg else ""}
 {'' if editavel else '<p class="aviso">Edição fechada neste status.</p>'}
-{itens_html}
+{_quadro_anexos(c, trava)}{itens_html}
 <h2>Histórico</h2><ul>{historico or '<li class="sub">nada ainda</li>'}</ul>
 {f'<h2>Prints do robô</h2><ul>{prints}</ul>' if prints else ''}
 <p><a href="/me">← voltar à lista</a></p>
@@ -1031,10 +1142,47 @@ def _voltar(cid: int, msg: str = "") -> RedirectResponse:
     return RedirectResponse(f"/me/{cid}" + (f"?msg={quote(msg)}" if msg else ""), status_code=303)
 
 
+@router.post("/{cid}/anexo")
+async def subir_anexo(cid: int, request: Request):
+    """Guarda aqui o arquivo de um anexo obrigatório; o robô o sobe no ME."""
+    usuario = _usuario(request)
+    if not usuario:
+        return RedirectResponse("/login", status_code=303)
+    c = _cotacao_ou_404(cid)
+    if Status(c["status"]) not in (Status.PENDENTE, Status.SALVA, Status.ERRO):
+        return _voltar(cid, "Edição fechada neste status.")
+    form = await request.form()
+    tipo = str(form.get("tipo") or "")
+    exigidos = {a["tipo"]: a["nome"] for a in anexos_de(c)}
+    if tipo not in exigidos:
+        return _voltar(cid, "Este comprador não pede esse anexo.")
+    arquivo = form.get("arquivo")
+    if not getattr(arquivo, "filename", None):
+        return _voltar(cid, "Escolha o arquivo.")
+    nome = nome_seguro(arquivo.filename)
+    if not nome.lower().endswith(EXTENSOES_ANEXO):
+        return _voltar(cid, "Tipo de arquivo não aceito: use PDF, Word, Excel, imagem ou ZIP.")
+    dados = await arquivo.read(MAX_ANEXO + 1)
+    if not dados:
+        return _voltar(cid, "O arquivo veio vazio.")
+    if len(dados) > MAX_ANEXO:
+        return _voltar(cid, f"Arquivo grande demais (máximo {MAX_ANEXO // 1024 // 1024} MB).")
+    pasta = PASTA_ANEXOS / str(cid) / tipo
+    shutil.rmtree(pasta, ignore_errors=True)       # um arquivo por anexo: o novo substitui
+    pasta.mkdir(parents=True, exist_ok=True)
+    (pasta / nome).write_bytes(dados)
+    locais = {**anexos_locais(c), tipo: {"arquivo": str(pasta / nome), "nome": nome,
+                                         "em": agora().isoformat(timespec="seconds"), "por": usuario}}
+    banco.me_atualizar(cid, anexos_locais=json.dumps(locais, ensure_ascii=False))
+    banco.me_registrar(cid, f"anexo guardado: {exigidos[tipo]}", nome, usuario)
+    return _voltar(cid, f"{nome} guardado. O robô anexa no ME quando salvar.")
+
+
 @router.get("/{cid}/linha/{numero}", response_class=HTMLResponse)
 def previa_da_linha(cid: int, numero: int, request: Request, preco: str | None = None,
                     ncm: str | None = None, prazo: str | None = None, marca: str | None = None,
-                    obs: str | None = None, origem: str | None = None):
+                    obs: str | None = None, origem: str | None = None,
+                    ref: str | None = None):
     """A prévia de UM item com o que está na tela agora. Só calcula: não grava."""
     if not _usuario(request):
         return HTMLResponse("", status_code=401)
@@ -1048,6 +1196,8 @@ def previa_da_linha(cid: int, numero: int, request: Request, preco: str | None =
         mudou["prazo_dias"] = _int(prazo)
     if origem is not None:
         mudou["origem"] = _int(origem)
+    if ref is not None:
+        mudou["ref_fabricante"] = ref.strip()
     return HTMLResponse(linha_previa(c, {**item, **mudou}, agora().date()))
 
 

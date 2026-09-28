@@ -29,6 +29,8 @@ from mercado_eletronico import mapa as M
 from mercado_eletronico import regras as R
 from mercado_eletronico import trava as T
 from mercado_eletronico.lista import URL_RESPOSTA
+from mercado_eletronico import formulario as F
+from mercado_eletronico import pagina as P
 from mercado_eletronico import logins as L
 from mercado_eletronico.regras import Conta, EntradaItem, PedidoDoComprador
 
@@ -50,6 +52,7 @@ class ItemPagina:
     quantidade: str
     campos_adicionais: str
     pedido: PedidoDoComprador
+    unidade: str = ""
 
 
 @dataclass
@@ -120,6 +123,8 @@ JS_IE_UNICA = """
 
 _RE_QTD = re.compile(r"Quantidade:\s*([\d.,]+)")
 _RE_ADIC = re.compile(r"Campos Adicionais:\s*(.*?)(?:Anexo do Produto|$)", re.S)
+_RE_UNIDADE = re.compile(r"Unidade:\s*(\S+)")
+_RE_LOCAL = re.compile(r"Local de Entrega:([^\n]*)")
 
 
 def ler_bloco(indice: int, numero: str, texto: str) -> ItemPagina:
@@ -129,7 +134,13 @@ def ler_bloco(indice: int, numero: str, texto: str) -> ItemPagina:
     descricao = linhas[1] if len(linhas) > 1 else ""
     qtd = m.group(1) if (m := _RE_QTD.search(texto)) else ""
     adic = " ".join(m.group(1).split()) if (m := _RE_ADIC.search(texto)) else ""
-    return ItemPagina(indice, num, descricao, qtd, adic, R.ler_campos_adicionais(adic))
+    pedido = R.ler_campos_adicionais(adic)
+    if pedido.uf_destino is None and (m := _RE_LOCAL.search(texto)):
+        # Sem Campos Adicionais (EDP): a UF sai do "Local de Entrega", como na tela.
+        if uf := P._RE_UF_DO_LOCAL.search(m.group(1)):
+            pedido = replace(pedido, uf_destino=uf.group(1))
+    unidade = m.group(1) if (m := _RE_UNIDADE.search(texto)) else ""
+    return ItemPagina(indice, num, descricao, qtd, adic, pedido, unidade)
 
 
 def ler_itens(page) -> list[ItemPagina]:
@@ -179,18 +190,53 @@ def preencher(page, plano: M.PlanoPagina) -> None:
         else:
             loc.fill(valor)  # fill direto: tecla a tecla passa pela máscara do ME
         loc.evaluate(JS_DISPARAR)
+    # Clique NO checkbox, e não na posição dele na tela: com a página rolada,
+    # o cabeçalho fixo do ME fica por cima e o clique caía nele (Alpek,
+    # 28/09/2026). É o mesmo click, com os mesmos handlers do ME.
     for indice in plano.marcar:
-        page.locator(f"#chkItem_{indice}").check()
+        page.locator(f"#chkItem_{indice}").evaluate("e => { if (!e.checked) e.click(); }")
     for indice in plano.limpar:
-        page.locator(f"#chkItem_{indice}").uncheck()
+        page.locator(f"#chkItem_{indice}").evaluate("e => { if (e.checked) e.click(); }")
 
 
 def _clicar_salvar(page) -> None:
-    botao = page.locator("#MEComponentManager_MEButton_5")
-    titulo = botao.get_attribute("title") or botao.get_attribute("data-original-title") or ""
-    if not T.botao_e_salvar(titulo, botao.inner_text()):
-        raise RoboRecusou(f"botão não é o Salvar esperado (title={titulo!r})")
-    botao.click()
+    # Pelo título e texto EXATOS, não pela posição: na Alpek (28/09/2026) dois
+    # botões a mais no alto empurraram o Salvar de _5 para _7 — e o _5 lá é
+    # "Exportar / Importar". Tem de haver UM só; o Confirmar ("...enviar ao
+    # comprador") nunca casa com botao_e_salvar.
+    salvar = [b for b in page.locator("[id^='MEComponentManager_MEButton_']").all()
+              if T.botao_e_salvar(b.get_attribute("title") or b.get_attribute("data-original-title")
+                                  or "", b.inner_text())]
+    if len(salvar) != 1:
+        raise RoboRecusou(f"esperava UM botão Salvar na página, achei {len(salvar)}")
+    salvar[0].click()
+    if _dispensar_marketplace(page):
+        salvar[0].click()
+        if _dispensar_marketplace(page):
+            # Voltou: este comprador só aceita resposta de quem aderiu.
+            raise RoboRecusou(MARKETPLACE)
+
+
+MARKETPLACE = ("o ME só deixa responder este comprador depois da adesão ao Marketplace Privado "
+               "(o ME oferece o plano grátis). Aderir é decisão da empresa — pelo site do ME; "
+               "depois disso o robô salva normalmente. Nada foi gravado.")
+
+
+def _dispensar_marketplace(page) -> bool:
+    """A janela "Adesão ao Marketplace Privado!" que o ME abre no Salvar de
+    alguns compradores (Alpek, 28/09/2026). SÓ "Ver depois" — fecha sem aderir.
+    "Avançar" (aderir) é decisão da empresa e o robô nunca clica."""
+    titulo = page.get_by_text("Adesão ao Marketplace Privado", exact=False)
+    try:
+        titulo.first.wait_for(state="visible", timeout=3_000)
+    except Exception:
+        return False
+    ver_depois = page.get_by_role("button", name="Ver depois", exact=True).locator("visible=true")
+    if ver_depois.count() != 1:
+        raise RoboRecusou("o ME abriu a janela do Marketplace Privado sem o \"Ver depois\" — parei")
+    ver_depois.click()
+    page.wait_for_timeout(500)
+    return True
 
 
 def _clicar_pagina(page, pagina: int) -> None:
@@ -226,11 +272,15 @@ class Sessao:
 
     # --- travas
     def _rota(self, route, request) -> None:
-        motivo = T.motivo_bloqueio(request.method, request.url, request.post_data, self.logado)
+        # Corpo em bytes → texto sem nunca falhar: o upload de anexo é
+        # multipart com o PDF dentro, que não é UTF-8.
+        buffer = request.post_data_buffer
+        corpo = buffer.decode("latin-1") if buffer else None
+        motivo = T.motivo_bloqueio(request.method, request.url, corpo, self.logado)
         if motivo:
             self.bloqueios.append(f"{request.method} {request.url[:120]}: {motivo}")
             return route.abort()
-        if request.method.upper() == "POST" and T.acao_do_corpo(request.post_data):
+        if request.method.upper() == "POST" and T.acao_do_corpo(corpo):
             self.liberados += 1
         return self._seguir(route, request) if self._seguir else route.continue_()
 
@@ -325,12 +375,18 @@ class Sessao:
         self.ctx.storage_state(path=str(self.pasta / "estado.json"))
 
     def abrir(self, numero: int) -> None:
-        self.page.goto(URL_RESPOSTA.format(n=numero), wait_until="networkidle")
+        # Espera o FORMULÁRIO, não a rede parada: na página da Alpek o chat
+        # mantém a rede ocupada e "networkidle" nunca chegava (28/09/2026).
+        self.page.goto(URL_RESPOSTA.format(n=numero), wait_until="domcontentloaded")
         if "login" in self.page.url.lower():
             self.login()
-            self.page.goto(URL_RESPOSTA.format(n=numero), wait_until="networkidle")
-        if not self.page.locator("form[name='RespCota']").count():
-            raise RoboRecusou(f"cotação {numero} não abriu o formulário de resposta")
+            self.page.goto(URL_RESPOSTA.format(n=numero), wait_until="domcontentloaded")
+        try:
+            self.page.wait_for_selector("form[name='RespCota']", state="attached",
+                                        timeout=self.timeout_ms)
+            self.page.wait_for_load_state("load")
+        except Exception:
+            raise RoboRecusou(f"cotação {numero} não abriu o formulário de resposta") from None
 
     def acao(self, clicar: Callable[[], None]) -> int:
         """Clica em Salvar/página e espera o POST voltar. Devolve POSTs liberados."""
@@ -366,7 +422,7 @@ def _conferir(page, plano: M.PlanoPagina, so_respondidos: bool) -> list[str]:
 def salvar_cotacao(conta: "Conta | L.Login | str", numero: int, itens: list[EntradaItem], validade_dias: int,
                    *, dry_run: bool = True, hoje: date | None = None, obs_geral: str = "",
                    sessao: Sessao | None = None, headless: bool = True,
-                   frete: str = "FOB") -> ResultadoRobo:
+                   frete: str = "FOB", anexos: dict[str, Path] | None = None) -> ResultadoRobo:
     """Preenche a cotação e (se não for dry-run) SALVA. Nunca envia.
     `frete`: CIF ou FOB, de `regras.tipo_frete`."""
     hoje = hoje or date.today()
@@ -377,8 +433,8 @@ def salvar_cotacao(conta: "Conta | L.Login | str", numero: int, itens: list[Entr
         s.__enter__()
     try:
         _executar(s, res, L.de(conta).empresa, numero, {i.numero: i for i in itens},
-                  validade_dias, hoje, obs_geral, dry_run, frete)
-    except (RoboRecusou, M.PlanoInvalido, R.RegraDesconhecida) as exc:
+                  validade_dias, hoje, obs_geral, dry_run, frete, anexos)
+    except (RoboRecusou, M.PlanoInvalido, R.RegraDesconhecida, F.FormularioDesconhecido) as exc:
         res.erro = str(exc)
     except Exception as exc:  # navegador/ME: registra com print para quem for olhar
         res.erro = f"{type(exc).__name__}: {exc}"
@@ -394,15 +450,71 @@ def salvar_cotacao(conta: "Conta | L.Login | str", numero: int, itens: list[Entr
     return res
 
 
+def anexar(s: Sessao, anexo: "F.Anexo", arquivo: Path) -> None:
+    """Sobe UM arquivo na janela de anexo do ME e confere que ele aparece na
+    lista. Pela mesma sessão, com as mesmas travas: o único POST que passa ali
+    é o do "Enviar" do arquivo (trava.motivo_anexo)."""
+    if not anexo.url:
+        raise RoboRecusou(f"{anexo.nome}: a página não trouxe a janela de anexo")
+    pg = s.ctx.new_page()
+    pg.set_default_timeout(s.timeout_ms)
+    try:
+        pg.goto("https://www.me.com.br/" + anexo.url, wait_until="domcontentloaded")
+        pg.locator("#fuArquivo").set_input_files(str(arquivo))
+        enviar = pg.locator("[id$='formUpload_btnEnviar']")
+        if enviar.count() != 1 or enviar.inner_text().strip() != "Enviar":
+            raise RoboRecusou(f"{anexo.nome}: botão de enviar arquivo não é o esperado")
+        with pg.expect_navigation(wait_until="domcontentloaded"):
+            enviar.click()
+        if arquivo.stem not in pg.inner_text("body"):
+            raise RoboRecusou(f"{anexo.nome}: o ME não listou {arquivo.name} depois do envio")
+    finally:
+        pg.close()
+
+
+def _garantir_anexos(s: Sessao, res: ResultadoRobo, numero: int,
+                     anexos: dict[str, Path], dry_run: bool) -> None:
+    """Anexo obrigatório ("*") ainda vazio no ME: sobe o arquivo que o vendedor
+    deu no CotaFrete (por TipoAnexo); sem arquivo, para — o ME não salvaria."""
+    faltam = [a for a in F.anexos_obrigatorios(s.page) if a.qtd == 0]
+    sem = [a.nome for a in faltam if a.tipo not in anexos]
+    if sem:
+        msg = (f"o comprador exige anexo para salvar ({', '.join(sem)}): suba o arquivo "
+               "na tela da cotação e mande o robô de novo")
+        if not dry_run:
+            raise RoboRecusou(msg)
+        res.avisos.append(msg)
+    subir = [(a, Path(anexos[a.tipo])) for a in faltam if a.tipo in anexos]
+    if dry_run:
+        res.avisos += [f"no Salvar, vai anexar {arq.name} em {a.nome}" for a, arq in subir]
+        return
+    for a, arq in subir:
+        if not arq.is_file():
+            raise RoboRecusou(f"{a.nome}: o arquivo {arq.name} sumiu do servidor — suba de novo")
+        anexar(s, a, arq)
+        res.avisos.append(f"anexado no ME: {arq.name} em {a.nome}")
+    if subir:
+        s.abrir(numero)
+        if ainda := F.anexos_faltando(s.page):
+            raise RoboRecusou(f"anexo enviado mas o ME ainda mostra vazio: {', '.join(ainda)}")
+
+
 def _executar(s: Sessao, res: ResultadoRobo, conta: Conta, numero: int,
               entradas: dict[int, EntradaItem], validade: int, hoje: date,
-              obs: str, dry_run: bool, frete: str = "FOB") -> None:
+              obs: str, dry_run: bool, frete: str = "FOB",
+              anexos: dict[str, Path] | None = None) -> None:
     s.abrir(numero)
+    _garantir_anexos(s, res, numero, anexos or {}, dry_run)
     total = paginas(s.page)
     planos: list[M.PlanoPagina] = []
     for pagina in range(1, total + 1):
-        plano = M.plano_pagina(conta, _itens_por_indice(ler_itens(s.page), entradas),
-                               validade, hoje, obs, frete)
+        lidos = ler_itens(s.page)
+        por_indice = _itens_por_indice(lidos, entradas)
+        plano = M.plano_pagina(conta, por_indice, validade, hoje, obs, frete)
+        # O formulário DESTE comprador (formulario.py): nomes, códigos e extras.
+        plano = replace(plano, campos=F.adaptar(
+            plano.campos, plano.marcar, F.ler(s.page), empresa=conta, itens=por_indice,
+            unidades={i.indice: i.unidade for i in lidos}))
         res.avisos += plano.avisos
         preencher(s.page, plano)
         planos.append(plano)
@@ -420,7 +532,14 @@ def _executar(s: Sessao, res: ResultadoRobo, conta: Conta, numero: int,
         return
     if not any(p.marcar for p in planos):
         raise RoboRecusou("nenhum item com preço — o ME não salva")
-    if s.acao(lambda: _clicar_salvar(s.page)) != 1:
+    from playwright.sync_api import TimeoutError as Esgotou
+    try:
+        gravou = s.acao(lambda: _clicar_salvar(s.page))
+    except Esgotou:
+        res.prints.append(s.print(f"{numero}_salvar_recusado"))
+        raise RoboRecusou("o ME não aceitou o Salvar (algum campo obrigatório da página ficou "
+                          "vazio ou inválido) — nada foi gravado; veja o print") from None
+    if gravou != 1:
         raise RoboRecusou("o Salvar não gerou o POST esperado — nada garantido no ME")
     res.salvo = True
     res.prints.append(s.print(f"{numero}_salvo"))
@@ -473,6 +592,8 @@ def limpar_cotacao(conta: "Conta | L.Login | str", numero: int, *, dry_run: bool
         planos: list[M.PlanoPagina] = []
         for pagina in range(1, total + 1):
             plano = M.plano_limpeza([i.indice for i in ler_itens(s.page)])
+            plano = replace(plano, campos=F.adaptar(plano.campos, [], F.ler(s.page),
+                                                    empresa=s.conta, limpeza=True))
             preencher(s.page, plano)
             planos.append(plano)
             if dry_run:
@@ -494,7 +615,7 @@ def limpar_cotacao(conta: "Conta | L.Login | str", numero: int, *, dry_run: bool
                                      for d in _conferir_limpeza(s.page, plano, recarregada=True)]
                 if pagina < len(planos):
                     s.acao(lambda p=pagina: _clicar_pagina(s.page, p + 1))
-    except RoboRecusou as exc:
+    except (RoboRecusou, F.FormularioDesconhecido) as exc:
         res.erro = str(exc)
     except Exception as exc:
         res.erro = f"{type(exc).__name__}: {exc}"

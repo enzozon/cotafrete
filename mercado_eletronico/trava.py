@@ -10,10 +10,20 @@ corpo distingue. Por isso as três camadas olham o que importa:
    Acao liberada; qualquer outro vira no-op (injetado antes do JS do ME);
 3. rede — `motivo_bloqueio`: todo POST/PUT/PATCH/DELETE aos domínios do ME
    morre, exceto RespostaCotaItem.asp com UM Acao liberado, a busca de
-   leitura da lista e o login antes de logar.
+   leitura da lista, o login antes de logar e a CHECAGEM de ICMS do ME
+   (`ConsistirICMS`, só confere a alíquota digitada — 28/09/2026: bloqueada,
+   o ME pintava "Erro ao consistir ICMS" na tela da EDP).
 
 A paginação (Acao 4 e 11..19) também grava o rascunho da página atual: o
 usuário autorizou (23/09/2026), é salvamento, nunca envio.
+
+ANEXO (28/09/2026, autorizado pelo Enzo): EDP e Oitamérica só deixam salvar
+com a proposta anexada. A janela `ME/MEAnexo.aspx` sobe o arquivo num
+postback ASP.NET; liberado SÓ o botão "Enviar" dela (`__EVENTTARGET` =
+`UPLOAD_ALVO`) e SÓ para os tipos de anexo da resposta do fornecedor
+(`TIPOS_ANEXO`: comercial e técnica), em modo de edição. Excluir anexo, e
+qualquer outro botão da janela, continua bloqueado. Anexar não envia a
+cotação: o arquivo fica no rascunho, como o resto.
 """
 
 from __future__ import annotations
@@ -35,6 +45,11 @@ PALAVRAS_DE_ENVIO = ("comprador", "confirmar", "finalizar", "recusar", "responde
 
 _RE_FORM = re.compile(r"/RespostaCotaItem\.asp$", re.IGNORECASE)
 _RE_LOGIN = re.compile(r"^/do/Login\.mvc/", re.IGNORECASE)
+_RE_ANEXO = re.compile(r"^/ME/MEAnexo\.aspx$", re.IGNORECASE)
+UPLOAD_ALVO = "ctl00$conteudo$formUpload$btnEnviar"
+TIPOS_ANEXO = frozenset({"RDC", "RDCT"})   # Proposta/Anexo Comercial, Proposta Técnica
+_RE_ALVO_MULTIPART = re.compile(r'name="__EVENTTARGET"\r?\n\r?\n([^\r\n]*)')
+_RE_CONSISTIR_ICMS = re.compile(r"^/do/Cotacao\.mvc/ConsistirICMS$", re.IGNORECASE)
 _RE_BUSCA = re.compile(
     r"^https://api\.web\.mercadoe\.com/supplier/transactions/v1/transactions/search$"
 )
@@ -61,11 +76,36 @@ def motivo_bloqueio(metodo: str, url: str, corpo: str | None,
         return None
     if _RE_LOGIN.match(u.path) and not logado:
         return None
+    if _RE_CONSISTIR_ICMS.match(u.path) and not u.query:
+        return None
+    if _RE_ANEXO.match(u.path):
+        return motivo_anexo(u.query, corpo)
     if not _RE_FORM.search(u.path):
         return f"POST fora do formulário da resposta: {u.path}"
     acoes = acao_do_corpo(corpo)
     if len(acoes) != 1 or acoes[0] not in ACOES_LIBERADAS:
         return f"Acao={acoes!r} não é salvar/paginar"
+    return None
+
+
+def alvo_do_postback(corpo: str | None) -> str | None:
+    """O __EVENTTARGET de um postback ASP.NET, multipart ou urlencoded."""
+    corpo = corpo or ""
+    if m := _RE_ALVO_MULTIPART.search(corpo):
+        return m.group(1)
+    alvos = parse_qs(corpo, keep_blank_values=True).get("__EVENTTARGET", [])
+    return alvos[0] if len(alvos) == 1 else None
+
+
+def motivo_anexo(query: str, corpo: str | None) -> str | None:
+    q = parse_qs(query or "", keep_blank_values=True)
+    tipo = q.get("TipoAnexo", [""])[0]
+    if tipo not in TIPOS_ANEXO:
+        return f"anexo do tipo {tipo!r} não é da resposta do fornecedor"
+    if q.get("isReadOnly") != ["0"]:
+        return "janela de anexo só de leitura"
+    if alvo_do_postback(corpo) != UPLOAD_ALVO:
+        return "na janela de anexo, só o \"Enviar\" do arquivo passa"
     return None
 
 
@@ -95,11 +135,17 @@ def _js_trava_form() -> str:
       console.warn('[TRAVA] RespCota Acao=' + acao + ' liberado');
       return original.call(this);
     }
+    const alvo = this.elements && this.elements['__EVENTTARGET'];
+    if (/\\/ME\\/MEAnexo\\.aspx$/i.test(location.pathname) && this.id === 'aspnetForm'
+        && alvo && alvo.value === '%s') {
+      console.warn('[TRAVA] upload de anexo liberado');
+      return original.call(this);
+    }
     console.warn('[TRAVA] form.submit BLOQUEADO: ' + this.name + ' Acao=' + acao);
   };
   window.open = () => null;
 })();
-""" % lista
+""" % (lista, UPLOAD_ALVO)
 
 
 JS_TRAVA_FORM = _js_trava_form()

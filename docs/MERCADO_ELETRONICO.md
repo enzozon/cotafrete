@@ -515,3 +515,44 @@ ICMS/PIS/COFINS, IPI, ST, base, unidade, entrega, NCM, marca e total — pela
 rota `GET /me/{id}/linha/{n}`, que usa as mesmas regras do robô e não grava
 nada. Sem "Campos Adicionais" (EDP), a UF de entrega sai do endereço.
 Prova: `tests/test_me_linha_navegador.py` (navegador real, fixture da EDP).
+
+
+## 28/09/2026 (tarde) — o robô lê o formulário de cada comprador
+
+**Recon (só leitura) de 4 formulários além do ME geral** — o formulário muda
+com o COMPRADOR, não com o login:
+
+| comprador | diferenças | para salvar o ME exige |
+|---|---|---|
+| EDP | `NBM` no lugar de `NCM`; sem origem/PIS/COFINS/base/data; unidade em texto; Ref Fabricante por item; Contato Principal, Telefone, E-mail; condição "60 DDL" já marcada | **Anexo Comercial** (TipoAnexo RDC) |
+| Alpek | "Preço a Prazo CIF"; só "30 DDL"; sem IE; "% Incluso" de IPI/ICMS desligados pelo comprador | **adesão ao Marketplace Privado** (termo com taxa de 5% por pedido, teto R$ 2.000) |
+| WEG | condição já marcada (28 dias); "LUGAR DE ENTREGA"; moeda por item; IPI sem "Isento"; sem Fabricante; página não diz a UF | nada além — **Salvar real ok em 28/09 (23015267)** |
+| Oitamérica | sem impostos por item; condição travada; Tipo de Pagamento + 2 "Estou de acordo" | **Proposta Comercial (RDC) e Técnica (RDCT)** |
+
+**`mercado_eletronico/formulario.py`**: o robô lê os campos da página e adapta o
+plano do ME geral — traduz nomes/códigos, tira o que o comprador não pede,
+preenche os extras decididos pelo Enzo (contato Eliziane Amorim,
+vendas@venturainformatica.com.br, endereço R. Sete nº 560 - Cocal, Vila Velha
+- ES, "Estou de acordo" = Sim) e **para com o nome do campo** quando há um
+obrigatório que ele não conhece (hoje: "Tipo de Pagamento" da Oitamérica).
+No ME geral a adaptação não muda nada (teste).
+
+**Travas novas, cada uma com teste**: a checagem de ICMS do ME
+(`/do/Cotacao.mvc/ConsistirICMS`) e o upload de anexo (`ME/MEAnexo.aspx`,
+só o botão "Enviar" do arquivo, só TipoAnexo RDC/RDCT, só em modo edição).
+Excluir anexo continua bloqueado. O Salvar é achado pelo título exato, em
+qualquer posição (na Alpek ele é o 7º botão). A janela "Adesão ao
+Marketplace Privado" é fechada só com "Ver depois"; se ela volta, o robô
+para e diz que o comprador exige adesão.
+
+**Tela**: quadro "Antes de salvar" com os anexos obrigatórios (upload do
+arquivo aqui; o robô anexa no ME ao salvar) e o aviso de adesão; "Ref.
+Fabricante" por item só para quem exige; "UF de entrega" quando a página não
+diz. O Salvar nem chama o robô se falta o arquivo de um anexo obrigatório.
+
+**Incidente**: no teste do ME geral (UNIÃO 23052403) um `--limpar` do script
+de teste, sem a trava de "rascunho alheio", apagou o preenchimento de um
+colega (a pessoa refez). O script agora só limpa rascunho marcado "TESTE DO
+ROBO". **Limitação**: na WEG a limpeza não é possível (o tipo de imposto não
+esvazia e o ME passa a exigir preço) — o rascunho de teste de 23015267 ficou
+marcado "TESTE DO ROBO - NAO ENVIAR" até a cotação fechar.
