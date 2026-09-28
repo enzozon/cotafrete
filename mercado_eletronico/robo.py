@@ -29,6 +29,7 @@ from mercado_eletronico import mapa as M
 from mercado_eletronico import regras as R
 from mercado_eletronico import trava as T
 from mercado_eletronico.lista import URL_RESPOSTA
+from mercado_eletronico import logins as L
 from mercado_eletronico.regras import Conta, EntradaItem, PedidoDoComprador
 
 RAIZ = Path(__file__).resolve().parent.parent
@@ -208,10 +209,13 @@ def paginas(page) -> int:
 class Sessao:
     """Contexto do navegador com as três travas. Use como `with Sessao(...) as s:`."""
 
-    def __init__(self, conta: Conta, headless: bool = True, pasta: Path | None = None,
-                 seguir: Callable | None = None, browser=None, timeout_ms: int = TIMEOUT_MS):
-        self.conta, self.headless = conta, headless
-        self.pasta = (pasta or PASTA) / conta.value
+    def __init__(self, conta: "Conta | L.Login | str", headless: bool = True,
+                 pasta: Path | None = None, seguir: Callable | None = None, browser=None,
+                 timeout_ms: int = TIMEOUT_MS):
+        # `conta` é o LOGIN (onde entrar); `self.conta` fica a EMPRESA (impostos).
+        self.login_me = L.de(conta)
+        self.conta, self.headless = self.login_me.empresa, headless
+        self.pasta = (pasta or PASTA) / self.login_me.chave
         self._seguir = seguir  # testes: responder sem ir à rede
         self._browser_externo = browser
         self.timeout_ms = timeout_ms
@@ -301,10 +305,11 @@ class Sessao:
 
     # --- ME
     def login(self) -> None:
-        pref = f"ME_{self.conta.name}"
-        login, senha = os.environ.get(f"{pref}_LOGIN"), os.environ.get(f"{pref}_SENHA")
-        if not login or not senha:
+        pref = self.login_me.prefixo
+        cred = self.login_me.credenciais()
+        if not cred:
             raise RoboRecusou(f"Faltam {pref}_LOGIN / {pref}_SENHA no .env.")
+        login, senha = cred
         self.logado = False
         try:
             if "login" not in self.page.url.lower():
@@ -358,7 +363,7 @@ def _conferir(page, plano: M.PlanoPagina, so_respondidos: bool) -> list[str]:
     return R.conferir(esperado, ler_valores(page, list(esperado)))
 
 
-def salvar_cotacao(conta: Conta, numero: int, itens: list[EntradaItem], validade_dias: int,
+def salvar_cotacao(conta: "Conta | L.Login | str", numero: int, itens: list[EntradaItem], validade_dias: int,
                    *, dry_run: bool = True, hoje: date | None = None, obs_geral: str = "",
                    sessao: Sessao | None = None, headless: bool = True) -> ResultadoRobo:
     """Preenche a cotação e (se não for dry-run) SALVA. Nunca envia."""
@@ -369,7 +374,7 @@ def salvar_cotacao(conta: Conta, numero: int, itens: list[EntradaItem], validade
     if dono:
         s.__enter__()
     try:
-        _executar(s, res, conta, numero, {i.numero: i for i in itens},
+        _executar(s, res, L.de(conta).empresa, numero, {i.numero: i for i in itens},
                   validade_dias, hoje, obs_geral, dry_run)
     except (RoboRecusou, M.PlanoInvalido, R.RegraDesconhecida) as exc:
         res.erro = str(exc)
@@ -444,7 +449,7 @@ def _conferir_limpeza(page, plano: M.PlanoPagina, recarregada: bool) -> list[str
     return diverg
 
 
-def limpar_cotacao(conta: Conta, numero: int, *, dry_run: bool = True,
+def limpar_cotacao(conta: "Conta | L.Login | str", numero: int, *, dry_run: bool = True,
                    sessao: Sessao | None = None, headless: bool = True) -> ResultadoRobo:
     """Apaga do RASCUNHO do ME tudo o que o robô escreve: preços, impostos,
     NCM, prazo, marca, obs, recusas de item e a obs geral. Os itens voltam a

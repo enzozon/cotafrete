@@ -5,7 +5,7 @@ Fica fora de web/app.py pelo mesmo motivo do /adm: aquele arquivo passou de
 
 O que a tela faz (docs/MERCADO_ELETRONICO.md tem o porquê de cada coisa):
 
-- Lista as cotações pendentes das duas contas, com o prazo contando e o
+- Lista as cotações pendentes dos logins de `mercado_eletronico.logins`, com o prazo contando e o
   status do NOSSO lado (Pendente → Salva no ME → Enviada, ou Erro/Vencida).
   A lista vem do ME a cada `INTERVALO` e no botão "Atualizar agora".
 - Numa cotação: lê os itens do ME, o usuário preenche só o que muda (preço,
@@ -25,7 +25,6 @@ Quem fala com o ME: `mercado_eletronico.ponte.pendencias(conta)` e
 from __future__ import annotations
 
 import json
-import os
 import threading
 import time
 from dataclasses import dataclass, field
@@ -37,6 +36,8 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 
 from core import ia
 from core.banco import Banco
+from core.retentativa import VAGA_NAVEGADOR
+from mercado_eletronico import logins as L
 from mercado_eletronico import ncm as sugestor_ncm
 from mercado_eletronico import pagina as pg
 from mercado_eletronico import painel as pn
@@ -51,8 +52,18 @@ banco: Banco | None = None
 vendedor: Callable[[str | None], str | None] | None = None
 COOKIE = "cotafrete_usuario"
 
-CONTAS = {"ventura": "VENTURA", "uniao": "UNIÃO"}
-INTERVALO_S = 7 * 60   # a arquitetura pediu 5–10 min
+CONTAS = L.ROTULOS
+INTERVALO_S = 60       # o vigia acorda a cada minuto e lê só os logins vencidos
+# Três falhas seguidas no mesmo login e ele passa a ser tentado de meia em meia
+# hora: um login quebrado não atrasa os outros, nem enche o resumo de erros
+# (28/09/2026: 91 falhas seguidas por conta numa madrugada).
+FALHAS_ATE_ESPERAR = 3
+ESPERA_APOS_FALHAS_S = 30 * 60
+# Quando chega cotação nova e em qual login. Para descobrir de quanto em quanto
+# tempo cada login recebe e afinar o intervalo (pedido do Enzo, 28/09/2026).
+# None = não grava: só o servidor de verdade liga (web/app.py, no lifespan),
+# para os testes não escreverem no log real.
+LOG_CHEGADAS: "Path | None" = None
 MAX_OBS = 100          # maxlength do Observacao{N} no ME (recon 23/09/2026)
 agora: Callable[[], datetime] = datetime.now
 
@@ -74,12 +85,12 @@ def _leitor_padrao(conta: str, numero: int) -> list[str]:
 def _robo_padrao(conta: str, numero: int, itens: list[rg.EntradaItem],
                  validade_dias: int, dry_run: bool):
     from mercado_eletronico import robo
-    return robo.salvar_cotacao(rg.Conta(conta), numero, itens, validade_dias, dry_run=dry_run)
+    return robo.salvar_cotacao(conta, numero, itens, validade_dias, dry_run=dry_run)
 
 
 def _limpador_padrao(conta: str, numero: int, dry_run: bool):
     from mercado_eletronico import robo
-    return robo.limpar_cotacao(rg.Conta(conta), numero, dry_run=dry_run)
+    return robo.limpar_cotacao(conta, numero, dry_run=dry_run)
 
 
 def _em_thread(fn: Callable, *args) -> None:
@@ -101,8 +112,7 @@ LIMPADOR: Callable[..., Any] = _limpador_padrao
 def contas_configuradas() -> list[str]:
     """Só as contas com login e senha no ambiente. Sem nenhuma, a tela diz
     isso em vez de tentar e falhar a cada volta."""
-    return [c for c in CONTAS
-            if os.getenv(f"ME_{c.upper()}_LOGIN") and os.getenv(f"ME_{c.upper()}_SENHA")]
+    return [l.chave for l in L.configurados()]
 
 
 # ------------------------------------------------------------- varredura
@@ -112,6 +122,8 @@ class EstadoVarredura:
     ultima: datetime | None = None
     erros: dict[str, str] = field(default_factory=dict)
     trava: threading.Lock = field(default_factory=threading.Lock)
+    falhas: dict[str, int] = field(default_factory=dict)       # seguidas, por login
+    proxima: dict[str, float] = field(default_factory=dict)    # time.monotonic()
 
 
 VARREDURA = EstadoVarredura()
@@ -128,6 +140,7 @@ def sincronizar(conta: str, pendentes: list, momento: datetime | None = None) ->
     com lista vazia — isso daria todas as cotações como enviadas."""
     momento = momento or agora()
     carimbo = momento.isoformat(timespec="seconds")
+    primeira = not banco.me_cotacoes(conta=conta)
     vistos = set()
     for p in pendentes:
         numero = int(_campo(p, "numero"))
@@ -147,6 +160,7 @@ def sincronizar(conta: str, pendentes: list, momento: datetime | None = None) ->
             **({"enviada_em": carimbo} if novo is Status.ENVIADA and antes["status"] != "enviada" else {}))
         if antes["visto_em"] == carimbo and antes["atualizado_em"] is None:
             banco.me_registrar(cid, "apareceu no ME", _campo(p, "status_resposta") or "")
+            _anotar_chegada(momento, conta, numero, _campo(p, "empresa"), limite, primeira)
         if novo.value != antes["status"]:
             banco.me_registrar(cid, f"status: {pn.ROTULO[novo]}", "pela lista do ME")
 
@@ -163,8 +177,41 @@ def sincronizar(conta: str, pendentes: list, momento: datetime | None = None) ->
                            f"status: {pn.ROTULO[novo]}")
 
 
+def _anotar_chegada(momento: datetime, conta: str, numero: int, empresa, limite,
+                    primeira: bool) -> None:
+    if LOG_CHEGADAS is None:
+        return
+    linha = " | ".join((
+        f"{momento:%Y-%m-%d %H:%M:%S}", f"{CONTAS.get(conta, conta)} ({conta})",
+        f"cotação {numero}", str(empresa or "—"),
+        f"limite {limite:%d/%m %H:%M}" if limite else "sem limite",
+    )) + (" | já estava lá na 1ª leitura deste login" if primeira else "")
+    try:
+        LOG_CHEGADAS.parent.mkdir(parents=True, exist_ok=True)
+        with LOG_CHEGADAS.open("a", encoding="utf-8") as f:
+            f.write(linha + "\n")
+    except OSError:
+        pass  # anotar é estatística; nunca derruba a leitura
+
+
+def devidas(relogio: Callable[[], float] = time.monotonic) -> list[str]:
+    """Os logins configurados cuja vez de ler já chegou."""
+    t = relogio()
+    return [k for k in contas_configuradas() if VARREDURA.proxima.get(k, 0) <= t]
+
+
+def _agendar(conta: str, ok: bool, relogio: Callable[[], float] = time.monotonic) -> None:
+    falhas = 0 if ok else VARREDURA.falhas.get(conta, 0) + 1
+    VARREDURA.falhas[conta] = falhas
+    espera = (ESPERA_APOS_FALHAS_S if falhas >= FALHAS_ATE_ESPERAR
+              else L.de(conta).intervalo_s)
+    VARREDURA.proxima[conta] = relogio() + espera
+
+
 def atualizar(contas: list[str] | None = None) -> None:
-    """Lê a lista do ME de cada conta e sincroniza. Uma de cada vez."""
+    """Lê a lista do ME de cada conta e sincroniza. Uma de cada vez, e cada
+    uma pegando vaga de navegador como as transportadoras: com o frete usando
+    as duas vagas, o ME espera — cotação de frete tem cliente esperando."""
     if not VARREDURA.trava.acquire(blocking=False):
         return  # já tem uma rodando
     VARREDURA.rodando = True
@@ -172,13 +219,16 @@ def atualizar(contas: list[str] | None = None) -> None:
         for conta in contas if contas is not None else contas_configuradas():
             inicio = time.monotonic()
             try:
-                pendentes = FONTE(conta)
+                with VAGA_NAVEGADOR:
+                    pendentes = FONTE(conta)
                 sincronizar(conta, pendentes)
                 VARREDURA.erros.pop(conta, None)
+                _agendar(conta, ok=True)
                 banco.me_registrar_varredura(conta, ok=True, cotacoes=len(pendentes),
                                              duracao_s=round(time.monotonic() - inicio, 1))
             except Exception as exc:  # a outra conta ainda roda
                 VARREDURA.erros[conta] = f"{type(exc).__name__}: {exc}"[:300]
+                _agendar(conta, ok=False)
                 banco.me_registrar_varredura(conta, ok=False, erro=VARREDURA.erros[conta],
                                              duracao_s=round(time.monotonic() - inicio, 1))
         VARREDURA.ultima = agora()
@@ -205,7 +255,8 @@ def iniciar_vigia() -> threading.Event | None:
             # meio aberto, a sujeira morre com ela e não derruba as próximas
             # (28/09/2026: uma volta envenenou a thread e 91 seguidas falharam
             # com "Sync API inside the asyncio loop"; ver robo.Sessao).
-            volta = threading.Thread(target=atualizar, name="me-vigia-volta", daemon=True)
+            volta = threading.Thread(target=atualizar, args=(devidas(),),
+                                     name="me-vigia-volta", daemon=True)
             volta.start()
             volta.join()
             parar.wait(INTERVALO_S)
@@ -325,7 +376,7 @@ def conferir(c: dict, hoje: date) -> tuple[rg.Resultado, dict[int, dict[str, str
     """Validação de `regras` + o que o robô vai digitar em cada item que passa."""
     itens = entradas(c)
     resultado = rg.validar_cotacao(itens, c["validade_dias"], hoje)
-    conta = rg.Conta(c["conta"])
+    conta = L.de(c["conta"]).empresa
     previa = {}
     for item in itens:
         if item.sem_cotacao or rg.validar_item(item, hoje).erros:
@@ -427,9 +478,15 @@ def _rodar_robo(cid: int, usuario: str, dry_run: bool, status_antes: str) -> Non
         banco.me_registrar(cid, "erro do robô", motivo, usuario)
 
 
+NAO_LIBERADO = ("O robô ainda não foi liberado para este login: o formulário do ME muda "
+                "com o comprador e este ainda não foi conferido. Preencha pelo site do ME.")
+
+
 def mandar_robo(cid: int, usuario: str, dry_run: bool) -> str | None:
     """Solta o robô numa thread. Devolve o motivo se não soltou."""
     c = banco.me_cotacao(cid)
+    if not L.de(c["conta"]).robo_liberado:
+        return NAO_LIBERADO
     resultado, _ = conferir(c, agora().date())
     if resultado.erros:
         return "Corrija os erros antes: " + " ".join(resultado.erros[:3])
@@ -474,6 +531,8 @@ def _rodar_limpeza(cid: int, usuario: str, status_antes: str) -> None:
 def mandar_limpeza(cid: int, usuario: str) -> str | None:
     """Solta o robô para apagar do rascunho do ME o que ele escreveu."""
     c = banco.me_cotacao(cid)
+    if not L.de(c["conta"]).robo_liberado:
+        return NAO_LIBERADO
     abertos = (Status.PENDENTE.value, Status.SALVA.value, Status.ERRO.value)
     if not banco.me_trocar_status(cid, abertos, Status.SALVANDO.value):
         return "Esta cotação não está aberta (ou o robô já está nela)."
@@ -580,7 +639,7 @@ def lista(request: Request, conta: str = "", status: str = "", msg: str = ""):
                     for k, v in VARREDURA.erros.items())
     sem_conta = ("" if configuradas else
                  '<p class="alerta">Nenhuma conta do ME configurada: faltam '
-                 'ME_VENTURA_LOGIN/SENHA e ME_UNIAO_LOGIN/SENHA no .env.</p>')
+                 'os LOGIN/SENHA de mercado_eletronico/logins.py no .env.</p>')
     acoes = ('<form method="post" action="/me/atualizar" style="margin:0">'
              '<button type="submit">Atualizar agora</button></form>')
     corpo = f"""{CSS_ME}

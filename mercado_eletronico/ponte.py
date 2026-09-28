@@ -16,7 +16,6 @@ from __future__ import annotations
 
 from mercado_eletronico import lista
 from mercado_eletronico import robo as R
-from mercado_eletronico.regras import Conta
 
 URL_PENDENCIAS = R.URL_LOGIN_DESTINO + "?CreateDateStart=2026-06-25"
 
@@ -37,7 +36,7 @@ def _buscar(s, espera_ms: int):
 
 
 def pendencias(conta: str, **sessao) -> list[lista.CotacaoPendente]:
-    with R.Sessao(Conta(conta), **sessao) as s:
+    with R.Sessao(conta, **sessao) as s:
         # Sem sessão o ME carrega a lista e SÓ DEPOIS manda para o login, por
         # JavaScript — a busca nunca vem. `networkidle` não serve: o chat da
         # página deixa a rede ocupada para sempre.
@@ -53,7 +52,7 @@ def pendencias(conta: str, **sessao) -> list[lista.CotacaoPendente]:
 
 
 def ler_paginas(conta: str, numero: int, **sessao) -> list[str]:
-    with R.Sessao(Conta(conta), **sessao) as s:
+    with R.Sessao(conta, **sessao) as s:
         s.abrir(numero)
         htmls = [s.page.content()]
         for p in range(2, R.paginas(s.page) + 1):

@@ -6,7 +6,7 @@ morasse no robô, um teste de tela nunca a pegaria errada.
 
 Decisões do usuário (23/09/2026):
 
-- UNIÃO cobra só ICMS; VENTURA cobra tudo menos IPI.
+- UNIÃO e ALIANÇA cobram só ICMS; VENTURA cobra tudo menos IPI.
 - ICMS: dentro do ES, 17% (origem 0 ou 2). Fora do ES: origem 0 → 12%;
   origem 2 (estrangeira comprada no mercado interno) → 4%, a alíquota
   interestadual de importados da Res. Senado 13/2012 (decisão de 24/09/2026).
@@ -39,6 +39,7 @@ UFS = frozenset(
 class Conta(str, Enum):
     VENTURA = "ventura"
     UNIAO = "uniao"
+    ALIANCA = "alianca"
 
 
 class RegraDesconhecida(ValueError):
@@ -145,7 +146,8 @@ def impostos(conta: Conta, origem: int, uf_destino: str) -> Impostos:
     icms = aliquota_icms(origem, uf_destino)
     if conta is Conta.VENTURA:
         return Impostos(icms, "sim", Decimal("0.65"), "sim", Decimal("3.00"), "sim")
-    if conta is Conta.UNIAO:
+    # ALIANÇA: só ICMS, igual à UNIÃO (Enzo, 28/09/2026; IE 082417377-ES).
+    if conta in (Conta.UNIAO, Conta.ALIANCA):
         return Impostos(icms, "sim", Decimal("0"), "Isento", Decimal("0"), "Isento")
     raise RegraDesconhecida(f"Conta desconhecida: {conta!r}")
 

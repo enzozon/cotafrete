@@ -104,7 +104,7 @@ def test_leitura_que_falha_nao_da_nada_como_enviado(cliente, monkeypatch):
     monkeypatch.setattr(me_ui, "FONTE", quebra)
     cliente.post("/me/atualizar")
     assert {c["status"] for c in me_ui.banco.me_cotacoes()} == {"pendente"}
-    assert "Falha ao ler VENTURA" in cliente.get("/me").text
+    assert "Falha ao ler ME geral · VENTURA" in cliente.get("/me").text
 
 
 def test_sumiu_da_lista_antes_do_prazo_vira_enviada(cliente, monkeypatch):

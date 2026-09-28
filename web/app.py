@@ -99,11 +99,12 @@ VIGIA_ME = None
 async def _vida(_app):
     global INGESTOR, VIGIA_ME
     if VIGIA_ME is None:
+        me_ui.LOG_CHEGADAS = Path(__file__).resolve().parent.parent / "log" / "me_chegadas.txt"
         VIGIA_ME = me_ui.iniciar_vigia()
         if VIGIA_ME is not None:
             print(f"[cotafrete] Mercado Eletrônico: lendo as pendências de "
                   f"{', '.join(me_ui.contas_configuradas())} a cada "
-                  f"{me_ui.INTERVALO_S // 60} min.")
+                  f"7 min (ME geral) / 15 min (demais).")
     if INGESTOR is None:
         INGESTOR = dv_ingestor.iniciar(banco)
         # Para a tela /adm/dellavolpe mostrar se a caixa está abrindo.
