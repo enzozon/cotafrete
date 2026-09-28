@@ -186,6 +186,15 @@ def automaticas(ambiente=None) -> tuple[str, ...]:
                                 else ())
 
 
+# A lista sai do .env (DV_AUTOMATICA_DESDE) e é montada NO IMPORT — então é
+# este arquivo que tem de ler o .env, e não confiar que quem o importou já
+# leu. O web/app.py lê antes; o monitorar.py (Monitor.bat) e parte dos testes
+# importavam isto primeiro e ficavam com a lista sem a Della Volpe. Mesmo
+# arquivo e mesma regra do app: override=False, o ambiente de fora vence.
+from dotenv import load_dotenv  # noqa: E402
+
+load_dotenv(Path(__file__).resolve().parent.parent / ".env", override=False)
+
 AUTOMATICAS: tuple[str, ...] = automaticas()
 
 

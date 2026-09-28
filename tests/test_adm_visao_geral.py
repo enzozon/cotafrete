@@ -42,8 +42,12 @@ def servidor(tmp_path, monkeypatch):
     with socket.socket() as s:
         s.bind(("127.0.0.1", 0))
         porta = s.getsockname()[1]
+    # lifespan="off": o lifespan do app liga a varredura do ME e o leitor da
+    # caixa do suporte com as senhas do .env — ME de verdade e e-mail de
+    # verdade num teste, e threads que sobram atropelando os testes seguintes.
     srv = uvicorn.Server(uvicorn.Config(modulo.app, host="127.0.0.1",
-                                        port=porta, log_level="error"))
+                                        port=porta, log_level="error",
+                                        lifespan="off"))
     threading.Thread(target=srv.run, daemon=True).start()
     while not srv.started:
         time.sleep(0.05)
