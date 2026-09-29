@@ -269,6 +269,9 @@ class Sessao:
         self.acao_em_curso = False
         self.liberados = 0
         self.bloqueios: list[str] = []
+        # Arquivos que a trava deixa EXCLUIR agora: só os que o robô subiu, e
+        # só durante excluir_anexo (trava.motivo_anexo).
+        self.excluiveis: set[str] = set()
 
     # --- travas
     def _rota(self, route, request) -> None:
@@ -276,7 +279,8 @@ class Sessao:
         # multipart com o PDF dentro, que não é UTF-8.
         buffer = request.post_data_buffer
         corpo = buffer.decode("latin-1") if buffer else None
-        motivo = T.motivo_bloqueio(request.method, request.url, corpo, self.logado)
+        motivo = T.motivo_bloqueio(request.method, request.url, corpo, self.logado,
+                                   frozenset(self.excluiveis))
         if motivo:
             self.bloqueios.append(f"{request.method} {request.url[:120]}: {motivo}")
             return route.abort()
@@ -381,12 +385,18 @@ class Sessao:
         if "login" in self.page.url.lower():
             self.login()
             self.page.goto(URL_RESPOSTA.format(n=numero), wait_until="domcontentloaded")
-        try:
-            self.page.wait_for_selector("form[name='RespCota']", state="attached",
-                                        timeout=self.timeout_ms)
-            self.page.wait_for_load_state("load")
-        except Exception:
-            raise RoboRecusou(f"cotação {numero} não abriu o formulário de resposta") from None
+        # Uma recarga antes de desistir: em 29/09/2026 a 23083602 não abriu numa
+        # volta e abriu normal na seguinte — página lenta do ME, não cotação diferente.
+        for tentativa in (1, 2):
+            try:
+                self.page.wait_for_selector("form[name='RespCota']", state="attached",
+                                            timeout=self.timeout_ms)
+                self.page.wait_for_load_state("load")
+                return
+            except Exception:
+                if tentativa == 2:
+                    raise RoboRecusou(f"cotação {numero} não abriu o formulário de resposta") from None
+                self.page.goto(URL_RESPOSTA.format(n=numero), wait_until="domcontentloaded")
 
     def acao(self, clicar: Callable[[], None]) -> int:
         """Clica em Salvar/página e espera o POST voltar. Devolve POSTs liberados."""
@@ -461,7 +471,8 @@ def anexar(s: Sessao, anexo: "F.Anexo", arquivo: Path) -> None:
     try:
         pg.goto("https://www.me.com.br/" + anexo.url, wait_until="domcontentloaded")
         pg.locator("#fuArquivo").set_input_files(str(arquivo))
-        enviar = pg.locator("[id$='formUpload_btnEnviar']")
+        # O <button>, não o <span> de mesmo final de id que o ME põe dentro dele.
+        enviar = pg.locator("button[id$='formUpload_btnEnviar']")
         if enviar.count() != 1 or enviar.inner_text().strip() != "Enviar":
             raise RoboRecusou(f"{anexo.nome}: botão de enviar arquivo não é o esperado")
         with pg.expect_navigation(wait_until="domcontentloaded"):
@@ -472,28 +483,126 @@ def anexar(s: Sessao, anexo: "F.Anexo", arquivo: Path) -> None:
         pg.close()
 
 
+class UltimoAnexo(RoboRecusou):
+    """O ME não deixa excluir o último anexo de um tipo obrigatório."""
+
+
+# Regra do ME (29/09/2026, Oitamérica 23079560): depois de salva com o anexo
+# obrigatório, a cotação não fica sem nenhum — só dá para TROCAR o arquivo.
+MSG_ULTIMO_ANEXO = "É preciso adicionar outro anexo para permitir a exclusão"
+PREFIXO_TESTE = "TESTE_ROBO_"
+
+
+def _janela_anexo(s: Sessao, anexo: "F.Anexo"):
+    if not anexo.url:
+        raise RoboRecusou(f"{anexo.nome}: a página não trouxe a janela de anexo")
+    pg = s.ctx.new_page()
+    pg.set_default_timeout(s.timeout_ms)
+    pg.goto("https://www.me.com.br/" + anexo.url, wait_until="domcontentloaded")
+    return pg
+
+
+def _linhas_do_arquivo(pg, nome: str):
+    exato = re.compile(r"^\s*" + re.escape(nome) + r"\s*$")
+    return pg.locator("tbody tr").filter(has=pg.locator("td", has_text=exato))
+
+
+def nomes_no_me(s: Sessao, anexo: "F.Anexo") -> list[str]:
+    """Os nomes dos arquivos que o ME lista neste anexo (só leitura)."""
+    pg = _janela_anexo(s, anexo)
+    try:
+        return pg.evaluate("""() => [...document.querySelectorAll("tbody[id^='tBody_jsTable'] tr")]
+            .map(tr => tr.cells.length > 1 ? tr.cells[1].innerText.trim() : '').filter(Boolean)""")
+    finally:
+        pg.close()
+
+
+def excluir_anexo(s: Sessao, anexo: "F.Anexo", nome: str) -> bool:
+    """Exclui do ME UM arquivo que o robô subiu, pelo nome EXATO. False = ele não
+    está lá. Desmarca as linhas antes (a janela abre com todas marcadas) e a
+    trava só deixa passar se o pedido citar apenas esse arquivo. UltimoAnexo se
+    o ME recusar por ser o último do tipo."""
+    pg = _janela_anexo(s, anexo)
+    s.excluiveis = {nome}
+    try:
+        linhas = _linhas_do_arquivo(pg, nome)
+        if linhas.count() == 0:
+            return False
+        if linhas.count() != 1:
+            raise RoboRecusou(f"{anexo.nome}: {linhas.count()} arquivos chamados {nome} — parei")
+        pg.evaluate("() => { if (typeof UnSelectAll === 'function') UnSelectAll(); }")
+        with pg.expect_navigation(wait_until="domcontentloaded"):
+            linhas.first.locator("img[title='Excluir']").click()
+        if _linhas_do_arquivo(pg, nome).count():
+            if MSG_ULTIMO_ANEXO in pg.inner_text("body"):
+                raise UltimoAnexo(f"{anexo.nome}: o ME não deixa excluir o último anexo "
+                                  f"obrigatório ({nome}) — só trocar por outro arquivo")
+            raise RoboRecusou(f"{anexo.nome}: {nome} continua no ME depois de excluir")
+        return True
+    finally:
+        s.excluiveis = set()
+        pg.close()
+
+
+def _excluir_anexos_do_robo(s: Sessao, res: ResultadoRobo, nomes: set[str],
+                            dry_run: bool) -> bool:
+    """No "Limpar no ME": tira os anexos que o robô subiu nesta cotação. O
+    último de um tipo obrigatório o ME não deixa tirar: vira aviso, e a
+    limpeza do resto segue."""
+    excluiu = False
+    for a in F.anexos_obrigatorios(s.page):
+        if not a.qtd:
+            continue
+        for nome in sorted(nomes):
+            if dry_run:
+                res.avisos.append(f"no Limpar, vai excluir {nome} de {a.nome} (se estiver lá)")
+                continue
+            try:
+                if excluir_anexo(s, a, nome):
+                    res.avisos.append(f"anexo excluído do ME: {nome} ({a.nome})")
+                    excluiu = True
+            except UltimoAnexo as exc:
+                res.avisos.append(str(exc))
+    return excluiu
+
+
 def _garantir_anexos(s: Sessao, res: ResultadoRobo, numero: int,
                      anexos: dict[str, Path], dry_run: bool) -> None:
-    """Anexo obrigatório ("*") ainda vazio no ME: sobe o arquivo que o vendedor
-    deu no CotaFrete (por TipoAnexo); sem arquivo, para — o ME não salvaria."""
-    faltam = [a for a in F.anexos_obrigatorios(s.page) if a.qtd == 0]
-    sem = [a.nome for a in faltam if a.tipo not in anexos]
+    """Cada anexo obrigatório ("*") com o arquivo que o vendedor deu no CotaFrete
+    (por TipoAnexo): sobe se ESSE arquivo ainda não está no ME. Depois, os
+    arquivos de teste do robô (TESTE_ROBO_*) que sobraram ali saem — com a
+    proposta de verdade lá, já não são o último. Anexo vazio no ME e sem
+    arquivo aqui: para — o ME não salvaria."""
+    obrigatorios = F.anexos_obrigatorios(s.page)
+    sem = [a.nome for a in obrigatorios if a.qtd == 0 and a.tipo not in anexos]
     if sem:
         msg = (f"o comprador exige anexo para salvar ({', '.join(sem)}): suba o arquivo "
                "na tela da cotação e mande o robô de novo")
         if not dry_run:
             raise RoboRecusou(msg)
         res.avisos.append(msg)
-    subir = [(a, Path(anexos[a.tipo])) for a in faltam if a.tipo in anexos]
-    if dry_run:
-        res.avisos += [f"no Salvar, vai anexar {arq.name} em {a.nome}" for a, arq in subir]
-        return
-    for a, arq in subir:
-        if not arq.is_file():
-            raise RoboRecusou(f"{a.nome}: o arquivo {arq.name} sumiu do servidor — suba de novo")
-        anexar(s, a, arq)
-        res.avisos.append(f"anexado no ME: {arq.name} em {a.nome}")
-    if subir:
+    mexeu = False
+    for a in obrigatorios:
+        if a.tipo not in anexos:
+            continue
+        arq = Path(anexos[a.tipo])
+        no_me = nomes_no_me(s, a) if a.qtd else []
+        if arq.name not in no_me:
+            if dry_run:
+                res.avisos.append(f"no Salvar, vai anexar {arq.name} em {a.nome}")
+            else:
+                if not arq.is_file():
+                    raise RoboRecusou(f"{a.nome}: o arquivo {arq.name} sumiu do servidor — suba de novo")
+                anexar(s, a, arq)
+                res.avisos.append(f"anexado no ME: {arq.name} em {a.nome}")
+                mexeu = True
+        for sobra in (n for n in no_me if n.startswith(PREFIXO_TESTE) and n != arq.name):
+            if dry_run:
+                res.avisos.append(f"no Salvar, vai excluir o arquivo de teste {sobra} de {a.nome}")
+            elif excluir_anexo(s, a, sobra):
+                res.avisos.append(f"arquivo de teste excluído do ME: {sobra} ({a.nome})")
+                mexeu = True
+    if mexeu:
         s.abrir(numero)
         if ainda := F.anexos_faltando(s.page):
             raise RoboRecusou(f"anexo enviado mas o ME ainda mostra vazio: {', '.join(ainda)}")
@@ -571,7 +680,8 @@ def _conferir_limpeza(page, plano: M.PlanoPagina, recarregada: bool) -> list[str
 
 
 def limpar_cotacao(conta: "Conta | L.Login | str", numero: int, *, dry_run: bool = True,
-                   sessao: Sessao | None = None, headless: bool = True) -> ResultadoRobo:
+                   sessao: Sessao | None = None, headless: bool = True,
+                   anexos: "list[str] | tuple[str, ...]" = ()) -> ResultadoRobo:
     """Apaga do RASCUNHO do ME tudo o que o robô escreve: preços, impostos,
     NCM, prazo, marca, obs, recusas de item e a obs geral. Os itens voltam a
     ficar como chegaram; do cabeçalho ficam só os campos fixos da empresa que
@@ -580,7 +690,10 @@ def limpar_cotacao(conta: "Conta | L.Login | str", numero: int, *, dry_run: bool
 
     ME real (24/09/2026, UNIÃO 23052403): o Salvar sem nenhum item marcado
     só mostra "Para salvar previamente é necessario…" e grava mesmo assim —
-    o JS do ME avisa mas não para."""
+    o JS do ME avisa mas não para.
+
+    `anexos`: nomes dos arquivos que o robô subiu nesta cotação — saem também
+    (29/09/2026). Anexo de outra pessoa, nunca (trava)."""
     res = ResultadoRobo(dry_run=dry_run)
     dono = sessao is None
     s = sessao or Sessao(conta, headless=headless)
@@ -588,6 +701,8 @@ def limpar_cotacao(conta: "Conta | L.Login | str", numero: int, *, dry_run: bool
         s.__enter__()
     try:
         s.abrir(numero)
+        if anexos and _excluir_anexos_do_robo(s, res, set(anexos), dry_run):
+            s.abrir(numero)
         total = paginas(s.page)
         planos: list[M.PlanoPagina] = []
         for pagina in range(1, total + 1):

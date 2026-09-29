@@ -8,6 +8,7 @@ e que o resto da janela (excluir) não passa.
 
 from __future__ import annotations
 
+import re
 from datetime import date
 from pathlib import Path
 
@@ -85,17 +86,32 @@ def _campo(**kw):
     return F.Campo(**{"tipo": "text", **kw})
 
 
-def test_obrigatorio_desconhecido_para_e_diz_qual():
+def test_oitamerica_deposito_em_conta_e_de_acordo_sim_e_o_resto_para():
+    sim_nao = (("", ""), ("Sim", "Sim"), ("Não", "Não"))
     form = {"atrib_0TIPOPAGAMENTO_1_5_0_0": _campo(
-                tipo="select", opcoes=(("", ""), ("Boleto Bancário", "Boleto Bancário")),
-                rotulo="* Tipo de Pagamento:"),
-            "atrib_1COMUNICADO_1_5_0_0": _campo(
-                tipo="select", opcoes=(("", ""), ("Sim", "Sim"), ("Não", "Não")),
-                rotulo="* Estou de acordo com o Comunicado aos Fornecedores")}
-    with pytest.raises(F.FormularioDesconhecido, match="Tipo de Pagamento"):
+                tipo="select", rotulo="* Tipo de Pagamento:",
+                opcoes=(("", ""), ("Boleto Bancário", "Boleto Bancário"),
+                        ("Depósito em Conta", "Depósito em Conta"))),
+            "atrib_1COMUNICADO_1_5_0_0": _campo(tipo="select", opcoes=sim_nao,
+                rotulo="* Estou de acordo com o Comunicado aos Fornecedores"),
+            "atrib_2CONDICOESGERAIS_1_5_0_0": _campo(tipo="select", opcoes=sim_nao,
+                rotulo="* Estou de acordo com as Condições Gerais de Compra")}
+    assert F.adaptar({}, [], form, empresa=Conta.VENTURA) == {
+        "atrib_0TIPOPAGAMENTO_1_5_0_0": "Depósito em Conta",
+        "atrib_1COMUNICADO_1_5_0_0": "Sim", "atrib_2CONDICOESGERAIS_1_5_0_0": "Sim"}
+    # Um obrigatório que ninguém decidiu: para e diz qual.
+    form["atrib_9VISITA_1_5_0_0"] = _campo(tipo="select", opcoes=sim_nao,
+                                           rotulo="* Estou de acordo com a Visita Técnica")
+    with pytest.raises(F.FormularioDesconhecido, match="Visita Técnica"):
         F.adaptar({}, [], form, empresa=Conta.VENTURA)
-    del form["atrib_0TIPOPAGAMENTO_1_5_0_0"]
-    assert F.adaptar({}, [], form, empresa=Conta.VENTURA) == {"atrib_1COMUNICADO_1_5_0_0": "Sim"}
+
+
+def test_preco_bruto_e_igual_ao_preco():
+    form = {"Preco1": _campo(), "Prazo1": _campo(), "NBM1": _campo(),
+            "PrecoBruto1": _campo(rotulo="* Preço Bruto")}
+    c = F.adaptar({"Preco1": "12,50", "Prazo1": "5", "NCM1": "8536.50.90"}, [1], form,
+                  empresa=Conta.VENTURA)
+    assert c["PrecoBruto1"] == c["Preco1"] == "12,50"
 
 
 def test_lugar_de_entrega_da_weg_e_o_endereco_da_empresa():
@@ -162,7 +178,7 @@ class MeFalso:
         if "RespostaCotaItem.asp" in request.url:
             html = (FIX / "edp_23050183.html").read_text(encoding="utf-8")
             if self.arquivo:
-                html = html.replace('anexoqtd="0">Nenhum anexo existente', 'anexoqtd="1">1 anexo', 1)
+                html = re.sub(r'(id="divAnexoRDC[^"]*" anexoqtd=")0(")', r"\g<1>1\g<2>", html, count=1)
             return route.fulfill(status=200, content_type="text/html; charset=utf-8", body=html)
         if "MEAnexo.aspx" in request.url:
             return route.fulfill(status=200, content_type="text/html; charset=utf-8",
@@ -293,3 +309,140 @@ def test_uf_de_entrega_escolhida_na_tela_quando_a_pagina_nao_diz(cliente, monkey
     assert "<small>ICMS</small> 17,00%" in me_ui.linha_previa(c, c["itens"][0], HOJE)  # dentro do ES
     cliente.post(f"/me/{cid}", data={"uf_entrega": "XX", "acao": "conferir"})
     assert me_ui.banco.me_cotacao(cid)["uf_entrega"] is None
+
+
+# ------------------------------------------------- excluir anexo (29/09/2026)
+JANELA_COM_ARQUIVOS = """<html><head><script>
+var LINHAS = {linhas_json};
+function UnSelectAll() {{ document.getElementById('mult').value = '[]'; }}
+function excluir(i) {{
+  document.getElementById('single').value = JSON.stringify(LINHAS[i]);
+  document.getElementById('__EVENTTARGET').value = 'ctl00$conteudo$grdAnexos';
+  document.getElementById('__EVENTARGUMENT').value = 'ColumnOnClick_Excluir';
+  document.getElementById('aspnetForm').submit();
+}}
+</script></head><body><form method="post" id="aspnetForm" enctype="multipart/form-data">
+<input type="hidden" name="__EVENTTARGET" id="__EVENTTARGET" value="">
+<input type="hidden" name="__EVENTARGUMENT" id="__EVENTARGUMENT" value="">
+<input type="hidden" name="jsTable_ctl00$conteudo$grdAnexos_hidden_single" id="single" value="">
+<input type="hidden" name="jsTable_ctl00$conteudo$grdAnexos_hidden_multiple" id="mult" value='{todas}'>
+<table><tbody>{linhas}</tbody></table></form></body></html>"""
+
+
+class MeComArquivos(MeFalso):
+    """A janela lista arquivos (todos marcados, como no ME) e o Excluir de cada
+    linha faz o postback do ME; o POST que chegar aqui apaga o arquivo."""
+
+    def __init__(self, arquivos, ultimo_protegido=False):
+        super().__init__()
+        self.arquivos = list(arquivos)
+        # Como o ME real (29/09/2026): o último anexo do tipo não sai.
+        self.ultimo_protegido = ultimo_protegido
+
+    def __call__(self, route, request):
+        import json
+        if "RespostaCotaItem.asp" in request.url:
+            html = (FIX / "edp_23050183.html").read_text(encoding="utf-8")
+            if self.arquivos:   # a contagem da coluna do anexo comercial (RDC)
+                html = re.sub(r'(id="divAnexoRDC[^"]*" anexoqtd=")0(")',
+                              rf'\g<1>{len(self.arquivos)}\g<2>', html, count=1)
+            return route.fulfill(status=200, content_type="text/html; charset=utf-8", body=html)
+        if "MEAnexo.aspx" in request.url:
+            aviso = ""
+            if request.method == "POST":
+                corpo = (request.post_data_buffer or b"").decode("latin-1")
+                self.posts.append((request.url, corpo.encode("latin-1")))
+                if T.alvo_do_postback(corpo) == T.UPLOAD_ALVO:  # upload
+                    self.arquivos.append(corpo.split('filename="')[1].split('"')[0])
+                else:
+                    nome = json.loads(T.campo_do_postback(corpo, T._CAMPO_SINGLE))["NomeArquivo"]
+                    if self.ultimo_protegido and len(self.arquivos) == 1:
+                        aviso = B.MSG_ULTIMO_ANEXO + "."
+                    else:
+                        self.arquivos.remove(nome)
+            dados = [{"AnexoID": i, "NomeArquivo": n} for i, n in enumerate(self.arquivos)]
+            linhas = "".join(f'<tr><td><input type="checkbox"></td><td>{n}</td>'
+                             f'<td onclick="excluir({i})"><img title="Excluir"></td></tr>'
+                             for i, n in enumerate(self.arquivos))
+            corpo_html = JANELA_COM_ARQUIVOS.format(
+                linhas_json=json.dumps(dados), todas=json.dumps(dados), linhas=linhas)
+            corpo_html = corpo_html.replace("<table><tbody>", aviso + '<table><tbody id="tBody_jsTable_x">')
+            corpo_html = corpo_html.replace("</form>", JANELA_UPLOAD + "</form>")
+            return route.fulfill(status=200, content_type="text/html; charset=utf-8", body=corpo_html)
+        return super().__call__(route, request)
+
+
+JANELA_UPLOAD = """<input type="file" id="fuArquivo" name="ctl00$conteudo$formUpload$fuArquivo">
+<button type="button" id="ctl00_conteudo_formUpload_btn_ctl00_conteudo_formUpload_btnEnviar"
+ onclick="document.getElementById('__EVENTTARGET').value='ctl00$conteudo$formUpload$btnEnviar';
+ document.getElementById('aspnetForm').submit(); return false;">Enviar</button>"""
+
+
+def test_ultimo_anexo_obrigatorio_nao_sai_e_a_limpeza_so_avisa(navegador, tmp_path):
+    me = MeComArquivos(["TESTE_ROBO_P.pdf"], ultimo_protegido=True)
+    s = B.Sessao("nestle_ventura", pasta=tmp_path, seguir=me, browser=navegador, timeout_ms=5_000)
+    res = B.ResultadoRobo(dry_run=False)
+    with s:
+        s.abrir(23050183)
+        assert B._excluir_anexos_do_robo(s, res, {"TESTE_ROBO_P.pdf"}, dry_run=False) is False
+    assert me.arquivos == ["TESTE_ROBO_P.pdf"]
+    assert any("não deixa excluir o último anexo" in a for a in res.avisos)
+
+
+def test_proposta_de_verdade_sobe_e_o_arquivo_de_teste_que_sobrou_sai(navegador, tmp_path):
+    real = tmp_path / "Proposta_EDP_123.pdf"
+    real.write_bytes(b"%PDF")
+    me = MeComArquivos(["TESTE_ROBO_P.pdf"], ultimo_protegido=True)
+    s = B.Sessao("nestle_ventura", pasta=tmp_path, seguir=me, browser=navegador, timeout_ms=5_000)
+    res = B.ResultadoRobo(dry_run=False)
+    with s:
+        s.abrir(23050183)
+        B._garantir_anexos(s, res, 23050183, {"RDC": real}, dry_run=False)
+    assert me.arquivos == ["Proposta_EDP_123.pdf"]
+    assert any("anexado no ME: Proposta_EDP_123.pdf" in a for a in res.avisos)
+    assert any("arquivo de teste excluído do ME: TESTE_ROBO_P.pdf" in a for a in res.avisos)
+
+
+def test_robo_exclui_so_o_proprio_anexo_mesmo_com_tudo_marcado(navegador, tmp_path):
+    me = MeComArquivos(["proposta_do_colega.pdf", "TESTE_ROBO_P.pdf"])
+    s = B.Sessao("nestle_ventura", pasta=tmp_path, seguir=me, browser=navegador, timeout_ms=5_000)
+    anexo = F.Anexo("Anexo Comercial", "RDC", 2,
+                    "ME/MEAnexo.aspx?TipoAnexo=RDC&Chave1=1&isReadOnly=0&hash=x")
+    with s:
+        assert B.excluir_anexo(s, anexo, "TESTE_ROBO_P.pdf") is True
+        assert B.excluir_anexo(s, anexo, "TESTE_ROBO_P.pdf") is False     # já não está
+        assert s.excluiveis == set()                                       # trava fechada de novo
+    assert me.arquivos == ["proposta_do_colega.pdf"] and len(me.posts) == 1
+
+
+def test_sem_desmarcar_a_trava_segura_a_exclusao_que_leva_outro_arquivo(navegador, tmp_path):
+    me = MeComArquivos(["proposta_do_colega.pdf", "TESTE_ROBO_P.pdf"])
+    s = B.Sessao("nestle_ventura", pasta=tmp_path, seguir=me, browser=navegador, timeout_ms=3_000)
+    url = "https://www.me.com.br/ME/MEAnexo.aspx?TipoAnexo=RDC&Chave1=1&isReadOnly=0&hash=x"
+    with s:
+        s.excluiveis = {"TESTE_ROBO_P.pdf"}
+        pg = s.ctx.new_page()
+        pg.goto(url)
+        pg.evaluate("() => excluir(1)")          # clica no do robô SEM desmarcar o do colega
+        pg.wait_for_timeout(800)
+        s.excluiveis = set()
+    assert me.arquivos == ["proposta_do_colega.pdf", "TESTE_ROBO_P.pdf"] and me.posts == []
+    assert any("que o robô não subiu" in b for b in s.bloqueios)
+
+
+def test_pagina_que_nao_abre_de_primeira_ganha_uma_recarga(navegador, tmp_path):
+    class Lenta(MeFalso):
+        vezes = 0
+
+        def __call__(self, route, request):
+            if "RespostaCotaItem.asp" in request.url:
+                Lenta.vezes += 1
+                if Lenta.vezes == 1:
+                    return route.fulfill(status=200, content_type="text/html", body="<p>carregando</p>")
+            return super().__call__(route, request)
+
+    s = B.Sessao("nestle_ventura", pasta=tmp_path, seguir=Lenta(), browser=navegador, timeout_ms=1_500)
+    with s:
+        s.abrir(23050183)
+        assert s.page.locator("form[name='RespCota']").count() == 1
+    assert Lenta.vezes >= 2      # a 1ª veio sem formulário; a recarga trouxe

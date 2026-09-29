@@ -158,8 +158,8 @@ EXTRAS_CABECALHO = {
     # Condições Gerais de Compra — o Enzo autorizou marcar (28/09/2026).
     "atrib_1COMUNICADO_1_5_0_0": lambda empresa: "Sim",
     "atrib_2CONDICOESGERAIS_1_5_0_0": lambda empresa: "Sim",
-    # "Tipo de Pagamento" (boleto/depósito) da Oitamérica: SEM decisão ainda —
-    # fica fora daqui e o robô para nele, dizendo o nome do campo.
+    # "Tipo de Pagamento" da Oitamérica: sempre depósito em conta (Enzo, 29/09/2026).
+    "atrib_0TIPOPAGAMENTO_1_5_0_0": lambda empresa: "Depósito em Conta",
 }
 
 # Campos do item que só INFORMAM o que a empresa cobra: se o comprador não
@@ -285,6 +285,9 @@ def adaptar(campos: dict[str, str], marcar: list[int], form: Formulario, *,
                 out[f"itatrib01_RefFabricante_1_{i}"] = ref
             if f"Moeda{i}" in form and not form[f"Moeda{i}"].valor:
                 out[f"Moeda{i}"] = _traduzir(f"Moeda{i}", "Moeda", "BRL", form[f"Moeda{i}"])
+            # "* Preço Bruto" (Oitamérica): igual ao preço do produto (Enzo, 29/09/2026).
+            if f"PrecoBruto{i}" in form and f"Preco{i}" in out:
+                out[f"PrecoBruto{i}"] = out[f"Preco{i}"]
 
     # Obrigatório do cabeçalho que ninguém preencheu: parar e dizer qual.
     faltam = [c.rotulo.lstrip("* ").rstrip(":") for n, c in form.items()

@@ -339,8 +339,9 @@ class LimpadorFalso:
         self.resultado = resultado or SimpleNamespace(ok=True, salvo=True, divergencias=[],
                                                       prints=["limpa.png"], erro=None)
 
-    def __call__(self, conta, numero, dry_run):
+    def __call__(self, conta, numero, dry_run, anexos=()):
         self.chamadas.append((conta, numero, dry_run))
+        self.anexos = list(anexos)
         return self.resultado
 
 
@@ -406,6 +407,6 @@ def test_ligacao_padrao_da_limpeza(monkeypatch):
     from mercado_eletronico.regras import Conta
     chamadas = []
     monkeypatch.setattr(robo, "limpar_cotacao",
-                        lambda conta, n, *, dry_run: chamadas.append((conta, n, dry_run)))
-    me_ui._limpador_padrao("uniao", 23052403, False)
-    assert chamadas == [(Conta.UNIAO, 23052403, False)]
+                        lambda conta, n, *, dry_run, anexos: chamadas.append((conta, n, dry_run, anexos)))
+    me_ui._limpador_padrao("uniao", 23052403, False, anexos=("p.pdf",))
+    assert chamadas == [(Conta.UNIAO, 23052403, False, ["p.pdf"])]

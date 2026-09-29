@@ -160,7 +160,7 @@ def test_log_de_chegadas(monkeypatch, tmp_path):
     me_ui.sincronizar("nestle_ventura", [p(1), p(2)], datetime(2026, 9, 28, 8, 15))
     linhas = log.read_text(encoding="utf-8").splitlines()
     assert len(linhas) == 2                      # a 1 não é anotada de novo
-    assert linhas[0].startswith("2026-09-28 08:00:00 | Nestlé · VENTURA (nestle_ventura) | cotação 1")
+    assert linhas[0].startswith("2026-09-28 08:00:00 | Nestlé e EDP · VENTURA (nestle_ventura) | cotação 1")
     assert linhas[0].endswith("já estava lá na 1ª leitura deste login")
     assert "cotação 2 | EDP - Outsourcing" in linhas[1] and "1ª leitura" not in linhas[1]
 
@@ -261,3 +261,32 @@ def test_login_sem_robo_liberado_nao_mostra_salvar_nem_limpar(monkeypatch, tmp_p
     assert 'value="salvar" disabled' in html and 'value="dry_run" class="botao2" disabled' in html
     assert "Limpar no ME" not in html
     assert "O robô ainda não preenche este login" in html
+
+
+def test_busca_pelo_numero_da_cotacao(cliente):
+    cliente.post("/me/atualizar")
+    tudo = cliente.get("/me").text
+    assert "23049227" in tudo and "23052403" in tudo
+    html = cliente.get("/me", params={"numero": "2304922"}).text      # pedaço do número
+    assert "23049227" in html and "23052403" not in html
+    assert 'name="numero" value="2304922"' in html and "limpar busca" in html
+    assert "Nenhuma cotação com o número 999" in cliente.get("/me", params={"numero": "999"}).text
+    # Só dígitos: o resto some antes de filtrar (e nada entra cru no HTML).
+    sujo = cliente.get("/me", params={"numero": "<b>2305</b>"}).text
+    assert 'value="2305"' in sujo and "<b>2305" not in sujo and "23052403" in sujo
+
+
+def test_nomes_dos_logins_compartilhados():
+    assert L.de("nestle_ventura").rotulo == "Nestlé e EDP · VENTURA"
+    assert L.de("edp_alianca").rotulo == "EDP e WEG · ALIANÇA"
+
+
+def test_alpek_aparece_como_nao_atendemos_e_o_robo_nem_abre(cliente, robo):
+    from mercado_eletronico import regras as R
+    assert R.nao_atendemos("ALPEK POLYESTER") and not R.nao_atendemos("Samarco")
+    cid = me_ui.banco.me_criar("nestle_uniao", 23065661, status="pendente",
+                               empresa="ALPEK POLYESTER")
+    assert "não atendemos" in cliente.get("/me").text
+    assert "Não atendemos este comprador." in cliente.get(f"/me/{cid}").text
+    assert "Não atendemos" in me_ui.mandar_robo(cid, "enzo", dry_run=False)
+    assert robo.chamadas == []

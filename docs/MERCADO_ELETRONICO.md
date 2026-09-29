@@ -556,3 +556,26 @@ colega (a pessoa refez). O script agora só limpa rascunho marcado "TESTE DO
 ROBO". **Limitação**: na WEG a limpeza não é possível (o tipo de imposto não
 esvazia e o ME passa a exigir preço) — o rascunho de teste de 23015267 ficou
 marcado "TESTE DO ROBO - NAO ENVIAR" até a cotação fechar.
+
+## 29/09/2026 — respostas do Enzo e o ciclo completo com anexo
+
+- **Alpek**: não aderir (não é cliente atendido). O robô continua parando na
+  janela de adesão, com o motivo.
+- **Oitamérica**: "Tipo de Pagamento" = Depósito em Conta; os dois "Estou de
+  acordo" = Sim; "* Preço Bruto" de cada item = o preço do produto.
+- **Nomes**: "Nestlé e EDP · VENTURA" (login NESTLE_VENTURA) e "EDP e WEG ·
+  ALIANÇA" (EDP_ALIANCA) — logins compartilhados por comprador.
+- **Busca por número** na lista `/me` (vale pedaço do número).
+- **Excluir anexo** (para o "Limpar no ME"): o postback do ME é
+  `grdAnexos`/`ColumnOnClick_Excluir`, com a linha em
+  `jsTable_..._hidden_single` e as MARCADAS em `..._hidden_multiple` — e a
+  janela abre com TODAS marcadas. O robô desmarca (UnSelectAll) e clica só na
+  linha de nome exato; a trava só deixa passar se TODOS os `NomeArquivo` do
+  pedido estão entre os que o robô subiu (`Sessao.excluiveis`, aberto só
+  durante `excluir_anexo`). Teste: sem desmarcar, o pedido que levaria o
+  arquivo do colega é bloqueado.
+- **Teste real, Oitamérica 23079560** (arquivos `TESTE_ROBO_*.pdf`): upload
+  da Proposta Comercial e da Técnica, Salvar conferido campo a campo (Depósito
+  em Conta, Sim, Sim, Preço Bruto, CIF) e "Existe 1 anexo" nas duas.
+- Na janela de anexo há um `<span>` e um `<button>` com o mesmo final de id
+  `formUpload_btnEnviar`: o robô usa só o `<button>`.

@@ -60,7 +60,8 @@ LOGINS: tuple[Login, ...] = (
     Login("uniao", "ME geral", Conta.UNIAO, "ME_UNIAO", INTERVALO_GERAL_S),
     Login("nestle_alianca", "Nestlé", Conta.ALIANCA, "NESTLE_ALIANCA"),
     Login("nestle_uniao", "Nestlé", Conta.UNIAO, "NESTLE_UNIAO"),
-    Login("nestle_ventura", "Nestlé", Conta.VENTURA, "NESTLE_VENTURA"),
+    # Login compartilhado: recebe Nestlé E EDP (Enzo, 29/09/2026).
+    Login("nestle_ventura", "Nestlé e EDP", Conta.VENTURA, "NESTLE_VENTURA"),
     Login("weg_uniao", "WEG", Conta.UNIAO, "WEG_UNIAO"),
     Login("weg_ventura", "WEG", Conta.VENTURA, "WEG_VENTURA"),
     Login("autoglass", "Autoglass", Conta.ALIANCA, "ME_AUTOGLASS"),
@@ -69,7 +70,8 @@ LOGINS: tuple[Login, ...] = (
     Login("oitamerica_ventura", "Oitamérica", Conta.VENTURA, "OITAMERICA_VENTURA"),
     Login("profarma_uniao", "Profarma", Conta.UNIAO, "PROFARMA_UNIAO"),
     Login("profarma_alianca", "Profarma", Conta.ALIANCA, "PROFARMA_ALIANCA"),
-    Login("edp_alianca", "EDP", Conta.ALIANCA, "EDP_ALIANCA"),
+    # Login compartilhado: recebe EDP E WEG (Enzo, 29/09/2026).
+    Login("edp_alianca", "EDP e WEG", Conta.ALIANCA, "EDP_ALIANCA"),
 )
 
 _POR_CHAVE = {l.chave: l for l in LOGINS}

@@ -93,9 +93,9 @@ def _robo_padrao(conta: str, numero: int, itens: list[rg.EntradaItem],
                                frete=frete, anexos={t: Path(a) for t, a in (anexos or {}).items()})
 
 
-def _limpador_padrao(conta: str, numero: int, dry_run: bool):
+def _limpador_padrao(conta: str, numero: int, dry_run: bool, anexos=()):
     from mercado_eletronico import robo
-    return robo.limpar_cotacao(conta, numero, dry_run=dry_run)
+    return robo.limpar_cotacao(conta, numero, dry_run=dry_run, anexos=list(anexos))
 
 
 def _em_thread(fn: Callable, *args) -> None:
@@ -493,6 +493,16 @@ def linha_previa(c: dict, i: dict, hoje: date) -> str:
     return f'<div class="me-linha"{pronta}><div class="me-campos">{campos}</div>{msgs}</div>'
 
 
+NAO_ATENDEMOS_TEXTO = ('<p class="me-err"><b>Não atendemos este comprador.</b> O ME exige adesão '
+                       'ao Marketplace Privado (com taxa por pedido) e a empresa decidiu não aderir. '
+                       'Não é preciso responder.</p>')
+
+
+def _etiqueta_nao_atendemos(c: dict) -> str:
+    return (' <span class="me-selo me-vencida" title="Comprador que a empresa não atende">'
+            'não atendemos</span>' if rg.nao_atendemos(c.get("empresa")) else "")
+
+
 def _quadro_cotacao(c: dict, hoje: date, trava: str = "") -> str:
     """Tudo o que vale para a cotação inteira, num lugar só: o frete (com o
     porquê), o que o robô preenche no cabeçalho, os avisos e a observação do
@@ -513,7 +523,8 @@ def _quadro_cotacao(c: dict, hoje: date, trava: str = "") -> str:
                     for u in sorted(rg.UFS)) + "</select></label></p>") if sem_uf else ""
     prontos = sum(not validar(c, it, hoje).erros for it in entradas(c))
     avisos = avisos_de(c)
-    robo = ("" if login.robo_liberado else
+    robo = (NAO_ATENDEMOS_TEXTO if rg.nao_atendemos(c.get("empresa")) else
+            "" if login.robo_liberado else
             '<p class="me-err">O robô ainda não preenche este login: o formulário deste '
             'comprador não foi conferido. Use estas informações para responder pelo site do ME.</p>')
     return f"""<div class="cartao me-quadro">
@@ -702,6 +713,8 @@ def mandar_robo(cid: int, usuario: str, dry_run: bool) -> str | None:
     c = banco.me_cotacao(cid)
     if not L.de(c["conta"]).robo_liberado:
         return NAO_LIBERADO
+    if rg.nao_atendemos(c.get("empresa")):
+        return "Não atendemos este comprador — não há o que salvar."
     if not dry_run and (faltam := anexos_faltando(c)):
         return ("Este comprador exige anexo para salvar: " + ", ".join(faltam)
                 + ". Suba o arquivo no quadro \"Anexos obrigatórios\" e salve de novo.")
@@ -720,7 +733,8 @@ def mandar_robo(cid: int, usuario: str, dry_run: bool) -> str | None:
 def _rodar_limpeza(cid: int, usuario: str, status_antes: str) -> None:
     c = banco.me_cotacao(cid)
     try:
-        r = LIMPADOR(c["conta"], c["numero"], False)
+        r = LIMPADOR(c["conta"], c["numero"], False,
+                     anexos=[a["nome"] for a in anexos_locais(c).values()])
     except Exception as exc:
         r, erro = None, f"{type(exc).__name__}: {exc}"[:500]
     else:
@@ -825,15 +839,21 @@ tr.me-urgente td{background:var(--alerta-fundo)}
 
 
 @router.get("", response_class=HTMLResponse)
-def lista(request: Request, conta: str = "", status: str = "", msg: str = ""):
+def lista(request: Request, conta: str = "", status: str = "", msg: str = "",
+          numero: str = ""):
     usuario = _usuario(request)
     if not usuario:
         return RedirectResponse("/login", status_code=303)
     conta = conta if conta in CONTAS else ""
     status = status if status in {s.value for s in Status} else ""
+    # Busca pelo número da cotação (pedido do Enzo, 29/09/2026): só dígitos,
+    # e vale pedaço do número ("2306" acha 23065661).
+    numero = re.sub(r"\D", "", numero or "")[:12]
     momento = agora()
     linhas = ""
     for c in banco.me_cotacoes(conta or None, status or None):
+        if numero and numero not in str(c["numero"]):
+            continue
         limite = pn.hora_de_brasilia(c["data_limite"])
         st = Status(c["status"])
         pz = pn.prazo(limite, momento) if st in pn.ABERTOS else None
@@ -842,7 +862,8 @@ def lista(request: Request, conta: str = "", status: str = "", msg: str = ""):
         linhas += (
             f'<tr{classe}><td><a href="/me/{c["id"]}">{c["numero"]}</a></td>'
             f'<td>{e(CONTAS.get(c["conta"], c["conta"]))}</td>'
-            f'<td>{e(c["empresa"] or "")}<br><small>{e(c["comprador"] or "")}</small></td>'
+            f'<td>{e(c["empresa"] or "")}{_etiqueta_nao_atendemos(c)}'
+            f'<br><small>{e(c["comprador"] or "")}</small></td>'
             f'<td>{e(c["codigo"] or "")}</td>'
             f'<td>{e(_hora(c["data_limite"]))}'
             + (f'<br><small>{e(pz.texto)}</small>' if pz else "") + "</td>"
@@ -852,7 +873,7 @@ def lista(request: Request, conta: str = "", status: str = "", msg: str = ""):
 
     def filtro(rotulo, **q):
         """Um link de filtro. Troca só a chave dele e mantém a outra."""
-        alvo = {"conta": conta, "status": status, **q}
+        alvo = {"conta": conta, "status": status, "numero": numero, **q}
         url = "/me?" + "&".join(f"{k}={v}" for k, v in alvo.items() if v)
         chave, valor = next(iter(q.items()))
         ativo = {"conta": conta, "status": status}[chave] == valor
@@ -880,11 +901,16 @@ def lista(request: Request, conta: str = "", status: str = "", msg: str = ""):
            sub=f"O robô preenche e salva no ME; <b>quem envia é você</b>, pelo site do ME. {e(situacao)}.",
            acoes=acoes)}
 {f'<p class="aviso">{e(msg)}</p>' if msg else ""}{sem_conta}{erros}
+<form method="get" action="/me" class="me-filtros me-busca" role="search">
+<input type="hidden" name="conta" value="{e(conta)}"><input type="hidden" name="status" value="{e(status)}">
+<label>Nº da cotação <input name="numero" value="{e(numero)}" inputmode="numeric" placeholder="ex.: 23065661"
+ autocomplete="off"></label><button type="submit" class="botao2">Buscar</button>
+{f'<a href="/me?conta={e(conta)}&status={e(status)}">limpar busca</a>' if numero else ''}</form>
 <div class="me-filtros">{contas_html}</div><div class="me-filtros">{status_html}</div>
 <div class="cartao"><div class="rolagem-r"><table>
 <thead><tr><th>cotação</th><th>conta</th><th>empresa / comprador</th><th>título</th>
 <th>data limite</th><th>status</th><th>itens c/ preço</th></tr></thead>
-<tbody>{linhas or '<tr><td colspan="7" class="sub">Nenhuma cotação aqui.</td></tr>'}</tbody>
+<tbody>{linhas or (f'<tr><td colspan="7" class="sub">Nenhuma cotação com o número {e(numero)} aqui.</td></tr>' if numero else '<tr><td colspan="7" class="sub">Nenhuma cotação aqui.</td></tr>')}</tbody>
 </table></div></div>
 <script>setTimeout(() => location.reload(), 5 * 60 * 1000);</script>"""
     return HTMLResponse(pagina("Mercado Eletrônico", corpo, usuario))
@@ -1051,7 +1077,7 @@ def ver(cid: int, request: Request, msg: str = ""):
     link_me = (f'<a class="botao2" target="_blank" rel="noopener" '
                f'href="https://www.me.com.br/RespostaCotaItem.asp?Cotacao={c["numero"]}&SuperCleanPage=">'
                f'Abrir no ME</a>')
-    sub = (f'{_selo(c["status"])} '
+    sub = (f'{_selo(c["status"])}{_etiqueta_nao_atendemos(c)} '
            + (f'<span class="me-alerta">{e(aviso)}</span>' if aviso else "")
            + (f'<br>Erro: {e(c["erro"])}' if st is Status.ERRO and c["erro"] else "")
            + (f'<br>Salva por {e(c["salvo_por"])} em {e(_hora(c["salvo_em"]))}' if c["salvo_em"] else ""))
@@ -1063,6 +1089,7 @@ def ver(cid: int, request: Request, msg: str = ""):
            acoes=link_me + ler_de_novo + limpar + marcar)}
 {f'<p class="aviso">{e(msg)}</p>' if msg else ""}
 {'' if editavel else '<p class="aviso">Edição fechada neste status.</p>'}
+{NAO_ATENDEMOS_TEXTO if rg.nao_atendemos(c.get("empresa")) and not c["itens"] else ''}
 {_quadro_anexos(c, trava)}{itens_html}
 <h2>Histórico</h2><ul>{historico or '<li class="sub">nada ainda</li>'}</ul>
 {f'<h2>Prints do robô</h2><ul>{prints}</ul>' if prints else ''}
