@@ -214,3 +214,45 @@ def test_relatorio_markdown_tem_todas_as_secoes():
                   "Divergência de valor", "Mesma NF", "repetido", "NF da planilha trocada",
                   "vazio ou inválido", "Bateram"):
         assert secao in md, secao
+
+
+# --- casos que apareceram na rodada com os dados reais (29/09/2026) ---
+
+def test_erp_valor_inteiro_vem_multiplicado_por_um_milhao():
+    # "217,400000" do ERP chega como 217400000 (a virgula virou milhar)
+    _, rel = cruzar([ped(1, valor=217.40)], [erp(1, 10, 217400000)])
+    assert rel["resumo"]["divergencia_de_valor"] == 0
+    assert rel["bateram"][0]["valor_erp"] == "217.40"
+
+
+def test_valor_da_planilha_em_formato_americano():
+    assert valor_decimal("3,961.46") == Decimal("3961.46")
+    assert valor_decimal("3.961,46") == Decimal("3961.46")
+    assert valor_decimal("453.30") == Decimal("453.30")
+
+
+def test_linha_de_cabecalho_repetida_e_total_do_erp_sao_ignoradas():
+    cabecalho = {"Tipo": "Tipo", "Ordem Compra": "Ordem Compra", "NF": "NF", "Total Líq.": "Total Líq."}
+    total = {"Tipo": None, "Ordem Compra": None, "NF": None, "Total Líq.": "12.975.922,640000"}
+    _, rel = cruzar([ped(1)], [cabecalho, total, erp(1, 10)])
+    assert rel["resumo"]["linhas_no_erp"] == 3
+    assert rel["resumo"]["linhas_erp_ignoradas"] == 2
+    assert rel["resumo"]["linhas_erp_sem_oc"] == 0
+    assert rel["resumo"]["tipos_no_erp"] == {"VEN": 1}
+
+
+def test_saida_mantem_o_formato_do_robo(tmp_path):
+    # o planilha_manager do Maestro le e grava {"PEDIDOS": [...]}
+    (tmp_path / "PEDIDOS.json").write_text(
+        json.dumps({"PEDIDOS": [PEDIDO_EXEMPLO]}, ensure_ascii=False), encoding="utf-8")
+    (tmp_path / "comparar.json").write_text(json.dumps([ERP_EXEMPLO]), encoding="utf-8")
+    assert main(["--pasta", str(tmp_path)]) == 0
+    novo = json.loads((tmp_path / "PEDIDOS_ATUALIZADO.json").read_text(encoding="utf-8"))
+    assert list(novo) == ["PEDIDOS"]
+    assert novo["PEDIDOS"][0]["NF"] == "15016"
+
+
+def test_ler_json_tolera_virgula_sobrando_como_o_robo(tmp_path):
+    arq = tmp_path / "p.json"
+    arq.write_text('{"PEDIDOS": [{"PEDIDO": 1,}, ]}', encoding="utf-8")
+    assert ler_json(arq) == [{"PEDIDO": 1}]
