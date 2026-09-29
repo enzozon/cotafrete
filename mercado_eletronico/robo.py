@@ -37,6 +37,7 @@ from mercado_eletronico.regras import Conta, EntradaItem, PedidoDoComprador
 RAIZ = Path(__file__).resolve().parent.parent
 PASTA = RAIZ / "runs" / "me"
 URL_LOGIN_DESTINO = "https://www.me.com.br/supplier/inbox/pendencies/4"
+URL_PELA_LISTA = "https://www.me.com.br/FornShowCotacao.asp?Cot={n}&SuperCleanPage=true"
 TIMEOUT_MS = 60_000
 
 
@@ -385,8 +386,11 @@ class Sessao:
         if "login" in self.page.url.lower():
             self.login()
             self.page.goto(URL_RESPOSTA.format(n=numero), wait_until="domcontentloaded")
-        # Uma recarga antes de desistir: em 29/09/2026 a 23083602 não abriu numa
-        # volta e abriu normal na seguinte — página lenta do ME, não cotação diferente.
+        # Segunda tentativa pelo link da LISTA de Oportunidades (FornShowCotacao,
+        # que redireciona para o formulário). 29/09/2026: no login EDP e WEG, a
+        # 23023842 pelo link direto caía em "Cotações Recebidas" — o ME só
+        # abre direto depois da primeira abertura pela lista (que marca "Lida
+        # em", como quando um vendedor abre). Também cobre a página lenta.
         for tentativa in (1, 2):
             try:
                 self.page.wait_for_selector("form[name='RespCota']", state="attached",
@@ -396,7 +400,7 @@ class Sessao:
             except Exception:
                 if tentativa == 2:
                     raise RoboRecusou(f"cotação {numero} não abriu o formulário de resposta") from None
-                self.page.goto(URL_RESPOSTA.format(n=numero), wait_until="domcontentloaded")
+                self.page.goto(URL_PELA_LISTA.format(n=numero), wait_until="domcontentloaded")
 
     def acao(self, clicar: Callable[[], None]) -> int:
         """Clica em Salvar/página e espera o POST voltar. Devolve POSTs liberados."""

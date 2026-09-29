@@ -430,11 +430,18 @@ def test_sem_desmarcar_a_trava_segura_a_exclusao_que_leva_outro_arquivo(navegado
     assert any("que o robô não subiu" in b for b in s.bloqueios)
 
 
+# O FornShowCotacao do ME redireciona para o formulário; aqui, pela página.
+IR_PARA_RESPOSTA = ("<script>location.replace('https://www.me.com.br/RespostaCotaItem.asp"
+                    "?Cotacao=23050183&SuperCleanPage=true')</script>")
+
+
 def test_pagina_que_nao_abre_de_primeira_ganha_uma_recarga(navegador, tmp_path):
     class Lenta(MeFalso):
         vezes = 0
 
         def __call__(self, route, request):
+            if "FornShowCotacao.asp" in request.url:
+                return route.fulfill(status=200, content_type="text/html", body=IR_PARA_RESPOSTA)
             if "RespostaCotaItem.asp" in request.url:
                 Lenta.vezes += 1
                 if Lenta.vezes == 1:
@@ -446,3 +453,27 @@ def test_pagina_que_nao_abre_de_primeira_ganha_uma_recarga(navegador, tmp_path):
         s.abrir(23050183)
         assert s.page.locator("form[name='RespCota']").count() == 1
     assert Lenta.vezes >= 2      # a 1ª veio sem formulário; a recarga trouxe
+
+
+def test_cotacao_que_so_abre_pela_lista_entra_pelo_fornshowcotacao(navegador, tmp_path):
+    """Como a 23023842 no login EDP e WEG (29/09/2026): o link direto cai em
+    "Cotações Recebidas" até a cotação ser aberta pela lista."""
+    class SoPelaLista(MeFalso):
+        aberta_pela_lista = False
+        visitas: list = []
+
+        def __call__(self, route, request):
+            SoPelaLista.visitas.append(request.url.split("?")[0].rsplit("/", 1)[-1])
+            if "FornShowCotacao.asp" in request.url:
+                SoPelaLista.aberta_pela_lista = True
+                return route.fulfill(status=200, content_type="text/html", body=IR_PARA_RESPOSTA)
+            if "RespostaCotaItem.asp" in request.url and not SoPelaLista.aberta_pela_lista:
+                return route.fulfill(status=200, content_type="text/html",
+                                     body="<h1>Cotações Recebidas</h1>Clique no número da cotação")
+            return super().__call__(route, request)
+
+    s = B.Sessao("edp_alianca", pasta=tmp_path, seguir=SoPelaLista(), browser=navegador, timeout_ms=1_500)
+    with s:
+        s.abrir(23050183)
+        assert s.page.locator("form[name='RespCota']").count() == 1
+    assert "FornShowCotacao.asp" in SoPelaLista.visitas
