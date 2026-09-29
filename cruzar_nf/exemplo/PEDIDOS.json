@@ -1,0 +1,103 @@
+[
+ {
+  "CIDADE": "OURO PRETO - MG",
+  "FRETE": "EXW",
+  "PEDIDO": 4101141499,
+  "VALOR ": 1740,
+  "PRODUTO": "PAR HELICE ORIGINAL DRONE DJI MAVIC 3 ENTERPRISE -entregue em 22/12",
+  "DATA DE ENTREGA": "31-Dec",
+  "REQUISITANTE ": "MICHELI",
+  "EMAIL REQUSITAN": "requisitante@exemplo.com"
+ },
+ {
+  "CIDADE": "ITABIRA - MG",
+  "FRETE": "EXW",
+  "PEDIDO": 4101141500,
+  "VALOR ": 3200,
+  "PRODUTO": "BATERIA INTELIGENTE DJI MATRICE 30",
+  "DATA DE ENTREGA": "31-Dec",
+  "REQUISITANTE ": "CARLOS",
+  "EMAIL REQUSITAN": "requisitante@exemplo.com"
+ },
+ {
+  "CIDADE": "MARIANA - MG",
+  "FRETE": "EXW",
+  "PEDIDO": "4101141501",
+  "VALOR ": 980.5,
+  "PRODUTO": "CARREGADOR PORTATIL 100W",
+  "DATA DE ENTREGA": "31-Dec",
+  "REQUISITANTE ": "ANA",
+  "EMAIL REQUSITAN": "requisitante@exemplo.com"
+ },
+ {
+  "CIDADE": "VITORIA - ES",
+  "FRETE": "EXW",
+  "PEDIDO": 4101141502,
+  "VALOR ": 450,
+  "PRODUTO": "CABO USB-C 2M",
+  "DATA DE ENTREGA": "31-Dec",
+  "REQUISITANTE ": "JOAO",
+  "EMAIL REQUSITAN": "requisitante@exemplo.com"
+ },
+ {
+  "CIDADE": "CONGONHAS - MG",
+  "FRETE": "EXW",
+  "PEDIDO": " 4101141503 ",
+  "VALOR ": 1200,
+  "PRODUTO": "TRIPE ALUMINIO",
+  "DATA DE ENTREGA": "31-Dec",
+  "REQUISITANTE ": "PAULA",
+  "EMAIL REQUSITAN": "requisitante@exemplo.com"
+ },
+ {
+  "CIDADE": "SAO LUIS - MA",
+  "FRETE": "EXW",
+  "PEDIDO": 4101141504,
+  "VALOR ": 600,
+  "PRODUTO": "CASE RIGIDA DRONE",
+  "DATA DE ENTREGA": "31-Dec",
+  "REQUISITANTE ": "RAFAEL",
+  "EMAIL REQUSITAN": "requisitante@exemplo.com",
+  "NF": "14000"
+ },
+ {
+  "CIDADE": "ITABIRA - MG",
+  "FRETE": "EXW",
+  "PEDIDO": 4101141500,
+  "VALOR ": 3200,
+  "PRODUTO": "BATERIA INTELIGENTE DJI MATRICE 30 (linha repetida)",
+  "DATA DE ENTREGA": "31-Dec",
+  "REQUISITANTE ": "CARLOS",
+  "EMAIL REQUSITAN": "requisitante@exemplo.com"
+ },
+ {
+  "CIDADE": "PARAUAPEBAS - PA",
+  "FRETE": "EXW",
+  "PEDIDO": "",
+  "VALOR ": 150,
+  "PRODUTO": "ITEM SEM PEDIDO",
+  "DATA DE ENTREGA": "31-Dec",
+  "REQUISITANTE ": "LUCAS",
+  "EMAIL REQUSITAN": "requisitante@exemplo.com"
+ },
+ {
+  "CIDADE": "CANAA DOS CARAJAS - PA",
+  "FRETE": "EXW",
+  "PEDIDO": 4101141505,
+  "VALOR ": 720,
+  "PRODUTO": "FILTRO ND DRONE",
+  "DATA DE ENTREGA": "31-Dec",
+  "REQUISITANTE ": "BRUNA",
+  "EMAIL REQUSITAN": "requisitante@exemplo.com"
+ },
+ {
+  "CIDADE": "CANAA DOS CARAJAS - PA",
+  "FRETE": "EXW",
+  "PEDIDO": 4101141506,
+  "VALOR ": 280,
+  "PRODUTO": "PROTETOR DE HELICE",
+  "DATA DE ENTREGA": "31-Dec",
+  "REQUISITANTE ": "BRUNA",
+  "EMAIL REQUSITAN": "requisitante@exemplo.com"
+ }
+]
