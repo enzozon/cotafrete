@@ -120,7 +120,7 @@ def test_divergencia_de_valor_soma_as_vendas_da_oc():
 
 def test_mesma_nf_para_varias_ocs():
     _, rel = cruzar([ped(1), ped(2)], [erp(1, 50), erp(2, 50)])
-    assert rel["nf_varias_ocs"] == [{"nf": "50", "ocs": ["1", "2"], "na_planilha": ["1", "2"]}]
+    assert rel["nf_varias_ocs"] == [{"nf": "50", "filial": None, "ocs": ["1", "2"], "na_planilha": ["1", "2"]}]
 
 
 def test_linha_do_erp_sem_oc_e_contada_e_ignorada():
@@ -219,8 +219,9 @@ def test_relatorio_markdown_tem_todas_as_secoes():
 # --- casos que apareceram na rodada com os dados reais (29/09/2026) ---
 
 def test_erp_valor_inteiro_vem_multiplicado_por_um_milhao():
-    # "217,400000" do ERP chega como 217400000 (a virgula virou milhar)
-    _, rel = cruzar([ped(1, valor=217.40)], [erp(1, 10, 217400000)])
+    # "217,400000" do ERP chega como 217400000 (a virgula virou milhar);
+    # a exportacao com esse defeito tem os outros valores em texto
+    _, rel = cruzar([ped(1, valor=217.40)], [erp(1, 10, 217400000), erp(2, 20, "1.740,000000")])
     assert rel["resumo"]["divergencia_de_valor"] == 0
     assert rel["bateram"][0]["valor_erp"] == "217.40"
 
@@ -256,3 +257,41 @@ def test_ler_json_tolera_virgula_sobrando_como_o_robo(tmp_path):
     arq = tmp_path / "p.json"
     arq.write_text('{"PEDIDOS": [{"PEDIDO": 1,}, ]}', encoding="utf-8")
     assert ler_json(arq) == [{"PEDIDO": 1}]
+
+
+# --- exportacao nova do ERP (30/09/2026): 3 empresas e valores numericos ---
+
+def test_exportacao_com_valores_numericos_nao_divide_por_um_milhao():
+    # sem nenhum valor em texto "1.740,000000" na exportacao, o numero e o valor
+    _, rel = cruzar([ped(1, valor=12930), ped(2, valor=200.99)],
+                    [erp(1, 10, 12930), erp(2, 20, 200.99)])
+    assert rel["resumo"]["divergencia_de_valor"] == 0
+    assert [p["valor_erp"] for p in rel["bateram"]] == ["12930.00", "200.99"]
+
+
+def test_exportacao_antiga_continua_dividindo_o_inteiro():
+    _, rel = cruzar([ped(1, valor=217.40), ped(2, valor=1740)],
+                    [erp(1, 10, 217400000), erp(2, 20, "1.740,000000")])
+    assert rel["resumo"]["divergencia_de_valor"] == 0
+
+
+def test_mesmo_numero_de_nf_em_empresas_diferentes_nao_e_a_mesma_nota():
+    _, rel = cruzar([ped(1), ped(2)],
+                    [{**erp(1, 14162), "Filial": "UNIAO"}, {**erp(2, 14162), "Filial": "VENTURA MATRIZ"}])
+    assert rel["resumo"]["nf_atendendo_varias_ocs"] == 0
+    assert rel["resumo"]["bateram_1_nf"] == 2
+
+
+def test_mesma_nf_da_mesma_empresa_em_varias_ocs_continua_aparecendo():
+    _, rel = cruzar([ped(1), ped(2)],
+                    [{**erp(1, 50), "Filial": "UNIAO"}, {**erp(2, 50), "Filial": "UNIAO"}])
+    assert rel["nf_varias_ocs"][0]["filial"] == "UNIAO"
+    assert rel["nf_varias_ocs"][0]["ocs"] == ["1", "2"]
+
+
+def test_oc_com_mesmo_numero_de_nf_em_duas_empresas_grava_as_duas():
+    atualizados, rel = cruzar([ped(1)],
+                              [{**erp(1, 14162), "Filial": "UNIAO"}, {**erp(1, 14162), "Filial": "ALIANCA"}])
+    assert rel["resumo"]["mais_de_uma_nf"] == 1
+    assert atualizados[0]["NF"] == "14162 (UNIAO) / 14162 (ALIANCA)"
+    assert rel["mais_de_uma_nf"][0]["filiais"] == ["UNIAO", "ALIANCA"]

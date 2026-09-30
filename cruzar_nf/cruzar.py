@@ -131,9 +131,22 @@ def valor_decimal(valor: Any) -> Decimal | None:
 CASAS_ERP = Decimal(1_000_000)
 
 
-def valor_erp(valor: Any) -> Decimal | None:
-    """Dinheiro do ERP: texto no formato brasileiro, ou inteiro com 6 casas embutidas."""
-    if isinstance(valor, int) and not isinstance(valor, bool):
+# A exportação de 30/09/2026 já veio diferente: valores como número de
+# verdade (171, 12930, 200.99), nenhum em texto. Dividir esses por um milhão
+# transformava R$ 12.930 em um centavo. Por isso a regra é decidida por
+# ARQUIVO: só divide o inteiro quando a exportação tem valores em texto
+# "1.740,000000" — é a que tem o defeito.
+_TEXTO_6_CASAS = re.compile(r"-?[\d.]*\d,\d{6}")
+
+
+def exportacao_com_texto_6_casas(valores: list[Any]) -> bool:
+    """True se algum valor vem como texto brasileiro de 6 casas ("1.740,000000")."""
+    return any(isinstance(v, str) and _TEXTO_6_CASAS.fullmatch(v.strip()) for v in valores)
+
+
+def valor_erp(valor: Any, inteiro_com_6_casas: bool = True) -> Decimal | None:
+    """Dinheiro do ERP. Na exportação em texto, o inteiro tem 6 casas embutidas."""
+    if inteiro_com_6_casas and isinstance(valor, int) and not isinstance(valor, bool):
         return Decimal(valor) / CASAS_ERP
     return valor_decimal(valor)
 
@@ -202,6 +215,7 @@ class LinhaERP:
     total_liquido: Decimal | None
     cliente: Any
     transportadora: Any
+    filial: str | None = None   # a exportação traz 3 empresas, cada uma com sua numeração de NF
 
 
 @dataclass
@@ -218,6 +232,7 @@ class ResultadoPedido:
     diferenca_valor: str | None = None
     linhas_erp: int = 0
     tipos_erp: list[str] = field(default_factory=list)
+    filiais: list[str] = field(default_factory=list)   # empresa de cada NF, na mesma ordem de nfs
     cidade: Any = None
     requisitante: Any = None
     produto: Any = None
@@ -239,6 +254,8 @@ def _indexar_erp(registros: list[dict]) -> tuple[dict[str, list[LinhaERP]], int,
     """(linhas por OC, linhas de venda sem OC, linhas que não são venda)."""
     por_oc: dict[str, list[LinhaERP]] = defaultdict(list)
     sem_oc = ignoradas = 0
+    campos_valor = ("Total Líq.", "Total Liq", "Total Bruto")
+    texto_6_casas = exportacao_com_texto_6_casas([campo(r, *campos_valor) for r in registros])
     for r in registros:
         if _linha_que_nao_e_venda(r):
             ignoradas += 1
@@ -253,19 +270,38 @@ def _indexar_erp(registros: list[dict]) -> tuple[dict[str, list[LinhaERP]], int,
             tipo=campo(r, "Tipo"),
             codigo=campo(r, "Código", "Codigo"),
             emissao=campo(r, "Emissão", "Emissao"),
-            total_liquido=valor_erp(campo(r, "Total Líq.", "Total Liq", "Total Bruto")),
+            total_liquido=valor_erp(campo(r, *campos_valor), texto_6_casas),
             cliente=campo(r, "Cliente"),
             transportadora=campo(r, "Transportadora"),
+            filial=_filial(campo(r, "Filial")),
         ))
     return por_oc, sem_oc, ignoradas
 
 
-def _nfs_distintas(linhas: list[LinhaERP]) -> list[str]:
-    vistas: list[str] = []
+def _filial(valor: Any) -> str | None:
+    texto = " ".join(str(valor).split()) if valor is not None else ""
+    return texto or None
+
+
+def _notas(linhas: list[LinhaERP]) -> list[tuple[str, str | None]]:
+    """(NF, empresa) distintas, na ordem em que aparecem.
+
+    A NF só é a mesma nota se for da mesma empresa: União, Aliança e Ventura
+    têm numeração própria, e a exportação de 30/09/2026 trouxe as três.
+    """
+    vistas: list[tuple[str, str | None]] = []
     for l in linhas:
-        if l.nf and l.nf not in vistas:
-            vistas.append(l.nf)
+        if l.nf and (l.nf, l.filial) not in vistas:
+            vistas.append((l.nf, l.filial))
     return vistas
+
+
+def _nfs_distintas(linhas: list[LinhaERP]) -> list[str]:
+    """Texto de cada NF. Só leva o nome da empresa quando o número se repete
+    entre empresas na mesma OC — senão "14162 / 14162" não diria nada."""
+    notas = _notas(linhas)
+    numeros = Counter(nf for nf, _ in notas)
+    return [f"{nf} ({filial})" if numeros[nf] > 1 and filial else nf for nf, filial in notas]
 
 
 def _fmt(valor: Decimal | None) -> str | None:
@@ -293,6 +329,7 @@ def cruzar(pedidos: list[dict], comparar: list[dict]) -> tuple[list[dict], dict]
         nf_anterior = normalizar_nf(campo(pedido, "NF"))
         linhas = por_oc.get(oc, []) if oc else []
         nfs = _nfs_distintas(linhas)
+        filiais = [filial or "" for _, filial in _notas(linhas)]
 
         if oc is None:
             status = PEDIDO_INVALIDO
@@ -329,6 +366,7 @@ def cruzar(pedidos: list[dict], comparar: list[dict]) -> tuple[list[dict], dict]
             diferenca_valor=_fmt(diferenca),
             linhas_erp=len(linhas),
             tipos_erp=sorted({str(l.tipo) for l in linhas if l.tipo is not None}),
+            filiais=filiais,
             cidade=campo(pedido, "CIDADE"),
             requisitante=campo(pedido, "REQUISITANTE"),
             produto=campo(pedido, "PRODUTO"),
@@ -365,14 +403,16 @@ def _montar_relatorio(resultados: list[ResultadoPedido],
             })
 
     # a mesma NF atendendo várias OCs (uma nota para mais de um pedido)
-    ocs_por_nf: dict[str, set[str]] = defaultdict(set)
+    # (por empresa: o mesmo número em empresas diferentes são notas diferentes)
+    ocs_por_nf: dict[tuple[str, str], set[str]] = defaultdict(set)
     for oc, linhas in por_oc.items():
         for l in linhas:
             if l.nf:
-                ocs_por_nf[l.nf].add(oc)
+                ocs_por_nf[(l.nf, l.filial or "")].add(oc)
     nf_varias_ocs = [
-        {"nf": nf, "ocs": sorted(ocs), "na_planilha": sorted(o for o in ocs if o in ocs_planilha)}
-        for nf, ocs in sorted(ocs_por_nf.items()) if len(ocs) > 1
+        {"nf": nf, "filial": filial or None, "ocs": sorted(ocs),
+         "na_planilha": sorted(o for o in ocs if o in ocs_planilha)}
+        for (nf, filial), ocs in sorted(ocs_por_nf.items()) if len(ocs) > 1
     ]
 
     duplicados = [
@@ -533,8 +573,8 @@ def relatorio_markdown(rel: dict, arquivos: dict[str, str] | None = None) -> str
     ]))
 
     partes.append(f"\n## Mesma NF para várias OCs ({r['nf_atendendo_varias_ocs']})\n\n")
-    partes.append(_tabela(["NF", "OCs", "dessas, na planilha"], [
-        [n["nf"], ", ".join(n["ocs"]), ", ".join(n["na_planilha"]) or "-"]
+    partes.append(_tabela(["NF", "empresa", "OCs", "dessas, na planilha"], [
+        [n["nf"], n.get("filial"), ", ".join(n["ocs"]), ", ".join(n["na_planilha"]) or "-"]
         for n in rel["nf_varias_ocs"]
     ]))
 
@@ -558,9 +598,9 @@ def relatorio_markdown(rel: dict, arquivos: dict[str, str] | None = None) -> str
     ]))
 
     partes.append(f"\n## Bateram ({r['bateram_1_nf']})\n\n")
-    partes.append(_tabela(["#", "pedido", "NF", "valor", "requisitante", "cidade"], [
-        [p["posicao"], p["oc"], p["nf_gravada"], _brl(p["valor_planilha"]),
-         p["requisitante"], p["cidade"]]
+    partes.append(_tabela(["#", "pedido", "NF", "empresa", "valor", "requisitante", "cidade"], [
+        [p["posicao"], p["oc"], p["nf_gravada"], ", ".join(f for f in p.get("filiais", []) if f),
+         _brl(p["valor_planilha"]), p["requisitante"], p["cidade"]]
         for p in rel["bateram"]
     ]))
     return "".join(partes)
