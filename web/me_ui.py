@@ -41,6 +41,7 @@ from core import ia
 from core.banco import Banco
 from core.retentativa import VAGA_NAVEGADOR
 from mercado_eletronico import logins as L
+from mercado_eletronico import sessao_me
 from mercado_eletronico import ncm as sugestor_ncm
 from mercado_eletronico import pagina as pg
 from mercado_eletronico import painel as pn
@@ -1074,9 +1075,11 @@ def ver(cid: int, request: Request, msg: str = ""):
               f'Não envia nada. Continuar?\')">'
               f'<button type="submit" class="botao2">Limpar no ME</button></form>'
               if editavel and L.de(c["conta"]).robo_liberado else "")
-    link_me = (f'<a class="botao2" target="_blank" rel="noopener" '
-               f'href="https://www.me.com.br/RespostaCotaItem.asp?Cotacao={c["numero"]}&SuperCleanPage=">'
-               f'Abrir no ME</a>')
+    # Com a extensão (web/me_extensao.py), abre já na conta desta cotação;
+    # sem ela, o link comum — na conta que estiver logada no navegador.
+    link_me = (f'<a class="botao2" target="_blank" rel="noopener" id="abrir-me" data-cid="{cid}" '
+               f'title="Abre o ME já na conta {e(L.de(c["conta"]).rotulo)}" '
+               f'href="{e(sessao_me.url_da_cotacao(c["numero"]))}">Abrir no ME</a>')
     sub = (f'{_selo(c["status"])}{_etiqueta_nao_atendemos(c)} '
            + (f'<span class="me-alerta">{e(aviso)}</span>' if aviso else "")
            + (f'<br>Erro: {e(c["erro"])}' if st is Status.ERRO and c["erro"] else "")
@@ -1135,8 +1138,38 @@ document.querySelectorAll("tr[data-item]").forEach(tr => {{
   tr.addEventListener("change", () => previa(tr));
 }});
 {'setTimeout(() => location.reload(), 5000);' if st is Status.SALVANDO or cid in REVISANDO else ''}
-</script>"""
+{JS_ABRIR_NO_ME}
+</script>
+<p class="sub" id="me-sem-extensao" hidden>Para o "Abrir no ME" entrar já na conta certa,
+ <a href="/me-extensao">instale a extensão do CotaFrete no Chrome</a> (uma vez só).</p>
+<p class="aviso" id="me-abrindo" hidden></p>"""
     return HTMLResponse(pagina(f"ME {c['numero']}", corpo, usuario))
+
+
+# A extensão só existe para páginas do endereço do CotaFrete: é por ela
+# (chrome.runtime.sendMessage) que o botão pede a sessão. Sem resposta, o link
+# comum segue e a tela sugere instalar.
+JS_ABRIR_NO_ME = """
+document.addEventListener('DOMContentLoaded', () => {   // os avisos vêm depois do script
+  const a = document.getElementById('abrir-me');
+  if (!a) return;
+  const aviso = document.getElementById('me-abrindo');
+  const semExt = document.getElementById('me-sem-extensao');
+  const temExt = !!(window.chrome && chrome.runtime && chrome.runtime.sendMessage);
+  if (!temExt) { semExt.hidden = false; return; }
+  a.addEventListener('click', ev => {
+    ev.preventDefault();
+    aviso.hidden = false; aviso.textContent = 'Abrindo no ME na conta certa… (até meio minuto: o CotaFrete entra na conta)';
+    chrome.runtime.sendMessage('%s', {cid: Number(a.dataset.cid)}, r => {
+      if (chrome.runtime.lastError || !r) {
+        semExt.hidden = false; aviso.hidden = true; window.open(a.href, '_blank', 'noopener'); return;
+      }
+      aviso.textContent = r.ok ? 'Aberto no ME numa nova aba, na conta desta cotação.'
+                               : 'Não deu para abrir na conta certa: ' + r.erro;
+    });
+  });
+});
+""" % sessao_me.EXTENSAO_ID
 
 
 def _painel_ia(c: dict, rev: rv.Revisao | None, rodando: bool) -> str:
