@@ -39,7 +39,7 @@ class RoboFalso:
         self.chamadas = []
         self.resultado = resultado or SimpleNamespace(ok=True, divergencias=[], prints=["p.png"], erro=None)
 
-    def __call__(self, conta, numero, itens, validade_dias, dry_run, frete="FOB"):
+    def __call__(self, conta, numero, itens, validade_dias, dry_run, frete="FOB", anexos=None):
         self.chamadas.append((conta, numero, itens, validade_dias, dry_run))
         self.frete = frete
         return self.resultado
@@ -247,7 +247,7 @@ def test_ligacao_padrao_com_o_robo_e_a_ponte(monkeypatch):
     monkeypatch.setattr(ponte, "pendencias", lambda conta: chamadas.append(("lista", conta)) or [])
     monkeypatch.setattr(ponte, "ler_paginas", lambda conta, n: chamadas.append(("ler", conta, n)) or [])
     monkeypatch.setattr(robo, "salvar_cotacao",
-                        lambda conta, n, itens, validade, *, dry_run, frete: chamadas.append(("robo", conta, n, dry_run)))
+                        lambda conta, n, itens, validade, *, dry_run, frete, anexos: chamadas.append(("robo", conta, n, dry_run)))
     me_ui._fonte_padrao("uniao")
     me_ui._leitor_padrao("ventura", 1)
     me_ui._robo_padrao("uniao", 2, [], 30, True)
@@ -339,8 +339,9 @@ class LimpadorFalso:
         self.resultado = resultado or SimpleNamespace(ok=True, salvo=True, divergencias=[],
                                                       prints=["limpa.png"], erro=None)
 
-    def __call__(self, conta, numero, dry_run):
+    def __call__(self, conta, numero, dry_run, anexos=()):
         self.chamadas.append((conta, numero, dry_run))
+        self.anexos = list(anexos)
         return self.resultado
 
 
@@ -406,6 +407,6 @@ def test_ligacao_padrao_da_limpeza(monkeypatch):
     from mercado_eletronico.regras import Conta
     chamadas = []
     monkeypatch.setattr(robo, "limpar_cotacao",
-                        lambda conta, n, *, dry_run: chamadas.append((conta, n, dry_run)))
-    me_ui._limpador_padrao("uniao", 23052403, False)
-    assert chamadas == [(Conta.UNIAO, 23052403, False)]
+                        lambda conta, n, *, dry_run, anexos: chamadas.append((conta, n, dry_run, anexos)))
+    me_ui._limpador_padrao("uniao", 23052403, False, anexos=("p.pdf",))
+    assert chamadas == [(Conta.UNIAO, 23052403, False, ["p.pdf"])]

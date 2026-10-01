@@ -313,9 +313,10 @@ escreve — itens, recusas, obs geral — com o mesmo Salvar; ficam só os campo
 do cabeçalho que o ME exige para salvar (frete, telefone, validade, moeda).
 Na cotação, um quadro mostra o frete (CIF/FOB e o porquê), os avisos do
 comprador e quantos itens estão prontos; cada linha se completa (impostos,
-entrega, total) assim que a origem é escolhida. O robô de salvar só entra nos
-logins do ME geral — nos outros o formulário muda com o comprador e ainda não
-foi conferido.
+entrega, total) assim que a origem é escolhida. O formulário muda com o
+comprador: o robô lê o de cada página (`mercado_eletronico/formulario.py`),
+anexa a proposta quando o comprador exige (o vendedor sobe o arquivo na tela)
+e para com o motivo quando há algo que ele não sabe responder.
 Tudo (decisões, recon, provas no ME real) em
 [`docs/MERCADO_ELETRONICO.md`](docs/MERCADO_ELETRONICO.md).
 

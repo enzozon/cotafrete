@@ -41,10 +41,18 @@ def test_quatorze_logins_com_chave_unica_e_o_me_geral_com_a_chave_antiga():
     assert L.de("uniao").prefixo == "ME_UNIAO"
 
 
-def test_autoglass_e_da_alianca_e_so_o_me_geral_tem_robo():
+def test_autoglass_e_da_alianca_e_o_robo_vale_em_todos_os_logins():
     assert L.de("autoglass").empresa is Conta.ALIANCA
     assert L.de("autoglass").prefixo == "ME_AUTOGLASS"
-    assert {l.chave for l in L.LOGINS if l.robo_liberado} == {"ventura", "uniao"}
+    # Desde 28/09/2026 o robô lê o formulário de cada comprador (formulario.py).
+    assert all(l.robo_liberado for l in L.LOGINS)
+
+
+@pytest.fixture
+def nestle_sem_robo(monkeypatch):
+    from dataclasses import replace
+    monkeypatch.setitem(L._POR_CHAVE, "nestle_ventura",
+                        replace(L.de("nestle_ventura"), robo_liberado=False))
 
 
 def test_chave_desconhecida_para_em_vez_de_entrar_em_outra_conta():
@@ -152,7 +160,7 @@ def test_log_de_chegadas(monkeypatch, tmp_path):
     me_ui.sincronizar("nestle_ventura", [p(1), p(2)], datetime(2026, 9, 28, 8, 15))
     linhas = log.read_text(encoding="utf-8").splitlines()
     assert len(linhas) == 2                      # a 1 não é anotada de novo
-    assert linhas[0].startswith("2026-09-28 08:00:00 | Nestlé · VENTURA (nestle_ventura) | cotação 1")
+    assert linhas[0].startswith("2026-09-28 08:00:00 | Nestlé e EDP · VENTURA (nestle_ventura) | cotação 1")
     assert linhas[0].endswith("já estava lá na 1ª leitura deste login")
     assert "cotação 2 | EDP - Outsourcing" in linhas[1] and "1ª leitura" not in linhas[1]
 
@@ -165,7 +173,7 @@ def test_sem_log_configurado_nao_grava_nada(monkeypatch, tmp_path):
 
 
 # ------------------------------------------------------------ robô liberado
-def test_robo_nao_entra_em_login_nao_liberado(monkeypatch, tmp_path):
+def test_robo_nao_entra_em_login_nao_liberado(monkeypatch, tmp_path, nestle_sem_robo):
     banco = Banco(tmp_path / "t.db")
     monkeypatch.setattr(me_ui, "banco", banco)
     disparos = []
@@ -180,7 +188,7 @@ def test_robo_recebe_o_frete_da_cotacao(monkeypatch, tmp_path):
     banco = Banco(tmp_path / "t.db")
     monkeypatch.setattr(me_ui, "banco", banco)
     recebido = {}
-    monkeypatch.setattr(me_ui, "ROBO", lambda *a, frete: recebido.setdefault("frete", frete)
+    monkeypatch.setattr(me_ui, "ROBO", lambda *a, frete, anexos: recebido.setdefault("frete", frete)
                         and SimpleNamespace(ok=True, divergencias=[], prints=[], erro=None))
     cid = banco.me_criar("uniao", 7, status="salvando",
                          avisos_comprador='{"avisos": ["Frete Padrão: CIF"]}')
@@ -243,7 +251,8 @@ def test_previa_pede_login(cliente):
     assert cliente.get("/me/1/linha/10").status_code == 401
 
 
-def test_login_sem_robo_liberado_nao_mostra_salvar_nem_limpar(monkeypatch, tmp_path, cliente):
+def test_login_sem_robo_liberado_nao_mostra_salvar_nem_limpar(monkeypatch, tmp_path, cliente,
+                                                             nestle_sem_robo):
     cid = me_ui.banco.me_criar("nestle_ventura", 23050183, status="pendente")
     monkeypatch.setattr(me_ui, "LEITOR", lambda conta, n: [
         (FIX / "edp_23050183.html").read_text(encoding="utf-8")])
@@ -252,3 +261,32 @@ def test_login_sem_robo_liberado_nao_mostra_salvar_nem_limpar(monkeypatch, tmp_p
     assert 'value="salvar" disabled' in html and 'value="dry_run" class="botao2" disabled' in html
     assert "Limpar no ME" not in html
     assert "O robô ainda não preenche este login" in html
+
+
+def test_busca_pelo_numero_da_cotacao(cliente):
+    cliente.post("/me/atualizar")
+    tudo = cliente.get("/me").text
+    assert "23049227" in tudo and "23052403" in tudo
+    html = cliente.get("/me", params={"numero": "2304922"}).text      # pedaço do número
+    assert "23049227" in html and "23052403" not in html
+    assert 'name="numero" value="2304922"' in html and "limpar busca" in html
+    assert "Nenhuma cotação com o número 999" in cliente.get("/me", params={"numero": "999"}).text
+    # Só dígitos: o resto some antes de filtrar (e nada entra cru no HTML).
+    sujo = cliente.get("/me", params={"numero": "<b>2305</b>"}).text
+    assert 'value="2305"' in sujo and "<b>2305" not in sujo and "23052403" in sujo
+
+
+def test_nomes_dos_logins_compartilhados():
+    assert L.de("nestle_ventura").rotulo == "Nestlé e EDP · VENTURA"
+    assert L.de("edp_alianca").rotulo == "EDP e WEG · ALIANÇA"
+
+
+def test_alpek_aparece_como_nao_atendemos_e_o_robo_nem_abre(cliente, robo):
+    from mercado_eletronico import regras as R
+    assert R.nao_atendemos("ALPEK POLYESTER") and not R.nao_atendemos("Samarco")
+    cid = me_ui.banco.me_criar("nestle_uniao", 23065661, status="pendente",
+                               empresa="ALPEK POLYESTER")
+    assert "não atendemos" in cliente.get("/me").text
+    assert "Não atendemos este comprador." in cliente.get(f"/me/{cid}").text
+    assert "Não atendemos" in me_ui.mandar_robo(cid, "enzo", dry_run=False)
+    assert robo.chamadas == []

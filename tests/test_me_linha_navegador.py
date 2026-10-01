@@ -64,7 +64,9 @@ def test_escolher_a_origem_completa_a_linha(servidor):
 
         # O quadro da cotação: frete CIF pelo aviso da EDP, e os avisos dela.
         expect(pg.locator(".me-frete")).to_have_text("Frete CIF")
-        expect(pg.locator(".me-avisos")).to_contain_text("Condição de Pagamento padrão EDP")
+        expect(pg.locator(".me-avisos").last).to_contain_text("Condição de Pagamento padrão EDP")
+        # A EDP exige a proposta anexada: a tela avisa ANTES do Salvar.
+        expect(pg.locator(".me-anexos")).to_contain_text("Anexo Comercial: falta")
         expect(pg.locator("#me-prontos")).to_have_text("0")
         linha = pg.locator("#linha-1")
         expect(linha).to_contain_text("Escolha a origem")
@@ -77,6 +79,9 @@ def test_escolher_a_origem_completa_a_linha(servidor):
         pg.fill("input[name=ncm_1]", "85365090")
         pg.fill("input[name=prazo_1]", "10")
         pg.fill("input[name=marca_1]", "WEG")
+        expect(linha).to_contain_text("exige a Ref. Fabricante")   # só a EDP pede
+        expect(pg.locator("#me-prontos")).to_have_text("0")
+        pg.fill("input[name=ref_1]", "3SU1-100")
         expect(linha).to_contain_text("total R$ 62,50")            # 5 × 12,50
         expect(linha).to_contain_text("dias corridos")
         expect(pg.locator("#me-prontos")).to_have_text("1")

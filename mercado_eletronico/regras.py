@@ -49,6 +49,11 @@ class Conta(str, Enum):
 # O resto continua FOB, como era antes.
 CLIENTES_CIF = ("NESTLE", "AUTOGLASS", "EDP")
 CLIENTES_FOB = ("WEG",)
+# Compradores que a empresa não atende (Enzo, 29/09/2026): a tela marca "não
+# atendemos" — a cotação continua na lista, para ninguém achar que sumiu.
+# Alpek: o ME exige adesão ao Marketplace Privado (taxa por pedido) e a
+# empresa decidiu não aderir.
+CLIENTES_NAO_ATENDIDOS = ("ALPEK",)
 _RE_FRETE_AVISO = re.compile(r"\bfrete\b[^.;\n]{0,40}?\b(CIF|FOB)\b", re.IGNORECASE)
 
 
@@ -56,6 +61,11 @@ def _sem_acento(texto: str) -> str:
     import unicodedata
     return "".join(c for c in unicodedata.normalize("NFD", texto or "")
                    if not unicodedata.combining(c)).upper()
+
+
+def nao_atendemos(empresa: str | None) -> bool:
+    nome = _sem_acento(empresa or "")
+    return any(re.search(rf"\b{c}\b", nome) for c in CLIENTES_NAO_ATENDIDOS)
 
 
 def tipo_frete(avisos: list[str], empresa: str | None,
@@ -250,6 +260,8 @@ class EntradaItem:
     obs: str = ""
     origem: int | None = None
     pedido: PedidoDoComprador = field(default_factory=PedidoDoComprador)
+    # Só para quem exige (EDP, 28/09/2026): o código/modelo do fabricante.
+    ref_fabricante: str = ""
 
     @property
     def sem_cotacao(self) -> bool:

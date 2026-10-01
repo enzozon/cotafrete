@@ -166,3 +166,72 @@ def test_so_o_confirm_do_salvar_e_aceito_e_so_durante_o_salvar():
     assert not T.confirm_aceito("A cotação será recusada.Deseja continuar?", salvando=True)
     assert not T.confirm_aceito("Você está recusando todos os itens da cotaçao. Deseja continuar?",
                                 salvando=True)
+
+
+# ------------------------------------------------ anexo (28/09/2026)
+_ANEXO = "https://www.me.com.br/ME/MEAnexo.aspx?TipoAnexo={t}&Chave1=1&isReadOnly={ro}&hash=x"
+
+
+def _multipart(alvo: str) -> str:
+    return ("------b\r\nContent-Disposition: form-data; name=\"__EVENTTARGET\"\r\n\r\n"
+            f"{alvo}\r\n------b\r\nContent-Disposition: form-data; name=\"fuArquivo\"; "
+            "filename=\"p.pdf\"\r\n\r\n%PDF\xe2\xff\r\n------b--")
+
+
+@pytest.mark.parametrize("tipo", ["RDC", "RDCT"])
+def test_upload_da_proposta_passa(tipo):
+    assert T.motivo_bloqueio("POST", _ANEXO.format(t=tipo, ro="0"), _multipart(T.UPLOAD_ALVO)) is None
+
+
+@pytest.mark.parametrize("url, corpo", [
+    (_ANEXO.format(t="RDC", ro="0"), _multipart("ctl00$conteudo$grdAnexos$excluir")),  # excluir
+    (_ANEXO.format(t="RDC", ro="0"), "__EVENTTARGET=ctl00%24conteudo%24btnSelect"),
+    (_ANEXO.format(t="RDC", ro="0"), ""),
+    (_ANEXO.format(t="RDC", ro="1"), _multipart(T.UPLOAD_ALVO)),                       # só leitura
+    (_ANEXO.format(t="C", ro="0"), _multipart(T.UPLOAD_ALVO)),                         # anexo do comprador
+    ("https://www.me.com.br/ME/OutraCoisa.aspx?TipoAnexo=RDC&isReadOnly=0", _multipart(T.UPLOAD_ALVO)),
+])
+def test_o_resto_da_janela_de_anexo_continua_bloqueado(url, corpo):
+    assert T.motivo_bloqueio("POST", url, corpo)
+
+
+def test_checagem_de_icms_passa_e_so_ela():
+    assert T.motivo_bloqueio("POST", "https://www.me.com.br/do/Cotacao.mvc/ConsistirICMS", "x") is None
+    assert T.motivo_bloqueio("POST", "https://www.me.com.br/do/Cotacao.mvc/Confirmar", "x")
+    assert T.motivo_bloqueio("POST", "https://www.me.com.br/do/Cotacao.mvc/ConsistirICMS?Acao=1", "x")
+
+
+def test_trava_do_form_libera_so_o_enviar_do_anexo():
+    js = T.JS_TRAVA_FORM
+    assert "MEAnexo" in js and T.UPLOAD_ALVO in js and "aspnetForm" in js
+
+
+# --------------------------------------------- excluir anexo (29/09/2026)
+def _exclusao(single: str, multiple: str = "[]") -> str:
+    partes = [("__EVENTTARGET", T.EXCLUIR_ALVO), ("__EVENTARGUMENT", T.EXCLUIR_ARG),
+              ("jsTable_ctl00$conteudo$grdAnexos_hidden_single", single),
+              ("jsTable_ctl00$conteudo$grdAnexos_hidden_multiple", multiple)]
+    return "".join(f'------b\r\nContent-Disposition: form-data; name="{n}"\r\n\r\n{v}\r\n'
+                   for n, v in partes) + "------b--\r\n"
+
+
+_MEU = '{"AnexoID":1,"NomeArquivo":"TESTE_ROBO_P.pdf"}'
+_OUTRO = '{"AnexoID":2,"NomeArquivo":"proposta_do_colega.pdf"}'
+
+
+def test_exclui_so_o_arquivo_que_o_robo_subiu():
+    url = _ANEXO.format(t="RDC", ro="0")
+    pode = frozenset({"TESTE_ROBO_P.pdf"})
+    assert T.motivo_bloqueio("POST", url, _exclusao(_MEU), excluiveis=pode) is None
+    assert T.motivo_bloqueio("POST", url, _exclusao(_MEU, f"[{_MEU}]"), excluiveis=pode) is None
+
+
+@pytest.mark.parametrize("corpo, pode", [
+    (_exclusao(_MEU), frozenset()),                                    # fora do excluir_anexo
+    (_exclusao(_OUTRO), frozenset({"TESTE_ROBO_P.pdf"})),              # arquivo de outra pessoa
+    (_exclusao(_MEU, f"[{_MEU},{_OUTRO}]"), frozenset({"TESTE_ROBO_P.pdf"})),  # marcado junto
+    (_exclusao("", "[]"), frozenset({"TESTE_ROBO_P.pdf"})),            # sem arquivo
+    (_exclusao("não é json"), frozenset({"TESTE_ROBO_P.pdf"})),
+])
+def test_exclusao_de_anexo_alheio_ou_ilegivel_nao_passa(corpo, pode):
+    assert T.motivo_bloqueio("POST", _ANEXO.format(t="RDC", ro="0"), corpo, excluiveis=pode)

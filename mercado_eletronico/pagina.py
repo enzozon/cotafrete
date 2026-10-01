@@ -24,7 +24,8 @@ from datetime import datetime
 from mercado_eletronico.regras import UFS, PedidoDoComprador, ler_campos_adicionais
 
 # "... GOIANIA - GO - 74672-400": a UF logo antes do CEP.
-_RE_UF_DO_LOCAL = re.compile(r"-\s*(" + "|".join(sorted(UFS)) + r")\s*-\s*\d{2}\.?\d{3}-?\d{3}")
+# O CEP vem torto às vezes ("55.59-000", Alpek em 28/09/2026): basta o formato.
+_RE_UF_DO_LOCAL = re.compile(r"-\s*(" + "|".join(sorted(UFS)) + r")\s*-\s*\d[\d.]*-\d{3}\b")
 
 
 @dataclass(frozen=True)
@@ -58,6 +59,11 @@ class PaginaDaCotacao:
     # "CIF" quando o próprio formulário pede o preço CIF ("Preço a Prazo
     # CIF", Alpek em 28/09/2026); "" quando não diz.
     frete_formulario: str = ""
+    # Anexos marcados com "*" (sem eles o ME não deixa nem salvar): EDP pede
+    # o comercial (RDC), Oitamérica o comercial e o técnico (RDCT).
+    anexos: list[dict] = field(default_factory=list)
+    # O que o comprador pede a mais por item ("ref_fabricante": EDP).
+    exige: tuple[str, ...] = ()
 
 
 def _texto(fragmento: str) -> str:
@@ -124,6 +130,23 @@ def ler_avisos(html: str) -> list[str]:
 _AVISO_DO_ME = "Após preencher em todas as páginas"
 
 
+def ler_anexos_obrigatorios(html: str) -> list[dict]:
+    """[{"nome": "Anexo Comercial", "tipo": "RDC", "qtd": 0}] — os do cabeçalho com "*".
+
+    Cada célula da tabela `me-anexo` tem UM link (com o TipoAnexo) e UM
+    contador, na mesma ordem dos títulos: basta casar pela posição."""
+    out = []
+    for bloco in html.split('<table class="me-anexo"')[1:]:
+        cabeca, _, corpo = bloco.partition("</thead>")
+        titulos = [_texto(x) for x in re.findall(r"<td[^>]*>(.*?)</td>", cabeca, re.S)]
+        tipos = re.findall(r"TipoAnexo=(\w+)&amp;Chave1", corpo)[:len(titulos)]
+        qtds = [int(q) for q in re.findall(r'anexoqtd="(\d+)"', corpo)[:len(titulos)]]
+        for nome, tipo, qtd in zip(titulos, tipos, qtds + [0] * (len(titulos) - len(qtds))):
+            if nome.startswith("*"):
+                out.append({"nome": nome.lstrip("* ").strip(), "tipo": tipo, "qtd": qtd})
+    return out
+
+
 def ler_frete_formulario(html: str) -> str:
     return "CIF" if re.search(r"Pre[çc]o\s+a\s+Prazo\s+CIF", html, re.I) else ""
 
@@ -153,6 +176,8 @@ def ler(html: str) -> PaginaDaCotacao:
         itens=itens,
         avisos=ler_avisos(html),
         frete_formulario=ler_frete_formulario(html),
+        anexos=ler_anexos_obrigatorios(html),
+        exige=("ref_fabricante",) if "itatrib01_RefFabricante_1_" in html else (),
     )
 
 
@@ -164,6 +189,8 @@ def juntar(paginas: list[PaginaDaCotacao]) -> PaginaDaCotacao:
     itens = [i for p in sorted(paginas, key=lambda p: p.pagina) for i in p.itens]
     avisos = list(dict.fromkeys(a for p in paginas for a in p.avisos))
     frete = next((p.frete_formulario for p in paginas if p.frete_formulario), "")
+    anexos = next((p.anexos for p in paginas if p.anexos), [])
     return PaginaDaCotacao(**{**base.__dict__, "itens": itens, "avisos": avisos,
-                              "frete_formulario": frete,
+                              "frete_formulario": frete, "anexos": anexos,
+                              "exige": tuple(sorted({e for p in paginas for e in p.exige})),
                               "paginas": sorted({p.pagina for p in paginas} | set(base.paginas))})

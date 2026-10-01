@@ -223,6 +223,8 @@ CREATE TABLE IF NOT EXISTS me_cotacao (
     revisao_em      TEXT,
     revisao_assinatura TEXT,       -- do preenchimento revisado: mudou = velha
     avisos_comprador TEXT,         -- JSON: os "Atenção: ..." da página do ME
+    uf_entrega      TEXT,          -- UF escolhida na tela quando a página não diz (WEG)
+    anexos_locais   TEXT,          -- JSON {TipoAnexo: {arquivo, nome, em, por}}
     UNIQUE (conta, numero)
 );
 
@@ -253,6 +255,7 @@ CREATE TABLE IF NOT EXISTS me_item (
     ncm_origem        TEXT,     -- de onde veio o ncm acima: comprador / memoria / ia / NULL = digitado
     ncm_nota          TEXT,     -- a IA: descrição da posição e a confiança
     local_entrega     TEXT,     -- "Local de Entrega:" do item na página do ME
+    ref_fabricante    TEXT,     -- só para quem exige (EDP): código/modelo do fabricante
     PRIMARY KEY (cotacao_id, numero)
 );
 
@@ -328,9 +331,11 @@ CAMPOS_CARGA = (
 CAMPOS_RESULTADO = ("respondido_em", "validade", "resposta_em", "pedido_em")
 
 # Colunas de `me_cotacao` que nasceram depois da tabela.
-CAMPOS_ME_ITEM_NOVOS = ("ncm_pedido", "ncm_origem", "ncm_nota", "local_entrega")
+CAMPOS_ME_ITEM_NOVOS = ("ncm_pedido", "ncm_origem", "ncm_nota", "local_entrega",
+                        "ref_fabricante")
 CAMPOS_ME_COTACAO_NOVOS = ("obs_comprador", "revisao_ia", "revisao_em",
-                           "revisao_assinatura", "avisos_comprador")
+                           "revisao_assinatura", "avisos_comprador", "uf_entrega",
+                           "anexos_locais")
 
 
 def _decimal(valor: str | None) -> Decimal | None:
@@ -863,9 +868,10 @@ class Banco:
                          "atualizado_em", "itens_lidos_em", "validade_dias",
                          "salvo_por", "salvo_em", "enviada_em", "erro",
                          "evidencia", "obs_comprador", "revisao_ia",
-                         "revisao_em", "revisao_assinatura", "avisos_comprador")
+                         "revisao_em", "revisao_assinatura", "avisos_comprador",
+                         "uf_entrega", "anexos_locais")
     CAMPOS_ME_ENTRADA = ("preco", "ncm", "prazo_dias", "marca", "obs", "origem",
-                         "ncm_origem", "ncm_nota")
+                         "ncm_origem", "ncm_nota", "ref_fabricante")
 
     def me_cotacao_id(self, conta: str, numero: int) -> int | None:
         with closing(self._conectar()) as con, con:
