@@ -896,7 +896,9 @@ def lista(request: Request, conta: str = "", status: str = "", msg: str = "",
                  '<p class="alerta">Nenhuma conta do ME configurada: faltam '
                  'os LOGIN/SENHA de mercado_eletronico/logins.py no .env.</p>')
     acoes = ('<form method="post" action="/me/atualizar" style="margin:0">'
-             '<button type="submit">Atualizar agora</button></form>')
+             '<button type="submit">Atualizar agora</button></form>'
+             '<a class="botao2" href="/me-extensao" title="Para o Abrir no ME entrar já na conta certa">'
+             'Instalar extensão do Chrome</a>')
     corpo = f"""{CSS_ME}
 {cabecalho("Mercado Eletrônico", tarja="Cotações a responder",
            sub=f"O robô preenche e salva no ME; <b>quem envia é você</b>, pelo site do ME. {e(situacao)}.",
