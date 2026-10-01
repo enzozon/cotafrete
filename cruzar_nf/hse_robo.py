@@ -160,7 +160,9 @@ class RoboHSE:
             time.sleep(2)
             if not self._tem("#frmLogin") and self._tem("iframe"):
                 return
-        raise ErroHSE("Não consegui entrar no HSE (usuário/senha do robô no .env?).")
+        if self.usuario and self.senha:
+            raise ErroHSE("O HSE não aceitou o login do robô: confira HSE_USUARIO e HSE_SENHA no .env.")
+        raise ErroHSE(f"Ninguém fez o login no HSE em {ESPERA_LOGIN_MANUAL_S // 60} minutos.")
 
     def _frame_vendas(self) -> bool:
         from selenium.webdriver.common.by import By
