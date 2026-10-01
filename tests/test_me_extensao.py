@@ -95,6 +95,7 @@ def test_pagina_de_instalacao_e_botao_da_cotacao(cliente, cotacao):
     assert 'id="abrir-me"' in html and f'data-cid="{cid}"' in html
     assert "FornShowCotacao.asp?Cot=23083602" in html and sessao_me.EXTENSAO_ID in html
     assert "/me-extensao" in html                         # sem extensão: como instalar
+    assert 'href="/me-extensao"' in cliente.get("/me").text   # e um botão fixo na lista
 
 
 # ------------------------------------------------------ ponta a ponta
