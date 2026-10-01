@@ -42,3 +42,11 @@ cotafrete.db-wal
 cotafrete.db-shm
 # prints gerados pelo tests/test_rebranding_visual.py a cada rodada
 docs/rebranding/
+
+# cruzamento de NF: os arquivos de verdade tem e-mail de requisitante,
+# CNPJ e valor de venda. So o exemplo (dados ficticios) entra no git.
+cruzar_nf/entrada/
+PEDIDOS*.json
+comparar.json
+RELATORIO_NF.*
+!cruzar_nf/exemplo/*

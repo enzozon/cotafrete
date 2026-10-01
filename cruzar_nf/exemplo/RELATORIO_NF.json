@@ -1,0 +1,322 @@
+{
+  "gerado_em": "2026-09-29T19:22:41",
+  "resumo": {
+    "pedidos_na_planilha": 10,
+    "ocs_distintas_na_planilha": 8,
+    "linhas_no_erp": 10,
+    "ocs_distintas_no_erp": 8,
+    "linhas_erp_sem_oc": 1,
+    "bateram_1_nf": 5,
+    "mais_de_uma_nf": 2,
+    "no_erp_sem_nf": 1,
+    "nao_encontrados_no_erp": 1,
+    "pedido_invalido": 1,
+    "so_no_erp": 1,
+    "pedidos_duplicados_na_planilha": 1,
+    "nf_atendendo_varias_ocs": 1,
+    "nf_alterada": 1,
+    "divergencia_de_valor": 1,
+    "percentual_com_nf": 70.0,
+    "tipos_no_erp": {
+      "VEN": 9
+    }
+  },
+  "bateram": [
+    {
+      "posicao": 1,
+      "pedido": 4101141499,
+      "oc": "4101141499",
+      "status": "BATEU",
+      "nfs": [
+        "15016"
+      ],
+      "nf_anterior": null,
+      "nf_gravada": "15016",
+      "valor_planilha": "1740.00",
+      "valor_erp": "1740.00",
+      "diferenca_valor": "0.00",
+      "linhas_erp": 1,
+      "tipos_erp": [
+        "VEN"
+      ],
+      "cidade": "OURO PRETO - MG",
+      "requisitante": "MICHELI",
+      "produto": "PAR HELICE ORIGINAL DRONE DJI MAVIC 3 ENTERPRISE -entregue em 22/12"
+    },
+    {
+      "posicao": 5,
+      "pedido": " 4101141503 ",
+      "oc": "4101141503",
+      "status": "BATEU",
+      "nfs": [
+        "15040"
+      ],
+      "nf_anterior": null,
+      "nf_gravada": "15040",
+      "valor_planilha": "1200.00",
+      "valor_erp": "1350.00",
+      "diferenca_valor": "150.00",
+      "linhas_erp": 1,
+      "tipos_erp": [
+        "VEN"
+      ],
+      "cidade": "CONGONHAS - MG",
+      "requisitante": "PAULA",
+      "produto": "TRIPE ALUMINIO"
+    },
+    {
+      "posicao": 6,
+      "pedido": 4101141504,
+      "oc": "4101141504",
+      "status": "BATEU",
+      "nfs": [
+        "15045"
+      ],
+      "nf_anterior": "14000",
+      "nf_gravada": "15045",
+      "valor_planilha": "600.00",
+      "valor_erp": "600.00",
+      "diferenca_valor": "0.00",
+      "linhas_erp": 1,
+      "tipos_erp": [
+        "VEN"
+      ],
+      "cidade": "SAO LUIS - MA",
+      "requisitante": "RAFAEL",
+      "produto": "CASE RIGIDA DRONE"
+    },
+    {
+      "posicao": 9,
+      "pedido": 4101141505,
+      "oc": "4101141505",
+      "status": "BATEU",
+      "nfs": [
+        "15050"
+      ],
+      "nf_anterior": null,
+      "nf_gravada": "15050",
+      "valor_planilha": "720.00",
+      "valor_erp": "720.00",
+      "diferenca_valor": "0.00",
+      "linhas_erp": 1,
+      "tipos_erp": [
+        "VEN"
+      ],
+      "cidade": "CANAA DOS CARAJAS - PA",
+      "requisitante": "BRUNA",
+      "produto": "FILTRO ND DRONE"
+    },
+    {
+      "posicao": 10,
+      "pedido": 4101141506,
+      "oc": "4101141506",
+      "status": "BATEU",
+      "nfs": [
+        "15050"
+      ],
+      "nf_anterior": null,
+      "nf_gravada": "15050",
+      "valor_planilha": "280.00",
+      "valor_erp": "280.00",
+      "diferenca_valor": "0.00",
+      "linhas_erp": 1,
+      "tipos_erp": [
+        "VEN"
+      ],
+      "cidade": "CANAA DOS CARAJAS - PA",
+      "requisitante": "BRUNA",
+      "produto": "PROTETOR DE HELICE"
+    }
+  ],
+  "mais_de_uma_nf": [
+    {
+      "posicao": 2,
+      "pedido": 4101141500,
+      "oc": "4101141500",
+      "status": "MAIS_DE_UMA_NF",
+      "nfs": [
+        "15020",
+        "15031"
+      ],
+      "nf_anterior": null,
+      "nf_gravada": "15020 / 15031",
+      "valor_planilha": "3200.00",
+      "valor_erp": "3200.00",
+      "diferenca_valor": "0.00",
+      "linhas_erp": 2,
+      "tipos_erp": [
+        "VEN"
+      ],
+      "cidade": "ITABIRA - MG",
+      "requisitante": "CARLOS",
+      "produto": "BATERIA INTELIGENTE DJI MATRICE 30"
+    },
+    {
+      "posicao": 7,
+      "pedido": 4101141500,
+      "oc": "4101141500",
+      "status": "MAIS_DE_UMA_NF",
+      "nfs": [
+        "15020",
+        "15031"
+      ],
+      "nf_anterior": null,
+      "nf_gravada": "15020 / 15031",
+      "valor_planilha": "3200.00",
+      "valor_erp": "3200.00",
+      "diferenca_valor": "0.00",
+      "linhas_erp": 2,
+      "tipos_erp": [
+        "VEN"
+      ],
+      "cidade": "ITABIRA - MG",
+      "requisitante": "CARLOS",
+      "produto": "BATERIA INTELIGENTE DJI MATRICE 30 (linha repetida)"
+    }
+  ],
+  "sem_nf": [
+    {
+      "posicao": 3,
+      "pedido": "4101141501",
+      "oc": "4101141501",
+      "status": "SEM_NF",
+      "nfs": [],
+      "nf_anterior": null,
+      "nf_gravada": null,
+      "valor_planilha": "980.50",
+      "valor_erp": "980.50",
+      "diferenca_valor": "0.00",
+      "linhas_erp": 1,
+      "tipos_erp": [
+        "VEN"
+      ],
+      "cidade": "MARIANA - MG",
+      "requisitante": "ANA",
+      "produto": "CARREGADOR PORTATIL 100W"
+    }
+  ],
+  "nao_encontrados": [
+    {
+      "posicao": 4,
+      "pedido": 4101141502,
+      "oc": "4101141502",
+      "status": "NAO_ENCONTRADO",
+      "nfs": [],
+      "nf_anterior": null,
+      "nf_gravada": null,
+      "valor_planilha": "450.00",
+      "valor_erp": null,
+      "diferenca_valor": null,
+      "linhas_erp": 0,
+      "tipos_erp": [],
+      "cidade": "VITORIA - ES",
+      "requisitante": "JOAO",
+      "produto": "CABO USB-C 2M"
+    }
+  ],
+  "pedido_invalido": [
+    {
+      "posicao": 8,
+      "pedido": "",
+      "oc": null,
+      "status": "PEDIDO_INVALIDO",
+      "nfs": [],
+      "nf_anterior": null,
+      "nf_gravada": null,
+      "valor_planilha": "150.00",
+      "valor_erp": null,
+      "diferenca_valor": null,
+      "linhas_erp": 0,
+      "tipos_erp": [],
+      "cidade": "PARAUAPEBAS - PA",
+      "requisitante": "LUCAS",
+      "produto": "ITEM SEM PEDIDO"
+    }
+  ],
+  "so_no_erp": [
+    {
+      "oc": "4101141599",
+      "nfs": [
+        "15060"
+      ],
+      "linhas_erp": 1,
+      "cliente": "MINA DE CAPANEMA/VALE S.A.",
+      "emissao": "26/12/2025",
+      "total_liquido": "5100.00"
+    }
+  ],
+  "pedidos_duplicados": [
+    {
+      "oc": "4101141500",
+      "vezes": 2,
+      "posicoes": [
+        2,
+        7
+      ]
+    }
+  ],
+  "nf_varias_ocs": [
+    {
+      "nf": "15050",
+      "ocs": [
+        "4101141505",
+        "4101141506"
+      ],
+      "na_planilha": [
+        "4101141505",
+        "4101141506"
+      ]
+    }
+  ],
+  "nf_alterada": [
+    {
+      "posicao": 6,
+      "pedido": 4101141504,
+      "oc": "4101141504",
+      "status": "BATEU",
+      "nfs": [
+        "15045"
+      ],
+      "nf_anterior": "14000",
+      "nf_gravada": "15045",
+      "valor_planilha": "600.00",
+      "valor_erp": "600.00",
+      "diferenca_valor": "0.00",
+      "linhas_erp": 1,
+      "tipos_erp": [
+        "VEN"
+      ],
+      "cidade": "SAO LUIS - MA",
+      "requisitante": "RAFAEL",
+      "produto": "CASE RIGIDA DRONE"
+    }
+  ],
+  "divergencia_valor": [
+    {
+      "posicao": 5,
+      "pedido": " 4101141503 ",
+      "oc": "4101141503",
+      "status": "BATEU",
+      "nfs": [
+        "15040"
+      ],
+      "nf_anterior": null,
+      "nf_gravada": "15040",
+      "valor_planilha": "1200.00",
+      "valor_erp": "1350.00",
+      "diferenca_valor": "150.00",
+      "linhas_erp": 1,
+      "tipos_erp": [
+        "VEN"
+      ],
+      "cidade": "CONGONHAS - MG",
+      "requisitante": "PAULA",
+      "produto": "TRIPE ALUMINIO"
+    }
+  ],
+  "arquivos": {
+    "pedidos": "cruzar_nf/exemplo/PEDIDOS.json",
+    "comparar": "cruzar_nf/exemplo/comparar.json",
+    "saida": "cruzar_nf/exemplo/PEDIDOS_ATUALIZADO.json"
+  }
+}
