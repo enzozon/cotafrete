@@ -157,8 +157,12 @@ def sincronizar(pasta: "str | Path", manager: Any, de: _dt.date, ate: _dt.date,
               f"{mescla['removidas']} removidas ({mescla['total_na_base']} no total).")
 
     progresso("Cruzando com os pedidos do Maestro...")
-    relatorio, gravadas = aplicar_nfs(manager, base.lista(), gravar=gravar, so_vazias=True,
-                                      dir_backup=dir_backup)
+    if hasattr(manager, "aplicar_nfs"):     # serviço separado: grava com controle de concorrência
+        relatorio, gravadas = manager.aplicar_nfs(base.lista(), gravar=gravar, so_vazias=True,
+                                                  dir_backup=dir_backup)
+    else:                                   # dentro do gerenciador: trava do planilha_manager
+        relatorio, gravadas = aplicar_nfs(manager, base.lista(), gravar=gravar, so_vazias=True,
+                                          dir_backup=dir_backup)
     r = relatorio["resumo"]
     progresso(f"{gravadas} NF(s) {'gravada(s)' if gravar else 'a gravar (prévia)'}.")
 
