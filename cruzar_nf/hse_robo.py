@@ -235,6 +235,43 @@ class RoboHSE:
             self.fechar()
 
 
+def main(argv: Optional[list] = None) -> int:
+    """Teste do robô à mão: python -m cruzar_nf.hse_robo --de 29/09/2026 --ate 01/10/2026
+
+    Lê HSE_USUARIO/HSE_SENHA do .env (sem eles, espera o login na janela),
+    exporta o período, lê o Excel e mostra o resumo. Não grava nada no Maestro.
+    """
+    import argparse
+    import json
+    import sys
+
+    try:
+        from dotenv import load_dotenv
+        load_dotenv()
+    except ImportError:
+        pass
+    ap = argparse.ArgumentParser(prog="cruzar_nf.hse_robo", description="Teste do robô do HSE")
+    hoje = _dt.date.today()
+    ap.add_argument("--de", default=(hoje - _dt.timedelta(days=2)).strftime("%d/%m/%Y"))
+    ap.add_argument("--ate", default=hoje.strftime("%d/%m/%Y"))
+    a = ap.parse_args(argv)
+    de = _dt.datetime.strptime(a.de, "%d/%m/%Y").date()
+    ate = _dt.datetime.strptime(a.ate, "%d/%m/%Y").date()
+    try:
+        res = exportador_do_config({})(de, ate, lambda m: print(m, flush=True))
+    except ErroHSE as e:
+        print(f"[ERRO] {e}", file=sys.stderr)
+        return 1
+    from cruzar_nf.vendas_excel import ler_excel_vendas, resumo_excel
+    vendas = ler_excel_vendas(res["arquivo"])
+    resumo = resumo_excel(vendas)
+    print(json.dumps({"arquivo": res["arquivo"], "linhas_na_tela": res["linhas_tela"], "excel": resumo,
+                      "bate": res["linhas_tela"] == len(vendas)}, ensure_ascii=False, indent=1))
+    for v in vendas[:10]:
+        print(f"  {v.get('Filial')} | venda {v.get('Código')} | OC {v.get('Ordem Compra')} | NF {v.get('NF')} | {v.get('Total Líq.')}")
+    return 0
+
+
 def exportador_do_config(config: Dict[str, Any]) -> Callable[..., Dict[str, Any]]:
     """Função exportar(de, ate, progresso) para o sincronizar, montada do ambiente.
 
@@ -252,3 +289,8 @@ def exportador_do_config(config: Dict[str, Any]) -> Callable[..., Dict[str, Any]
         return robo.exportar(de, ate)
 
     return exportar
+
+
+if __name__ == "__main__":
+    import sys as _sys
+    _sys.exit(main())
