@@ -9,12 +9,12 @@ Uma rodada:
 4. registra o estado (`sync_nf.json`): última sincronização, cobertura e
    histórico — é o que o portal mostra.
 
-Rodar à mão (só com o gerenciador DESLIGADO, porque grava direto no arquivo):
+Rodar (SincronizarNF.bat; pode ser com o gerenciador ligado):
 
-    python -m cruzar_nf.sincronizar --dados <pasta Banco-de-dados> --pedidos <PEDIDOS.json>
-        --excel planilha.xlsx --de 01/01/2025 --ate 29/09/2026 [--gravar]
+    python -m cruzar_nf.sincronizar --robo [--de 01/01/2025] [--gravar]
 
-Sem --gravar é só prévia. Compatível com Python 3.8.
+Pastas no .env: SYNC_NF_DADOS (base, estado, backups) e SYNC_NF_PEDIDOS
+(o PEDIDOS.json do Maestro). Sem --gravar é só prévia. Compatível com Python 3.8.
 """
 
 from __future__ import annotations
@@ -137,8 +137,8 @@ def sincronizar(pasta: "str | Path", manager: Any, de: _dt.date, ate: _dt.date,
     pasta = Path(pasta)
     progresso(f"Exportando as vendas do HSE de {_fmt(de)} a {_fmt(ate)}...")
     exportado = exportar(de, ate, progresso)
-    arquivo = Path(exportado["arquivo"])
-    vendas = ler_excel_vendas(arquivo)
+    arquivos = [Path(a) for a in exportado.get("arquivos", [exportado.get("arquivo")]) if a]
+    vendas = [v for a in arquivos for v in ler_excel_vendas(a)]
     resumo_xls = resumo_excel(vendas)
     progresso(f"Excel lido: {len(vendas)} vendas.")
 
@@ -149,7 +149,7 @@ def sincronizar(pasta: "str | Path", manager: Any, de: _dt.date, ate: _dt.date,
                  "Confira se faltou alguma venda no Excel.")
         progresso("ATENÇÃO: " + aviso)
 
-    guardado = _guardar_excel(arquivo, pasta / PASTA_HISTORICO, de, ate)
+    guardados = [_guardar_excel(a, pasta / PASTA_HISTORICO, de, ate) for a in arquivos]
     base = BaseVendas.carregar(pasta / ARQ_BASE)
     mescla = base.mesclar(vendas, de, ate)
     base.salvar(pasta / ARQ_BASE)
@@ -170,7 +170,7 @@ def sincronizar(pasta: "str | Path", manager: Any, de: _dt.date, ate: _dt.date,
         "rodou_em": _dt.datetime.now().isoformat(timespec="seconds"), "origem": origem,
         "de": _fmt(de), "ate": _fmt(ate), "sucesso": True, "gravou": gravar,
         "nfs_gravadas": gravadas if gravar else 0, "nfs_a_gravar": gravadas,
-        "excel": resumo_xls, "excel_guardado": guardado.name, "linhas_tela": linhas_tela,
+        "excel": resumo_xls, "excel_guardado": [g.name for g in guardados], "linhas_tela": linhas_tela,
         "aviso": aviso, "base": mescla,
         "pedidos": r["pedidos_na_planilha"], "pedidos_com_nf": r["bateram_1_nf"] + r["mais_de_uma_nf"],
         "sem_nf": r["nao_encontrados_no_erp"], "mais_de_uma_nf": r["mais_de_uma_nf"],
@@ -218,19 +218,33 @@ class ArquivoPedidos:
         return True
 
 
+DADOS_PADRAO = r"\\SERVIDOR2\Publico\ALLAN\database\sync_nf"
+PEDIDOS_PADRAO = r"\\SERVIDOR2\Publico\ALLAN\database\Banco-de-dados\PEDIDOS.json"
+
+
 def main(argv: Optional[List[str]] = None) -> int:
+    import os
+
+    from cruzar_nf.arquivo_pedidos import ArquivoPedidosConcorrente
+
+    try:
+        from dotenv import load_dotenv
+        load_dotenv()
+    except ImportError:
+        pass
     ap = argparse.ArgumentParser(prog="cruzar_nf.sincronizar", description=__doc__.splitlines()[0])
-    ap.add_argument("--dados", required=True, help="pasta da base (vendas_hse.json, sync_nf.json)")
-    ap.add_argument("--pedidos", required=True, help="PEDIDOS.json (gerenciador desligado!)")
+    ap.add_argument("--dados", default=os.environ.get("SYNC_NF_DADOS") or DADOS_PADRAO,
+                    help="pasta da base, do estado e dos backups")
+    ap.add_argument("--pedidos", default=os.environ.get("SYNC_NF_PEDIDOS") or PEDIDOS_PADRAO)
     origem = ap.add_mutually_exclusive_group(required=True)
     origem.add_argument("--excel", help="Excel de Venda (pedido) já baixado do HSE")
     origem.add_argument("--robo", action="store_true", help="baixar do HSE com o robô")
     ap.add_argument("--de")
     ap.add_argument("--ate")
     ap.add_argument("--gravar", action="store_true", help="grava a NF (sem isso é só prévia)")
-    ap.add_argument("--backup", help="pasta do backup do PEDIDOS.json antes de gravar")
     a = ap.parse_args(argv)
 
+    Path(a.dados).mkdir(parents=True, exist_ok=True)
     de, ate = janela(a.dados, a.de, a.ate)
     if a.excel:
         def exportar(_de, _ate, _progresso):
@@ -238,8 +252,15 @@ def main(argv: Optional[List[str]] = None) -> int:
     else:
         from cruzar_nf.hse_robo import exportador_do_config
         exportar = exportador_do_config({})
-    res = sincronizar(a.dados, ArquivoPedidos(a.pedidos), de, ate, exportar,
-                      gravar=a.gravar, dir_backup=a.backup, origem="linha de comando")
+    manager = ArquivoPedidosConcorrente(a.pedidos, progresso=lambda m: print(m, flush=True))
+    try:
+        res = sincronizar(a.dados, manager, de, ate, exportar, gravar=a.gravar,
+                          dir_backup=str(Path(a.dados) / "backups"),
+                          progresso=lambda m: print(m, flush=True), origem="linha de comando")
+    except Exception as e:      # robô, HSE ou arquivo: fica no histórico e o .bat vê o erro
+        registrar_falha(a.dados, de, ate, str(e), "linha de comando")
+        print(f"[ERRO] {e}", file=sys.stderr)
+        return 1
     print(json.dumps({k: res[k] for k in ("de", "ate", "gravou", "nfs_a_gravar", "nfs_gravadas",
                                           "pedidos_com_nf", "sem_nf", "divergencias", "base", "aviso")},
                      ensure_ascii=False, indent=1))

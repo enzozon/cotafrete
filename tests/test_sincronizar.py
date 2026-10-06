@@ -246,6 +246,30 @@ def test_aviso_quando_excel_e_tela_divergem(tmp_path):
     assert "mostrou 3" in res["aviso"] and any("ATENÇÃO" in x for x in msgs)
 
 
+def test_rodada_com_varios_excel(tmp_path):
+    (tmp_path / "dados").mkdir()
+    pedidos = [ped(1), ped(2)]
+    m = Manager(pedidos, tmp_path / "PEDIDOS.json")
+    jan = excel_de(tmp_path, [venda(10, 1, 15, emissao="10/01/2025")], nome="jan.xlsx")
+    fev = excel_de(tmp_path, [venda(20, 2, 25, emissao="10/02/2025")], nome="fev.xlsx")
+    res = sync.sincronizar(tmp_path / "dados", m, D(2025, 1, 1), D(2025, 2, 28),
+                           lambda _d, _a, _p: {"arquivos": [jan, fev], "linhas_tela": 2}, progresso=lambda _m: None)
+    assert res["nfs_gravadas"] == 2 and res["aviso"] is None
+    assert [p[CAMPO] for p in pedidos] == ["15", "25"]
+    assert len(list((tmp_path / "dados" / sync.PASTA_HISTORICO).glob("vendas_hse *.xlsx"))) == 2
+
+
+def test_cli_le_as_pastas_do_ambiente_e_grava_com_seguranca(tmp_path, monkeypatch, capsys):
+    arq = tmp_path / "PEDIDOS.json"
+    arq.write_text(json.dumps({"PEDIDOS": [ped(1)]}), encoding="utf-8")
+    xls = excel_de(tmp_path, [venda(10, 1, 15)])
+    monkeypatch.setenv("SYNC_NF_DADOS", str(tmp_path / "dados"))
+    monkeypatch.setenv("SYNC_NF_PEDIDOS", str(arq))
+    assert sync.main(["--excel", str(xls), "--de", "01/09/2026", "--gravar"]) == 0
+    assert json.loads(arq.read_text(encoding="utf-8")) == {"PEDIDOS": [{"PEDIDO": 1, "VALOR ": 100, CAMPO: "15"}]}
+    assert len(list((tmp_path / "dados" / "backups").glob("PEDIDOS antes da NF *.json"))) == 1
+
+
 def test_arquivo_pedidos_le_e_grava_no_formato_do_maestro(tmp_path):
     arq = tmp_path / "PEDIDOS.json"
     arq.write_text(json.dumps({"PEDIDOS": [ped(1)]}), encoding="utf-8")
