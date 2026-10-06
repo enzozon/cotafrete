@@ -36,6 +36,7 @@ TENTATIVAS = 6
 ESPERA_ENTRE_TENTATIVAS_S = 1.0
 ESPERA_VERIFICACAO_S = 3.0
 LEITURAS_JSON_CORTADO = 10
+PASSO_DATA_NS = 20 * 1000 * 1000
 
 
 class ConflitoGravacao(RuntimeError):
@@ -111,6 +112,11 @@ class ArquivoPedidosConcorrente:
             except OSError:
                 pass
             raise ConflitoGravacao(f"não consegui trocar o arquivo: {e}")
+        lido_em = self._assinatura[0]
+        if _assinatura(self.caminho_pedidos)[0] <= lido_em:
+            # o planilha_manager só relê se a data AUMENTAR; no mesmo passo do relógio ele não veria
+            avancada = lido_em + PASSO_DATA_NS
+            os.utime(self.caminho_pedidos, ns=(avancada, avancada))
         self._assinatura = _assinatura(self.caminho_pedidos)
         return True
 

@@ -7,6 +7,7 @@ serviço de NF mexendo no mesmo PEDIDOS.json ao mesmo tempo.
 from __future__ import annotations
 
 import json
+import os
 import threading
 import types
 from pathlib import Path
@@ -184,6 +185,17 @@ def test_o_planilha_manager_do_servidor_enxerga_a_nf_sem_reiniciar(tmp_path):
     pm.adicionar_linhas_pedidos("PEDIDO", [{"pedido": 2, "itens": []}])
     assert ler(tmp_path / "PEDIDOS.json")["PEDIDOS"][0][CAMPO] == "15"
     assert len(ler(tmp_path / "PEDIDOS.json")["PEDIDOS"]) == 2
+
+
+def test_a_data_do_arquivo_sempre_avanca_para_o_gerenciador_reler(tmp_path):
+    # o planilha_manager só relê se a data de modificação AUMENTAR; no Windows ela anda
+    # em passos de milissegundos e a nossa gravação pode cair no mesmo passo da dele
+    arq = tmp_path / "PEDIDOS.json"
+    escrever_como_o_gerenciador(arq, [ped(1)])
+    futuro = arq.stat().st_mtime_ns + 5 * 10**9
+    os.utime(arq, ns=(futuro, futuro))
+    gravador(arq).aplicar_nfs([venda(10, 1, 15)], gravar=True)
+    assert arq.stat().st_mtime_ns > futuro
 
 
 def test_gravacoes_simultaneas_do_gerenciador_nao_perdem_pedido(tmp_path):
