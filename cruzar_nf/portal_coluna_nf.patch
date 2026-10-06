@@ -1,0 +1,31 @@
+diff --git a/public/planilha_vale.html b/public/planilha_vale.html
+index 59a9af2..ba08c86 100644
+--- a/public/planilha_vale.html
++++ b/public/planilha_vale.html
+@@ -511,4 +511,5 @@
+                         <th style="width: 12%;"><i class="fa-regular fa-calendar" style="margin-right:8px;"></i>Entrega</th>
+-                        <th style="width: 20%;"><i class="fa-regular fa-user" style="margin-right:8px;"></i>Requisitante</th>
+-                        <th style="width: 20%;"><i class="fa-solid fa-location-dot" style="margin-right:8px;"></i>Cidade</th>
++                        <th style="width: 16%;"><i class="fa-regular fa-user" style="margin-right:8px;"></i>Requisitante</th>
++                        <th style="width: 14%;"><i class="fa-solid fa-location-dot" style="margin-right:8px;"></i>Cidade</th>
++                        <th style="width: 10%;"><i class="fa-solid fa-file-invoice" style="margin-right:8px;"></i>NF</th>
+                         <th style="width: 13%; text-align: right;"><i class="fa-solid fa-gear" style="margin-right:8px;"></i>Ações</th>
+@@ -1232,3 +1233,3 @@
+                 document.getElementById('tbody-bd-cota').innerHTML = `<tr><td colspan="6" style="padding: 20px; text-align: center; color: var(--text-muted);"><i class="fa-solid fa-spinner fa-spin"></i> Carregando...</td></tr>`;
+-                document.getElementById('tbody-bd-pedi').innerHTML = `<tr><td colspan="6" style="padding: 20px; text-align: center; color: var(--text-muted);"><i class="fa-solid fa-spinner fa-spin"></i> Carregando...</td></tr>`;
++                document.getElementById('tbody-bd-pedi').innerHTML = `<tr><td colspan="7" style="padding: 20px; text-align: center; color: var(--text-muted);"><i class="fa-solid fa-spinner fa-spin"></i> Carregando...</td></tr>`;
+             }
+@@ -1466,2 +1467,3 @@
+                     </td>
++                    <td><div class="cell-content"><div class="cell-main-text">${p['Nº NOTA FISCAL'] || '-'}</div></div></td>
+                     <td style="text-align: right;">
+@@ -1509,3 +1511,3 @@
+             if (window.filteredPedidos.length === 0) {
+-                tbody.innerHTML = `<tr><td colspan="6" style="padding: 20px; text-align: center; color: #768390;">Nenhum registro encontrado.</td></tr>`;
++                tbody.innerHTML = `<tr><td colspan="7" style="padding: 20px; text-align: center; color: #768390;">Nenhum registro encontrado.</td></tr>`;
+                 return;
+@@ -1524,3 +1526,3 @@
+                 document.getElementById('tbody-bd-cota').innerHTML = `<tr><td colspan="6" style="padding: 20px; text-align: center; color: #e5534b;">Erro: ${res.erro}</td></tr>`;
+-                document.getElementById('tbody-bd-pedi').innerHTML = `<tr><td colspan="6" style="padding: 20px; text-align: center; color: #e5534b;">Erro: ${res.erro}</td></tr>`;
++                document.getElementById('tbody-bd-pedi').innerHTML = `<tr><td colspan="7" style="padding: 20px; text-align: center; color: #e5534b;">Erro: ${res.erro}</td></tr>`;
+                 return;
