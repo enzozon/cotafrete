@@ -9,7 +9,7 @@ import threading
 import pytest
 
 from cruzar_nf import sincronizar as sync
-from cruzar_nf.maestro import aplicar_nfs, registrar
+from cruzar_nf.maestro import CAMPO_NF as CAMPO, aplicar_nfs, registrar
 
 D = dt.date
 
@@ -100,11 +100,11 @@ def excel_de(tmp_path, vendas, nome="hse.xlsx"):
 # -- aplicar_nfs ----------------------------------------------------------------
 
 def test_aplicar_grava_so_nf_vazia_por_posicao_com_backup(tmp_path):
-    pedidos = [ped(1), ped(2, NF="999"), ped(1), ped(3)]
+    pedidos = [ped(1), ped(2, **{CAMPO: "999"}), ped(1), ped(3)]
     m = Manager(pedidos, tmp_path / "PEDIDOS.json")
     rel, n = aplicar_nfs(m, [venda(10, 1, 15), venda(20, 2, 25)], gravar=True, dir_backup=str(tmp_path / "bk"))
     assert n == 2                                               # as duas linhas do pedido repetido
-    assert [p.get("NF") for p in pedidos] == ["15", "999", "15", None]
+    assert [p.get(CAMPO) for p in pedidos] == ["15", "999", "15", None]
     assert m.salvos == 1
     assert len(list((tmp_path / "bk").glob("PEDIDOS antes da NF *.json"))) == 1
 
@@ -113,11 +113,11 @@ def test_aplicar_previa_nao_grava(tmp_path):
     pedidos = [ped(1)]
     m = Manager(pedidos, tmp_path / "PEDIDOS.json")
     _, n = aplicar_nfs(m, [venda(10, 1, 15)], gravar=False)
-    assert n == 1 and "NF" not in pedidos[0] and m.salvos == 0
+    assert n == 1 and CAMPO not in pedidos[0] and m.salvos == 0
 
 
 def test_aplicar_sem_mudanca_nao_regrava(tmp_path):
-    m = Manager([ped(1, NF="15")], tmp_path / "PEDIDOS.json")
+    m = Manager([ped(1, **{CAMPO: "15"})], tmp_path / "PEDIDOS.json")
     _, n = aplicar_nfs(m, [venda(10, 1, 15)], gravar=True)
     assert n == 0 and m.salvos == 0
 
@@ -125,7 +125,37 @@ def test_aplicar_sem_mudanca_nao_regrava(tmp_path):
 def test_aplicar_ignora_none_na_lista(tmp_path):
     m = Manager([None, ped(1)], tmp_path / "PEDIDOS.json")
     _, n = aplicar_nfs(m, [venda(10, 1, 15)], gravar=True)
-    assert n == 1 and m.pedidos["PEDIDOS"][1]["NF"] == "15"
+    assert n == 1 and m.pedidos["PEDIDOS"][1][CAMPO] == "15"
+
+
+def test_aplicar_reusa_o_campo_que_ja_existe_com_outro_espaco(tmp_path):
+    m = Manager([ped(1, **{"Nº NOTA FISCAL ": ""})], tmp_path / "PEDIDOS.json")
+    aplicar_nfs(m, [venda(10, 1, 15)], gravar=True)
+    assert m.pedidos["PEDIDOS"][0] == {"PEDIDO": 1, "VALOR ": 100, "Nº NOTA FISCAL ": "15"}
+
+
+def test_aplicar_mais_de_uma_nf_separada_por_barra(tmp_path):
+    m = Manager([ped(1)], tmp_path / "PEDIDOS.json")
+    aplicar_nfs(m, [venda(10, 1, 15), venda(11, 1, 16)], gravar=True)
+    assert m.pedidos["PEDIDOS"][0][CAMPO] == "15 / 16"
+
+
+def test_aplicar_grava_mesmo_com_valor_diferente(tmp_path):
+    m = Manager([ped(1, valor=500)], tmp_path / "PEDIDOS.json")
+    rel, n = aplicar_nfs(m, [venda(10, 1, 15, valor=100)], gravar=True)
+    assert n == 1 and m.pedidos["PEDIDOS"][0][CAMPO] == "15"
+    assert rel["resumo"]["divergencia_de_valor"] == 1
+
+
+def test_aplicar_guarda_so_os_ultimos_backups(tmp_path):
+    bk = tmp_path / "bk"
+    bk.mkdir()
+    for i in range(35):
+        (bk / f"PEDIDOS antes da NF 2026-01-01_00-00-{i:02d}.json").write_text("{}")
+    m = Manager([ped(1)], tmp_path / "PEDIDOS.json")
+    aplicar_nfs(m, [venda(10, 1, 15)], gravar=True, dir_backup=str(bk))
+    backups = sorted(p.name for p in bk.glob("PEDIDOS antes da NF *.json"))
+    assert len(backups) == 30 and "2026-01-01_00-00-00" not in backups[0]
 
 
 def test_aplicar_falha_ao_salvar_levanta(tmp_path):
@@ -172,7 +202,7 @@ def test_primeira_carga_e_incremental_usa_a_base_inteira(tmp_path):
     pedidos = [ped(1)]
     m = Manager(pedidos, tmp_path / "PEDIDOS.json")
     res, _ = rodar(tmp_path, m, [venda(10, 1, 15, emissao="10/01/2025")], D(2025, 1, 1), D(2026, 9, 29))
-    assert res["nfs_gravadas"] == 1 and pedidos[0]["NF"] == "15"
+    assert res["nfs_gravadas"] == 1 and pedidos[0][CAMPO] == "15"
 
     # pedido novo na planilha, com venda ANTIGA (fora da janela incremental): tem que achar
     pedidos.append(ped(2))
@@ -180,7 +210,7 @@ def test_primeira_carga_e_incremental_usa_a_base_inteira(tmp_path):
     assert res["nfs_gravadas"] == 0                               # o 2 não tem venda em lugar nenhum
     pedidos.append(ped(3))
     res, _ = rodar(tmp_path, m, [venda(30, 3, 35, emissao="25/09/2026")], D(2026, 9, 19), D(2026, 10, 1))
-    assert res["nfs_gravadas"] == 1 and pedidos[2]["NF"] == "35"
+    assert res["nfs_gravadas"] == 1 and pedidos[2][CAMPO] == "35"
 
     estado = sync.carregar_estado(tmp_path / "dados")
     assert estado["cobertura"] == [["01/01/2025", "01/10/2026"]]
@@ -197,7 +227,7 @@ def test_pedido_novo_com_venda_antiga_da_base(tmp_path):
           D(2025, 1, 1), D(2026, 9, 29))
     pedidos.append(ped(2))                                       # entrou na planilha depois
     res, _ = rodar(tmp_path, m, [], D(2026, 9, 19), D(2026, 10, 1))
-    assert res["nfs_gravadas"] == 1 and pedidos[1]["NF"] == "25"
+    assert res["nfs_gravadas"] == 1 and pedidos[1][CAMPO] == "25"
 
 
 def test_previa_nao_muda_a_ultima_sincronizacao(tmp_path):
@@ -222,7 +252,7 @@ def test_arquivo_pedidos_le_e_grava_no_formato_do_maestro(tmp_path):
     m = sync.ArquivoPedidos(arq)
     _, n = aplicar_nfs(m, [venda(10, 1, 15)], gravar=True)
     assert n == 1
-    assert json.loads(arq.read_text(encoding="utf-8")) == {"PEDIDOS": [{"PEDIDO": 1, "VALOR ": 100, "NF": "15"}]}
+    assert json.loads(arq.read_text(encoding="utf-8")) == {"PEDIDOS": [{"PEDIDO": 1, "VALOR ": 100, CAMPO: "15"}]}
 
 
 def test_cli_previa_com_excel(tmp_path, capsys):
@@ -233,7 +263,7 @@ def test_cli_previa_com_excel(tmp_path, capsys):
     assert sync.main(["--dados", str(tmp_path / "dados"), "--pedidos", str(arq), "--excel", str(xls),
                       "--de", "01/09/2026", "--ate", "30/09/2026"]) == 0
     assert '"nfs_a_gravar": 1' in capsys.readouterr().out
-    assert "NF" not in json.loads(arq.read_text(encoding="utf-8"))["PEDIDOS"][0]   # prévia
+    assert CAMPO not in json.loads(arq.read_text(encoding="utf-8"))["PEDIDOS"][0]   # prévia
 
 
 # -- registrar (gerenciador) ------------------------------------------------------
@@ -267,7 +297,7 @@ def test_comando_sincroniza_e_avisa_as_telas(tmp_path):
     sio.handlers["comando_sync_nf"]({"clientId": "abc", "de": "01/09/2026", "ate": "30/09/2026"})
     r = sio.ultimo("retorno_sync_nf")
     assert r["sucesso"] and r["clientId"] == "abc" and r["resultado"]["nfs_gravadas"] == 1
-    assert pedidos[0]["NF"] == "15"
+    assert pedidos[0][CAMPO] == "15"
     assert ("planilha_atualizada", None) in sio.emitidos
     assert any(e == "progresso_sync_nf" and d["mensagem"] == "baixando" for e, d in sio.emitidos)
 
@@ -276,7 +306,7 @@ def test_comando_previa_nao_grava(tmp_path):
     pedidos = [ped(1)]
     sio, _, _, _ = montar(tmp_path, pedidos, [venda(10, 1, 15)])
     sio.handlers["comando_sync_nf"]({"clientId": "x", "de": "01/09/2026", "ate": "30/09/2026", "gravar": False})
-    assert sio.ultimo("retorno_sync_nf")["resultado"]["nfs_a_gravar"] == 1 and "NF" not in pedidos[0]
+    assert sio.ultimo("retorno_sync_nf")["resultado"]["nfs_a_gravar"] == 1 and CAMPO not in pedidos[0]
     assert ("planilha_atualizada", None) not in sio.emitidos
 
 
@@ -311,4 +341,4 @@ def test_agendado_usa_a_janela_padrao(tmp_path):
     pedidos = [ped(1)]
     sio, agenda, _, _ = montar(tmp_path, pedidos, [venda(10, 1, 15)])
     agenda.tarefas[0]()
-    assert sio.ultimo("retorno_sync_nf")["resultado"]["origem"] == "agendado" and pedidos[0]["NF"] == "15"
+    assert sio.ultimo("retorno_sync_nf")["resultado"]["origem"] == "agendado" and pedidos[0][CAMPO] == "15"

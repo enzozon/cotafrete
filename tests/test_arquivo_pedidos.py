@@ -14,6 +14,7 @@ from pathlib import Path
 import pytest
 
 from cruzar_nf.arquivo_pedidos import ArquivoPedidosConcorrente, ConflitoGravacao
+from cruzar_nf.maestro import CAMPO_NF as CAMPO
 
 FIXTURE_PM = Path(__file__).parent / "fixtures" / "maestro" / "planilha_manager_servidor_2026-10-01.py"
 
@@ -45,13 +46,13 @@ def gravador(arq, **kw):
 
 def test_grava_no_formato_do_planilha_manager(tmp_path):
     arq = tmp_path / "PEDIDOS.json"
-    escrever_como_o_gerenciador(arq, [ped(1), None, ped(2, NF="999")])
+    escrever_como_o_gerenciador(arq, [ped(1), None, ped(2, **{CAMPO: "999"})])
     _, n = gravador(arq).aplicar_nfs([venda(10, 1, 15)], gravar=True)
     assert n == 1
     texto = arq.read_text(encoding="utf-8")
     assert texto.startswith('{\n "PEDIDOS": [\n  {')          # indent=1, como o planilha_manager
     assert "SÃO LUÍS" in texto                                # acentos preservados
-    assert ler(arq)["PEDIDOS"] == [ped(1, NF="15"), None, ped(2, NF="999")]
+    assert ler(arq)["PEDIDOS"] == [ped(1, **{CAMPO: "15"}), None, ped(2, **{CAMPO: "999"})]
     assert not list(tmp_path.glob("*.tmp"))                   # o temporário não sobra
 
 
@@ -89,7 +90,7 @@ def test_gerenciador_grava_no_meio_e_o_pedido_novo_nao_some(tmp_path):
 
     g.salvar = salvar_com_robo_no_meio
     _, n = g.aplicar_nfs([venda(10, 1, 15), venda(20, 2, 25)], gravar=True)
-    assert [p.get("NF") for p in ler(arq)["PEDIDOS"]] == ["15", "25"]
+    assert [p.get(CAMPO) for p in ler(arq)["PEDIDOS"]] == ["15", "25"]
     assert n == 2 and chamadas["n"] == 2
 
 
@@ -105,7 +106,7 @@ def test_gerenciador_salva_por_cima_depois_e_a_nf_volta(tmp_path):
 
     mensagens = []
     _, n = gravador(arq, dormir=dormir, progresso=mensagens.append).aplicar_nfs([venda(10, 1, 15)], gravar=True)
-    assert ler(arq)["PEDIDOS"] == [ped(1, NF="15"), ped(3)]
+    assert ler(arq)["PEDIDOS"] == [ped(1, **{CAMPO: "15"}), ped(3)]
     assert n == 1 and any("não ficaram gravadas" in m for m in mensagens)
 
 
@@ -173,15 +174,15 @@ def test_o_planilha_manager_do_servidor_enxerga_a_nf_sem_reiniciar(tmp_path):
     (tmp_path / "COTAÇÕES.json").write_text('{"COTAÇÃO": []}', encoding="utf-8")
     pm = carregar_planilha_manager_do_servidor(tmp_path)
     pm.iniciar()
-    assert "NF" not in pm.pedidos["PEDIDOS"][0]
+    assert CAMPO not in pm.pedidos["PEDIDOS"][0]
 
     gravador(tmp_path / "PEDIDOS.json").aplicar_nfs([venda(10, 1, 15)], gravar=True)
 
     pm.iniciar()                                         # o que toda operação do gerenciador faz
-    assert pm.pedidos["PEDIDOS"][0]["NF"] == "15"
+    assert pm.pedidos["PEDIDOS"][0][CAMPO] == "15"
     # e quando o gerenciador salvar de novo (ex.: robô do Coupa adiciona pedido), a NF continua
     pm.adicionar_linhas_pedidos("PEDIDO", [{"pedido": 2, "itens": []}])
-    assert ler(tmp_path / "PEDIDOS.json")["PEDIDOS"][0]["NF"] == "15"
+    assert ler(tmp_path / "PEDIDOS.json")["PEDIDOS"][0][CAMPO] == "15"
     assert len(ler(tmp_path / "PEDIDOS.json")["PEDIDOS"]) == 2
 
 

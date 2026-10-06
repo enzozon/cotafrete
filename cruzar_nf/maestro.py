@@ -21,14 +21,31 @@ Compatível com Python 3.8.
 from __future__ import annotations
 
 import datetime as _dt
+import glob
 import os
 import shutil
 import threading
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from cruzar_nf.cruzar import cruzar
+from cruzar_nf.cruzar import _chave_campo, campo, cruzar
 
 HORARIO_PADRAO = "07:30"
+CAMPO_NF = "Nº NOTA FISCAL"     # mesmo nome da coluna da planilha Excel antiga
+MANTER_BACKUPS = 30
+
+
+def _nome_campo_nf(pedido: Dict[str, Any]) -> str:
+    """O campo como já está no pedido ("Nº NOTA FISCAL " com espaço), ou o padrão."""
+    return next((k for k in pedido if _chave_campo(k) == _chave_campo(CAMPO_NF)), CAMPO_NF)
+
+
+def _guardar_backup(caminho: str, dir_backup: str) -> None:
+    os.makedirs(dir_backup, exist_ok=True)
+    carimbo = _dt.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    shutil.copy2(caminho, os.path.join(dir_backup, f"PEDIDOS antes da NF {carimbo}.json"))
+    antigos = sorted(glob.glob(os.path.join(dir_backup, "PEDIDOS antes da NF *.json")))
+    for velho in antigos[:-MANTER_BACKUPS]:
+        os.remove(velho)
 
 
 def aplicar_nfs(manager: Any, vendas: List[Dict[str, Any]], gravar: bool = False,
@@ -45,19 +62,16 @@ def aplicar_nfs(manager: Any, vendas: List[Dict[str, Any]], gravar: bool = False
         atualizados, relatorio = cruzar(lista, vendas)
         mudancas = []
         for original, novo in zip(lista, atualizados):
-            atual = str(original.get("NF") or "").strip()
+            atual = str(campo(original, CAMPO_NF) or "").strip()
             if so_vazias and atual:
                 continue
             if novo["NF"] and novo["NF"] != atual:
                 mudancas.append((original, novo["NF"]))
         if gravar and mudancas:
             if dir_backup and os.path.exists(manager.caminho_pedidos):
-                os.makedirs(dir_backup, exist_ok=True)
-                carimbo = _dt.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-                shutil.copy2(manager.caminho_pedidos,
-                             os.path.join(dir_backup, f"PEDIDOS antes da NF {carimbo}.json"))
+                _guardar_backup(manager.caminho_pedidos, dir_backup)
             for original, nf in mudancas:
-                original["NF"] = nf
+                original[_nome_campo_nf(original)] = nf
             if not manager.salvar():
                 raise RuntimeError("Não consegui gravar o PEDIDOS.json.")
         return relatorio, len(mudancas)

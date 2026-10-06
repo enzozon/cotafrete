@@ -8,6 +8,7 @@ import json
 import pytest
 
 from cruzar_nf import servico
+from cruzar_nf.maestro import CAMPO_NF as CAMPO
 from cruzar_nf import sincronizar as sync
 
 
@@ -118,7 +119,7 @@ def test_comando_do_portal_grava_a_nf_no_arquivo(tmp_path):
     sio.handlers["comando_sync_nf"]({"clientId": "tela1", "de": "01/09/2026", "ate": "30/09/2026"})
     r = sio.ultimo("retorno_sync_nf")
     assert r["sucesso"] and r["resultado"]["nfs_gravadas"] == 1, r
-    assert json.loads((dados / "PEDIDOS.json").read_text(encoding="utf-8"))["PEDIDOS"][0]["NF"] == "15"
+    assert json.loads((dados / "PEDIDOS.json").read_text(encoding="utf-8"))["PEDIDOS"][0][CAMPO] == "15"
     assert ("planilha_atualizada", None) in sio.emitidos
     assert sync.carregar_estado(dados)["ultima"]["nfs_gravadas"] == 1
     assert len(list((tmp_path / "bk").glob("PEDIDOS antes da NF *.json"))) == 1
