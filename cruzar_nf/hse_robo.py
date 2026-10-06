@@ -29,7 +29,7 @@ import re
 import tempfile
 import time
 from pathlib import Path
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 URL_HSE = "https://app.hsesistemas.com.br/"
 ESPERA_LOGIN_MANUAL_S = 15 * 60
@@ -58,6 +58,27 @@ try { $('.datepicker').hide(); } catch (e) {}
 const antes = (d.body.innerText.match(/Filtros:[^\n]*/) || [''])[0];
 d.getElementById('btConsultar').click();
 return antes;
+"""
+
+# 2ª etapa do login: "Selecione uma empresa e uma filial" + Entrar de novo.
+# A filial é a matriz: na tela de vendas o robô marca as três de qualquer jeito.
+JS_EMPRESA_FILIAL = r"""
+const d = document, emp = d.getElementById('empresa'), fil = d.getElementById('filial');
+const vis = e => !!e && !!(e.offsetWidth || e.offsetHeight || e.getClientRects().length);
+if (!vis(emp) || !vis(fil)) return false;
+if (!emp.value) {
+  const o = [...emp.options].find(o => o.value);
+  if (!o) return false;
+  emp.value = o.value;
+  emp.dispatchEvent(new Event('change', {bubbles: true}));
+  return false;
+}
+const matriz = [...fil.options].find(o => /MATRIZ/i.test(o.text)) || [...fil.options].find(o => o.value);
+if (!matriz) return false;
+fil.value = matriz.value;
+fil.dispatchEvent(new Event('change', {bubbles: true}));
+d.getElementById('validarLogin').click();
+return true;
 """
 
 JS_RESULTADO = r"""
@@ -103,26 +124,16 @@ class RoboHSE:
 
         self.pasta_download.mkdir(parents=True, exist_ok=True)
         ops = Options()
-        ops.add_argument("--no-sandbox")
-        ops.add_argument("--disable-dev-shm-usage")
         ops.add_argument("--window-size=1600,900")
         if self.headless:
-            ops.add_argument("--headless")
+            # o headless antigo não passa do login; o novo (Chrome 109+) baixa como o normal.
+            # Sem setDownloadBehavior: com ele o 2º download do mesmo site trava.
+            ops.add_argument("--headless=new")
         if self.perfil:
             ops.add_argument(f"--user-data-dir={self.perfil}")
-        ops.add_experimental_option("prefs", {
-            "download.default_directory": str(self.pasta_download),
-            "download.prompt_for_download": False,
-            "download.directory_upgrade": True,
-            "safebrowsing.enabled": True,
-        })
+        ops.add_experimental_option("prefs", preferencias_chrome(self.pasta_download))
         self.driver = webdriver.Chrome(options=ops)
         self.driver.set_page_load_timeout(60)
-        try:   # sem janela, o Chrome só baixa com essa permissão explícita
-            self.driver.execute_cdp_cmd("Page.setDownloadBehavior",
-                                        {"behavior": "allow", "downloadPath": str(self.pasta_download)})
-        except Exception:
-            pass
 
     def fechar(self) -> None:
         if self.driver is not None:
@@ -156,10 +167,15 @@ class RoboHSE:
         else:
             self.progresso("Faça o login no HSE na janela do robô...")
             limite = time.time() + ESPERA_LOGIN_MANUAL_S
+        cliques_empresa = 0
         while time.time() < limite:
             time.sleep(2)
             if not self._tem("#frmLogin") and self._tem("iframe"):
                 return
+            if self.usuario and self.senha and cliques_empresa < 3 \
+                    and self.driver.execute_script(JS_EMPRESA_FILIAL):
+                cliques_empresa += 1
+                self.progresso("Escolhendo a empresa e a filial...")
         if self.usuario and self.senha:
             raise ErroHSE("O HSE não aceitou o login do robô: confira HSE_USUARIO e HSE_SENHA no .env.")
         raise ErroHSE(f"Ninguém fez o login no HSE em {ESPERA_LOGIN_MANUAL_S // 60} minutos.")
@@ -221,18 +237,52 @@ class RoboHSE:
 
     # -- tudo -------------------------------------------------------------
     def exportar(self, de: _dt.date, ate: _dt.date) -> Dict[str, Any]:
+        """Um Excel por mês: com período grande o HSE só mostra o aviso e o Excel vem vazio."""
+        from cruzar_nf.vendas_excel import ler_excel_vendas
+
         self.abrir()
         try:
             self.entrar()
             self.progresso("Abrindo Venda (pedido)...")
             self.abrir_vendas()
-            self.progresso(f"Consultando {de:%d/%m/%Y} a {ate:%d/%m/%Y}...")
-            linhas = self.consultar(de, ate)
-            self.progresso(f"A tela do HSE mostrou {linhas} vendas. Baixando o Excel...")
-            arquivo = self.baixar_excel()
-            return {"arquivo": str(arquivo), "linhas_tela": linhas}
+            arquivos, total = [], 0
+            for ini, fim in janelas_mensais(de, ate):
+                periodo = f"{ini:%d/%m/%Y} a {fim:%d/%m/%Y}"
+                tela = self.consultar(ini, fim) or 0
+                self.progresso(f"{periodo}: {tela} vendas na tela.")
+                if not tela:
+                    continue
+                arquivo = self.baixar_excel()
+                no_excel = len(ler_excel_vendas(arquivo))
+                if no_excel != tela:
+                    raise ErroHSE(f"{periodo}: a tela do HSE mostrou {tela} vendas e o Excel trouxe "
+                                  f"{no_excel}. Nada foi gravado.")
+                arquivos.append(str(arquivo))
+                total += tela
+            return {"arquivos": arquivos, "linhas_tela": total}
         finally:
             self.fechar()
+
+
+def janelas_mensais(de: _dt.date, ate: _dt.date) -> List[Tuple[_dt.date, _dt.date]]:
+    janelas = []
+    ini = de
+    while ini <= ate:
+        proximo = (ini.replace(day=28) + _dt.timedelta(days=4)).replace(day=1)
+        janelas.append((ini, min(proximo - _dt.timedelta(days=1), ate)))
+        ini = proximo
+    return janelas
+
+
+def preferencias_chrome(pasta_download: "str | Path") -> Dict[str, Any]:
+    return {
+        "download.default_directory": str(pasta_download),
+        "download.prompt_for_download": False,
+        "download.directory_upgrade": True,
+        "safebrowsing.enabled": True,
+        # sem isso o Chrome segura o 2º download do mesmo site esperando permissão
+        "profile.default_content_setting_values.automatic_downloads": 1,
+    }
 
 
 def main(argv: Optional[list] = None) -> int:
@@ -263,9 +313,9 @@ def main(argv: Optional[list] = None) -> int:
         print(f"[ERRO] {e}", file=sys.stderr)
         return 1
     from cruzar_nf.vendas_excel import ler_excel_vendas, resumo_excel
-    vendas = ler_excel_vendas(res["arquivo"])
+    vendas = [v for arq in res["arquivos"] for v in ler_excel_vendas(arq)]
     resumo = resumo_excel(vendas)
-    print(json.dumps({"arquivo": res["arquivo"], "linhas_na_tela": res["linhas_tela"], "excel": resumo,
+    print(json.dumps({"arquivos": res["arquivos"], "linhas_na_tela": res["linhas_tela"], "excel": resumo,
                       "bate": res["linhas_tela"] == len(vendas)}, ensure_ascii=False, indent=1))
     for v in vendas[:10]:
         print(f"  {v.get('Filial')} | venda {v.get('Código')} | OC {v.get('Ordem Compra')} | NF {v.get('NF')} | {v.get('Total Líq.')}")
