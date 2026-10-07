@@ -13,9 +13,10 @@ Roda num processo à parte, no servidor, ao lado do gerenciador:
 
 Variáveis no .env (o mesmo do gerenciador serve):
     URL_SERVIDOR        portal (padrão: https://maestro.ventura.inf.br)
-    SYNC_NF_TOKEN       senha do serviço — igual à configurada na Render
-    SYNC_NF_DADOS       pasta do PEDIDOS.json / vendas_hse.json / sync_nf.json
-    SYNC_NF_BACKUPS     pasta dos backups do PEDIDOS.json
+    SYNC_NF_TOKEN       senha do serviço — igual à configurada no portal
+    SYNC_NF_DADOS       pasta da base (vendas_hse.json / sync_nf.json)
+    SYNC_NF_PEDIDOS     o PEDIDOS.json do Maestro (o mesmo da linha de comando)
+    SYNC_NF_BACKUPS     pasta dos backups do PEDIDOS.json (padrão: SYNC_NF_DADOSackups)
     SYNC_NF_HORARIO     horário da rodada diária (padrão 07:30; vazio = sem)
     SYNC_NF_LOG         arquivo de log (opcional)
     SYNC_NF_EXCEL       (opcional) Excel de Venda (pedido) já baixado: sincroniza
@@ -35,8 +36,6 @@ import time
 from typing import Any, Dict, Optional
 
 URL_PADRAO = "https://maestro.ventura.inf.br"   # portal no Cloudflare Tunnel (a Render saiu do ar)
-DADOS_PADRAO = r"\\SERVIDOR2\Publico\ALLAN\database\Banco-de-dados"
-BACKUPS_PADRAO = r"\\SERVIDOR2\Publico\ALLAN\database\backups_excel"
 ESPERA_RECONEXAO_S = 30
 
 
@@ -49,13 +48,15 @@ def config_do_ambiente(ambiente: Optional[Dict[str, str]] = None) -> Dict[str, A
     token = (amb.get("SYNC_NF_TOKEN") or "").strip()
     if not token:
         raise ConfigInvalida("Falta SYNC_NF_TOKEN no .env (a mesma senha configurada no portal).")
+    # as mesmas pastas e padrões da linha de comando (SincronizarNF.bat), lidas do mesmo .env
+    from cruzar_nf.sincronizar import DADOS_PADRAO, PEDIDOS_PADRAO
     dados = amb.get("SYNC_NF_DADOS") or DADOS_PADRAO
     return {
         "url": amb.get("URL_SERVIDOR") or URL_PADRAO,
         "token": token,
         "caminho_banco_dados": dados,
-        "caminho_pedidos": os.path.join(dados, "PEDIDOS.json"),
-        "caminho_backups": amb.get("SYNC_NF_BACKUPS") or BACKUPS_PADRAO,
+        "caminho_pedidos": amb.get("SYNC_NF_PEDIDOS") or PEDIDOS_PADRAO,
+        "caminho_backups": amb.get("SYNC_NF_BACKUPS") or os.path.join(dados, "backups"),
         "horario": amb.get("SYNC_NF_HORARIO", "07:30").strip(),
         "log": amb.get("SYNC_NF_LOG") or None,
         # plano B manual: usa um Excel de Venda (pedido) já baixado em vez do robô do HSE
