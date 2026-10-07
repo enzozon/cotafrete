@@ -259,6 +259,45 @@ def test_rodada_com_varios_excel(tmp_path):
     assert len(list((tmp_path / "dados" / sync.PASTA_HISTORICO).glob("vendas_hse *.xlsx"))) == 2
 
 
+# -- trava entre processos (botão do portal x tarefa agendada) -----------------
+
+def test_trava_recusa_segunda_rodada_e_libera_no_fim(tmp_path):
+    (tmp_path / "dados").mkdir()
+    m = Manager([ped(1)], tmp_path / "PEDIDOS.json")
+    with sync.trava(tmp_path / "dados", "tarefa agendada"):
+        with pytest.raises(sync.SincronizacaoEmAndamento, match="tarefa agendada"):
+            rodar(tmp_path, m, [venda(10, 1, 15)], D(2026, 9, 1), D(2026, 9, 30))
+    res, _ = rodar(tmp_path, m, [venda(10, 1, 15)], D(2026, 9, 1), D(2026, 9, 30))
+    assert res["nfs_gravadas"] == 1
+    assert not (tmp_path / "dados" / sync.ARQ_TRAVA).exists()
+
+
+def test_trava_e_liberada_quando_a_rodada_falha(tmp_path):
+    (tmp_path / "dados").mkdir()
+    m = Manager([ped(1)], tmp_path / "PEDIDOS.json")
+
+    def robo_quebrado(_d, _a, _p):
+        raise RuntimeError("HSE fora do ar")
+
+    with pytest.raises(RuntimeError, match="HSE fora do ar"):
+        sync.sincronizar(tmp_path / "dados", m, D(2026, 9, 1), D(2026, 9, 30), robo_quebrado,
+                         progresso=lambda _m: None)
+    assert not (tmp_path / "dados" / sync.ARQ_TRAVA).exists()
+
+
+def test_trava_velha_de_processo_morto_nao_bloqueia(tmp_path):
+    import os
+    import time
+    (tmp_path / "dados").mkdir()
+    velha = tmp_path / "dados" / sync.ARQ_TRAVA
+    velha.write_text("{}", encoding="utf-8")
+    antigo = time.time() - sync.TRAVA_VALIDADE_S - 60
+    os.utime(str(velha), (antigo, antigo))
+    m = Manager([ped(1)], tmp_path / "PEDIDOS.json")
+    res, _ = rodar(tmp_path, m, [venda(10, 1, 15)], D(2026, 9, 1), D(2026, 9, 30))
+    assert res["nfs_gravadas"] == 1 and not velha.exists()
+
+
 def test_cli_le_as_pastas_do_ambiente_e_grava_com_seguranca(tmp_path, monkeypatch, capsys):
     arq = tmp_path / "PEDIDOS.json"
     arq.write_text(json.dumps({"PEDIDOS": [ped(1)]}), encoding="utf-8")

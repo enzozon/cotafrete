@@ -22,11 +22,13 @@ from __future__ import annotations
 import argparse
 import datetime as _dt
 import json
+import os
 import shutil
 import sys
 import threading
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple
 
 from cruzar_nf.base_vendas import FORMATO_DATA, BaseVendas, data_br
 from cruzar_nf.cruzar import gravar_json, ler_json_com_chave
@@ -35,6 +37,8 @@ from cruzar_nf.vendas_excel import ler_excel_vendas, resumo_excel
 
 ARQ_BASE = "vendas_hse.json"
 ARQ_ESTADO = "sync_nf.json"
+ARQ_TRAVA = "sync_nf.trava"
+TRAVA_VALIDADE_S = 2 * 60 * 60   # uma rodada leva minutos; trava mais velha é de processo que morreu
 PASTA_HISTORICO = "cruzamento_nf"
 SOBREPOSICAO_DIAS = 10        # NF emitida depois / OC corrigida depois
 JANELA_SEM_HISTORICO_DIAS = 30
@@ -112,6 +116,57 @@ def registrar_falha(pasta: "str | Path", de: _dt.date, ate: _dt.date, erro: str,
         pass   # registrar a falha não pode gerar outra
 
 
+# -- trava entre processos -----------------------------------------------------
+
+class SincronizacaoEmAndamento(RuntimeError):
+    pass
+
+
+def _quem_trava(arq: Path) -> str:
+    try:
+        info = json.loads(arq.read_text(encoding="utf-8"))
+        return f"{info.get('origem', '?')}, desde {info.get('desde', '?')}"
+    except (OSError, ValueError):
+        return "origem desconhecida"
+
+
+@contextmanager
+def trava(pasta: "str | Path", origem: str) -> Iterator[None]:
+    """Uma rodada por vez entre o serviço (botão do portal) e o SincronizarNF.bat
+    (tarefa agendada): os dois usam a mesma pasta de dados. O arquivo é criado
+    de forma atômica (O_EXCL); se o processo morrer, a trava vence em TRAVA_VALIDADE_S."""
+    arq = Path(pasta) / ARQ_TRAVA
+    for _ in range(2):
+        try:
+            fd = os.open(str(arq), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            break
+        except FileExistsError:
+            try:
+                velha = _dt.datetime.now().timestamp() - arq.stat().st_mtime > TRAVA_VALIDADE_S
+            except FileNotFoundError:
+                continue                    # a outra rodada acabou de liberar
+            if not velha:
+                raise SincronizacaoEmAndamento(
+                    f"Já existe uma sincronização rodando ({_quem_trava(arq)}). "
+                    "Tente de novo quando ela terminar.")
+            try:
+                arq.unlink()
+            except FileNotFoundError:
+                pass
+    else:
+        raise SincronizacaoEmAndamento("Já existe uma sincronização rodando. Tente de novo quando ela terminar.")
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        json.dump({"origem": origem, "pid": os.getpid(),
+                   "desde": _dt.datetime.now().strftime("%d/%m/%Y %H:%M")}, f, ensure_ascii=False)
+    try:
+        yield
+    finally:
+        try:
+            arq.unlink()
+        except FileNotFoundError:
+            pass
+
+
 # -- rodada -------------------------------------------------------------------
 
 def _guardar_excel(arquivo: Path, pasta_hist: Path, de: _dt.date, ate: _dt.date) -> Path:
@@ -134,7 +189,14 @@ def sincronizar(pasta: "str | Path", manager: Any, de: _dt.date, ate: _dt.date,
                 exportar: Callable[..., Dict[str, Any]], gravar: bool = True,
                 dir_backup: Optional[str] = None, progresso: Callable[[str], None] = print,
                 origem: str = "manual") -> Dict[str, Any]:
-    pasta = Path(pasta)
+    with trava(pasta, origem):
+        return _sincronizar(Path(pasta), manager, de, ate, exportar, gravar, dir_backup, progresso, origem)
+
+
+def _sincronizar(pasta: Path, manager: Any, de: _dt.date, ate: _dt.date,
+                 exportar: Callable[..., Dict[str, Any]], gravar: bool,
+                 dir_backup: Optional[str], progresso: Callable[[str], None],
+                 origem: str) -> Dict[str, Any]:
     progresso(f"Exportando as vendas do HSE de {_fmt(de)} a {_fmt(ate)}...")
     exportado = exportar(de, ate, progresso)
     arquivos = [Path(a) for a in exportado.get("arquivos", [exportado.get("arquivo")]) if a]

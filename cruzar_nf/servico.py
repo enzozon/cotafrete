@@ -12,7 +12,7 @@ Roda num processo à parte, no servidor, ao lado do gerenciador:
   gerenciador recarrega o PEDIDOS.json quando o arquivo muda.
 
 Variáveis no .env (o mesmo do gerenciador serve):
-    URL_SERVIDOR        portal (padrão: o da Render)
+    URL_SERVIDOR        portal (padrão: https://maestro.ventura.inf.br)
     SYNC_NF_TOKEN       senha do serviço — igual à configurada na Render
     SYNC_NF_DADOS       pasta do PEDIDOS.json / vendas_hse.json / sync_nf.json
     SYNC_NF_BACKUPS     pasta dos backups do PEDIDOS.json
@@ -34,7 +34,7 @@ import threading
 import time
 from typing import Any, Dict, Optional
 
-URL_PADRAO = "https://portaismaestro-ved1.onrender.com"
+URL_PADRAO = "https://maestro.ventura.inf.br"   # portal no Cloudflare Tunnel (a Render saiu do ar)
 DADOS_PADRAO = r"\\SERVIDOR2\Publico\ALLAN\database\Banco-de-dados"
 BACKUPS_PADRAO = r"\\SERVIDOR2\Publico\ALLAN\database\backups_excel"
 ESPERA_RECONEXAO_S = 30
