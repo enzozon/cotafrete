@@ -1,0 +1,346 @@
+﻿<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="UTF-8"><!--[if gte mso 9]><xml><x:ExcelWorkbook><x:ExcelWorksheets><x:ExcelWorksheet><x:Name>Worksheet</x:Name><x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions></x:ExcelWorksheet></x:ExcelWorksheets></x:ExcelWorkbook></xml><![endif]--></head><body><style>td.text {mso-number-format:\@;}</style><table>
+	<style>	
+		.report-chart .flot-chart {
+			width:160px; 
+			height: 160px;
+			text-align: center;
+			margin: 0 auto;
+			padding-left: 5px;
+			padding-right: 5px;
+			margin-bottom: 200px;
+		}
+
+		.report-chart .flot-chart .legendTitle {
+			font-weight: bold;
+		}
+
+		.report-chart .flot-chart-content .legend {
+			position: relative;
+    		top: 160px;
+			
+		}
+
+		.legendTable {
+			width:130px;
+			margin-left:2px;
+		}
+		.legendTableLebal {
+			text-overflow:ellipsis; 
+			overflow:hidden;
+			width:60%;
+			text-align: left;
+			white-space: nowrap;
+			text-overflow: ellipsis;
+			overflow: hidden;
+			max-width: 1px;
+			font-size: 80%;
+		}
+		.legendValue {
+			text-align: right;
+			width:40%;
+		}
+
+		/*.flot-chart .legend {
+			padding-top:50px;
+		}*/
+		/*.flot-chart .legendLabel, .flot-chart .legendColorBox { 
+			padding-top:5px;
+		}​*/
+
+	</style>
+	<div style="width:100%; overflow:auto;"><div class="reportFiltros noprint" style="font-size:12px; text-align:left; margin:5px;"><span class="filtrosCaption">Filtros:</span><span class="reportFiltroItem Filial">Filial: 1-VENTURA MATRIZ,2-ALIANCA COMERCIO DE TECNOLOGIAS LTDA,3-UNIAO COMERCIO DE INFORMATICA</span><span class="reportFiltroItem DatadeEmissao">Data de Emissão: 29/09/2026</span><span class="reportFiltroItem Custo">Custo:  Total</span></div>
+		<table id="listaPedidos" class="table table-striped table-borderless table-hover reportTable small" style="margin-bottom:0px; max-width:100%;">
+			<thead>
+				
+				
+				<tr id="headerNormal">
+					
+					<th id="col2" class="checkboxColumn coluna" style="vertical-align:middle; text-align:center; width:35px; display:none; padding:0 5px;">
+</th>
+					<th id="col3" class="coluna" style="vertical-align:middle; text-align:center; width:50px">Tipo</th>
+					<th id="col4" class="coluna" style="cursor:pointer;vertical-align:middle; text-align:center; width:100px" data-sort-type="0">Código<i class="fa fa-sort sort-arrow noprint" style="color:lightgray;"></i></th>
+					<th id="col5" class="checkboxSeparacao coluna" style="vertical-align:middle; text-align:center; width:16px; display:none; padding:0px;"><i class="fa fa-print" style=""></i></th>
+					<th id="col6" class="coluna" style="vertical-align:middle; text-align:center; width:80px" data-colname="pedCompra"><i class="fa fa-times fa-fw pull-right ocultarColuna" title="ocultar coluna"></i>Ped.Compra</th>
+					<th id="col7" class="coluna" style="cursor:pointer;vertical-align:middle; text-align:left; width:70px; display:none;" data-colname="pedEcommerce" data-sort-type="1"><i class="fa fa-times fa-fw pull-right ocultarColuna" title="ocultar coluna"></i>Ped.Ecomm.<i class="fa fa-sort sort-arrow noprint" style="color:lightgray;"></i></th>
+					<th id="col8" class="coluna" style="cursor:pointer;vertical-align:middle; text-align:center; width:80px" data-sort-type="2" data-sort="down">Emissão<i class="fa fa-sort-down sort-arrow noprint" style="color:blue;"></i></th>
+					<th id="col9" class="coluna" style="cursor:pointer;vertical-align:middle; text-align:center; width:80px; display:none;" data-colname="previsao" data-sort-type="1"><i class="fa fa-times fa-fw pull-right ocultarColuna" title="ocultar coluna"></i>Previsão<i class="fa fa-sort sort-arrow noprint" style="color:lightgray;"></i></th>
+					<th id="col10" class="coluna" style="vertical-align:middle; text-align:center; width:80px; display:none;" data-colname="venda"><i class="fa fa-times fa-fw pull-right ocultarColuna" title="ocultar coluna"></i>Venda</th>
+					<th id="col11" class="coluna" style="vertical-align:middle; text-align:center; width:90px" data-colname="ordemCompra" data-ocultar-padrao="1"><i class="fa fa-times fa-fw pull-right ocultarColuna" title="ocultar coluna"></i>Ordem Compra</th>
+					<th id="col12" class="coluna" style="vertical-align:middle; text-align:left; min-width:150px; padding-left:15px;">Cliente</th>
+					<th id="col13" class="coluna" style="vertical-align:middle; text-align:left; width:120px; display:none;" data-colname="celular"><i class="fa fa-times fa-fw pull-right ocultarColuna" title="ocultar coluna"></i>Celular</th>
+					<th id="col14" class="coluna" style="cursor:pointer;vertical-align:middle; text-align:left; width:200px; display:none;" data-colname="endereco" data-sort-type="1"><i class="fa fa-times fa-fw pull-right ocultarColuna" title="ocultar coluna"></i>Estado/Cidade/Bairro<i class="fa fa-sort sort-arrow noprint" style="color:lightgray;"></i></th>
+					<th id="col15" class="coluna" style="cursor:pointer;vertical-align:middle; text-align:left; width:80px; display:none;" data-colname="cnpj" data-ocultar-padrao="1" data-sort-type="1"><i class="fa fa-times fa-fw pull-right ocultarColuna" title="ocultar coluna"></i>CNPJ/CPF<i class="fa fa-sort sort-arrow noprint" style="color:lightgray;"></i></th>
+					<th id="col16" class="coluna" style="cursor:pointer;vertical-align:middle; min-width:50px; display:none;" data-colname="endEntrega" data-ocultar-padrao="1" data-sort-type="1"><i class="fa fa-times fa-fw pull-right ocultarColuna" title="ocultar coluna"></i>End.Entrega<i class="fa fa-sort sort-arrow noprint" style="color:lightgray;"></i></th>
+					<th id="col17" class="coluna" style="vertical-align:middle; min-width:80px; display:none;" data-colname="vendedor"><i class="fa fa-times fa-fw pull-right ocultarColuna" title="ocultar coluna"></i>Vendedor</th>
+					<th id="col18" class="coluna" style="cursor:pointer;vertical-align:middle; text-align:right; width:90px" data-colname="totalBruto" data-sort-type="0"><i class="fa fa-times fa-fw pull-right ocultarColuna" title="ocultar coluna"></i>Total Bruto<i class="fa fa-sort sort-arrow noprint" style="color:lightgray;"></i></th>
+					<th id="col19" class="coluna" style="cursor:pointer;vertical-align:middle; text-align:right; width:80px; display:none;" data-colname="desconto" data-sort-type="0"><i class="fa fa-times fa-fw pull-right ocultarColuna" title="ocultar coluna"></i>Desc/Acres.<i class="fa fa-sort sort-arrow noprint" style="color:lightgray;"></i></th>
+					<th id="col20" class="coluna" style="cursor:pointer;vertical-align:middle; text-align:center; width:60px; display:none;" data-colname="descontoPercent" data-sort-type="0"><i class="fa fa-times fa-fw pull-right ocultarColuna" title="ocultar coluna"></i>%<i class="fa fa-sort sort-arrow noprint" style="color:lightgray;"></i></th>
+					<th id="col21" class="coluna" style="cursor:pointer;vertical-align:middle; text-align:right; width:80px; display:none;" data-colname="frete" data-sort-type="0"><i class="fa fa-times fa-fw pull-right ocultarColuna" title="ocultar coluna"></i>Frete<i class="fa fa-sort sort-arrow noprint" style="color:lightgray;"></i></th>
+					<th id="col22" class="coluna" style="cursor:pointer;vertical-align:middle; text-align:right; width:90px; display:none;" data-colname="subtotal" data-sort-type="0"><i class="fa fa-times fa-fw pull-right ocultarColuna" title="ocultar coluna"></i>Subtotal<i class="fa fa-sort sort-arrow noprint" style="color:lightgray;"></i></th>
+					<th id="col23" class="coluna" style="cursor:pointer;vertical-align:middle; text-align:right; width:80px; display:none;" data-colname="creditos" data-sort-type="0"><i class="fa fa-times fa-fw pull-right ocultarColuna" title="ocultar coluna"></i>Créditos<i class="fa fa-sort sort-arrow noprint" style="color:lightgray;"></i></th>
+					<th id="col24" class="coluna" style="cursor:pointer;vertical-align:middle; text-align:right; width:80px; display:none;" data-colname="cashback" data-ocultar-padrao="1" data-sort-type="0"><i class="fa fa-times fa-fw pull-right ocultarColuna" title="ocultar coluna"></i>Cashback<i class="fa fa-sort sort-arrow noprint" style="color:lightgray;"></i></th>
+					<th id="col25" class="coluna" style="cursor:pointer;vertical-align:middle; text-align:right; width:90px; display:none;" data-colname="totalLiquido" data-sort-type="0"><i class="fa fa-times fa-fw pull-right ocultarColuna" title="ocultar coluna"></i>Total Líq.<i class="fa fa-sort sort-arrow noprint" style="color:lightgray;"></i></th>
+					<th id="col26" class="coluna" style="cursor:pointer;vertical-align:middle; text-align:right; width:90px; display:none;" data-colname="custo" data-sort-type="0"><i class="fa fa-times fa-fw pull-right ocultarColuna" title="ocultar coluna"></i>CMV<i class="fa fa-sort sort-arrow noprint" style="color:lightgray;"></i></th>
+					<th id="col27" class="coluna" style="cursor:pointer;vertical-align:middle; text-align:right; width:90px; display:none;" data-colname="margem" data-sort-type="0"><i class="fa fa-times fa-fw pull-right ocultarColuna" title="ocultar coluna"></i>Margem<i class="fa fa-sort sort-arrow noprint" style="color:lightgray;"></i></th>
+					<th id="col28" class="coluna" style="vertical-align:middle; text-align:center; width:70px; display:none;" data-colname="valorIpi"><i class="fa fa-times fa-fw pull-right ocultarColuna" title="ocultar coluna"></i>IPI</th>
+					<th id="col29" class="coluna" style="vertical-align:middle; text-align:center; width:70px; display:none;" data-colname="valorIcmsSt"><i class="fa fa-times fa-fw pull-right ocultarColuna" title="ocultar coluna"></i>ST</th>
+					<th id="col30" class="truncateTD coluna" title="Não Entregue" style="cursor:pointer;vertical-align:middle; text-align:right; width:90px; padding-left:15px;; display:none;" data-colname="naoEntregue" data-sort-type="0"><i class="fa fa-times fa-fw pull-right ocultarColuna" title="ocultar coluna"></i>Não Entregue<i class="fa fa-sort sort-arrow noprint" style="color:lightgray;"></i></th>
+					<th id="col31" class="coluna" style="cursor:pointer;vertical-align:middle; text-align:center; width:80px; display:none;" data-colname="peso" data-sort-type="0"><i class="fa fa-times fa-fw pull-right ocultarColuna" title="ocultar coluna"></i>Peso<i class="fa fa-sort sort-arrow noprint" style="color:lightgray;"></i></th>
+					<th id="col32" class="coluna" style="cursor:pointer;vertical-align:middle; text-align:center; width:80px" data-colname="pedPagamento" data-sort-type="0"><i class="fa fa-times fa-fw pull-right ocultarColuna" title="ocultar coluna"></i>Pgto<i class="fa fa-sort sort-arrow noprint" style="color:lightgray;"></i></th>
+					<th id="col33" class="coluna" style="vertical-align:middle; text-align:center; width:60px; max-width:60px; display:none;" data-colname="statusBaixa"><i class="fa fa-times fa-fw pull-right ocultarColuna" title="ocultar coluna"></i>Status bx</th>
+					<th id="col34" class="coluna" style="cursor:pointer;vertical-align:middle; text-align:center; width:180px; max-width:180px; display:none;" data-colname="statusEntrega" data-sort-type="1"><i class="fa fa-times fa-fw pull-right ocultarColuna" title="ocultar coluna"></i>Status Entrega<i class="fa fa-sort sort-arrow noprint" style="color:lightgray;"></i></th>
+					<th id="col35" class="coluna" style="cursor:pointer;vertical-align:middle; width:80px; display:none;" data-colname="filial" data-sort-type="1"><i class="fa fa-times fa-fw pull-right ocultarColuna" title="ocultar coluna"></i>Filial<i class="fa fa-sort sort-arrow noprint" style="color:lightgray;"></i></th>
+					<th id="col36" class="coluna" style="cursor:pointer;vertical-align:middle; text-align:center; width:80px; display:none;" data-colname="area" data-sort-type="1"><i class="fa fa-times fa-fw pull-right ocultarColuna" title="ocultar coluna"></i>Área<i class="fa fa-sort sort-arrow noprint" style="color:lightgray;"></i></th>
+					<th id="col37" class="coluna" style="cursor:pointer;vertical-align:middle; text-align:center; width:80px" data-colname="nfe" data-sort-type="0"><i class="fa fa-times fa-fw pull-right ocultarColuna" title="ocultar coluna"></i>NF<i class="fa fa-sort sort-arrow noprint" style="color:lightgray;"></i></th>
+					<th id="col38" class="coluna" style="vertical-align:middle; text-align:center; width:16px" data-colname="canhoto"><i class="fa fa-times fa-fw pull-right ocultarColuna" title="ocultar coluna"></i><i class="fa fa-check" style=""></i><span style="display:none">Canhoto</span></th>
+					<th id="col39" class="coluna" style="vertical-align:middle; min-width:110px; display:none;" data-colname="transportadora" data-ocultar-padrao="1"><i class="fa fa-times fa-fw pull-right ocultarColuna" title="ocultar coluna"></i>Transportadora</th>
+				</tr>
+			</thead>
+			<tbody>
+				<tr style="" onmouseenter="exibeCanhoto(this,14604);" onmouseleave="ocultaCanhoto(this,14604);">
+					
+					<td class="align-middle checkboxColumn" style="text-align:center; display:none; padding:0px;">
+</td>
+					<td class="align-middle " style="text-align:center; ">VEN</td>
+					<td class="align-middle " style="text-align:center; ">4617<i class="fa fa-search pull-right noprint" style="width:8px; margin-left:-8px; margin-top:2px; color:blue; font-size:100%;" data-toggle="tooltip" data-html="false" data-placement="right" title="" data-original-title="Obs: PRAZO DE ENTREGA DE 07 Á 12  DIAS "></i></td>
+					<td class="align-middle checkboxSeparacao" style="text-align:center; display:none; padding:0px;">
+</td>
+					<td class="align-middle " style="text-align:center" data-colname="pedCompra">6976</td>
+					<td class="align-middle " style="text-align:center; display:none;" data-colname="pedEcommerce">0</td>
+					<td class="align-middle " style="text-align:center;">29/09/2026</td>
+					<td class="align-middle " style="text-align:center; display:none;" data-colname="previsao">29/09/2026</td>
+					<td class="align-middle " style="text-align:center;; display:none;" data-colname="venda">29/09/2026</td>
+					<td class="align-middle " style="text-align:center" data-colname="ordemCompra">4500785593</td>
+					<td class="align-middle truncateTD" title="CLIENTE EXEMPLO UM LTDA" style="text-align:left" onmouseenter="$(this).prop('title', $(this).text())">	<a>CLIENTE EXEMPLO UM LTDA</a></td>
+					<td class="align-middle " style="text-align:left; display:none;" data-colname="celular"></td>
+					<td class="align-middle truncateTD" title="ES / Serra / BAIRRO EXEMPLO" style="text-align:left; display:none;" data-colname="endereco" onmouseenter="$(this).prop('title', $(this).text())">ES / Serra / BAIRRO EXEMPLO</td>
+					<td class="align-middle " style="; display:none;" data-colname="cnpj">11111111000191</td>
+					<td class="align-middle truncateTD" style="; display:none;" data-colname="endEntrega" onmouseenter="$(this).prop('title', $(this).text())"></td>
+					<td class="align-middle truncateTD" title="VENDEDOR EXEMPLO" style="text-align:left; display:none;" data-colname="vendedor" onmouseenter="$(this).prop('title', $(this).text())">VENDEDOR EXEMPLO</td>
+					<td class="align-middle " style="text-align:right;" data-colname="totalBruto">2.351,800000</td>
+					<td class="align-middle " style="text-align:right;; display:none;" data-colname="desconto">0,000000</td>
+					<td class="align-middle percentSimbol" style="text-align:right;white-space:nowrap; text-align:center; ; display:none;" data-colname="descontoPercent">0,00</td>
+					<td class="align-middle " style="text-align:right;; display:none;" data-colname="frete">0,00</td>
+					<td class="align-middle " style="text-align:right;; display:none;" data-colname="subtotal">2.351,800000</td>
+					<td class="align-middle " style="text-align:right;; display:none;" data-colname="creditos">0,000000</td>
+					<td class="align-middle " style="text-align:right;; display:none;" data-colname="cashback">0,000000</td>
+					<td class="align-middle " style="text-align:right;; display:none;" data-colname="totalLiquido">2.351,800000</td>
+					<td class="align-middle " style="text-align:right;; display:none;" data-colname="custo">1.497,736600</td>
+					<td class="align-middle " style="text-align:right;; display:none;" data-colname="margem">854,063400</td>
+					<td class="align-middle " style="text-align:right;; display:none;" data-colname="valorIpi">0,000000</td>
+					<td class="align-middle " style="text-align:right;; display:none;" data-colname="valorIcmsSt">0,000000</td>
+					<td class="align-middle " style="text-align:right;; display:none;" data-colname="naoEntregue">2.351,800000</td>
+					<td class="align-middle " style="text-align:right;; display:none;" data-colname="peso">0,000</td>
+					<td class="align-middle " style="text-align:center" data-colname="pedPagamento">	<a>4941</a></td>
+					<td class="align-middle " title="baixa:16 total:16" style="text-align:center; display:none;" data-colname="statusBaixa"><i class="fa fa-check" style="color:green; font-size:120%;"></i></td>
+					<td class="align-middle " style="text-align:center; font-size:10px; font-weight:bold;; display:none;" data-colname="statusEntrega"><br></td>
+					<td class="align-middle truncateTD" title="ALIANCA COMERCIO DE TECNOLOGIAS LTDA" style="text-align:left; display:none;" data-colname="filial" onmouseenter="$(this).prop('title', $(this).text())">ALIANCA COMERCIO DE TECNOLOGIAS LTDA</td>
+					<td class="align-middle " style="text-align:center; display:none;" data-colname="area"></td>
+					<td class="align-middle " style="text-align:center" data-colname="nfe">16240</td>
+					<td class="align-middle " style="text-align:center" data-colname="canhoto"></td>
+					<td class="align-middle truncateTD" style="text-align:left; display:none;" data-colname="transportadora" onmouseenter="$(this).prop('title', $(this).text())">1-TRANSPORTADORA EXEMPLO</td>
+				</tr>
+				<tr style="" onmouseenter="exibeCanhoto(this,15485);" onmouseleave="ocultaCanhoto(this,15485);">
+					
+					<td class="align-middle checkboxColumn" style="text-align:center; display:none; padding:0px;">
+</td>
+					<td class="align-middle " style="text-align:center; ">VEN</td>
+					<td class="align-middle " style="text-align:center; ">4616</td>
+					<td class="align-middle checkboxSeparacao" style="text-align:center; display:none; padding:0px;">
+</td>
+					<td class="align-middle " style="text-align:center" data-colname="pedCompra"></td>
+					<td class="align-middle " style="text-align:center; display:none;" data-colname="pedEcommerce">0</td>
+					<td class="align-middle " style="text-align:center;">29/09/2026</td>
+					<td class="align-middle " style="text-align:center; display:none;" data-colname="previsao">04/10/2026</td>
+					<td class="align-middle " style="text-align:center;; display:none;" data-colname="venda">01/10/2026</td>
+					<td class="align-middle " style="text-align:center" data-colname="ordemCompra">4400844711</td>
+					<td class="align-middle truncateTD" title="CLIENTE EXEMPLO DOIS S.A." style="text-align:left" onmouseenter="$(this).prop('title', $(this).text())">	<a>CLIENTE EXEMPLO DOIS S.A.</a></td>
+					<td class="align-middle " style="text-align:left; display:none;" data-colname="celular"></td>
+					<td class="align-middle truncateTD" title="MG / João Monlevade / BAIRRO EXEMPLO" style="text-align:left; display:none;" data-colname="endereco" onmouseenter="$(this).prop('title', $(this).text())">MG / João Monlevade / BAIRRO EXEMPLO</td>
+					<td class="align-middle " style="; display:none;" data-colname="cnpj">22222222000191</td>
+					<td class="align-middle truncateTD" style="; display:none;" data-colname="endEntrega" onmouseenter="$(this).prop('title', $(this).text())"></td>
+					<td class="align-middle truncateTD" title="VENDEDOR EXEMPLO" style="text-align:left; display:none;" data-colname="vendedor" onmouseenter="$(this).prop('title', $(this).text())">VENDEDOR EXEMPLO</td>
+					<td class="align-middle " style="text-align:right;" data-colname="totalBruto">1.091,900000</td>
+					<td class="align-middle " style="text-align:right;; display:none;" data-colname="desconto">0,000000</td>
+					<td class="align-middle percentSimbol" style="text-align:right;white-space:nowrap; text-align:center; ; display:none;" data-colname="descontoPercent">0,00</td>
+					<td class="align-middle " style="text-align:right;; display:none;" data-colname="frete">0,00</td>
+					<td class="align-middle " style="text-align:right;; display:none;" data-colname="subtotal">1.091,900000</td>
+					<td class="align-middle " style="text-align:right;; display:none;" data-colname="creditos">0,000000</td>
+					<td class="align-middle " style="text-align:right;; display:none;" data-colname="cashback">0,000000</td>
+					<td class="align-middle " style="text-align:right;; display:none;" data-colname="totalLiquido">1.091,900000</td>
+					<td class="align-middle " style="text-align:right;; display:none;" data-colname="custo">743,651000</td>
+					<td class="align-middle " style="text-align:right;; display:none;" data-colname="margem">348,249000</td>
+					<td class="align-middle " style="text-align:right;; display:none;" data-colname="valorIpi">0,000000</td>
+					<td class="align-middle " style="text-align:right;; display:none;" data-colname="valorIcmsSt">0,000000</td>
+					<td class="align-middle " style="text-align:right;; display:none;" data-colname="naoEntregue">1.091,900000</td>
+					<td class="align-middle " style="text-align:right;; display:none;" data-colname="peso">0,000</td>
+					<td class="align-middle " style="text-align:center" data-colname="pedPagamento">	<a>4957</a></td>
+					<td class="align-middle " title="baixa:305 total:305" style="text-align:center; display:none;" data-colname="statusBaixa"><i class="fa fa-check" style="color:green; font-size:120%;"></i></td>
+					<td class="align-middle " style="text-align:center; font-size:10px; font-weight:bold;; display:none;" data-colname="statusEntrega"></td>
+					<td class="align-middle truncateTD" title="VENTURA MATRIZ" style="text-align:left; display:none;" data-colname="filial" onmouseenter="$(this).prop('title', $(this).text())">VENTURA MATRIZ</td>
+					<td class="align-middle " style="text-align:center; display:none;" data-colname="area"></td>
+					<td class="align-middle " style="text-align:center" data-colname="nfe">15726</td>
+					<td class="align-middle " style="text-align:center" data-colname="canhoto"></td>
+					<td class="align-middle truncateTD" style="text-align:left; display:none;" data-colname="transportadora" onmouseenter="$(this).prop('title', $(this).text())">2-TRANSPORTADORA EXEMPLO</td>
+				</tr>
+				<tr class="reportTotalizador" style="border-top:1px solid black; background-color:white;">
+					
+					<td class="align-middle checkboxColumn" style="display:none; padding:0px;"></td>
+					<td class="align-middle "></td>
+					<td class="align-middle "></td>
+					<td class="align-middle checkboxSeparacao" style="display:none; padding:0px;"></td>
+					<td class="align-middle " data-colname="pedCompra"></td>
+					<td class="align-middle " style="; display:none;" data-colname="pedEcommerce"></td>
+					<td class="align-middle "></td>
+					<td class="align-middle " style="; display:none;" data-colname="previsao"></td>
+					<td class="align-middle " style="; display:none;" data-colname="venda"></td>
+					<td class="align-middle " data-colname="ordemCompra"></td>
+					<td class="align-middle "></td>
+					<td class="align-middle " style="; display:none;" data-colname="celular"></td>
+					<td class="align-middle " style="; display:none;" data-colname="endereco"></td>
+					<td class="align-middle " style="; display:none;" data-colname="cnpj"></td>
+					<td class="align-middle " style="; display:none;" data-colname="endEntrega"></td>
+					<td class="align-middle " style="; display:none;" data-colname="vendedor"></td>
+					<td class="align-middle " style="text-align:right;" data-colname="totalBruto">3.443,700000</td>
+					<td class="align-middle " style="text-align:right; padding-left:10px; display:none;" data-colname="desconto">0,000000</td>
+					<td class="align-middle " style="; display:none;" data-colname="descontoPercent"></td>
+					<td class="align-middle " style="text-align:right; padding-left:15px;; display:none;" data-colname="frete">0,00</td>
+					<td class="align-middle " style="text-align:right; padding-left:10px; display:none;" data-colname="subtotal">3.443,700000</td>
+					<td class="align-middle " style="text-align:right; padding-left:10px; display:none;" data-colname="creditos">0,000000</td>
+					<td class="align-middle " style="text-align:right; padding-left:10px; display:none;" data-colname="cashback">0,000000</td>
+					<td class="align-middle " style="text-align:right; padding-left:10px; display:none;" data-colname="totalLiquido">3.443,700000</td>
+					<td class="align-middle " style="text-align:right; padding-left:10px; display:none;" data-colname="custo">2.241,387600</td>
+					<td class="align-middle " style="text-align:right; padding-left:10px; display:none;" data-colname="margem">1.202,312400</td>
+					<td class="align-middle " style="text-align:right; padding-left:10px; display:none;" data-colname="valorIpi">0,000000</td>
+					<td class="align-middle " style="text-align:right; padding-left:10px; display:none;" data-colname="valorIcmsSt">0,000000</td>
+					<td class="align-middle " style="text-align:right; padding-left:15px;; display:none;" data-colname="naoEntregue">3.443,700000</td>
+					<td class="align-middle " style="text-align:right;; display:none;" data-colname="peso">0,00</td>
+				</tr>
+			</tbody>
+		</table>
+					
+			</div>
+		
+		<style>
+			.tooltip-inner {
+				/*min-width: 300px;*/
+				/* If max-width does not work, try using width instead */
+				min-width: 350px; 
+				width: 350px; 
+				font-size:11px; 
+				background-color:darkslategray;    
+				padding-left:2px;
+				padding-right:2px;
+				
+			}
+
+			#resumo2 {
+				width: auto;
+			}
+			#resumo2 .progress {
+				width: 250px;
+				margin: 5px 10px 5px 10px;
+				background-color:silver;
+			}
+
+			#myChartHora, #myChartDia {
+				height: 350px;
+    			width: 730px;
+				margin-right:20px;
+			}
+
+			@media screen and (max-width: 768px) {
+
+				#resumo2 {
+					width: 100%;
+				}
+				#resumo2 .progress {
+					width: auto;
+					margin: 5px 0 5px 0;
+				}
+
+				#myChartHora, #myChartDia {
+					width: 100% !important;
+					height: auto !important;
+					margin-right:0 !important;
+				}
+			}
+		</style> 
+
+		
+				
+				
+				
+				
+				
+
+				<div class="row" style="margin:0px;">
+					<div class="col-xs-12 col-sm-4 col-md-4 col-lg-3" style="padding:0;">
+						<table id="resumo" class="table table-striped table-borderless table-hover reportTable small" style="margin:0px;">
+				<thead>
+					<tr id="headerNormal">
+						<th id="col1" class="coluna" style="vertical-align:middle; width:150px"></th>
+						<th id="col2" class="coluna" style="vertical-align:middle; width:100px"></th>
+						<th id="col3" class="coluna" style="vertical-align:middle; width:50px"></th>
+						<th id="col4" class="coluna" style="vertical-align:middle"></th>
+					</tr>
+				</thead>
+				<tbody>
+					<tr class="reportTotalizador">
+						<td class="align-middle " style="text-align:right">Total Bruto: </td>
+						<td class="align-middle cipherSimbol" style="text-align:right;white-space:nowrap;">3.443,700000</td>
+						<td class="align-middle percentSimbol" style="text-align:right;white-space:nowrap; text-align:right; padding-left:15px;">100,00</td>
+					</tr>
+					<tr class="reportTotalizador">
+						<td class="align-middle " style="text-align:right">Liquido: </td>
+						<td class="align-middle cipherSimbol" style="text-align:right;white-space:nowrap;">3.443,700000</td>
+						<td class="align-middle percentSimbol" style="text-align:right;white-space:nowrap; text-align:right; padding-left:15px;">100,00</td>
+					</tr>
+					<tr style="background-color:white;" class="reportTotalizador">
+						<td style="font-size:2px; height:10px">&nbsp;</td>
+					</tr>
+					<tr class="reportTotalizador">
+						<td class="align-middle " style="text-align:right">Ticket Med Venda: </td>
+						<td class="align-middle cipherSimbol" colspan="1" style="text-align:right;white-space:nowrap;">1.721,850000</td>
+					</tr>
+					<tr class="reportTotalizador">
+						<td class="align-middle " style="text-align:right">Ticket Med Item: </td>
+						<td class="align-middle cipherSimbol" colspan="1" style="text-align:right;white-space:nowrap;">10,728037</td>
+					</tr>
+				</tbody>
+			</table>
+
+					</div>
+					<div class="col-xs-12 col-sm-8 col-md-8 col-lg-9" style="padding:0;">
+						<table id="resumo2" class="table table-striped table-borderless table-hover reportTable small" style="margin:0px;">
+				<tbody>
+					<tr style="background-color: white;">
+						<td class="align-top " style="width:50%">
+					<div class="progress">
+						<div class="progress-bar progress-bar-success" role="progressbar" aria-valuenow="50" aria-valuemin="0" aria-valuemax="100" style="text-align:left; width: 0%">
+							<span style="color:black; margin-left:5px; white-space: nowrap;">Entregue: 0&nbsp;&nbsp; R$ 0,00</span>
+						</div>
+					</div>
+					<div class="progress">
+						<div class="progress-bar progress-bar-danger" role="progressbar" aria-valuenow="50" aria-valuemin="0" aria-valuemax="100" style="text-align:left; width: 100%">
+							<span style="color:black; margin-left:5px; white-space: nowrap;">Não Entregue: 2&nbsp;&nbsp; R$ 3.443,70</span>
+						</div>
+					</div>
+					<div class="progress">
+						<div class="progress-bar progress-bar-warning" role="progressbar" aria-valuenow="50" aria-valuemin="0" aria-valuemax="100" style="text-align:left; width: 0%">
+							<span style="color:black; margin-left:5px; white-space: nowrap;">Parcialmente Entregue: 0&nbsp;&nbsp; R$ 0,00</span>
+						</div>
+					</div></td>
+					</tr>
+				</tbody>
+			</table>
+
+					</div>
+				</div>
+				<div class="row" style="margin:0px;">
+					<div class="col-xs-12 col-sm-6 col-md-6 col-lg- noprint" style="width: 100%; margin: 5px; padding:0;">
+							<canvas id="myChartHora" style="display: inline-block; box-sizing: border-box; height: 365px; width: 730px;" width="730" height="365"></canvas>
+	<canvas id="myChartDia" style="display: inline-block; box-sizing: border-box; height: 365px; width: 730px;" width="730" height="365"></canvas>
+					</div>
+
+	</div></table></body></html>
