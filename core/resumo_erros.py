@@ -273,7 +273,15 @@ def _numeros(texto: str) -> set[str]:
 
 
 def _validador(fatos: dict):
-    permitidos = _numeros(json.dumps(fatos, ensure_ascii=False))
+    # o dia não vale como fato: em 07/10, "7 vezes" e "10 vezes" passariam por causa da data
+    permitidos = _numeros(json.dumps({k: v for k, v in fatos.items() if k != "dia"}, ensure_ascii=False))
+    dia = str(fatos.get("dia") or "")
+    datas_do_dia = [d for d in (dia, dia[:5]) if d]    # "07/10/2026" e "07/10" podem ser citados
+
+    def sem_data(texto: str) -> str:
+        for d in datas_do_dia:
+            texto = texto.replace(d, " ")
+        return texto
 
     def validar(dados) -> dict:
         if not isinstance(dados, dict) or not isinstance(dados.get("itens"), list):
@@ -288,8 +296,8 @@ def _validador(fatos: dict):
                           "o_que_fazer": " ".join(str(it.get("o_que_fazer") or "").split())[:300]})
         if not manchete or not itens:
             raise ValueError("resumo vazio")
-        inventados = _numeros(manchete + " " + " ".join(i["texto"] + " " + i["o_que_fazer"]
-                                                        for i in itens)) - permitidos
+        inventados = _numeros(sem_data(manchete + " " + " ".join(i["texto"] + " " + i["o_que_fazer"]
+                                                                 for i in itens))) - permitidos
         if inventados:
             raise ValueError(f"números que não estão nos fatos: {sorted(inventados)[:5]}")
         itens.sort(key=lambda i: GRAVIDADES.index(i["gravidade"]))
