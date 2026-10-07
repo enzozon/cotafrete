@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import logging
 import os
+import socket
 import sys
 import threading
 import time
@@ -37,10 +38,47 @@ from typing import Any, Dict, Optional
 
 URL_PADRAO = "https://maestro.ventura.inf.br"   # portal no Cloudflare Tunnel (a Render saiu do ar)
 ESPERA_RECONEXAO_S = 30
+ARQ_INSTANCIA = "servico_nf.instancia"
+POS_TRAVA = 1 << 20          # trava um byte longe do texto, que continua legível por quem é recusado
+SAIDA_JA_RODANDO = 3         # o ServicoNF.bat vê este código e fecha em vez de tentar de novo
 
 
 class ConfigInvalida(ValueError):
     pass
+
+
+class JaRodando(RuntimeError):
+    pass
+
+
+def _travar(arq: Any) -> None:
+    arq.seek(POS_TRAVA)
+    if os.name == "nt":
+        import msvcrt
+        msvcrt.locking(arq.fileno(), msvcrt.LK_NBLCK, 1)
+    else:
+        import fcntl
+        fcntl.lockf(arq, fcntl.LOCK_EX | fcntl.LOCK_NB, 1, POS_TRAVA)
+
+
+def instancia_unica(pasta: "str | os.PathLike[str]") -> Any:
+    """Um serviço de NF por vez. Trava um arquivo na pasta de dados (compartilhada,
+    vale até entre máquinas) enquanto o processo vive; se ele morrer, o sistema
+    solta a trava sozinho. Devolve o arquivo aberto: mantenha a referência."""
+    fd = os.open(os.path.join(str(pasta), ARQ_INSTANCIA), os.O_RDWR | os.O_CREAT)
+    arq = os.fdopen(fd, "r+", encoding="utf-8")
+    try:
+        _travar(arq)
+    except OSError:
+        arq.seek(0)
+        quem = arq.read(500).strip() or "outro processo"
+        arq.close()
+        raise JaRodando(quem)
+    arq.seek(0)
+    arq.truncate()
+    arq.write(f"{socket.gethostname()}, pid {os.getpid()}, desde {time.strftime('%d/%m/%Y %H:%M')}")
+    arq.flush()
+    return arq
 
 
 def config_do_ambiente(ambiente: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
@@ -129,6 +167,12 @@ def main() -> int:
         print(f"[ERRO] {e}", file=sys.stderr)
         return 1
     logger = _configurar_log(config["log"])
+    try:
+        trava = instancia_unica(config["caminho_banco_dados"])   # noqa: F841 (vale enquanto o processo vive)
+    except JaRodando as e:
+        logger.error(f"Já existe um serviço de NF rodando ({e}). Este não vai iniciar. "
+                     "Para trocar pelo novo, encerre o antigo (taskkill /PID <pid>) e inicie de novo.")
+        return SAIDA_JA_RODANDO
 
     import schedule
     import socketio
