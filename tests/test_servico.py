@@ -136,3 +136,47 @@ def test_comando_do_portal_grava_a_nf_no_arquivo(tmp_path):
     assert ("planilha_atualizada", None) in sio.emitidos
     assert sync.carregar_estado(dados)["ultima"]["nfs_gravadas"] == 1
     assert len(list((tmp_path / "bk").glob("PEDIDOS antes da NF *.json"))) == 1
+
+
+# -- uma instância só -------------------------------------------------------------
+
+def _segurar_trava(pasta):
+    """Outro processo segurando a trava do serviço (como um serviço já rodando)."""
+    import subprocess
+    import sys
+    codigo = ("import sys; from cruzar_nf import servico; t = servico.instancia_unica(sys.argv[1]); "
+              "print('ok', flush=True); sys.stdin.read()")
+    p = subprocess.Popen([sys.executable, "-c", codigo, str(pasta)], stdin=subprocess.PIPE,
+                         stdout=subprocess.PIPE, text=True)
+    assert p.stdout.readline().strip() == "ok"
+    return p
+
+
+def test_segunda_instancia_e_recusada_com_quem_esta_rodando(tmp_path):
+    p = _segurar_trava(tmp_path)
+    try:
+        with pytest.raises(servico.JaRodando, match=f"pid {p.pid}"):
+            servico.instancia_unica(tmp_path)
+    finally:
+        p.kill()
+        p.wait()
+
+
+def test_trava_some_quando_o_servico_morre(tmp_path):
+    p = _segurar_trava(tmp_path)
+    p.kill()                                  # morreu sem limpar nada
+    p.wait()
+    trava = servico.instancia_unica(tmp_path)
+    trava.close()
+
+
+def test_main_sai_com_codigo_3_se_ja_tem_servico(tmp_path, monkeypatch):
+    monkeypatch.setenv("SYNC_NF_TOKEN", "x")
+    monkeypatch.setenv("SYNC_NF_DADOS", str(tmp_path))
+    monkeypatch.delenv("SYNC_NF_LOG", raising=False)
+    p = _segurar_trava(tmp_path)
+    try:
+        assert servico.main() == servico.SAIDA_JA_RODANDO == 3
+    finally:
+        p.kill()
+        p.wait()
