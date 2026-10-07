@@ -40,7 +40,7 @@ import time
 import unicodedata
 import zipfile
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from cruzar_nf.arquivo_pedidos import ConflitoGravacao
 from cruzar_nf.maestro import _guardar_backup
@@ -54,6 +54,7 @@ ESPERA_ENTRE_TENTATIVAS_S = 1.0
 ESPERA_CONFERENCIA_S = 3.0
 MANTER_HISTORICO = 100
 PREFIXO_BACKUP = "PEDIDOS antes do cadastro"
+COLUNA_NF_MAESTRO = "NF (MAESTRO)"   # coluna que o nf_planilha.py escreve: é do robô, não vai para o portal
 
 
 # -- leitura da planilha -------------------------------------------------------
@@ -71,6 +72,11 @@ def _valor_celula(v: Any) -> Any:
 def ler_planilha(caminho: str) -> List[Dict[str, Any]]:
     """Linhas da aba PEDIDOS com os nomes de coluna do PEDIDOS.json (são os mesmos:
     o JSON nasceu desta planilha). Data vira dd/mm/aaaa; célula vazia fica de fora."""
+    return [linha for _n, linha in ler_planilha_com_linhas(caminho)]
+
+
+def ler_planilha_com_linhas(caminho: str) -> List[Tuple[int, Dict[str, Any]]]:
+    """Como ler_planilha, com o número da linha no Excel (o cabeçalho é a linha 1)."""
     import openpyxl
 
     pasta = tempfile.mkdtemp(prefix="cadastro_pedidos_")
@@ -89,14 +95,14 @@ def ler_planilha(caminho: str) -> List[Dict[str, Any]]:
             linhas = aba.iter_rows(values_only=True)
             cabecalho = next(linhas, ())
             resultado = []
-            for valores in linhas:
+            for numero, valores in enumerate(linhas, start=2):
                 linha = {}
                 for nome, v in zip(cabecalho, valores):
                     v = _valor_celula(v)
                     if nome is not None and v is not None:
                         linha[str(nome)] = v
                 if linha:
-                    resultado.append(linha)
+                    resultado.append((numero, linha))
             return resultado
         finally:
             wb.close()
@@ -151,16 +157,25 @@ def _identidades(p: Dict[str, Any]) -> set:
     return {i for i in ids if i[1]}
 
 
-def no_portal(linha: Dict[str, Any], pedidos: List[Dict[str, Any]]) -> bool:
-    """Já existe pedido com o mesmo começo de PRODUTO (um é o começo do outro: no portal
-    o texto costuma ser mais longo) e alguma identidade em comum (ver _identidades)."""
+def _sem_colunas_do_robo(linha: Dict[str, Any]) -> Dict[str, Any]:
+    return {k: v for k, v in linha.items() if k != COLUNA_NF_MAESTRO}
+
+
+def correspondentes(linha: Dict[str, Any], pedidos: List[Dict[str, Any]]) -> List[int]:
+    """Posições dos pedidos com o mesmo começo de PRODUTO (um é o começo do outro: no
+    portal o texto costuma ser mais longo) e alguma identidade em comum (_identidades)."""
     produto = _norm(_campo(linha, "PRODUTO"))[:TAM_PRODUTO]
     ids = _identidades(linha)
-    for p in pedidos:
+    achados = []
+    for i, p in enumerate(pedidos):
         outro = _norm(_campo(p, "PRODUTO"))[:TAM_PRODUTO]
         if (outro.startswith(produto) or produto.startswith(outro)) and ids & _identidades(p):
-            return True
-    return False
+            achados.append(i)
+    return achados
+
+
+def no_portal(linha: Dict[str, Any], pedidos: List[Dict[str, Any]]) -> bool:
+    return bool(correspondentes(linha, pedidos))
 
 
 # -- estado --------------------------------------------------------------------
@@ -196,7 +211,7 @@ def _gravar(manager: Any, linhas: List[Dict[str, Any]], dir_backup: Optional[str
         manager.iniciar()
         with manager.lock:
             lista = manager.pedidos.setdefault("PEDIDOS", [])
-            faltam = [dict(l) for l in linhas if not no_portal(l, lista)]
+            faltam = [_sem_colunas_do_robo(l) for l in linhas if not no_portal(l, lista)]
             if not faltam:
                 return gravadas
             if gravadas:

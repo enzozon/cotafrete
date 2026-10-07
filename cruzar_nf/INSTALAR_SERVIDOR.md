@@ -125,3 +125,42 @@ planilha é só lida, a partir de uma cópia).
 - Desfazer: pare o gerenciador, copie o backup por cima do `PEDIDOS.json`,
   ligue o gerenciador. Parar: desabilitar a tarefa no Agendador.
 - Recomeçar do zero (marcar tudo de novo): apagar `cadastro_pedidos.json`.
+
+---
+
+# Conferência planilha x portal (diária)
+
+Roda sozinha, uma vez por dia, dentro do `CadastrarPedidos.bat` (não precisa
+de tarefa nova). Lista o que só está na planilha, o que só está no portal e
+NF diferente entre os dois; o resultado (`SYNC_NF_DADOS\conferencia_planilha.json`)
+aparece no portal, na janela "NFs do HSE e cadastro automático".
+
+Linhas canceladas de propósito (não devem aparecer como divergência) ficam em
+`SYNC_NF_DADOS\conferencia_ignorar.json`:
+
+```
+[{"chave": "4101202899|206584|DECIBELIMETRODIGITALMATERIALCA", "motivo": "cancelado (Enzo, 07/10/2026)"}]
+```
+
+A chave é PEDIDO|RFQ|começo do PRODUTO, normalizados (sem acento, só letras e números).
+Na mão: `python -m cruzar_nf.planilha_portal`.
+
+# NF na planilha dos estagiários (botão do portal)
+
+Botão "Gravar NF na planilha" (e "Só prévia") na mesma janela. Grava a NF do
+portal na coluna **N "NF (MAESTRO)"** da aba PEDIDOS. Segurança:
+
+- planilha aberta no Excel -> não grava e avisa (diz quem abriu, se o `~$` for recente);
+- só a coluna N muda: o resto do arquivo fica byte a byte igual (confere antes e depois);
+- backup antes: `SYNC_NF_DADOS\backups_planilha\PLANILHA antes da NF <data>.xlsx` (30 últimos);
+- se a planilha mudar ou for aberta no meio, não troca o arquivo;
+- coluna N com outro título -> não grava; linha com NF diferente em mais de um pedido -> pula.
+
+Na mão: `python -m cruzar_nf.nf_planilha` (prévia) e `--gravar`.
+Desfazer: com a planilha FECHADA, copiar o backup por cima dela.
+
+Instalação: copiar `nf_planilha.py`, `planilha_portal.py`, `cadastro_pedidos.py`,
+`sincronizar.py`, `maestro.py` e `CadastrarPedidos.bat` para `cruzar_nf` e
+reiniciar o serviço de NF (`ReiniciarServicoNF.bat`). No portal: `server.js`
+(eventos `solicitar_nf_planilha` / `progresso_nf_planilha` / `retorno_nf_planilha`)
+e `planilha_vale.html`; o `server.js` novo exige reiniciar o portal.

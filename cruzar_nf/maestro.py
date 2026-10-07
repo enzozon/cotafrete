@@ -157,12 +157,45 @@ def registrar(sio: Any, config: Dict[str, Any], logger: Any, manager: Any = None
         except Exception as e:
             return {"ativo": False, "erro": {"em": None, "mensagem": f"Erro ao ler o estado: {e}"}}
 
+    def _conferencia() -> Optional[Dict[str, Any]]:
+        from cruzar_nf.planilha_portal import resumo_para_tela
+        try:
+            return resumo_para_tela(_pasta())
+        except Exception as e:
+            return {"erro": f"Erro ao ler a conferência: {e}"}
+
+    def _nf_planilha(gravar: bool, client_id: Optional[str]) -> None:
+        from cruzar_nf.cadastro_pedidos import PLANILHA_PADRAO
+        from cruzar_nf.nf_planilha import gravar_nf_na_planilha
+
+        def progresso(msg: str) -> None:
+            logger.info(f"[NF na planilha] {msg}")
+            sio.emit("progresso_nf_planilha", {"mensagem": msg, "clientId": client_id})
+        try:
+            planilha = (config.get("caminho_planilha") or os.environ.get("CADASTRO_PLANILHA")
+                        or PLANILHA_PADRAO)
+            pedidos = config.get("caminho_pedidos") or _manager().caminho_pedidos
+            res = gravar_nf_na_planilha(planilha, pedidos, _pasta(), gravar=gravar, progresso=progresso)
+            sio.emit("retorno_nf_planilha", {"sucesso": True, "resultado": res, "clientId": client_id})
+        except Exception as e:   # planilha aberta, mudou no meio, rede: nada foi gravado
+            logger.error(f"[NF na planilha] {e}")
+            sio.emit("retorno_nf_planilha", {"sucesso": False, "erro": str(e), "clientId": client_id})
+
+    def comando_nf_planilha(dados: Optional[dict] = None) -> None:
+        dados = dados or {}
+        args = (dados.get("gravar") is True, dados.get("clientId"))   # só grava se pedirem explicitamente
+        if em_thread:
+            threading.Thread(target=_nf_planilha, args=args, daemon=True).start()
+        else:
+            _nf_planilha(*args)
+
     def comando_sync_nf_estado(dados: Optional[dict] = None) -> None:
         dados = dados or {}
         try:
             estado = sync.estado_para_tela(_pasta())
             estado["rodando"] = execucao.rodando
             estado["cadastro_pedidos"] = _estado_cadastro()
+            estado["conferencia_planilha"] = _conferencia()
             sio.emit("retorno_sync_nf_estado", {"sucesso": True, "estado": estado,
                                                 "clientId": dados.get("clientId")})
         except Exception as e:
@@ -185,6 +218,8 @@ def registrar(sio: Any, config: Dict[str, Any], logger: Any, manager: Any = None
 
     sio.on("comando_sync_nf_estado", comando_sync_nf_estado)
     sio.on("comando_sync_nf", comando_sync_nf)
+    sio.on("comando_nf_planilha", comando_nf_planilha)
     if schedule is not None and horario:
         schedule.every().day.at(horario).do(agendado)
-    return {"estado": comando_sync_nf_estado, "sincronizar": comando_sync_nf, "agendado": agendado}
+    return {"estado": comando_sync_nf_estado, "sincronizar": comando_sync_nf, "agendado": agendado,
+            "nf_planilha": comando_nf_planilha}
