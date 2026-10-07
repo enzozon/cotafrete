@@ -69,11 +69,24 @@ def test_config_padrao_e_do_ambiente():
     assert c["caminho_banco_dados"] == "C:/dados" and c["url"] == "http://localhost:8000" and c["horario"] == ""
 
 
+def test_config_le_as_pastas_igual_a_linha_de_comando():
+    import os
+    from cruzar_nf import sincronizar
+    c = servico.config_do_ambiente({"SYNC_NF_TOKEN": "x", "SYNC_NF_DADOS": "C:/dados",
+                                    "SYNC_NF_PEDIDOS": "D:/bd/PEDIDOS.json"})
+    assert c["caminho_pedidos"] == "D:/bd/PEDIDOS.json"          # e não C:/dados/PEDIDOS.json
+    assert c["caminho_backups"] == os.path.join("C:/dados", "backups")
+    c = servico.config_do_ambiente({"SYNC_NF_TOKEN": "x"})
+    assert c["caminho_banco_dados"] == sincronizar.DADOS_PADRAO
+    assert c["caminho_pedidos"] == sincronizar.PEDIDOS_PADRAO
+
+
 def montar(tmp_path, horario="07:30", vendas=None):
     dados = tmp_path / "dados"
     dados.mkdir()
     (dados / "PEDIDOS.json").write_text(json.dumps({"PEDIDOS": [{"PEDIDO": 1, "VALOR ": 100}]}), encoding="utf-8")
     config = servico.config_do_ambiente({"SYNC_NF_TOKEN": "segredo", "SYNC_NF_DADOS": str(dados),
+                                         "SYNC_NF_PEDIDOS": str(dados / "PEDIDOS.json"),
                                          "SYNC_NF_BACKUPS": str(tmp_path / "bk"), "SYNC_NF_HORARIO": horario})
     openpyxl = pytest.importorskip("openpyxl")
     wb = openpyxl.Workbook()
