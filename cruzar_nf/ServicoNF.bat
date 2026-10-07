@@ -12,7 +12,9 @@ chcp 65001 >nul
 set PYTHONUTF8=1
 set PYTHONIOENCODING=utf-8
 
-cd /d "%~dp0.."
+REM pushd (e nao cd /d): funciona tambem quando a tarefa aponta para o caminho de rede
+REM (mapeia uma letra temporaria; o cmd nao aceita UNC como pasta atual)
+pushd "%~dp0.."
 
 :rodar
 python -m cruzar_nf.servico
