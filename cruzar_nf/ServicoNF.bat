@@ -21,7 +21,7 @@ python -m cruzar_nf.servico
 if "%errorlevel%"=="3" goto ja_rodando
 echo.
 echo  O servico de NF parou. Reiniciando em 30 segundos (feche a janela para parar)...
-timeout /t 30 /nobreak >nul
+ping -n 31 127.0.0.1 >nul
 goto rodar
 
 :ja_rodando
