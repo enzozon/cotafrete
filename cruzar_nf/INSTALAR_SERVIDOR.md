@@ -70,3 +70,58 @@ Os backups ficam em `SYNC_NF_DADOS\backups\PEDIDOS antes da NF <data>.json`.
 Para voltar, pare o gerenciador, copie o backup por cima do `PEDIDOS.json` e
 ligue o gerenciador de novo. Para parar a sincronização: desabilitar as três
 tarefas no Agendador.
+
+---
+
+# Cadastro automático de pedidos (planilha dos estagiários -> portal)
+
+Os pedidos entram **só** na aba PEDIDOS da planilha
+`\SERVIDOR2\Publico\PLANILHA DE CONTROLE VALE - ESTAGIARIOS (copia 1).xlsx`.
+O `CadastrarPedidos.bat` roda a cada 10 minutos e leva cada linha nova para o
+`PEDIDOS.json` (a tela "Pedidos" do portal). Usa a mesma pasta, o mesmo `.env`
+e o mesmo jeito seguro de gravar da sincronização de NF. **Não mexe no
+`gerenciador.py`, no `planilha_manager.py`, no portal nem na planilha** (a
+planilha é só lida, a partir de uma cópia).
+
+## Como funciona
+
+1. Se a planilha não foi salva desde a última rodada, não faz nada (nem log).
+2. Copia a planilha e lê a aba PEDIDOS. Vale só o que foi **salvo** no Excel.
+3. Linha nova = combinação PEDIDO + RFQ + começo do PRODUTO nunca vista antes.
+4. Linha sem CIDADE, PEDIDO, VALOR, PRODUTO ou REQUISITANTE ainda está sendo
+   digitada: espera (aparece como `incompletas` no log) e entra quando completar.
+5. Se o pedido já está no portal (mesmo PEDIDO ou RFQ e mesmo começo de
+   PRODUTO), não grava de novo. Pega cadastro manual e correção de digitação.
+6. Grava com backup (`SYNC_NF_DADOS\backups\PEDIDOS antes do cadastro <data>.json`,
+   os 30 últimos), confere depois e grava de novo se o gerenciador salvou por cima.
+7. Pedido apagado no portal **não volta**: o que já foi visto não é gravado de novo.
+
+## Instalação
+
+1. Copiar `cadastro_pedidos.py`, `maestro.py` e `CadastrarPedidos.bat` para a
+   pasta `cruzar_nf` do servidor (a mesma da NF).
+2. (Opcional) no `.env`: `CADASTRO_PLANILHA=` se a planilha mudar de lugar.
+3. Prévia: `cruzar_nf\CadastrarPedidos.bat --previa` (não grava nada).
+4. Primeira rodada: `cruzar_nf\CadastrarPedidos.bat`. **Não cadastra nada**,
+   só marca as linhas atuais como já cadastradas (planilha e portal divergem
+   em algumas digitações antigas, que assim não viram pedido duplicado).
+5. Agendar:
+
+   ```
+   schtasks /Create /TN "Maestro Cadastro Pedidos" /TR "\"C:\caminho\sync_nf\cruzar_nf\CadastrarPedidos.bat\"" /SC MINUTE /MO 10 /RU USUARIO /RP *
+   ```
+
+## Acompanhar e desfazer
+
+- **Portal**: menu ☰ → "NFs (HSE) e cadastro automático". Mostra a última
+  verificação da planilha (vermelho se passar de 30 min ou se deu erro), o
+  último cadastro e os pedidos cadastrados. Vem pelo serviço de NF: depois de
+  atualizar `maestro.py` e `cadastro_pedidos.py`, reiniciar a tarefa
+  "Maestro NF Servico" (`schtasks /End` e `schtasks /Run`).
+- Log: `logs\cadastro_pedidos.log` (só rodadas em que algo mudou ou deu erro).
+- Estado e histórico: `SYNC_NF_DADOS\cadastro_pedidos.json`.
+- `[ERRO] Não consegui abrir a planilha (o Excel estava salvando?)`: normal de
+  vez em quando; a próxima rodada tenta de novo.
+- Desfazer: pare o gerenciador, copie o backup por cima do `PEDIDOS.json`,
+  ligue o gerenciador. Parar: desabilitar a tarefa no Agendador.
+- Recomeçar do zero (marcar tudo de novo): apagar `cadastro_pedidos.json`.

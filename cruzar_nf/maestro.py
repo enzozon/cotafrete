@@ -39,11 +39,11 @@ def _nome_campo_nf(pedido: Dict[str, Any]) -> str:
     return next((k for k in pedido if _chave_campo(k) == _chave_campo(CAMPO_NF)), CAMPO_NF)
 
 
-def _guardar_backup(caminho: str, dir_backup: str) -> None:
+def _guardar_backup(caminho: str, dir_backup: str, prefixo: str = "PEDIDOS antes da NF") -> None:
     os.makedirs(dir_backup, exist_ok=True)
     carimbo = _dt.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    shutil.copy2(caminho, os.path.join(dir_backup, f"PEDIDOS antes da NF {carimbo}.json"))
-    antigos = sorted(glob.glob(os.path.join(dir_backup, "PEDIDOS antes da NF *.json")))
+    shutil.copy2(caminho, os.path.join(dir_backup, f"{prefixo} {carimbo}.json"))
+    antigos = sorted(glob.glob(os.path.join(dir_backup, f"{prefixo} *.json")))
     for velho in antigos[:-MANTER_BACKUPS]:
         os.remove(velho)
 
@@ -148,11 +148,21 @@ def registrar(sio: Any, config: Dict[str, Any], logger: Any, manager: Any = None
             _rodar(de, ate, gravar, client_id, origem)
         return True
 
+    def _estado_cadastro() -> Dict[str, Any]:
+        """Cadastro automático de pedidos (cadastro_pedidos.py): mesma pasta de dados,
+        vai junto para o portal não precisar de evento novo. Erro aqui não derruba a NF."""
+        from cruzar_nf.cadastro_pedidos import estado_para_tela
+        try:
+            return estado_para_tela(_pasta())
+        except Exception as e:
+            return {"ativo": False, "erro": {"em": None, "mensagem": f"Erro ao ler o estado: {e}"}}
+
     def comando_sync_nf_estado(dados: Optional[dict] = None) -> None:
         dados = dados or {}
         try:
             estado = sync.estado_para_tela(_pasta())
             estado["rodando"] = execucao.rodando
+            estado["cadastro_pedidos"] = _estado_cadastro()
             sio.emit("retorno_sync_nf_estado", {"sucesso": True, "estado": estado,
                                                 "clientId": dados.get("clientId")})
         except Exception as e:
