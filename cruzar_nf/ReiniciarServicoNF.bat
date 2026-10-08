@@ -16,10 +16,11 @@ set DADOS=\SERVIDOR2\Publico\ALLAN\database\sync_nf
 if exist ".env" for /f "usebackq tokens=1,* delims==" %%a in (".env") do if /i "%%a"=="SYNC_NF_DADOS" set "DADOS=%%b"
 popd
 
-if exist "%DADOS%\sync_nf.trava" (
+REM sync_nf.trava: sincronizacao de NF; nf_planilha.trava: gravando a NF na planilha
+for %%t in (sync_nf.trava nf_planilha.trava) do if exist "%DADOS%\%%t" (
     echo.
-    echo  Uma sincronizacao de NF esta rodando agora. Espere ela terminar e rode de novo.
-    echo  ^(Se continuar assim por mais de 2 horas, apague %DADOS%\sync_nf.trava^)
+    echo  O servico de NF esta trabalhando agora ^(%%t^). Espere terminar e rode de novo.
+    echo  ^(Se continuar assim por mais de 2 horas, apague %DADOS%\%%t^)
     exit /b 1
 )
 
