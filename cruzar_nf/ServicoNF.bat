@@ -18,14 +18,11 @@ pushd "%~dp0.."
 
 :rodar
 python -m cruzar_nf.servico
-if "%errorlevel%"=="3" goto ja_rodando
+set CODIGO=%errorlevel%
+REM fica no log do servico: um problema que derruba o servico aparece la, nao so na janela
+if not exist logs mkdir logs
+echo %date% %time% ServicoNF.bat: o servico parou (codigo %CODIGO%); reiniciando em 30 s>> logs\servico_nf.log
 echo.
-echo  O servico de NF parou. Reiniciando em 30 segundos (feche a janela para parar)...
+echo  O servico de NF parou (codigo %CODIGO%). Reiniciando em 30 segundos (feche a janela para parar)...
 ping -n 31 127.0.0.1 >nul
 goto rodar
-
-:ja_rodando
-echo.
-echo  Ja existe um servico de NF rodando (veja logs\servico_nf.log). Esta janela vai fechar.
-popd
-exit /b 3
