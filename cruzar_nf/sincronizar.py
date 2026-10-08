@@ -131,11 +131,11 @@ def _quem_trava(arq: Path) -> str:
 
 
 @contextmanager
-def trava(pasta: "str | Path", origem: str) -> Iterator[None]:
+def trava(pasta: "str | Path", origem: str, arquivo: str = ARQ_TRAVA) -> Iterator[None]:
     """Uma rodada por vez entre o serviço (botão do portal) e o SincronizarNF.bat
     (tarefa agendada): os dois usam a mesma pasta de dados. O arquivo é criado
     de forma atômica (O_EXCL); se o processo morrer, a trava vence em TRAVA_VALIDADE_S."""
-    arq = Path(pasta) / ARQ_TRAVA
+    arq = Path(pasta) / arquivo
     for _ in range(2):
         try:
             fd = os.open(str(arq), os.O_CREAT | os.O_EXCL | os.O_WRONLY)

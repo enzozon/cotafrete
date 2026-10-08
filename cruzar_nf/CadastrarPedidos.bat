@@ -9,6 +9,7 @@ REM
 REM  A primeira rodada com gravacao nao cadastra nada: so marca o que ja
 REM  esta na planilha. Le o .env desta pasta (SYNC_NF_DADOS, SYNC_NF_PEDIDOS,
 REM  CADASTRO_PLANILHA). Pode rodar com o gerenciador ligado.
+REM  Uma vez por dia tambem gera a conferencia planilha x portal.
 REM  Log em logs\cadastro_pedidos.log (rodada sem mudanca nao escreve nada).
 REM ======================================================================
 chcp 65001 >nul
@@ -23,6 +24,8 @@ if /i "%~1"=="--previa" set GRAVAR=
 
 python -m cruzar_nf.cadastro_pedidos %GRAVAR% > logs\cadastro_pedidos.tmp 2>&1
 set ERRO=%errorlevel%
+REM conferencia planilha x portal: uma vez por dia (o painel do portal mostra)
+if defined GRAVAR python -m cruzar_nf.planilha_portal --diario >> logs\cadastro_pedidos.tmp 2>&1
 for %%A in (logs\cadastro_pedidos.tmp) do if %%~zA gtr 0 (
     echo ==== %date% %time% ==== >> logs\cadastro_pedidos.log
     type logs\cadastro_pedidos.tmp >> logs\cadastro_pedidos.log

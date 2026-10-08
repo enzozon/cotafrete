@@ -350,7 +350,7 @@ def montar(tmp_path, pedidos, vendas, falhar=False):
 
 def test_registra_os_comandos_e_o_agendamento(tmp_path):
     sio, agenda, _, _ = montar(tmp_path, [ped(1)], [venda(10, 1, 15)])
-    assert set(sio.handlers) == {"comando_sync_nf_estado", "comando_sync_nf"}
+    assert set(sio.handlers) == {"comando_sync_nf_estado", "comando_sync_nf", "comando_nf_planilha"}
     assert agenda.horario == "07:30" and len(agenda.tarefas) == 1
 
 
