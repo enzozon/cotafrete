@@ -316,3 +316,23 @@ def test_estado_do_cadastro_quebrado_nao_derruba_o_estado_da_nf(cenario):
               em_thread=False)["estado"]({"clientId": "y"})
     r = sio.ultimo("retorno_sync_nf_estado")
     assert r["sucesso"] and "erro" in r["estado"]["cadastro_pedidos"]["erro"]["mensagem"].lower()
+
+
+# -- linhas esperando dado: o portal precisa mostrar ---------------------------------------
+
+def test_linha_incompleta_aparece_no_painel_com_o_que_falta(cenario):
+    from cruzar_nf.cadastro_pedidos import estado_para_tela
+    cenario.rodar()
+    sem_cidade = linha(4513646405, "AMPLIFICADOR", cidade=None, valor=15035.76)
+    escrever_planilha(cenario.xlsx, cenario.antigas + [sem_cidade, linha(4513646471, valor=None, req=None)])
+    cenario.rodar()
+    pend = estado_para_tela(str(cenario.dados))["pendentes"]
+    assert pend == [{"linha": 4, "pedido": "4513646405", "produto": "AMPLIFICADOR", "falta": ["CIDADE"]},
+                    {"linha": 5, "pedido": "4513646471", "produto": "13182678 || FORNO MICROONDAS 31L",
+                     "falta": ["VALOR", "REQUISITANTE"]}]
+    escrever_planilha(cenario.xlsx, cenario.antigas + [linha(4513646405, "AMPLIFICADOR", valor=15035.76),
+                                                       linha(4513646471)])
+    cenario.rodar()
+    assert estado_para_tela(str(cenario.dados))["pendentes"] == []
+    cenario.rodar()                                  # sem mudança na planilha: continua vazio
+    assert estado_para_tela(str(cenario.dados))["pendentes"] == []
