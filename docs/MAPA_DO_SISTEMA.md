@@ -41,8 +41,12 @@ não dá erro**: o site cota a carga errada com um preço que parece certo.
 A Camilo (SSW) recebe as medidas em **metros**; a Della Volpe exige uma casa
 decimal. A tabela completa está no README, seção "A armadilha central".
 
-- **Onde:** só em `carriers/<slug>/mapping.py`, que é puro e testado. Nunca no
-  formulário nem em `web/`.
+- **Onde:** em `carriers/<slug>/mapping.py`, que é puro e testado. Nunca no
+  formulário nem em `web/`. **Exceção: Jadlog.** Produção usa o painel
+  (`carriers/jadlog/painel.py`, `JadlogPainelAdapter`), que formata o peso no
+  próprio adapter. O `jadlog/mapping.py` serve a API com token, e o
+  `simulador.py` está aposentado. Para saber quem cota de verdade, veja
+  `FABRICAS` em `web/app.py`.
 - **Depois de mexer:** `pytest tests -k <slug>` e um dry-run com print
   (`teste_real/<slug>/<data>/preenchido.png`).
 
