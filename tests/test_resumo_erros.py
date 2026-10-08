@@ -262,3 +262,14 @@ def test_sem_login_de_adm_o_botao_nao_funciona(monkeypatch, banco, prov):
     r = TestClient(app_web.app).post("/adm/resumo-ia", follow_redirects=False)
     assert r.status_code == 303 and r.headers["location"] == "/adm/entrar"
     assert prov.pedidos == []
+
+
+def test_numero_que_so_existe_na_data_continua_sendo_inventado():
+    # em 07/10 o "7" e o "10" vinham da data e passavam como fatos
+    fatos = {"dia": "07/10/2026", "transportadoras": [{"nome": "Generoso", "vezes": 5, "hora": "14:20"}]}
+    validar = RE._validador(fatos)
+    with pytest.raises(ValueError, match="7"):
+        validar(json.loads(_resumo(qtd=7)))
+    ok = json.loads(_resumo(qtd=5))
+    ok["manchete"] = "Hoje, 07/10/2026 (07/10), a Generoso falhou 5 vezes."
+    assert validar(ok)["manchete"].startswith("Hoje, 07/10/2026")
