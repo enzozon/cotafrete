@@ -34,13 +34,13 @@ import socket
 import sys
 import threading
 import time
-from typing import Any, Dict, Optional
+from typing import Any, Callable, Dict, Optional
 
 URL_PADRAO = "https://maestro.ventura.inf.br"   # portal no Cloudflare Tunnel (a Render saiu do ar)
 ESPERA_RECONEXAO_S = 30
 ARQ_INSTANCIA = "servico_nf.instancia"
 POS_TRAVA = 1 << 20          # trava um byte longe do texto, que continua legível por quem é recusado
-SAIDA_JA_RODANDO = 3         # o ServicoNF.bat vê este código e fecha em vez de tentar de novo
+ESPERA_RESERVA_S = 30        # o serviço de reserva tenta a vez de novo a cada 30 s
 
 
 class ConfigInvalida(ValueError):
@@ -79,6 +79,23 @@ def instancia_unica(pasta: "str | os.PathLike[str]") -> Any:
     arq.write(f"{socket.gethostname()}, pid {os.getpid()}, desde {time.strftime('%d/%m/%Y %H:%M')}")
     arq.flush()
     return arq
+
+
+def esperar_a_vez(pasta: "str | os.PathLike[str]", avisar: Callable[[str], None],
+                  dormir: Callable[[float], None] = time.sleep) -> Any:
+    """Se já tem um serviço rodando, este fica de RESERVA: avisa uma vez e assume
+    quando aquele parar. Não sai do processo, então não depende do código de saída
+    chegar ao ServicoNF.bat (no servidor não chegava, e o .bat subia um a cada 30 s)."""
+    avisado = False
+    while True:
+        try:
+            return instancia_unica(pasta)
+        except JaRodando as e:
+            if not avisado:
+                avisar(f"Já existe um serviço de NF rodando ({e}). Este fica de reserva e assume "
+                       "se aquele parar. Para trocar pelo código novo: ReiniciarServicoNF.bat.")
+                avisado = True
+            dormir(ESPERA_RESERVA_S)
 
 
 def config_do_ambiente(ambiente: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
@@ -167,12 +184,7 @@ def main() -> int:
         print(f"[ERRO] {e}", file=sys.stderr)
         return 1
     logger = _configurar_log(config["log"])
-    try:
-        trava = instancia_unica(config["caminho_banco_dados"])   # noqa: F841 (vale enquanto o processo vive)
-    except JaRodando as e:
-        logger.error(f"Já existe um serviço de NF rodando ({e}). Este não vai iniciar. "
-                     "Para trocar pelo novo, encerre o antigo (taskkill /PID <pid>) e inicie de novo.")
-        return SAIDA_JA_RODANDO
+    trava = esperar_a_vez(config["caminho_banco_dados"], logger.warning)   # noqa: F841 (vale enquanto o processo vive)
 
     import schedule
     import socketio

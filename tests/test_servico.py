@@ -170,13 +170,28 @@ def test_trava_some_quando_o_servico_morre(tmp_path):
     trava.close()
 
 
-def test_main_sai_com_codigo_3_se_ja_tem_servico(tmp_path, monkeypatch):
-    monkeypatch.setenv("SYNC_NF_TOKEN", "x")
-    monkeypatch.setenv("SYNC_NF_DADOS", str(tmp_path))
-    monkeypatch.delenv("SYNC_NF_LOG", raising=False)
+def test_reserva_avisa_uma_vez_e_assume_quando_o_principal_para(tmp_path):
     p = _segurar_trava(tmp_path)
+    avisos, esperas = [], []
+
+    def dormir(segundos):
+        esperas.append(segundos)
+        if len(esperas) == 3:                 # o principal morre durante a espera
+            p.kill()
+            p.wait()
+
     try:
-        assert servico.main() == servico.SAIDA_JA_RODANDO == 3
+        trava = servico.esperar_a_vez(tmp_path, avisos.append, dormir=dormir)
     finally:
         p.kill()
         p.wait()
+    trava.close()
+    assert len(esperas) == 3 and esperas[0] == servico.ESPERA_RESERVA_S
+    assert len(avisos) == 1 and f"pid {p.pid}" in avisos[0]   # uma linha no log, não uma a cada volta
+
+
+def test_sem_outro_servico_pega_a_vez_na_hora(tmp_path):
+    avisos = []
+    trava = servico.esperar_a_vez(tmp_path, avisos.append, dormir=lambda _s: pytest.fail("não devia esperar"))
+    trava.close()
+    assert avisos == []
