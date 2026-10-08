@@ -250,7 +250,8 @@ def cadastrar(planilha: str, manager: Any, pasta_dados: str, gravar: bool = Fals
             _salvar_estado(pasta_dados, _verificado(estado, res))
         return res
 
-    linhas = ler_planilha(planilha)
+    com_numero = ler_planilha_com_linhas(planilha)
+    linhas = [l for _n, l in com_numero]
     res["linhas"] = len(linhas)
 
     if primeira_vez:
@@ -263,7 +264,8 @@ def cadastrar(planilha: str, manager: Any, pasta_dados: str, gravar: bool = Fals
 
     vistos = set(estado.get("vistos", []))
     novas: Dict[str, Dict[str, Any]] = {}
-    for l in linhas:
+    pendentes = []
+    for numero, l in com_numero:
         k = chave(l)
         if k in novas:      # ponytail: 2 itens com o mesmo começo de PRODUTO viram 1; só avisa
             res["repetidas"].append(f"{_campo(l, 'PEDIDO')} - {str(_campo(l, 'PRODUTO'))[:50]}")
@@ -273,6 +275,9 @@ def cadastrar(planilha: str, manager: Any, pasta_dados: str, gravar: bool = Fals
             continue
         if not completa(l):
             res["incompletas"] += 1
+            pendentes.append({"linha": numero, "pedido": str(_campo(l, "PEDIDO") or ""),
+                              "produto": str(_campo(l, "PRODUTO") or "")[:60],
+                              "falta": [nome for nome in OBRIGATORIOS if not _norm(_campo(l, nome))]})
             continue
         novas[k] = l
     res["novas"] = len(novas)
@@ -295,6 +300,7 @@ def cadastrar(planilha: str, manager: Any, pasta_dados: str, gravar: bool = Fals
                                   progresso, dormir)
     estado["vistos"] = sorted(vistos | set(novas))
     estado["planilha"] = assinatura
+    estado["pendentes"] = pendentes      # linhas esperando dado: o portal avisa
     if novas or res["repetidas"]:
         estado["historico"] = ([_resumo(res)] + estado.get("historico", []))[:MANTER_HISTORICO]
     _salvar_estado(pasta_dados, _verificado(estado, res))
@@ -321,6 +327,7 @@ def estado_para_tela(pasta: str) -> Dict[str, Any]:
     hoje = _dt.date.today().strftime("%d/%m/%Y")
     return {"ativo": "vistos" in estado, "verificado_em": estado.get("verificado_em"),
             "erro": estado.get("erro"), "ultimo_cadastro": cadastros[0] if cadastros else None,
+            "pendentes": estado.get("pendentes", []),
             "cadastrados_hoje": sum(h["gravados"] for h in cadastros if h["rodou_em"].startswith(hoje)),
             "historico": [h for h in estado.get("historico", [])
                           if h.get("gravados") or h.get("repetidas")][:10]}
