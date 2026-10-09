@@ -128,6 +128,15 @@ def test_excluido_excel_entre_cadastro_e_rodada_diaria_nao_volta(c):
     assert r['removidos'] and not r['acoes'] and c.valor('C3') is None
 
 
+def test_registro_de_erro_nao_atropela_estado_compartilhado(c):
+    from cruzar_nf.cadastro_pedidos import registrar_erro
+    from cruzar_nf.sincronizar import trava, SincronizacaoEmAndamento
+    with trava(c.dados, 'Outra rotina'):
+        with pytest.raises(SincronizacaoEmAndamento):
+            registrar_erro(str(c.dados), 'erro')
+    assert not (c.dados / 'cadastro_pedidos.json').exists()
+
+
 @pytest.mark.parametrize('campo,celula,valor', [('STATUS', 'I2', 'ENTREGUE'),
     ('DAV', 'K2', '123'), ('FATURAMENTO', 'H2', 'FATURADO'),
     ('VALOR ', 'D2', 123.45), ('DATA DE ENTREGA', 'F2', '12/11/2026')])

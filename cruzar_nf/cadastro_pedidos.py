@@ -325,9 +325,11 @@ def _verificado(estado: Dict[str, Any], res: Dict[str, Any]) -> Dict[str, Any]:
 
 def registrar_erro(pasta: str, mensagem: str) -> None:
     """Fica no estado até a próxima rodada boa: é o que o painel mostra em vermelho."""
-    estado = carregar_estado(pasta)
-    estado["erro"] = {"em": _dt.datetime.now().strftime("%d/%m/%Y %H:%M:%S"), "mensagem": mensagem}
-    _salvar_estado(pasta, estado)
+    from cruzar_nf.sincronizar import trava
+    with trava(pasta, "Erro do cadastro"):
+        estado = carregar_estado(pasta)
+        estado["erro"] = {"em": _dt.datetime.now().strftime("%d/%m/%Y %H:%M:%S"), "mensagem": mensagem}
+        _salvar_estado(pasta, estado)
 
 
 def estado_para_tela(pasta: str) -> Dict[str, Any]:
@@ -384,7 +386,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         if a.gravar:
             try:
                 registrar_erro(a.dados, str(e))
-            except OSError:
+            except (OSError, SincronizacaoEmAndamento):
                 pass            # sem rede nem para o estado: o log do .bat já tem o erro
         return 1
     if not res["sem_mudanca"]:
