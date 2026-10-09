@@ -242,3 +242,140 @@ def test_formula_destino_nao_e_substituida(c):
     c.salvar_portal([pedido(**{'VALOR ': 999})])
     assert c.rodar()['pendentes']
     assert c.valor('D2') == '=50+50'
+
+
+def test_correspondencia_sem_produto_nao_autoriza_escrita():
+    from cruzar_nf.cadastro_pedidos import correspondentes
+    assert correspondentes({'PEDIDO': 1}, [pedido()]) == []
+    assert correspondentes(pedido(), [{'PEDIDO': 1}]) == []
+
+
+def test_retoma_apos_queda_entre_excel_e_foto(c, monkeypatch):
+    c.rodar()
+    c.salvar_portal([pedido(), pedido(2)])
+    original = SP._gravar_portal
+    monkeypatch.setattr(SP, '_gravar_portal', lambda *a: (_ for _ in ()).throw(RuntimeError('queda')))
+    with pytest.raises(RuntimeError, match='queda'):
+        c.rodar()
+    assert c.valor('C3') == 2
+    monkeypatch.setattr(SP, '_gravar_portal', original)
+    assert c.rodar()['acoes'] == []
+    assert c.valor('C4') is None
+    assert 'pendente' not in json.loads((c.dados / SP.ARQ_ESTADO).read_text(encoding='utf-8'))
+
+
+def test_retoma_novo_excel_apos_marcacao_visto(c, monkeypatch):
+    c.rodar()
+    w = openpyxl.load_workbook(c.xlsx)
+    w['PEDIDOS'].append(list(pedido(2).values()))
+    w.save(c.xlsx)
+    original = SP._gravar_portal
+    monkeypatch.setattr(SP, '_gravar_portal', lambda *a: (_ for _ in ()).throw(RuntimeError('queda')))
+    with pytest.raises(RuntimeError):
+        c.rodar()
+    monkeypatch.setattr(SP, '_gravar_portal', original)
+    c.rodar()
+    assert len(c.portal()) == 2
+
+
+def test_edicao_legitima_durante_verificacao_nao_e_sobrescrita(c):
+    c.rodar()
+    c.excel('I2', 'EXCEL')
+    with pytest.raises(SP.ConflitoGravacao):
+        SP.sincronizar(str(c.xlsx), str(c.json), str(c.dados), gravar=True,
+                       dormir=lambda _: c.salvar_portal([pedido(STATUS='HUMANO')]))
+    assert c.portal()[0]['STATUS'] == 'HUMANO'
+    assert c.rodar()['conflitos']
+
+
+def test_mesma_mudanca_nos_dois_lados_avanca_foto(c):
+    c.rodar()
+    c.excel('I2', 'ENTREGUE')
+    c.salvar_portal([pedido(STATUS='ENTREGUE')])
+    assert c.rodar()['acoes'] == []
+    c.excel('I2', 'FINAL')
+    c.rodar()
+    assert c.portal()[0]['STATUS'] == 'FINAL'
+
+
+def test_diario_respeita_janela_e_repeticao(c):
+    assert c.rodar(agora=dt.datetime(2026, 10, 9, 10), diario=True)['sem_mudanca']
+    assert not list(c.dados.iterdir())
+    c.rodar(agora=dt.datetime(2026, 10, 9, 12, 30), diario=True)
+    assert c.rodar(agora=dt.datetime(2026, 10, 9, 12, 40), diario=True)['sem_mudanca']
+
+
+def test_estado_do_portal_inclui_novo_relatorio(c):
+    from cruzar_nf.maestro import registrar
+    from tests.test_sincronizar import Sio, Log
+    c.rodar()
+    sio = Sio()
+    h = registrar(sio, {'caminho_banco_dados': str(c.dados)}, Log(), manager=object(), em_thread=False)
+    h['estado']()
+    assert sio.ultimo('retorno_sync_nf_estado')['estado']['sync_planilha_portal']['primeira_vez']
+
+
+def test_dois_novos_portal_com_mesma_chave_nao_duplicam_excel(c):
+    c.rodar()
+    c.salvar_portal([pedido(), pedido(2), pedido(2)])
+    r = c.rodar()
+    assert r['ambiguas'] and not r['acoes'] and c.valor('C3') is None
+
+
+def test_datas_legadas_americanas_sao_comparadas_com_excel(c):
+    c.excel('F2', dt.datetime(2025, 7, 3))
+    c.salvar_portal([pedido(**{'DATA DE ENTREGA': '7/3/2025'})])
+    assert not c.rodar()['conferencia']['campos_divergentes']
+    assert not c.rodar()['conflitos']
+    c.salvar_portal([pedido(**{'DATA DE ENTREGA': '8/4/2025'})])
+    c.rodar()
+    assert c.valor('F2').date() == dt.date(2025, 8, 4)
+    c.excel('F2', dt.datetime(2025, 9, 5))
+    c.rodar()
+    assert c.portal()[0]['DATA DE ENTREGA'] == '05/09/2025'
+    assert c.rodar()['acoes'] == []
+
+
+def test_email_editado_nao_mantem_link_para_destinatario_antigo(c):
+    w = openpyxl.load_workbook(c.xlsx)
+    w['PEDIDOS']['M2'].hyperlink = 'mailto:ana@vale.com'
+    w['PEDIDOS']['A2'].hyperlink = 'https://example.com'
+    w.save(c.xlsx)
+    c.rodar()
+    c.salvar_portal([pedido(**{'EMAIL REQUSITAN': 'bia@vale.com'})])
+    c.rodar()
+    w = openpyxl.load_workbook(c.xlsx)
+    assert w['PEDIDOS']['M2'].value == 'bia@vale.com'
+    assert w['PEDIDOS']['M2'].hyperlink is None
+    assert w['PEDIDOS']['A2'].hyperlink.target == 'https://example.com'
+    w.close()
+
+
+def test_mesclagem_nao_e_sobrescrita(c):
+    w = openpyxl.load_workbook(c.xlsx)
+    w['PEDIDOS'].merge_cells('M2:M3')
+    w.save(c.xlsx)
+    c.rodar()
+    c.salvar_portal([pedido(**{'EMAIL REQUSITAN': 'bia@vale.com'})])
+    assert c.rodar()['pendentes']
+    assert c.valor('M2') == 'ana@vale.com'
+
+
+def test_validacao_e_formatacao_condicional_acompanham_linha_nova(c):
+    from openpyxl.worksheet.datavalidation import DataValidation
+    from openpyxl.formatting.rule import CellIsRule
+    w = openpyxl.load_workbook(c.xlsx)
+    s = w['PEDIDOS']
+    dv = DataValidation(type='list', formula1='"ABERTO,ENTREGUE"')
+    s.add_data_validation(dv)
+    dv.add('I2:I2')
+    s.conditional_formatting.add('D2:D2', CellIsRule(operator='greaterThan', formula=['100']))
+    w.save(c.xlsx)
+    c.rodar()
+    c.salvar_portal([pedido(), pedido(2)])
+    c.rodar()
+    w = openpyxl.load_workbook(c.xlsx)
+    s = w['PEDIDOS']
+    assert str(s.data_validations.dataValidation[0].sqref) == 'I2:I3'
+    assert any(str(cf.sqref) == 'D2:D3' for cf in s.conditional_formatting)
+    w.close()
