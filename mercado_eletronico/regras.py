@@ -67,7 +67,7 @@ def _sem_acento(texto: str) -> str:
 # exclusiva". Roda sobre o texto já sem acento e em maiúsculas.
 _RE_SEM_SIMILAR = re.compile(
     r"\bNAO\s+(?:SERAO|SERA|SE)?\s*ACEIT\w*\s+(?:\w+\s+){0,2}SIMILAR"
-    r"|\bSEM\s+SIMILAR|\bMARCA\s+EXCLUSIVA")
+    r"|\bSEM\s+SIMILAR\b|\bMARCA\s+EXCLUSIVA\b")
 
 
 def exige_marca_exata(texto: str) -> bool:
@@ -82,7 +82,8 @@ def aviso_marca(marca: str, textos_do_comprador: list[str]) -> str | None:
     texto = " ".join(textos_do_comprador)
     if not marca or not exige_marca_exata(texto):
         return None
-    if _sem_acento(marca) in _sem_acento(texto):
+    # Palavra inteira: "GE" não pode ser achada dentro de "ENGENHARIA".
+    if re.search(rf"(?<!\w){re.escape(_sem_acento(marca))}(?!\w)", _sem_acento(texto)):
         return None
     return (f"o comprador não aceita marca similar e \"{marca}\" não aparece no "
             "pedido — confira se é a marca pedida.")

@@ -300,3 +300,13 @@ def test_tela_do_me_mostra_o_aviso_da_marca():
     r = me_ui.validar(c, item, HOJE)
 
     assert any("similar" in a for a in r.avisos)
+
+
+def test_marca_curta_dentro_de_outra_palavra_ainda_avisa():
+    """"GE" está dentro de "ENGENHARIA", mas não é a marca pedida."""
+    assert R.aviso_marca("GE", ["NÃO SERÃO ACEITAS MARCAS SIMILARES. ENGENHARIA"])
+    assert R.aviso_marca("GE", ["Lâmpada GE. Sem similar."]) is None
+
+
+def test_exclusivamente_nao_e_marca_exclusiva():
+    assert not R.exige_marca_exata("marca exclusivamente nacional")
