@@ -59,8 +59,11 @@ def fatos(con: sqlite3.Connection, hoje: date, nome_de=lambda s: s) -> dict:
         "   WHERE r.cotacao_id = c.id AND r.valor IS NOT NULL))"
         " FROM cotacao c WHERE c.criado_em >= ? AND c.criado_em < ?",
         (inicio.isoformat(), fim)).fetchone()
+    pedidos = sum(s["esta"][1] for s in por.values() if "esta" in s)
+    com = sum(s["esta"][0] for s in por.values() if "esta" in s)
     return {"de": inicio, "ate": hoje, "transportadoras": transportadoras, "rotas": rotas,
-            "cotacoes": total or 0, "sem_preco": sem or 0}
+            "cotacoes": total or 0, "sem_preco": sem or 0,
+            "aproveitamento_geral": _pct(com, pedidos) if pedidos else None}
 
 
 def linhas(f: dict) -> list[str]:

@@ -221,7 +221,7 @@ def test_painel_mostra_os_numeros_sem_chamar_a_ia(cliente, banco, prov):
     html = cliente.get("/adm").text
     assert "Resumo do dia" in html and "Os números do dia" in html
     assert "Resumo da semana" in html   # sugestão 6
-    assert "5 falha(s) em 5 resultado(s)" in html and "Explicar com IA" in html
+    assert "falha(s) em 5 resultado(s)" in html and "<b>5×</b>" in html and "Explicar com IA" in html
     assert prov.pedidos == []
 
 
@@ -244,7 +244,7 @@ def test_ia_fora_do_ar_volta_com_aviso_e_os_numeros(cliente, banco, prov):
     r = cliente.post("/adm/resumo-ia", follow_redirects=False)
     assert r.headers["location"] == "/adm?resumo_ia=indisponivel#resumo"
     html = cliente.get("/adm?resumo_ia=indisponivel").text
-    assert "A IA não respondeu agora" in html and "5 falha(s)" in html
+    assert "A IA não respondeu agora" in html and "<b>5×</b>" in html
 
 
 def test_resumo_escapa_html_vindo_da_ia(cliente, banco, prov):
@@ -274,3 +274,23 @@ def test_numero_que_so_existe_na_data_continua_sendo_inventado():
     ok = json.loads(_resumo(qtd=5))
     ok["manchete"] = "Hoje, 07/10/2026 (07/10), a Generoso falhou 5 vezes."
     assert validar(ok)["manchete"].startswith("Hoje, 07/10/2026")
+
+
+def test_ocorrencias_do_dia_mais_grave_primeiro_e_confirmacao_e_informativa():
+    fatos = {"dia": "09/10/2026",
+             "transportadoras": [{"transportadora": "Generoso", "cotacoes": 20, "falhas": 1, "recusas": 0,
+                                  "erros": [{"erro": "a etapa não avançou", "vezes": 1, "horas": ["10h"]}]}],
+             "leitura_mercado_eletronico": [],
+             "problemas_mercado_eletronico": [{"evento": "erro ao ler itens do ME", "vezes": 8,
+                                               "cotacoes_me": [], "detalhes": [
+                                                   {"erro": "timeout", "vezes": 8, "horas": ["10h", "14h"]}]}],
+             "emails_della_volpe_sem_preco": [{"desfecho": "sem_pdf", "vezes": 7, "detalhes": [
+                 {"erro": "Confirmação", "vezes": 7, "horas": ["8h", "14h"]}]}],
+             "ia_com_falhas": []}
+
+    oc = RE.ocorrencias(fatos)
+
+    assert [(o["tom"], o["titulo"], o["vezes"]) for o in oc] == [
+        ("erro", "Generoso", 1), ("atencao", "Mercado Eletrônico", 8),
+        ("neutro", "Della Volpe — e-mails", 7)]
+    assert oc[1]["horas"] == "10h–14h" and oc[2]["de"] == "confirmação sem proposta"

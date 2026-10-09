@@ -300,6 +300,51 @@ background:linear-gradient(90deg,var(--marca-viva),var(--realce-claro));
 animation:cresce .8s cubic-bezier(.22,.9,.3,1) both}
 @keyframes cresce{from{width:0}}
 
+/* ---- resumo do dia: uma ocorrência por linha ---- */
+.ocorr{display:flex;flex-direction:column;gap:10px;margin:4px 0 0}
+.ocorr .oc{display:grid;grid-template-columns:auto 1fr auto;gap:4px 16px;
+align-items:center;padding:14px 16px;border:1px solid var(--borda);
+border-radius:12px;background:var(--papel);border-left:4px solid var(--cor)}
+.ocorr .selo{display:inline-flex;align-items:center;gap:6px;font-size:11px;
+font-weight:700;letter-spacing:.4px;text-transform:uppercase;border-radius:99px;
+padding:4px 10px;color:var(--cor);background:var(--fraca);white-space:nowrap}
+.ocorr .selo svg{width:13px;height:13px}
+.ocorr .tit{font-size:14px;font-weight:700;color:var(--tinta)}
+.ocorr .de{font-size:13px;color:var(--fraco);margin-left:6px;font-weight:500}
+.ocorr .msg{grid-column:2;font-size:12.5px;color:var(--fraco);line-height:1.5;
+overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;
+-webkit-box-orient:vertical}
+.ocorr .qtd{grid-column:3;grid-row:1/span 2;text-align:right}
+.ocorr .qtd b{display:block;font-size:26px;font-weight:700;line-height:1;
+font-variant-numeric:tabular-nums;color:var(--tinta)}
+.ocorr .qtd span{font-size:11.5px;color:var(--fraco)}
+@media (max-width:640px){.ocorr .oc{grid-template-columns:1fr auto}
+.ocorr .selo{grid-column:1/-1;justify-self:start}.ocorr .msg{grid-column:1}
+.ocorr .qtd{grid-column:2;grid-row:2/span 2}}
+
+/* ---- resumo da semana ---- */
+.semana .faixa{margin:4px 0 18px}
+.semana-grade{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr);gap:24px}
+@media (max-width:900px){.semana-grade{grid-template-columns:1fr}}
+.semana h3{font-size:11.5px;font-weight:700;letter-spacing:.5px;
+text-transform:uppercase;color:var(--fraco);margin:0 0 10px}
+.aprov{width:100%;border-collapse:collapse;font-size:13.5px}
+.aprov th{text-align:left;font-size:11px;font-weight:700;letter-spacing:.4px;
+text-transform:uppercase;color:var(--fraco);padding:0 10px 10px;
+border-bottom:1px solid var(--borda)}
+.aprov td{padding:13px 10px;border-bottom:1px solid var(--borda);vertical-align:middle}
+.aprov tr:last-child td{border-bottom:0}
+.aprov .num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.aprov .nome{font-weight:600;color:var(--tinta);white-space:nowrap}
+.aprov .barra-pct{display:flex;align-items:center;gap:10px;min-width:150px}
+.aprov .barra-pct .trilho{flex:1;height:8px;border-radius:99px;background:var(--borda);
+overflow:hidden}
+.aprov .barra-pct i{display:block;height:100%;border-radius:99px;background:var(--marca);
+animation:cresce .8s cubic-bezier(.22,.9,.3,1) both}
+.aprov .barra-pct b{width:40px;text-align:right;font-variant-numeric:tabular-nums}
+.tend{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:700;
+border-radius:99px;padding:3px 10px;white-space:nowrap;color:var(--cor);background:var(--fraca)}
+
 /* ---- avatar de quem cotou ---- */
 /* A bolinha é regra SOLTA, e não `.eu .bola`: ela também aparece sozinha, no
    lugar da logo de uma transportadora sem arquivo cadastrado. */
@@ -1505,3 +1550,73 @@ def abertas_no_whatsapp(itens: list[dict], nome_de) -> str:
         f'<span class="hora">{e(dia_e_hora(i["aberto_em"]))}</span></li>'
         for i in itens)
     return f'<ul class="abertas">{linhas}</ul>'
+
+
+# --------------------------------------------------- resumos do /adm
+
+_SELO = {"erro": ("Falha", "alerta"), "atencao": ("Atenção", "relogio"),
+         "neutro": ("Informativo", "email")}
+
+
+def ocorrencias_do_dia(itens: list[dict]) -> str:
+    """Resumo do dia: uma linha por ocorrência (core/resumo_erros.ocorrencias).
+    O selo leva ícone + texto, nunca só a cor."""
+    if not itens:
+        return '<p class="vazio">Nenhum erro registrado hoje.</p>'
+    linhas = ""
+    for i in itens:
+        cor, fraca = TOM[i["tom"]]
+        rotulo, icone = _SELO[i["tom"]]
+        quando = f' · {e(i["horas"])}' if i["horas"] else ""
+        msg = f'<div class="msg" title="{e(i["mensagem"])}">{e(i["mensagem"])}</div>' if i["mensagem"] else ""
+        linhas += (f'<div class="oc" style="--cor:{cor};--fraca:{fraca}">'
+                   f'<span class="selo">{_icone(ICONES[icone])}{rotulo}</span>'
+                   f'<div><span class="tit">{e(i["titulo"])}</span>'
+                   f'<span class="de">{e(i["de"])}</span></div>'
+                   f'<div class="qtd"><b>{i["vezes"]}×</b><span>hoje{quando}</span></div>'
+                   f'{msg}</div>')
+    return f'<div class="ocorr">{linhas}</div>'
+
+
+def _tendencia(t: dict) -> str:
+    if not t["tendencia"]:
+        cor, fraca = TOM["neutro"]
+        return f'<span class="tend" style="--cor:{cor};--fraca:{fraca}">novo</span>'
+    diferenca = t["aproveitamento"] - t["antes"]
+    tom, seta = {"melhorou": ("ok", "▲"), "piorou": ("erro", "▼")}.get(t["tendencia"], ("neutro", "■"))
+    cor, fraca = TOM[tom]
+    return (f'<span class="tend" style="--cor:{cor};--fraca:{fraca}">'
+            f'{seta} {t["tendencia"]} {diferenca:+d} p.p.</span>')
+
+
+def resumo_da_semana(f: dict) -> str:
+    """Resumo da semana (core/resumo_semana.fatos): números no topo, tabela de
+    aproveitamento com tendência e as rotas mais cotadas."""
+    if not f["cotacoes"]:
+        return '<p class="vazio">Nenhuma cotação nos últimos 7 dias.</p>'
+    geral = f["aproveitamento_geral"]
+    topo = ('<div class="faixa">'
+            + numero("cotações na semana", f["cotacoes"],
+                     *TOM["marca"], "cotacoes")
+            + numero("com preço", f["cotacoes"] - f["sem_preco"], *TOM["ok"], "preco")
+            + numero("sem nenhum preço", f["sem_preco"], *TOM["erro"], "alerta",
+                     ruim=bool(f["sem_preco"]))
+            + numero("aproveitamento geral", f"{geral}%" if geral is not None else "—",
+                     *TOM["atencao"], "transportadoras")
+            + "</div>")
+    linhas = "".join(
+        f'<tr><td class="nome">{e(t["transportadora"])}</td>'
+        f'<td><div class="barra-pct"><span class="trilho"><i style="width:{t["aproveitamento"]}%">'
+        f'</i></span><b>{t["aproveitamento"]}%</b></div></td>'
+        f'<td class="num">{t["pedidos"]}</td>'
+        f'<td class="num">{"—" if t["antes"] is None else str(t["antes"]) + "%"}</td>'
+        f'<td>{_tendencia(t)}</td></tr>'
+        for t in f["transportadoras"])
+    tabela = ('<table class="aprov"><thead><tr><th>Transportadora</th><th>Respostas com preço</th>'
+              '<th class="num">Pedidos</th><th class="num">Semana anterior</th><th>Tendência</th>'
+              f'</tr></thead><tbody>{linhas}</tbody></table>')
+    return (f'<div class="semana"><p class="sub" style="margin:0 0 10px">De {f["de"]:%d/%m} a '
+            f'{f["ate"]:%d/%m}, comparado com os 7 dias anteriores.</p>{topo}<div class="semana-grade">'
+            f'<div><h3>Aproveitamento por transportadora</h3><div class="rolagem">{tabela}</div></div>'
+            f'<div><h3>Rotas mais cotadas</h3>{ranking(f["rotas"], "rota", "cotacoes")}</div>'
+            '</div></div>')

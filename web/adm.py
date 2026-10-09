@@ -681,9 +681,8 @@ def _resumo_do_dia(con, hoje, erro: str = "") -> str:
     botao = ("" if not ia.configurada() else
              f'<form method="post" action="/adm/resumo-ia" style="margin:10px 0">'
              f'<button type="submit" class="botao2">{rotulo}</button></form>')
-    linhas = "".join(f"<li>{e(l)}</li>" for l in resumo_erros.resumo_sem_ia(fatos))
     fatos_html = (f'<details{"" if salvo else " open"}><summary>Os números do dia</summary>'
-                  f'<ul style="margin:6px 0 0;padding-left:18px;font-size:13px">{linhas}</ul></details>')
+                  f'{ui.ocorrencias_do_dia(resumo_erros.ocorrencias(fatos))}</details>')
     return "".join(partes) + botao + fatos_html
 
 
@@ -732,8 +731,7 @@ def painel(adm: str | None = Cookie(None, alias=COOKIE_ADM),
         # empresa inteira para quem pediu uma pessoa.
         linhas = contas.historico(con, dias=dias, usuario=quem or None,
                                   so_com_falha=so_falhas)
-        semana = resumo_semana.linhas(
-            resumo_semana.fatos(con, date.today(), transportadoras.nome_de))
+        semana = resumo_semana.fatos(con, date.today(), transportadoras.nome_de)
         resumo_html = _resumo_do_dia(
             con, date.today(),
             "A IA não respondeu agora (limite ou fora do ar). Os números abaixo "
@@ -762,9 +760,7 @@ def painel(adm: str | None = Cookie(None, alias=COOKIE_ADM),
                    classe="c12", atraso=0.02) if avisos else "")
         + ui.cartao("Resumo do dia", resumo_html, ident="resumo",
                     nota="erros de hoje em português simples", classe="c12", atraso=0.04)
-        + ui.cartao("Resumo da semana",
-                    '<ul style="margin:0;padding-left:18px;font-size:13px">'
-                    + "".join(f"<li>{e(l)}</li>" for l in semana) + "</ul>",
+        + ui.cartao("Resumo da semana", ui.resumo_da_semana(semana),
                     ident="semana", nota="últimos 7 dias × os 7 anteriores",
                     classe="c12", atraso=0.045)
         + ui.cartao(

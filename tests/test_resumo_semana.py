@@ -56,3 +56,17 @@ def test_tendencia_rotas_e_sem_preco(con):
 
 def test_semana_vazia(con):
     assert rs.linhas(rs.fatos(con, HOJE)) == ["Nenhuma cotação nos últimos 7 dias."]
+
+
+def test_cartao_da_semana_tem_numeros_tabela_tendencia_e_rotas(con):
+    from web import painel_ui as ui
+    _cotacao(con, "2026-09-28T10:00:00", resultados=[("camilo", "10")])
+    _cotacao(con, "2026-10-08T10:00:00", resultados=[("camilo", None), ("jadlog", "5")])
+
+    f = rs.fatos(con, HOJE)
+    html = ui.resumo_da_semana(f)
+
+    assert f["aproveitamento_geral"] == 50
+    assert "50%</b><span>aproveitamento geral" in html
+    assert "▼ piorou -100 p.p." in html and ">novo<" in html
+    assert "Rotas mais cotadas" in html and "Serra/ES → Anchieta/ES" in html
