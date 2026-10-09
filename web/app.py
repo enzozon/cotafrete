@@ -57,7 +57,7 @@ from carriers.translovato.adapter import TranslovatoAdapter
 from core import cep as buscador_cep
 from core import sessao
 from core import cnpj as buscador_cnpj
-from core import explicar_erro, extrair_carga
+from core import explicar_erro, extrair_carga, resposta_cliente
 from core import ia
 from core import selecao
 from core.aceite import rotulo_validade, vencida
@@ -1746,6 +1746,63 @@ function copiar(id) {{
 </script>""", usuario))
 
 
+@app.get("/resposta/{cotacao_id}", response_class=HTMLResponse)
+def resposta_para_cliente(cotacao_id: int, usuario: str | None = Depends(vendedor)):
+    return _tela_resposta(cotacao_id, usuario)
+
+
+@app.post("/resposta/{cotacao_id}", response_class=HTMLResponse)
+def resposta_para_cliente_ia(cotacao_id: int, mensagem: str = Form(""),
+                             usuario: str | None = Depends(vendedor)):
+    """Mesma tela, com o texto reescrito pela IA no tom da mensagem colada.
+    SÍNCRONO como o /extrair: o pool do FastAPI segura a espera."""
+    return _tela_resposta(cotacao_id, usuario, mensagem=mensagem, com_ia=True)
+
+
+def _tela_resposta(cotacao_id: int, usuario: str | None, mensagem: str = "",
+                   com_ia: bool = False):
+    """Sugestão 4: o texto para o CLIENTE com os preços do banco. O padrão
+    sai sem IA; a IA só reescreve, e o validador confere cada preço."""
+    if not usuario:
+        return RedirectResponse("/login", status_code=303)
+    c = banco.buscar_cotacao(cotacao_id, usuario)
+    if c is None:
+        return HTMLResponse("Não encontrado", status_code=404)
+    ops = resposta_cliente.opcoes(c, transportadoras.nome_de)
+    texto, nota = resposta_cliente.texto_padrao(c, ops), ""
+    if not ops:
+        nota = "Nenhuma transportadora deu preço nesta cotação ainda."
+    elif com_ia:
+        try:
+            r = resposta_cliente.pedir(c, ops, mensagem)
+            texto, nota = r.dados, f"Reescrito pela IA ({r.modelo}). Os preços foram conferidos com a cotação."
+        except ia.IAIndisponivel:
+            nota = "A IA não deu um texto que passasse na conferência dos preços. Use o padrão abaixo."
+    botao_ia = ("" if not (ops and ia.configurada()) else f"""
+<form method="post" action="/resposta/{cotacao_id}">
+  <p><b>Mensagem do cliente</b> (opcional — a IA escreve no mesmo tom):</p>
+  <textarea name="mensagem" rows="4" style="width:100%">{e(mensagem)}</textarea>
+  <p><button class="botao2" type="submit">Reescrever com IA</button></p>
+</form>""")
+    return HTMLResponse(pagina(f"Resposta — cotação {cotacao_id}", f"""
+{cabecalho("Resposta para o cliente", tarja=f"Cotação #{cotacao_id}",
+           acoes=f'<a class="botao2" href="/cotacao/{cotacao_id}">Voltar para a cotação</a>')}
+<div class="cartao">
+  {f'<p class="sub">{e(nota)}</p>' if nota else ''}
+  <textarea id="texto" class="pronto" rows="14" readonly>{e(texto)}</textarea>
+  <p><button class="botao2" type="button" onclick="copiar()">Copiar texto</button></p>
+  {botao_ia}
+</div>
+<script>
+function copiar() {{
+  const campo = document.getElementById('texto');
+  campo.select();
+  try {{ document.execCommand('copy'); }} catch (erro) {{ }}
+  window.getSelection().removeAllRanges();
+}}
+</script>""", usuario))
+
+
 def _url_formulario_dv(c: dict) -> str:
     """O link do site da Della Volpe com os dados desta cotação.
 
@@ -2481,7 +2538,9 @@ def ver_cotacao(cotacao_id: int,
 {cabecalho(f"Cotação #{cotacao_id}", tarja="Resultado",
            contexto=ficha_curta,
            acoes=f'<a class="botao2" href="/?repetir={cotacao_id}">'
-                 f'Repetir esta cotação</a>{baixar_prints}')}
+                 f'Repetir esta cotação</a>'
+                 f'<a class="botao2" href="/resposta/{cotacao_id}">'
+                 f'Resposta para o cliente</a>{baixar_prints}')}
 
 <div class="cartao">
   <div class="r-cab">
