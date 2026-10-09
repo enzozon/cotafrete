@@ -48,6 +48,14 @@ def _plano_b_della_volpe_desligado(monkeypatch):
     monkeypatch.setattr(proposta_ia, "LIGADA", False)
 
 
+@pytest.fixture(autouse=True)
+def _me_sem_memoria_de_leitura(monkeypatch):
+    # Cada teste tem banco novo e os ids se repetem: a lista de cotações que a
+    # varredura já tentou ler (web/me_ui.py) não pode passar de um para outro.
+    from web import me_ui
+    monkeypatch.setattr(me_ui, "JA_TENTOU_LER", set())
+
+
 # Os vigias que o LIFESPAN do app liga (web/app.py, _vida): a varredura do
 # Mercado Eletrônico e o leitor da caixa do suporte da Della Volpe. Com as
 # senhas do .env da máquina, um teste que sobe o uvicorn sem lifespan="off"

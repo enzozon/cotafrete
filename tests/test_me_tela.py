@@ -61,6 +61,7 @@ def cliente(monkeypatch, tmp_path, robo):
     monkeypatch.setattr(me_ui, "ROBO", robo)
     monkeypatch.setattr(me_ui, "DISPARAR", lambda fn, *a: fn(*a))
     monkeypatch.setattr(me_ui, "VARREDURA", me_ui.EstadoVarredura())
+    monkeypatch.setattr(me_ui, "JA_TENTOU_LER", set())
     for c in ("VENTURA", "UNIAO"):
         monkeypatch.setenv(f"ME_{c}_LOGIN", "x")
         monkeypatch.setenv(f"ME_{c}_SENHA", "x")
@@ -126,6 +127,31 @@ def test_ler_itens_das_duas_paginas(cliente):
     itens = me_ui.banco.me_cotacao(cid)["itens"]
     assert [i["numero"] for i in itens] == list(range(10, 181, 10))
     assert {(i["pagina"], i["indice"]) for i in itens if i["numero"] in (100, 110)} == {(1, 10), (2, 1)}
+
+
+def test_varredura_ja_le_os_itens_das_cotacoes_novas(cliente):
+    cliente.post("/me/atualizar")
+    c = me_ui.banco.me_cotacao(_id(23039029))
+    assert len(c["itens"]) == 18 and c["itens_lidos_em"]
+    assert ("itens lidos do ME", "varredura") in [
+        (h["evento"], h["usuario"]) for h in me_ui.banco.me_historico(c["id"])]
+
+
+def test_varredura_tenta_ler_itens_uma_vez_so(cliente, monkeypatch):
+    chamadas = []
+
+    def quebra(conta, numero):
+        chamadas.append(numero)
+        raise TimeoutError("página não abriu")
+
+    monkeypatch.setattr(me_ui, "LEITOR", quebra)
+    cliente.post("/me/atualizar")
+    n = len(chamadas)
+    assert n == len(me_ui.banco.me_cotacoes())   # uma falha não para as outras
+    cliente.post("/me/atualizar")
+    assert len(chamadas) == n                     # e não tenta de novo a cada volta
+    eventos = [h["evento"] for h in me_ui.banco.me_historico(_id(23039029))]
+    assert eventos.count("erro ao ler itens do ME") == 1
 
 
 def _preencher(cliente, cid, **extra):
@@ -231,7 +257,7 @@ def test_marcar_como_enviada_e_manual_e_final(cliente):
     assert me_ui.banco.me_cotacao(cid)["status"] == "enviada"
     # fechada para edição
     _preencher(cliente, cid, acao="salvar")
-    assert me_ui.banco.me_cotacao(cid)["itens"] == []
+    assert not any(i["preco"] for i in me_ui.banco.me_cotacao(cid)["itens"])
 
 
 def test_menu_tem_o_link(cliente):

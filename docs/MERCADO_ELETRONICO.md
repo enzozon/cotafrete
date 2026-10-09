@@ -268,7 +268,11 @@ Tela **/me** (link "Mercado Eletrônico" no menu), em `web/me_ui.py`:
   faltando < 24 h — e o alerta mais importante, "Salva no ME mas NÃO
   enviada — fecha em …". Varredura do ME a cada 7 min (thread no lifespan,
   só se houver ME_*_LOGIN/SENHA) + botão "Atualizar agora". Leitura que
-  falha não mexe em nada (aparece "Falha ao ler VENTURA: …").
+  falha não mexe em nada (aparece "Falha ao ler VENTURA: …"). Depois da
+  lista de todas as contas, a varredura já lê os itens das cotações
+  pendentes que ainda não foram lidas (`ler_itens_novos`, desde 09/10/2026):
+  uma tentativa por cotação por vida do servidor; falhou → "erro ao ler
+  itens do ME" no histórico e fica o botão.
 - **Cotação /me/{id}**: "Ler itens do ME" (todas as páginas) → por item a
   descrição, quantidade/unidade, UF de entrega, origem e remessa pedidas e
   o texto do comprador; o usuário preenche preço, NCM, prazo, marca (20),
