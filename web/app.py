@@ -26,11 +26,12 @@ fora da rede local sem virar autenticação de verdade.
 
 from __future__ import annotations
 
+import sqlite3
 import threading
 import time
 import unicodedata
 from concurrent.futures import ThreadPoolExecutor
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, closing
 from functools import partial
 from decimal import Decimal, InvalidOperation
 from datetime import date, datetime
@@ -56,7 +57,7 @@ from carriers.translovato.adapter import TranslovatoAdapter
 from core import cep as buscador_cep
 from core import sessao
 from core import cnpj as buscador_cnpj
-from core import extrair_carga
+from core import explicar_erro, extrair_carga
 from core import ia
 from core import selecao
 from core.aceite import rotulo_validade, vencida
@@ -435,6 +436,22 @@ def _sem_acento(texto: str) -> str:
     casar só uma das formas deixaria metade dos erros reais sem tradução."""
     return "".join(c for c in unicodedata.normalize("NFKD", texto.lower())
                    if not unicodedata.combining(c))
+
+
+def _explicacao_ia(slug: str, erro: str | None) -> str | None:
+    """A frase que a IA escreveu para este TIPO de erro (core/explicar_erro).
+    Ainda não tem: pede em segundo plano e mostra na próxima abertura."""
+    if not erro:
+        return None
+    try:
+        with closing(banco._conectar()) as con:
+            frase = explicar_erro.guardada(con, slug, erro)
+    except sqlite3.Error:
+        return None
+    if frase is None:
+        explicar_erro.explicar_em_fundo(banco._conectar, slug,
+                                        transportadoras.nome_de(slug), erro)
+    return frase
 
 
 def mensagem_amigavel(slug: str, erro: str | None) -> str | None:
@@ -2248,7 +2265,7 @@ def ver_cotacao(cotacao_id: int,
             # A frase entra ANTES do texto técnico, nunca no lugar dele: o
             # vendedor lê a primeira linha e resolve; quem for investigar
             # continua tendo o original logo abaixo.
-            frase = mensagem_amigavel(slug, r["erro"])
+            frase = mensagem_amigavel(slug, r["erro"]) or _explicacao_ia(slug, r["erro"])
             principal = '<span class="sem">Não retornou preço</span>'
             avisos = ((f'<div class="alerta">{e(frase)}</div>' if frase else '')
                       + f'<div class="nota">'
