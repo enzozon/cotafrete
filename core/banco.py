@@ -677,19 +677,22 @@ class Banco:
 
         O melhor preço vem na listagem para não obrigar a abrir uma por uma
         só para lembrar qual saiu mais barata."""
+        # Uma consulta só (antes era uma por cotação): a busca do histórico
+        # (core/busca_historico.py) passa por milhares de linhas.
         with closing(self._conectar()) as con, con:
             linhas = con.execute(
-                "SELECT * FROM cotacao WHERE usuario = ?"
-                " ORDER BY id DESC LIMIT ?", (usuario, limite)).fetchall()
+                "SELECT c.*, GROUP_CONCAT(r.transportadora || '=' || r.valor, ';') AS _precos"
+                " FROM cotacao c LEFT JOIN resultado r"
+                "   ON r.cotacao_id = c.id AND r.valor IS NOT NULL"
+                " WHERE c.usuario = ? GROUP BY c.id ORDER BY c.id DESC LIMIT ?",
+                (usuario, limite)).fetchall()
             saida = []
             for linha in linhas:
                 c = dict(linha)
-                precos = con.execute(
-                    "SELECT valor FROM resultado"
-                    " WHERE cotacao_id = ? AND valor IS NOT NULL",
-                    (c["id"],)).fetchall()
-                valores = [Decimal(p["valor"]) for p in precos]
+                precos = [p.split("=", 1) for p in (c.pop("_precos") or "").split(";") if p]
+                valores = [Decimal(v) for _, v in precos]
                 c["melhor_preco"] = min(valores) if valores else None
+                c["com_preco"] = sorted({s for s, _ in precos})
                 c["peso_kg"] = _decimal(c["peso_kg"])
                 c["valor_nf"] = _decimal(c["valor_nf"])
                 saida.append(c)
