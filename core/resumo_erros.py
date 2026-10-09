@@ -267,6 +267,50 @@ def resumo_sem_ia(fatos: dict) -> list[str]:
     return linhas
 
 
+# Rótulo legível dos desfechos da Della Volpe (o mesmo sentido de
+# web/adm.DESFECHOS_DV). "sem_pdf" é o e-mail de confirmação: não é problema.
+_DESFECHO_DV = {"sem_pdf": "confirmação sem proposta", "sem_par": "proposta sem cotação",
+                "ambigua": "proposta serve a mais de uma cotação",
+                "sem_valor": "PDF sem valor", "sem_cotacao": "cotação não existe",
+                "rota_diferente": "rota diferente da cotação"}
+GRAVIDADE_DA_OCORRENCIA = ("erro", "atencao", "neutro")
+
+
+def _faixa_de_horas(*grupos: dict) -> str:
+    return _horas(*grupos).strip(" ()").replace(" a ", "–")
+
+
+def ocorrencias(fatos: dict) -> list[dict]:
+    """Os mesmos fatos de `resumo_sem_ia`, em blocos para o painel:
+    {tom, titulo, vezes, de (contexto), horas, mensagem}. Mais grave primeiro.
+    tom: "erro" (parou alguém), "atencao" (conferir), "neutro" (informativo)."""
+    itens = []
+    for t in fatos["transportadoras"]:
+        g = t["erros"][0]
+        itens.append({"tom": "erro", "titulo": t["transportadora"], "vezes": t["falhas"],
+                      "de": f"falha(s) em {t['cotacoes']} resultado(s)",
+                      "horas": _faixa_de_horas(*t["erros"]), "mensagem": g["erro"]})
+    for c in fatos["leitura_mercado_eletronico"]:
+        itens.append({"tom": "erro", "titulo": f"Leitura do ME — {c['conta']}",
+                      "vezes": c["falhas"], "de": f"de {c['leituras']} leituras falharam",
+                      "horas": _faixa_de_horas(*c["erros"]), "mensagem": c["erros"][0]["erro"]})
+    for p in fatos["problemas_mercado_eletronico"]:
+        itens.append({"tom": "neutro" if p["evento"] == "revisão IA indisponível" else "atencao",
+                      "titulo": "Mercado Eletrônico", "vezes": p["vezes"], "de": p["evento"],
+                      "horas": _faixa_de_horas(*p["detalhes"]),
+                      "mensagem": p["detalhes"][0]["erro"] if p["detalhes"] else ""})
+    for d in fatos["emails_della_volpe_sem_preco"]:
+        itens.append({"tom": "neutro" if d["desfecho"] == "sem_pdf" else "atencao",
+                      "titulo": "Della Volpe — e-mails", "vezes": d["vezes"],
+                      "de": _DESFECHO_DV.get(d["desfecho"], d["desfecho"]),
+                      "horas": _faixa_de_horas(*d["detalhes"]), "mensagem": ""})
+    for f in fatos["ia_com_falhas"]:
+        itens.append({"tom": "atencao", "titulo": f"IA — {f['funcao']}", "vezes": f["falhas"],
+                      "de": f"de {f['tentativas']} tentativas falharam", "horas": "",
+                      "mensagem": f["motivos"][0]["erro"] if f["motivos"] else ""})
+    return sorted(itens, key=lambda i: (GRAVIDADE_DA_OCORRENCIA.index(i["tom"]), -i["vezes"]))
+
+
 # ------------------------------------------------------------------ IA
 def _numeros(texto: str) -> set[str]:
     return {n.lstrip("0") or "0" for n in re.findall(r"\d+", texto)}
