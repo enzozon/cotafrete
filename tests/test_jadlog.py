@@ -92,8 +92,8 @@ def test_carga_pesada_demais_para_jadlog():
 def test_caixa_acima_de_30kg_e_reprovada_antes_de_abrir_o_navegador():
     """Regressão da cotação #46 (24/08/2026).
 
-    80 kg em 2 volumes PASSA no limite de franquia (120 kg) e a calculadora
-    recusa assim mesmo: ela cota UM pacote por vez, recebe 40 kg, e o site
+    80 kg em 2 volumes: a calculadora
+    recusa porque cota UM pacote por vez, recebe 40 kg, e o site
     bloqueia o botão com "Para caixas, o peso máximo permitido é 30kg".
 
     Sem esta validação a cotação abre o Chromium, preenche, clica num botão
@@ -108,7 +108,7 @@ def test_caixa_acima_de_30kg_e_reprovada_antes_de_abrir_o_navegador():
                                       peso_kg=Decimal(kg))])
 
     req = com_peso(40)
-    assert req.peso_total_kg == Decimal(80)   # passa nos 120 kg da franquia
+    assert req.peso_total_kg == Decimal(80)
     assert any(e.campo == "peso" and "30" in e.mensagem
                for e in j.bloqueantes(j.validar(req)))
 
@@ -163,30 +163,13 @@ def test_medida_acima_de_80cm_e_recusada():
     assert j.bloqueantes(j.validar(no_limite)) == []
 
 
-@pytest.mark.xfail(reason="DECIDIDO em 24/08/2026: o limite de 120 kg fica, "
-                          "mesmo contradizendo o pacote de 80x80x80",
-                   strict=True)
-def test_caixa_de_80x80x80_deveria_passar():
-    """A contradicao conhecida, registrada de proposito.
+def test_caixa_de_80x80x80_passa():
+    """O pacote maximo que a Jadlog diz aceitar (80x80x80) tem que cotar.
 
-    O Enzo passou em 24/08/2026 a regra da Jadlog: "Aceitamos pacotes com
-    ate 80cm x 80cm x 80cm". Mas uma caixa assim tem 0,512 m3, que a 300 de
-    fator da 153,6 kg cubados — acima dos 120 kg de PESO_MAX_FRANQUIA_KG, e
-    a validacao recusa. As duas regras nao podem estar certas ao mesmo
-    tempo.
-
-    A hipotese e que os 120 kg sejam do frete de FRANQUIA (o adapter de
-    API, que manda a carga inteira) e nao do Jadlog Entregas (o painel, que
-    cota um pacote por vez). NAO foi confirmado com a franquia.
-
-    Decisao do Enzo no mesmo dia: manter os 120 kg valendo para os dois,
-    "assim evita confusao". O preco disso e conhecido e aceito — a Jadlog
-    recusa carga volumosa que talvez cotasse, como as tres caixas de
-    80x60x50 da cotacao #51.
-
-    Este teste fica como o registro dessa escolha. `strict=True` de
-    proposito: se alguem mexer no limite, ele passa a dar erro de "xpass" e
-    a decisao volta a ser discutida em vez de sumir sem ninguem notar.
+    Da 153,6 kg cubados (0,512 m3 x 300). Ate 09/10/2026 o teto de 120 kg
+    de peso total recusava esta caixa (contradicao registrada em 24/08 como
+    xfail). Decisao do Enzo em 09/10: tirar o teto e deixar passar — se a
+    carga nao couber, a propria Jadlog recusa a cotacao.
     """
     caixa = montar(volumes=[Volume(qtd=1, comprimento_cm=Decimal(80),
                                    largura_cm=Decimal(80),

@@ -40,7 +40,6 @@ FATOR_CUBAGEM = Decimal(300)
 
 # Limites operacionais divulgados publicamente (confirmar os do seu contrato)
 PESO_MAX_PUDO_KG = Decimal(30)       # ponto de postagem parceiro
-PESO_MAX_FRANQUIA_KG = Decimal(120)  # franquia Jadlog
 
 # Limite POR CAIXA da calculadora do painel. Medido em 24/08/2026 (cotação
 # #46): com 40 kg num volume ela pinta o campo de vermelho, escreve "Para
@@ -133,17 +132,13 @@ def validar(req: CotacaoRequest, *, modalidade: str = "package",
             "modalidade",
             f"'{modalidade}' desconhecida. Opções: {', '.join(MODALIDADES)}."))
 
+    # Sem teto de peso TOTAL (o de 120 kg saiu em 09/10/2026): contradizia o
+    # pacote de 80x80x80 que a Jadlog aceita (153,6 kg cubados). Decisão do
+    # Enzo: deixar passar — se a carga não couber, a própria Jadlog recusa.
     peso = peso_para_api(req)
-    if peso > PESO_MAX_FRANQUIA_KG:
-        erros.append(ErroValidacao(
-            "peso",
-            f"{peso} kg excede o limite de franquia Jadlog "
-            f"({PESO_MAX_FRANQUIA_KG} kg). Esta carga é perfil de "
-            f"transportadora de carga fracionada pesada, não de expresso.",
-        ))
     # quem define retirada em ponto é tpentrega, não a modalidade: não existe
     # modalidade "pickup" no select da Jadlog.
-    elif peso > PESO_MAX_PUDO_KG and tpentrega == TP_ENTREGA_REDE:
+    if peso > PESO_MAX_PUDO_KG and tpentrega == TP_ENTREGA_REDE:
         erros.append(ErroValidacao(
             "peso",
             f"{peso} kg passa do limite de ponto de postagem "
@@ -152,7 +147,7 @@ def validar(req: CotacaoRequest, *, modalidade: str = "package",
 
     # Por VOLUME, não pelo total: a calculadora cota UM pacote por vez e é o
     # peso unitário que vai no campo (ver painel.py). Uma carga de 80 kg em
-    # duas caixas de 40 passa folgada no limite de franquia e é recusada aqui
+    # duas caixas de 40 passaria pelo total e é recusada aqui
     # — que é exatamente o que a #46 descobriu gastando 45s de navegador.
     pesada = max((v.peso_kg for v in req.volumes), default=Decimal(0))
     if pesada > PESO_MAX_CAIXA_KG:
