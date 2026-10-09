@@ -238,9 +238,37 @@ def atualizar(contas: list[str] | None = None) -> None:
                 banco.me_registrar_varredura(conta, ok=False, erro=VARREDURA.erros[conta],
                                              duracao_s=round(time.monotonic() - inicio, 1))
         VARREDURA.ultima = agora()
+        for conta in contas if contas is not None else contas_configuradas():
+            ler_itens_novos(conta)
     finally:
         VARREDURA.rodando = False
         VARREDURA.trava.release()
+
+
+# Cotações que a varredura já tentou ler sozinha. Uma tentativa por cotação
+# (por vida do servidor): se falhar, fica no histórico e o botão "Ler itens do
+# ME" segue lá — sem isso, uma cotação quebrada daria erro a cada volta.
+JA_TENTOU_LER: set[int] = set()
+
+
+def ler_itens_novos(conta: str) -> None:
+    """Lê os itens das cotações pendentes que ninguém leu ainda, para não ter
+    que entrar em cada uma e clicar "Ler itens do ME" (pedido do Enzo,
+    09/10/2026). Roda depois da lista de TODAS as contas, para a lista não
+    esperar pelos itens; uma cotação por vez, cada uma com vaga de navegador."""
+    for c in banco.me_cotacoes(conta=conta):
+        if (c["itens_lidos_em"] or not c["na_lista"] or c["id"] in JA_TENTOU_LER
+                or c["status"] != Status.PENDENTE.value):
+            continue
+        JA_TENTOU_LER.add(c["id"])
+        try:
+            with VAGA_NAVEGADOR:
+                n = carregar_itens(c["id"])
+        except Exception as exc:  # as outras cotações ainda são lidas
+            banco.me_registrar(c["id"], "erro ao ler itens do ME",
+                               f"{type(exc).__name__}: {exc}"[:300], "varredura")
+            continue
+        banco.me_registrar(c["id"], "itens lidos do ME", f"{n} itens", "varredura")
 
 
 def atualizar_em_segundo_plano() -> None:
@@ -1348,7 +1376,9 @@ propósito: o robô tem três travas que impedem o envio.</p>
 pendentes da <b>VENTURA</b> e da <b>UNIÃO</b>, com a data limite contando. Ela
 se atualiza sozinha a cada <b>{INTERVALO_S // 60} minutos</b>; o botão
 <b>Atualizar agora</b> lê o ME na hora.</li>
-<li>Clique no número da cotação e em <b>Ler itens do ME</b>. Cada item mostra
+<li>Clique no número da cotação. Os itens de cotação nova já vêm lidos pela
+própria atualização; se não vieram (erro no histórico), clique em <b>Ler itens
+do ME</b>. Cada item mostra
 o que o comprador pediu: descrição, quantidade, estado de entrega, origem e
 data de remessa, e o texto dele (abra "pedido do comprador").</li>
 <li>Preencha só o que muda: <b>preço unitário, NCM, prazo em dias corridos,
