@@ -165,11 +165,13 @@ def correspondentes(linha: Dict[str, Any], pedidos: List[Dict[str, Any]]) -> Lis
     """Posições dos pedidos com o mesmo começo de PRODUTO (um é o começo do outro: no
     portal o texto costuma ser mais longo) e alguma identidade em comum (_identidades)."""
     produto = _norm(_campo(linha, "PRODUTO"))[:TAM_PRODUTO]
+    if not produto:
+        return []
     ids = _identidades(linha)
     achados = []
     for i, p in enumerate(pedidos):
         outro = _norm(_campo(p, "PRODUTO"))[:TAM_PRODUTO]
-        if (outro.startswith(produto) or produto.startswith(outro)) and ids & _identidades(p):
+        if outro and (outro.startswith(produto) or produto.startswith(outro)) and ids & _identidades(p):
             achados.append(i)
     return achados
 
@@ -237,6 +239,14 @@ def _gravar(manager: Any, linhas: List[Dict[str, Any]], dir_backup: Optional[str
 def cadastrar(planilha: str, manager: Any, pasta_dados: str, gravar: bool = False,
               progresso: Callable[[str], None] = print,
               dormir: Callable[[float], None] = time.sleep) -> Dict[str, Any]:
+    from contextlib import nullcontext
+    from cruzar_nf.sincronizar import trava
+    with trava(pasta_dados, "Cadastro de pedidos") if gravar else nullcontext():
+        return _cadastrar(planilha, manager, pasta_dados, gravar, progresso, dormir)
+
+
+def _cadastrar(planilha: str, manager: Any, pasta_dados: str, gravar: bool,
+               progresso: Callable[[str], None], dormir: Callable[[float], None]) -> Dict[str, Any]:
     estado = carregar_estado(pasta_dados)
     primeira_vez = "vistos" not in estado     # o estado pode ter só um erro registrado
     res: Dict[str, Any] = {"rodou_em": _dt.datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
@@ -315,9 +325,11 @@ def _verificado(estado: Dict[str, Any], res: Dict[str, Any]) -> Dict[str, Any]:
 
 def registrar_erro(pasta: str, mensagem: str) -> None:
     """Fica no estado até a próxima rodada boa: é o que o painel mostra em vermelho."""
-    estado = carregar_estado(pasta)
-    estado["erro"] = {"em": _dt.datetime.now().strftime("%d/%m/%Y %H:%M:%S"), "mensagem": mensagem}
-    _salvar_estado(pasta, estado)
+    from cruzar_nf.sincronizar import trava
+    with trava(pasta, "Erro do cadastro"):
+        estado = carregar_estado(pasta)
+        estado["erro"] = {"em": _dt.datetime.now().strftime("%d/%m/%Y %H:%M:%S"), "mensagem": mensagem}
+        _salvar_estado(pasta, estado)
 
 
 def estado_para_tela(pasta: str) -> Dict[str, Any]:
@@ -366,11 +378,15 @@ def main(argv: Optional[List[str]] = None) -> int:
         res = cadastrar(a.planilha, manager, a.dados, gravar=a.gravar,
                         progresso=lambda m: print(m, flush=True))
     except Exception as e:      # planilha no meio do salvamento, rede, JSON: o .bat vê o erro
+        from cruzar_nf.sincronizar import SincronizacaoEmAndamento
+        if isinstance(e, SincronizacaoEmAndamento):
+            print("Cadastro adiado: outra rotina está trabalhando; próxima tentativa em 10 minutos.")
+            return 0
         print(f"[ERRO] {e}", file=sys.stderr)
         if a.gravar:
             try:
                 registrar_erro(a.dados, str(e))
-            except OSError:
+            except (OSError, SincronizacaoEmAndamento):
                 pass            # sem rede nem para o estado: o log do .bat já tem o erro
         return 1
     if not res["sem_mudanca"]:

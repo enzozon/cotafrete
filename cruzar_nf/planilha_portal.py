@@ -22,6 +22,8 @@ import json
 import os
 import re
 import sys
+import unicodedata
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 
@@ -30,6 +32,54 @@ from cruzar_nf.cadastro_pedidos import _campo, chave, correspondentes, ler_plani
 ARQ_RELATORIO = "conferencia_planilha.json"
 ARQ_IGNORAR = "conferencia_ignorar.json"
 MAX_NA_TELA = 30
+IDENTIDADE = ("PEDIDO", "NMR DA RFQ", "PRODUTO")
+EDITAVEIS = ("CIDADE", "FRETE", "VALOR", "DATA DE ENTREGA", "FATURAMENTO", "STATUS",
+             "DAV", "REQUISITANTE", "EMAIL REQUSITAN")
+
+
+def normalizar(nome: str, valor: Any, formato_data: str = "dmy") -> Any:
+    if valor is None or str(valor).strip() == "":
+        return None
+    if nome == "VALOR":
+        texto = str(valor).strip()
+        if "," in texto:
+            texto = texto.replace(".", "").replace(",", ".")
+        try:
+            numero = Decimal(texto)
+            if not numero.is_finite():
+                raise ValueError("Valor não finito")
+            return str(numero.quantize(Decimal("0.01")))
+        except InvalidOperation as e:
+            raise ValueError("Valor inválido: %s" % valor) from e
+    if isinstance(valor, (_dt.date, _dt.datetime)):
+        return valor.strftime("%Y-%m-%d")
+    if nome == "DATA DE ENTREGA":
+        formatos = ("%m/%d/%Y", "%d/%m/%Y") if formato_data == "mdy" else ("%d/%m/%Y", "%m/%d/%Y")
+        for formato in formatos + ("%Y-%m-%d", "%Y-%m-%dT%H:%M:%S"):
+            try:
+                return _dt.datetime.strptime(str(valor).strip(), formato).strftime("%Y-%m-%d")
+            except ValueError:
+                pass
+        raise ValueError("Data inválida: %s" % valor)
+    if nome == "Nº NOTA FISCAL":
+        return sorted(nfs(valor))
+    if isinstance(valor, float) and valor.is_integer():
+        valor = int(valor)
+    texto = unicodedata.normalize("NFKD", str(valor))
+    return " ".join("".join(c for c in texto if not unicodedata.combining(c)).casefold().split())
+
+
+def formato_data_portal(excel, portal):
+    """O JSON antigo veio de exportação americana; o cadastro atual escreve dd/mm/aaaa."""
+    try:
+        a = normalizar('DATA DE ENTREGA', _campo(excel or {}, 'DATA DE ENTREGA'))
+        valor = _campo(portal or {}, 'DATA DE ENTREGA')
+        if a is not None and normalizar('DATA DE ENTREGA', valor, 'mdy') == a:
+            if normalizar('DATA DE ENTREGA', valor, 'dmy') != a:
+                return 'mdy'
+    except ValueError:
+        pass
+    return 'dmy'
 
 
 def nf_de(p: Dict[str, Any]) -> str:
@@ -68,16 +118,29 @@ def conferir(linhas: List[Tuple[int, Dict[str, Any]]], pedidos: List[Dict[str, A
         "planilha_sem_portal": [dict(linha=n, **_desc(l)) for n, l in linhas
                                 if not pares[n] and n not in canceladas],
         "portal_sem_planilha": [_desc(p) for i, p in enumerate(pedidos) if i not in usados],
-        "nf_divergente": [], "nf_so_no_portal": 0,
+        "nf_divergente": [], "nf_so_no_portal": 0, "campos_divergentes": [], "ambiguas": [],
     }
+    inverso = {i: [n for n, indices in pares.items() if i in indices] for i in usados}
     for n, l in linhas:
         if not pares[n] or n in canceladas:
             continue
+        if len(pares[n]) != 1 or any(len(inverso[i]) != 1 for i in pares[n]):
+            rel["ambiguas"].append(dict(linha=n, **_desc(l), candidatos=len(pares[n])))
+        for i in pares[n]:
+            for nome in IDENTIDADE + EDITAVEIS:
+                a, b = _campo(l, nome), _campo(pedidos[i], nome)
+                try:
+                    diferente = normalizar(nome, a) != normalizar(nome, b, formato_data_portal(l, pedidos[i]))
+                except ValueError:
+                    diferente = True
+                if diferente:
+                    rel["campos_divergentes"].append(dict(linha=n, **_desc(l), campo=nome,
+                        planilha=a, portal=b, indice_portal=i))
         na_planilha = nf_de(l)
         no_portal = sorted({nf_de(pedidos[i]) for i in pares[n]} - {""})
         if no_portal and not na_planilha:
             rel["nf_so_no_portal"] += 1
-        elif no_portal and nfs(na_planilha) != set().union(*(nfs(x) for x in no_portal)):
+        elif nfs(na_planilha) != set().union(*(nfs(x) for x in no_portal)):
             rel["nf_divergente"].append(dict(linha=n, **_desc(l), nf_planilha=na_planilha,
                                              nf_portal=" / ".join(no_portal)))
     return rel
@@ -103,10 +166,10 @@ def resumo_para_tela(pasta: str) -> Optional[Dict[str, Any]]:
     rel = _ler_relatorio(pasta)
     if rel is None:
         return None
-    listas = ("planilha_sem_portal", "portal_sem_planilha", "nf_divergente")
-    return dict({k: len(rel[k]) for k in listas},
+    listas = ("planilha_sem_portal", "portal_sem_planilha", "nf_divergente", "campos_divergentes", "ambiguas")
+    return dict({k: len(rel.get(k, [])) for k in listas},
                 gerado_em=rel["gerado_em"], nf_so_no_portal=rel["nf_so_no_portal"],
-                ignoradas=rel["ignoradas"], listas={k: rel[k][:MAX_NA_TELA] for k in listas})
+                ignoradas=rel["ignoradas"], listas={k: rel.get(k, [])[:MAX_NA_TELA] for k in listas})
 
 
 def gerar(planilha: str, caminho_pedidos: str, pasta: str) -> Dict[str, Any]:

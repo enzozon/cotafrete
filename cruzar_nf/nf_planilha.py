@@ -175,12 +175,13 @@ def editar_aba(xml: str, valores: Dict[int, str], coluna: str = COLUNA,
     return re.sub(r'<dimension ref="([A-Z]+\d+:)([A-Z]+)(\d+)"/>', dimensao, novo, count=1)
 
 
-def _reempacotar(original: bytes, parte: str, novo_xml: bytes) -> bytes:
-    """Mesmo zip, mesma ordem, mesma compressão; só `parte` muda."""
+def _reempacotar(original: bytes, parte: Any, novo_xml: Optional[bytes] = None) -> bytes:
+    """Mesmo zip, mesma ordem e compressão; só as partes autorizadas mudam."""
+    mudancas = parte if isinstance(parte, dict) else {parte: novo_xml}
     saida = io.BytesIO()
     with zipfile.ZipFile(io.BytesIO(original)) as zin, zipfile.ZipFile(saida, "w") as zout:
         for info in zin.infolist():
-            zout.writestr(info, novo_xml if info.filename == parte else zin.read(info.filename))
+            zout.writestr(info, mudancas.get(info.filename, zin.read(info.filename)))
     return saida.getvalue()
 
 
