@@ -111,6 +111,23 @@ def test_novo_excel_entra_no_portal(c):
     assert 'NF (MAESTRO)' not in c.portal()[-1]
 
 
+def test_excluido_excel_entre_cadastro_e_rodada_diaria_nao_volta(c):
+    c.rodar()
+    def cadastro():
+        return cadastrar(str(c.xlsx), ArquivoPedidosConcorrente(str(c.json)), str(c.dados),
+                         gravar=True, dormir=lambda _: None, progresso=lambda _: None)
+    cadastro()
+    w = openpyxl.load_workbook(c.xlsx)
+    w['PEDIDOS'].append(list(pedido(2).values()))
+    w.save(c.xlsx)
+    assert cadastro()['gravados'] == 1
+    w = openpyxl.load_workbook(c.xlsx)
+    w['PEDIDOS'].delete_rows(3)
+    w.save(c.xlsx)
+    r = c.rodar()
+    assert r['removidos'] and not r['acoes'] and c.valor('C3') is None
+
+
 @pytest.mark.parametrize('campo,celula,valor', [('STATUS', 'I2', 'ENTREGUE'),
     ('DAV', 'K2', '123'), ('FATURAMENTO', 'H2', 'FATURADO'),
     ('VALOR ', 'D2', 123.45), ('DATA DE ENTREGA', 'F2', '12/11/2026')])

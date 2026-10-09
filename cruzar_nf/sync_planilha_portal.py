@@ -124,9 +124,13 @@ def planejar(linhas, pedidos, estado, ignorar, vistos):
                     r['historico'].append({'chave': k, 'lado': 'portal' if l is None else 'excel'})
                 continue
             pendente = any(a['chave'] == k for a in estado.get('pendente', []))
-            if p is None and k in vistos and not pendente:
+            if k in vistos and not pendente:
                 itens[k] = _registro(l, p, True)
-                r['historico'].append({'chave': k, 'lado': 'excel'})
+                if l is None:
+                    itens[k]['removido_excel'] = True
+                    r['removidos'].append({'chave': k, 'lado': 'excel (visto pelo cadastro)'})
+                else:
+                    r['historico'].append({'chave': k, 'lado': 'excel'})
                 continue
             try:
                 _valores(atual)
