@@ -104,3 +104,13 @@ def test_sem_ia_busca_por_trecho(cliente, monkeypatch):
     html = cli.get("/historico?q=anchieta").text
     assert "Busca simples por &quot;anchieta&quot;" in html
     assert "Anchieta/ES" in html and "São Paulo/SP" not in html
+
+
+def test_peso_absurdo_na_url_e_ignorado():
+    assert bh.limpar({"peso_min": "1e30", "peso_max": "500"}, SLUGS) == {"peso_max": "500"}
+
+
+def test_sigla_de_uf_nao_acha_pedaco_de_cidade():
+    jaspe = _c(cidade_destino="Jaspe", uf_destino="MG")
+    assert bh.aplicar([jaspe], {"destino": "sp"}) == []
+    assert bh.aplicar([jaspe], {"destino": "MG"}) == [jaspe]

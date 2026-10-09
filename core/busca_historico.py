@@ -28,6 +28,7 @@ FILTROS = {
     "desde": "de", "ate": "até", "transportadora": "com preço da",
     "status": "situação",
 }
+PESO_MAXIMO = Decimal(1_000_000)   # kg; nenhuma carga real passa disso
 STATUS = {"com_preco": "com preço", "sem_preco": "sem preço nenhum"}
 
 SISTEMA = """Você transforma a frase de busca de um vendedor em filtros para a lista
@@ -69,7 +70,8 @@ def _decimal(v) -> Decimal | None:
         d = Decimal(str(v).replace(",", "."))
     except (InvalidOperation, ValueError):
         return None
-    return d if d.is_finite() and d >= 0 else None
+    # Teto: "peso_min=1e30" na URL quebrava o quantize de `limpar` (erro 500).
+    return d if d.is_finite() and 0 <= d <= PESO_MAXIMO else None
 
 
 def _data(v) -> date | None:
@@ -102,8 +104,11 @@ def limpar(bruto: dict, slugs: Iterable[str]) -> dict[str, str]:
 
 
 def _local(cidade, uf, procura: str) -> bool:
+    """Duas letras é UF, e só UF: "SP" não pode achar "Jaspe"."""
     p = _plano(procura)
-    return p == _plano(uf) or p in _plano(cidade)
+    if len(p) == 2:
+        return p == _plano(uf)
+    return p in _plano(cidade)
 
 
 def aplicar(cotacoes: list[dict], f: dict[str, str]) -> list[dict]:
