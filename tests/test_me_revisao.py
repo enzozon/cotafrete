@@ -147,3 +147,11 @@ def test_exigencias_vao_e_voltam_pelo_banco():
     r = rv.Revisao(exigencias=[rv.Exigencia("Não aceita similar", "SEM SIMILAR")], modelo="m")
     assert rv.Revisao.de_json(r.como_json()) == r
     assert rv.Revisao.de_json('{"alertas": []}').exigencias == []   # gravada antes
+
+
+def test_trecho_curto_demais_nao_vale_como_prova(prov):
+    prov.roteiro["melhor"] = [Resp(conteudo=json.dumps({"alertas": [], "exigencias": [
+        {"regra": "Exige laudo técnico", "trecho": "Marca"},
+        {"regra": "Entrega em Brasília", "trecho": "ENTREGAR EM BSB"}]}))]
+    r = rv.revisar(COTACAO, PREVIA, [], [])
+    assert [x.regra for x in r.exigencias] == ["Entrega em Brasília"]

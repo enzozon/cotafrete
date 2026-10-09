@@ -31,6 +31,7 @@ from typing import Any
 from core import ia
 
 NIVEIS = ("critico", "atencao", "info")
+MIN_TRECHO = 15   # letras do trecho citado numa exigência (ver _exigencias)
 ROTULO_NIVEL = {"critico": "Crítico", "atencao": "Atenção", "info": "Info"}
 
 SISTEMA = """Você revisa respostas de cotação que uma distribuidora de informática
@@ -208,7 +209,9 @@ def _exigencias(brutas: Any, texto_do_comprador: str) -> list[Exigencia]:
         if not isinstance(x, dict):
             continue
         regra, trecho = str(x.get("regra") or "").strip(), str(x.get("trecho") or "").strip()
-        if regra and len(trecho) >= 4 and _plano(trecho) in fonte:
+        # Trecho curto ("para", "item") existe em qualquer texto e daria
+        # aspas reais a uma regra inventada: pelo menos MIN_TRECHO letras.
+        if regra and len(_plano(trecho)) >= MIN_TRECHO and _plano(trecho) in fonte:
             saida.append(Exigencia(regra, trecho))
     return saida
 
