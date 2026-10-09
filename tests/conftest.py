@@ -41,11 +41,15 @@ for _l in _logins_me.LOGINS:
         os.environ[f"{_l.prefixo}_SENHA"] = ""
 
 from carriers.dellavolpe import proposta_ia  # noqa: E402
+from core import explicar_erro  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
 def _plano_b_della_volpe_desligado(monkeypatch):
     monkeypatch.setattr(proposta_ia, "LIGADA", False)
+    # Mesmo motivo: o cartão de uma cotação com erro pediria a explicação à
+    # IA de verdade (core/explicar_erro.py). Quem testa religa.
+    monkeypatch.setattr(explicar_erro, "LIGADA", False)
 
 
 @pytest.fixture(autouse=True)

@@ -220,6 +220,7 @@ def test_painel_mostra_os_numeros_sem_chamar_a_ia(cliente, banco, prov):
     _falhas(banco, "generoso", CEP_FORA, 5)
     html = cliente.get("/adm").text
     assert "Resumo do dia" in html and "Os números do dia" in html
+    assert "Resumo da semana" in html   # sugestão 6
     assert "5 falha(s) em 5 resultado(s)" in html and "Explicar com IA" in html
     assert prov.pedidos == []
 

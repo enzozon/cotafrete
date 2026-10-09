@@ -254,3 +254,59 @@ def test_conferencia_acusa_divergencia_e_campo_sumido():
     )
     assert len(d) == 3
     assert any("icms" in x for x in d) and any("marca" in x for x in d)
+
+
+# ------------------------------------------- marca exata (sugestão 7, 24/09)
+SEM_SIMILAR = "Bateria 4S 5000mAh DJI. NÃO SERÃO ACEITAS MARCAS SIMILARES."
+
+
+def test_marca_diferente_quando_o_comprador_nao_aceita_similar_avisa():
+    aviso = R.aviso_marca("Genérica", ["BATERIA DRONE", SEM_SIMILAR])
+
+    assert aviso and "Genérica" in aviso and "similar" in aviso
+
+
+def test_marca_que_aparece_no_pedido_nao_avisa():
+    assert R.aviso_marca("dji", ["BATERIA DRONE", SEM_SIMILAR]) is None
+
+
+def test_sem_exigencia_de_marca_nao_avisa():
+    assert R.aviso_marca("Genérica", ["BATERIA DRONE 4S"]) is None
+
+
+def test_marca_em_branco_nao_avisa_de_novo():
+    """Marca vazia já ganha o aviso "fabricante/marca em branco"."""
+    assert R.aviso_marca("", [SEM_SIMILAR]) is None
+
+
+@pytest.mark.parametrize("frase", [
+    "Não aceitamos similar", "marca exclusiva", "SEM SIMILAR",
+    "não será aceito produto similar", "Não serão aceitos similares"])
+def test_jeitos_de_dizer_nao_aceita_similar(frase):
+    assert R.exige_marca_exata(frase)
+
+
+def test_aceita_similar_nao_e_exigencia():
+    assert not R.exige_marca_exata("Aceita-se similar de qualidade igual ou superior")
+
+
+def test_tela_do_me_mostra_o_aviso_da_marca():
+    from web import me_ui
+    c = {"itens": [{"numero": 10, "descricao": "BATERIA DRONE", "obs_comprador": SEM_SIMILAR,
+                    "campos_adicionais": ""}], "obs_comprador": ""}
+    item = EntradaItem(numero=10, preco="10,00", ncm="85076000", prazo_dias=5,
+                       marca="Genérica", origem=0, pedido=PedidoDoComprador("ES"))
+
+    r = me_ui.validar(c, item, HOJE)
+
+    assert any("similar" in a for a in r.avisos)
+
+
+def test_marca_curta_dentro_de_outra_palavra_ainda_avisa():
+    """"GE" está dentro de "ENGENHARIA", mas não é a marca pedida."""
+    assert R.aviso_marca("GE", ["NÃO SERÃO ACEITAS MARCAS SIMILARES. ENGENHARIA"])
+    assert R.aviso_marca("GE", ["Lâmpada GE. Sem similar."]) is None
+
+
+def test_exclusivamente_nao_e_marca_exclusiva():
+    assert not R.exige_marca_exata("marca exclusivamente nacional")

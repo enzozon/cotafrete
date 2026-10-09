@@ -71,6 +71,14 @@ adapter confere o popup antes de aceitar o preço.
 - Generoso e Della Volpe só passam com **janela visível** (Vercel e
   reCAPTCHA). Headless "funciona" e não envia nada.
 
+### IA na tela do vendedor
+
+Toda IA nova segue a regra: a IA sugere, o código confere contra os dados
+reais. `core/explicar_erro.py` (frase do erro, sem número),
+`core/resposta_cliente.py` (cada preço igual ao do banco) e
+`core/busca_historico.py` (só filtros da lista fechada). Nos testes, o que
+chama a IA sozinho fica desligado em `tests/conftest.py`.
+
 ### Para ligar uma transportadora nova
 
 Siga o roteiro: recon → `mapping.py` → `adapter.py` → fixture tirada do HTML
@@ -94,8 +102,9 @@ juntas. O `monitorar.py` se atualiza sozinho.
 - A parte pura fica em `regras.py`, `feriados.py`, `mapa.py`, `painel.py`,
   `lista.py` e `pagina.py`, e tem testes. A parte de browser fica em
   `robo.py` e `ponte.py` e é fina de propósito.
-- `revisao.py` usa IA (`core/ia.py`) só para gerar **alertas** e nunca
-  escreve no formulário. `core/resumo_erros.py` só aceita um número como fato
+- `revisao.py` usa IA (`core/ia.py`) só para gerar **alertas** e
+  **exigências do comprador** (cada uma com o trecho conferido no texto) e
+  nunca escreve no formulário. `core/resumo_erros.py` só aceita um número como fato
   se ele aparece fora da data.
 - Guia completo: `docs/MERCADO_ELETRONICO.md`.
 

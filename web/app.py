@@ -26,16 +26,17 @@ fora da rede local sem virar autenticação de verdade.
 
 from __future__ import annotations
 
+import sqlite3
 import threading
 import time
 import unicodedata
 from concurrent.futures import ThreadPoolExecutor
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, closing
 from functools import partial
 from decimal import Decimal, InvalidOperation
 from datetime import date, datetime
 from pathlib import Path
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
 
 from dotenv import load_dotenv
 from fastapi import Body, Cookie, Depends, FastAPI, Form, HTTPException, Request
@@ -56,7 +57,7 @@ from carriers.translovato.adapter import TranslovatoAdapter
 from core import cep as buscador_cep
 from core import sessao
 from core import cnpj as buscador_cnpj
-from core import extrair_carga
+from core import busca_historico, explicar_erro, extrair_carga, resposta_cliente
 from core import ia
 from core import selecao
 from core.aceite import rotulo_validade, vencida
@@ -435,6 +436,22 @@ def _sem_acento(texto: str) -> str:
     casar só uma das formas deixaria metade dos erros reais sem tradução."""
     return "".join(c for c in unicodedata.normalize("NFKD", texto.lower())
                    if not unicodedata.combining(c))
+
+
+def _explicacao_ia(slug: str, erro: str | None) -> str | None:
+    """A frase que a IA escreveu para este TIPO de erro (core/explicar_erro).
+    Ainda não tem: pede em segundo plano e mostra na próxima abertura."""
+    if not erro:
+        return None
+    try:
+        with closing(banco._conectar()) as con:
+            frase = explicar_erro.guardada(con, slug, erro)
+    except sqlite3.Error:
+        return None
+    if frase is None:
+        explicar_erro.explicar_em_fundo(banco._conectar, slug,
+                                        transportadoras.nome_de(slug), erro)
+    return frase
 
 
 def mensagem_amigavel(slug: str, erro: str | None) -> str | None:
@@ -1729,6 +1746,63 @@ function copiar(id) {{
 </script>""", usuario))
 
 
+@app.get("/resposta/{cotacao_id}", response_class=HTMLResponse)
+def resposta_para_cliente(cotacao_id: int, usuario: str | None = Depends(vendedor)):
+    return _tela_resposta(cotacao_id, usuario)
+
+
+@app.post("/resposta/{cotacao_id}", response_class=HTMLResponse)
+def resposta_para_cliente_ia(cotacao_id: int, mensagem: str = Form(""),
+                             usuario: str | None = Depends(vendedor)):
+    """Mesma tela, com o texto reescrito pela IA no tom da mensagem colada.
+    SÍNCRONO como o /extrair: o pool do FastAPI segura a espera."""
+    return _tela_resposta(cotacao_id, usuario, mensagem=mensagem, com_ia=True)
+
+
+def _tela_resposta(cotacao_id: int, usuario: str | None, mensagem: str = "",
+                   com_ia: bool = False):
+    """Sugestão 4: o texto para o CLIENTE com os preços do banco. O padrão
+    sai sem IA; a IA só reescreve, e o validador confere cada preço."""
+    if not usuario:
+        return RedirectResponse("/login", status_code=303)
+    c = banco.buscar_cotacao(cotacao_id, usuario)
+    if c is None:
+        return HTMLResponse("Não encontrado", status_code=404)
+    ops = resposta_cliente.opcoes(c, transportadoras.nome_de)
+    texto, nota = resposta_cliente.texto_padrao(c, ops), ""
+    if not ops:
+        nota = "Nenhuma transportadora deu preço nesta cotação ainda."
+    elif com_ia:
+        try:
+            r = resposta_cliente.pedir(c, ops, mensagem)
+            texto, nota = r.dados, f"Reescrito pela IA ({r.modelo}). Os preços foram conferidos com a cotação."
+        except ia.IAIndisponivel:
+            nota = "A IA não deu um texto que passasse na conferência dos preços. Use o padrão abaixo."
+    botao_ia = ("" if not (ops and ia.configurada()) else f"""
+<form method="post" action="/resposta/{cotacao_id}">
+  <p><b>Mensagem do cliente</b> (opcional — a IA escreve no mesmo tom):</p>
+  <textarea name="mensagem" rows="4" style="width:100%">{e(mensagem)}</textarea>
+  <p><button class="botao2" type="submit">Reescrever com IA</button></p>
+</form>""")
+    return HTMLResponse(pagina(f"Resposta — cotação {cotacao_id}", f"""
+{cabecalho("Resposta para o cliente", tarja=f"Cotação #{cotacao_id}",
+           acoes=f'<a class="botao2" href="/cotacao/{cotacao_id}">Voltar para a cotação</a>')}
+<div class="cartao">
+  {f'<p class="sub">{e(nota)}</p>' if nota else ''}
+  <textarea id="texto" class="pronto" rows="14" readonly>{e(texto)}</textarea>
+  <p><button class="botao2" type="button" onclick="copiar()">Copiar texto</button></p>
+  {botao_ia}
+</div>
+<script>
+function copiar() {{
+  const campo = document.getElementById('texto');
+  campo.select();
+  try {{ document.execCommand('copy'); }} catch (erro) {{ }}
+  window.getSelection().removeAllRanges();
+}}
+</script>""", usuario))
+
+
 def _url_formulario_dv(c: dict) -> str:
     """O link do site da Della Volpe com os dados desta cotação.
 
@@ -2248,7 +2322,7 @@ def ver_cotacao(cotacao_id: int,
             # A frase entra ANTES do texto técnico, nunca no lugar dele: o
             # vendedor lê a primeira linha e resolve; quem for investigar
             # continua tendo o original logo abaixo.
-            frase = mensagem_amigavel(slug, r["erro"])
+            frase = mensagem_amigavel(slug, r["erro"]) or _explicacao_ia(slug, r["erro"])
             principal = '<span class="sem">Não retornou preço</span>'
             avisos = ((f'<div class="alerta">{e(frase)}</div>' if frase else '')
                       + f'<div class="nota">'
@@ -2464,7 +2538,9 @@ def ver_cotacao(cotacao_id: int,
 {cabecalho(f"Cotação #{cotacao_id}", tarja="Resultado",
            contexto=ficha_curta,
            acoes=f'<a class="botao2" href="/?repetir={cotacao_id}">'
-                 f'Repetir esta cotação</a>{baixar_prints}')}
+                 f'Repetir esta cotação</a>'
+                 f'<a class="botao2" href="/resposta/{cotacao_id}">'
+                 f'Resposta para o cliente</a>{baixar_prints}')}
 
 <div class="cartao">
   <div class="r-cab">
@@ -2935,12 +3011,60 @@ def documentacao(usuario: str | None = Depends(vendedor)):
     return HTMLResponse(pagina("Documentação", pagina_documentacao(), usuario))
 
 
+# Busca no histórico: até onde olhar quando há filtro (sem filtro, as 100
+# últimas como sempre).
+LIMITE_BUSCA = 5000
+
+
+def _slugs_busca() -> dict[str, str]:
+    return {s: transportadoras.nome_de(s) for s in transportadoras.NOMES_AUTOMATICAS}
+
+
+def _busca(request: Request, usuario: str):
+    """(cotações, filtros, aviso) ou um RedirectResponse quando a IA acabou de
+    entender a frase — os filtros vão para a URL, onde a pessoa os vê e tira."""
+    q = " ".join(request.query_params.get("q", "").split())[:300]
+    filtros = busca_historico.limpar(dict(request.query_params), _slugs_busca())
+    if q and not filtros and request.query_params.get("trecho") != "1" and ia.configurada():
+        try:
+            filtros = busca_historico.interpretar(q, date.today(), _slugs_busca())
+        except ia.IAIndisponivel:
+            filtros = {}
+        if filtros:
+            return RedirectResponse("/historico?" + urlencode({**filtros, "q": q}), status_code=303)
+    if not (q or filtros):
+        return banco.listar_cotacoes(usuario), {}, ""
+    todas = banco.listar_cotacoes(usuario, limite=LIMITE_BUSCA)
+    if filtros:
+        return busca_historico.aplicar(todas, filtros), filtros, ""
+    return (busca_historico.por_trecho(todas, q), {},
+            f'Busca simples por "{q}" na cidade e no material.')
+
+
+def _chips_busca(filtros: dict[str, str], q: str) -> str:
+    if not filtros:
+        return ""
+    chips = []
+    for k, rotulo in zip([k for k in busca_historico.FILTROS if k in filtros],
+                         busca_historico.descrever(filtros, transportadoras.nome_de)):
+        sem = urlencode({**{x: v for x, v in filtros.items() if x != k}, "q": q, "trecho": "1"})
+        chips.append(f'<span class="pilula">{e(rotulo)} '
+                     f'<a href="/historico?{e(sem)}" title="tirar este filtro">×</a></span>')
+    return (f'<p class="sub">Entendi assim: {" ".join(chips)} '
+            f'<a href="/historico">limpar</a></p>')
+
+
 @app.get("/historico", response_class=HTMLResponse)
-def historico(usuario: str | None = Depends(vendedor)):
+def historico(request: Request, usuario: str | None = Depends(vendedor)):
     if not usuario:
         return RedirectResponse("/login", status_code=303)
+    achou = _busca(request, usuario)
+    if isinstance(achou, RedirectResponse):
+        return achou
+    cotacoes, filtros, aviso = achou
+    q = request.query_params.get("q", "")
     linhas = ""
-    for c in banco.listar_cotacoes(usuario):
+    for c in cotacoes:
         # Sem preço nenhum: o travessão perde o verde lá no CSS. Verde é
         # "veio preço", e uma coluna inteira verde esconde justamente a
         # cotação em que ninguém respondeu.
@@ -2964,11 +3088,18 @@ def historico(usuario: str | None = Depends(vendedor)):
 {cabecalho("Histórico", tarja="Suas cotações",
            sub="Clique numa linha para ver o preço de cada transportadora.",
            acoes='<a class="botao2" href="/">Nova cotação</a>')}
-<div class="cartao"><div class="rolagem-r"><table>
+<div class="cartao">
+<form method="get" action="/historico">
+  <input name="q" value="{e(q)}" style="width:70%"
+         placeholder="Buscar: cotações para Anchieta acima de 100 kg em agosto">
+  <button class="botao2" type="submit">Buscar</button>
+</form>
+{_chips_busca(filtros, q)}{f'<p class="sub">{e(aviso)}</p>' if aviso else ''}
+<div class="rolagem-r"><table>
 <thead><tr><th>#</th><th>quando</th><th>material</th><th>rota</th><th>peso</th>
 <th style="text-align:right">melhor preço</th></tr></thead>
 <tbody>
-{linhas or '<tr><td colspan="6" class="sub">Nenhuma cotação ainda.</td></tr>'}
+{linhas or f'<tr><td colspan="6" class="sub">{"Nenhuma cotação com esses filtros." if (q or filtros) else "Nenhuma cotação ainda."}</td></tr>'}
 </tbody></table></div></div>
 <script>
 // A linha inteira leva para a cotação. O <a> do número continua sendo quem

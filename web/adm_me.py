@@ -172,7 +172,21 @@ def _leitura(linhas: list[dict]) -> str:
             f'<tbody>{corpo}</tbody></table></div>')
 
 
-def _ia(linhas: list[dict]) -> str:
+def _cota(cota: list[dict]) -> str:
+    """Uma linha por provedor: quanto da cota grátis de hoje já foi."""
+    itens = []
+    for c in cota:
+        tom = "erro" if not c["faltam"] else "atencao" if c["faltam"] < c["limite"] / 5 else "ok"
+        cor, _ = ui.TOM[tom]
+        onde = ("na conta" if c["escopo"] == "conta" else
+                f"no modelo mais usado ({e(c['modelo'])})" if c["modelo"] else "por modelo")
+        itens.append(f'<li><b>{e(c["provedor"])}</b>: {c["usados"]} de {c["limite"]} pedidos hoje '
+                     f'{onde} — <span style="color:{cor}">faltam {c["faltam"]}</span></li>')
+    return ('<ul style="margin:0 0 8px;padding-left:18px;font-size:13px">' + "".join(itens)
+            + '</ul><p class="sub" style="font-size:11.5px">A cota zera às 21h (meia-noite UTC).</p>')
+
+
+def _ia(linhas: list[dict], cota: list[dict] = ()) -> str:
     if not linhas:
         return '<p class="vazio">Nenhum modelo configurado (IA_MODELOS).</p>'
     corpo = ""
@@ -192,7 +206,7 @@ def _ia(linhas: list[dict]) -> str:
                   + (f' <small>({l["media_s"]} s)</small>' if l["media_s"] else "")
                   + f'</td><td class="material" title="{e(l["ultimo_erro"] or "")}">'
                   f'{e(l["ultimo_erro"] or "")}</td></tr>')
-    return ('<div class="rolagem"><table class="saude"><thead><tr><th>ordem</th><th>modelo</th>'
+    return (_cota(cota) + '<div class="rolagem"><table class="saude"><thead><tr><th>ordem</th><th>modelo</th>'
             '<th>agora</th><th>respostas</th><th>falhas</th><th>última resposta</th>'
             f'<th>último erro</th></tr></thead><tbody>{corpo}</tbody></table></div>')
 
@@ -206,7 +220,7 @@ def _dados(con, dias: int, conta: str, status: str, problemas: bool) -> dict:
         "cotacoes": _cotacoes(pm.cotacoes(con, dias, conta or None, status or None), momento),
         "eventos": _eventos(pm.eventos(con, dias, conta or None, problemas)),
         "leitura": _leitura(pm.leitura_por_conta(con, tuple(CONTAS))),
-        "ia": _ia(pm.ia_modelos(con, dias)),
+        "ia": _ia(pm.ia_modelos(con, dias), pm.ia_cota_hoje(con)),
     }
 
 

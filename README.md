@@ -328,7 +328,10 @@ o que estourar o limite fica de fora até o provedor liberar (o limite por
 minuto em segundos; o diário até a meia-noite UTC) e o pedido passa ao
 próximo. Quando o limite volta, o melhor volta a ser usado sozinho. Resposta
 fora do JSON pedido também passa ao próximo. O `/adm/me` mostra, por modelo,
-se está livre, as respostas, as falhas e o último erro.
+se está livre, as respostas, as falhas e o último erro — e, acima da tabela,
+quantos pedidos de hoje já foram da cota grátis de cada provedor
+(`IA_LIMITE_OPENROUTER`, padrão 50 na conta; `IA_LIMITE_GROQ`, padrão 1.000 por
+modelo).
 
 A ordem padrão está em `CADEIA_PADRAO`; para trocar sem mexer no código:
 `IA_MODELOS=groq:openai/gpt-oss-120b,openrouter:nvidia/nemotron-3-ultra-550b-a55b:free,...`
@@ -336,9 +339,26 @@ A ordem padrão está em `CADEIA_PADRAO`; para trocar sem mexer no código:
 dele na frente). O arquivo não importa nada do cotafrete: serve para outros
 projetos.
 
-Onde a IA entra hoje: revisão da resposta do ME, **Colar o pedido** (preenche
-a cotação de frete, `core/extrair_carga.py`) e **Sugerir NCM** no ME
-(`mercado_eletronico/ncm.py`). Sempre sugestão: quem confirma é o vendedor.
+Onde a IA entra hoje (sempre sugestão; quem confirma é o vendedor):
+
+- **Revisão da resposta do ME** (`mercado_eletronico/revisao.py`): alertas e,
+  na mesma chamada, as **exigências do comprador**, cada uma com o trecho do
+  texto dele. Regra sem trecho que exista letra por letra no texto é jogada fora.
+- **Colar o pedido** (`core/extrair_carga.py`) e **Sugerir NCM** no ME
+  (`mercado_eletronico/ncm.py`).
+- **Explicação do erro no cartão** (`core/explicar_erro.py`, registro "explicar
+  erro"): quando `mensagem_amigavel` não reconhece o erro, a IA escreve uma
+  frase, guardada por tipo de erro (sem números). Roda em segundo plano; a
+  frase aparece na próxima abertura, antes do texto técnico.
+- **Resposta para o cliente** (`core/resposta_cliente.py`, botão na cotação):
+  o texto padrão sai do banco, sem IA; "Reescrever com IA" usa o tom da
+  mensagem colada, e cada preço tem de aparecer igual ao do banco.
+- **Busca no histórico** (`core/busca_historico.py`): a frase vira filtros de
+  uma lista fechada (nunca SQL), mostrados na tela. Sem IA, busca por trecho.
+
+Sem IA, mas da mesma leva: aviso de marca quando o comprador do ME não aceita
+similar (`regras.aviso_marca`) e o **Resumo da semana** no `/adm`
+(`core/resumo_semana.py`).
 
 Mais dois, fora da tela do vendedor:
 

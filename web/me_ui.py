@@ -463,6 +463,13 @@ def validar(c: dict, item: rg.EntradaItem, hoje: date) -> rg.Resultado:
     if ("ref_fabricante" in exige_de(c) and not item.sem_cotacao
             and not item.ref_fabricante.strip()):
         r.erros.append(f"Item {item.numero}: este comprador exige a Ref. Fabricante.")
+    # A prévia de UMA linha (/me/{cid}/linha/{n}) chega sem "itens": ali o
+    # aviso de marca fica para a conferência da cotação inteira.
+    i = next((x for x in c.get("itens") or [] if x["numero"] == item.numero), {})
+    if not item.sem_cotacao and (aviso := rg.aviso_marca(item.marca, [
+            i.get("descricao") or "", i.get("obs_comprador") or "",
+            i.get("campos_adicionais") or "", c.get("obs_comprador") or ""])):
+        r.avisos.append(f"Item {item.numero}: {aviso}")
     return r
 
 
@@ -1209,8 +1216,8 @@ def _painel_ia(c: dict, rev: rv.Revisao | None, rodando: bool) -> str:
         corpo = '<p class="sub">A IA está revisando… (a página recarrega sozinha)</p>'
     elif rev is None:
         corpo = ('<p class="sub">Ainda não revisada. "Revisar com IA" confere marca, '
-                 'local de entrega, NCM e preço contra o que o comprador pediu. '
-                 'Só aponta; não muda nada.</p>')
+                 'local de entrega, NCM e preço contra o que o comprador pediu, e '
+                 'lista as exigências do texto dele. Só aponta; não muda nada.</p>')
     elif rev.indisponivel:
         corpo = f'<p class="alerta">Revisão IA indisponível: {e(rev.erro)}. Pode salvar mesmo assim.</p>'
     else:
@@ -1221,9 +1228,15 @@ def _painel_ia(c: dict, rev: rv.Revisao | None, rodando: bool) -> str:
                  '<p class="aviso">O preenchimento mudou depois desta revisão — revise de novo.</p>')
         gerais = "".join(f'<li class="me-ia-{a.nivel}">{e(rv.ROTULO_NIVEL[a.nivel])}: {e(a.mensagem)}</li>'
                          for a in rev.alertas if a.item is None)
+        # Sugestão 3: o que o comprador exige, cada regra com o trecho dele
+        # entre aspas — o código já descartou a que não tinha trecho real.
+        exige = "".join(f'<li><b>{e(x.regra)}</b> <small>— “{e(x.trecho)}”</small></li>'
+                        for x in rev.exigencias)
         corpo = (f'<p>{contagem if rev.alertas else "Nenhum alerta."} '
                  f'<small>({e(_hora(c["revisao_em"]))}{", " + e(rev.modelo) if rev.modelo else ""})</small></p>'
-                 f'{velha}' + (f"<ul>{gerais}</ul>" if gerais else ""))
+                 f'{velha}' + (f"<ul>{gerais}</ul>" if gerais else "")
+                 + (f'<p><b>O comprador exige</b> (confira antes de salvar):</p><ul class="me-exige">{exige}</ul>'
+                    if exige else ""))
     return f'<div class="cartao me-painel-ia"><b>Revisão por IA</b>{corpo}</div>'
 
 

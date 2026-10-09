@@ -31,6 +31,7 @@ from typing import Any
 from core import ia
 
 NIVEIS = ("critico", "atencao", "info")
+MIN_TRECHO = 15   # letras do trecho citado numa exigência (ver _exigencias)
 ROTULO_NIVEL = {"critico": "Crítico", "atencao": "Atenção", "info": "Info"}
 
 SISTEMA = """Você revisa respostas de cotação que uma distribuidora de informática
@@ -55,6 +56,13 @@ Não repita os erros e avisos que o sistema já deu, a menos que tenha algo a
 acrescentar. Não sugira valores novos; descreva o problema. Se não houver
 nada a apontar, devolva a lista vazia.
 
+Além dos alertas, liste em `exigencias` as regras que o comprador impõe no
+texto dele (ex.: "não aceita marca similar", "anexar proposta comercial",
+"informar impostos destacados", "entrega na portaria 3"), cada uma numa frase
+curta em `regra` e com `trecho` = as palavras EXATAS do texto do comprador de
+onde ela saiu, copiadas sem mudar nada. Sem trecho exato, não liste a regra.
+Lista vazia se o texto não exige nada.
+
 Níveis: "critico" = provável desclassificação ou prejuízo; "atencao" =
 conferir antes de enviar; "info" = detalhe. Escreva em português, frases
 curtas, citando o número do item (10, 20, ...) no campo `item` quando o alerta
@@ -76,8 +84,20 @@ ESQUEMA = {
                 "additionalProperties": False,
             },
         },
+        "exigencias": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "regra": {"type": "string"},
+                    "trecho": {"type": "string"},
+                },
+                "required": ["regra", "trecho"],
+                "additionalProperties": False,
+            },
+        },
     },
-    "required": ["alertas"],
+    "required": ["alertas", "exigencias"],
     "additionalProperties": False,
 }
 
@@ -89,11 +109,20 @@ class Alerta:
     mensagem: str
 
 
+@dataclass(frozen=True)
+class Exigencia:
+    """Regra que o comprador impôs, com o trecho do texto dele de onde saiu.
+    O trecho é conferido pelo código (`_no_texto`): sem ele, a regra some."""
+    regra: str
+    trecho: str
+
+
 @dataclass
 class Revisao:
     alertas: list[Alerta] = field(default_factory=list)
     erro: str | None = None     # preenchido = "revisão IA indisponível"
     modelo: str | None = None   # quem respondeu (pode ser o fallback)
+    exigencias: list[Exigencia] = field(default_factory=list)
 
     @property
     def indisponivel(self) -> bool:
@@ -101,7 +130,9 @@ class Revisao:
 
     def como_json(self) -> str:
         return json.dumps({"alertas": [a.__dict__ for a in self.alertas],
-                           "erro": self.erro, "modelo": self.modelo}, ensure_ascii=False)
+                           "erro": self.erro, "modelo": self.modelo,
+                           "exigencias": [x.__dict__ for x in self.exigencias]},
+                          ensure_ascii=False)
 
     @classmethod
     def de_json(cls, texto: str | None) -> "Revisao | None":
@@ -109,7 +140,8 @@ class Revisao:
             return None
         try:
             d = json.loads(texto)
-            return cls([Alerta(**a) for a in d.get("alertas", [])], d.get("erro"), d.get("modelo"))
+            return cls([Alerta(**a) for a in d.get("alertas", [])], d.get("erro"), d.get("modelo"),
+                       [Exigencia(**x) for x in d.get("exigencias", [])])
         except (ValueError, TypeError):
             return None
 
@@ -154,6 +186,36 @@ def montar_pedido(cotacao: dict, previa: dict[int, dict[str, str]],
             + json.dumps(dados, ensure_ascii=False, indent=1))
 
 
+def _plano(texto: str) -> str:
+    """Compara trecho e texto sem diferença de espaço, caixa e aspas."""
+    t = (texto or "").replace("“", '"').replace("”", '"').replace("’", "'")
+    return " ".join(t.split()).casefold()
+
+
+def textos_do_comprador(cotacao: dict, obs_geral: str = "") -> str:
+    return " ".join([obs_geral] + [
+        f'{i.get("descricao") or ""} {i.get("obs_comprador") or ""} {i.get("campos_adicionais") or ""}'
+        for i in cotacao.get("itens", [])])
+
+
+def _exigencias(brutas: Any, texto_do_comprador: str) -> list[Exigencia]:
+    """Só fica a regra cujo trecho está, letra por letra, no texto do
+    comprador (sugestão 3, 24/09/2026): a IA sugere, o código confere."""
+    if not isinstance(brutas, list):
+        return []
+    fonte = _plano(texto_do_comprador)
+    saida = []
+    for x in brutas:
+        if not isinstance(x, dict):
+            continue
+        regra, trecho = str(x.get("regra") or "").strip(), str(x.get("trecho") or "").strip()
+        # Trecho curto ("para", "item") existe em qualquer texto e daria
+        # aspas reais a uma regra inventada: pelo menos MIN_TRECHO letras.
+        if regra and len(_plano(trecho)) >= MIN_TRECHO and _plano(trecho) in fonte:
+            saida.append(Exigencia(regra, trecho))
+    return saida
+
+
 def _alertas(dados: Any) -> list[Alerta]:
     """Valida o JSON do modelo. Levantar aqui = próximo modelo da cadeia."""
     brutos = dados["alertas"]
@@ -177,10 +239,13 @@ def revisar(cotacao: dict, previa: dict[int, dict[str, str]], erros: list[str],
     if not ia.configurada():
         return Revisao(erro="falta GROQ_API_KEY ou OPENROUTER_API_KEY no .env")
     try:
+        texto = textos_do_comprador(cotacao, obs_geral)
         r = ia.completar_json(SISTEMA, montar_pedido(cotacao, previa, erros, avisos, obs_geral),
-                              ESQUEMA, funcao="revisão ME", validar=_alertas)
+                              ESQUEMA, funcao="revisão ME",
+                              validar=lambda d: (_alertas(d), _exigencias(d.get("exigencias"), texto)))
     except ia.IAIndisponivel as exc:
         return Revisao(erro=str(exc)[:500])
     except Exception as exc:   # defeito inesperado: a revisão nunca derruba a tela
         return Revisao(erro=f"{type(exc).__name__}: {exc}"[:300])
-    return Revisao(alertas=r.dados, modelo=r.modelo)
+    alertas, exigencias = r.dados
+    return Revisao(alertas=alertas, modelo=r.modelo, exigencias=exigencias)
