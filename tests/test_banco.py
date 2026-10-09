@@ -453,11 +453,11 @@ def test_resultado_sem_hora_continua_valendo(db):
 def test_evento_antigo_da_anthropic_some_na_subida(tmp_path):
     """Sugestão F: 'falta ANTHROPIC_API_KEY' é da versão de antes de 24/09/2026."""
     caminho = tmp_path / "t.db"
-    b = Banco(caminho)
+    b = banco.Banco(caminho)
     cid = b.me_criar("ventura", 1)
     b.me_registrar(cid, "revisão IA indisponível", "falta ANTHROPIC_API_KEY no .env")
     b.me_registrar(cid, "revisão IA indisponível", "falta GROQ_API_KEY ou OPENROUTER_API_KEY no .env")
 
-    eventos = [h["detalhe"] for h in Banco(caminho).me_historico(cid)]
+    eventos = [h["detalhe"] for h in banco.Banco(caminho).me_historico(cid)]
 
     assert eventos == ["falta GROQ_API_KEY ou OPENROUTER_API_KEY no .env"]
