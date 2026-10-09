@@ -51,8 +51,11 @@ def fatos(con: sqlite3.Connection, hoje: date, nome_de=lambda s: s) -> dict:
         "SELECT cidade_origem || '/' || uf_origem || ' → ' || cidade_destino || '/' || uf_destino,"
         " COUNT(*) FROM cotacao WHERE criado_em >= ? AND criado_em < ?"
         " GROUP BY 1 ORDER BY 2 DESC, 1 LIMIT ?", (inicio.isoformat(), fim, MAX_ROTAS))]
+    # "Sem preço" só conta cotação em que alguém já respondeu: a que ainda
+    # está cotando (nenhum resultado gravado) não é cotação sem preço.
     total, sem = con.execute(
-        "SELECT COUNT(*), SUM(NOT EXISTS (SELECT 1 FROM resultado r"
+        "SELECT COUNT(*), SUM(EXISTS (SELECT 1 FROM resultado r WHERE r.cotacao_id = c.id)"
+        "   AND NOT EXISTS (SELECT 1 FROM resultado r"
         "   WHERE r.cotacao_id = c.id AND r.valor IS NOT NULL))"
         " FROM cotacao c WHERE c.criado_em >= ? AND c.criado_em < ?",
         (inicio.isoformat(), fim)).fetchone()

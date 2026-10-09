@@ -41,15 +41,16 @@ def test_tendencia_rotas_e_sem_preco(con):
     _cotacao(con, "2026-10-08T10:00:00", resultados=[("camilo", None)])
     _cotacao(con, "2026-10-09T18:00:00", destino="Vitória", resultados=[("camilo", None)])
     _cotacao(con, "2026-09-01T10:00:00", resultados=[("camilo", None)])    # fora das duas semanas
+    _cotacao(con, "2026-10-09T18:05:00")                                   # ainda cotando
 
     f = rs.fatos(con, HOJE)
 
-    assert f["cotacoes"] == 3 and f["sem_preco"] == 2
+    assert f["cotacoes"] == 4 and f["sem_preco"] == 2
     (t,) = f["transportadoras"]
     assert (t["aproveitamento"], t["antes"], t["pedidos"], t["tendencia"]) == (33, 100, 3, "piorou")
-    assert f["rotas"][0] == {"rota": "Serra/ES → Anchieta/ES", "cotacoes": 2}
+    assert f["rotas"][0] == {"rota": "Serra/ES → Anchieta/ES", "cotacoes": 3}
     texto = rs.linhas(f)
-    assert texto[0] == "3 cotações de 03/10 a 09/10; 2 ficaram sem preço nenhum."
+    assert texto[0] == "4 cotações de 03/10 a 09/10; 2 ficaram sem preço nenhum."
     assert "camilo: 33% com preço em 3 pedidos (piorou: era 100% na semana anterior)." in texto
 
 
