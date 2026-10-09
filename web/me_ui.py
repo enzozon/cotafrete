@@ -435,6 +435,11 @@ def validar(c: dict, item: rg.EntradaItem, hoje: date) -> rg.Resultado:
     if ("ref_fabricante" in exige_de(c) and not item.sem_cotacao
             and not item.ref_fabricante.strip()):
         r.erros.append(f"Item {item.numero}: este comprador exige a Ref. Fabricante.")
+    i = next((x for x in c["itens"] if x["numero"] == item.numero), {})
+    if not item.sem_cotacao and (aviso := rg.aviso_marca(item.marca, [
+            i.get("descricao") or "", i.get("obs_comprador") or "",
+            i.get("campos_adicionais") or "", c.get("obs_comprador") or ""])):
+        r.avisos.append(f"Item {item.numero}: {aviso}")
     return r
 
 

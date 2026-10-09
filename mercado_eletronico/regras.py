@@ -63,6 +63,31 @@ def _sem_acento(texto: str) -> str:
                    if not unicodedata.combining(c)).upper()
 
 
+# "NÃO SERÃO ACEITAS MARCAS SIMILARES" (Samarco), "sem similar", "marca
+# exclusiva". Roda sobre o texto já sem acento e em maiúsculas.
+_RE_SEM_SIMILAR = re.compile(
+    r"\bNAO\s+(?:SERAO|SERA|SE)?\s*ACEIT\w*\s+(?:\w+\s+){0,2}SIMILAR"
+    r"|\bSEM\s+SIMILAR|\bMARCA\s+EXCLUSIVA")
+
+
+def exige_marca_exata(texto: str) -> bool:
+    return bool(_RE_SEM_SIMILAR.search(_sem_acento(" ".join((texto or "").split()))))
+
+
+def aviso_marca(marca: str, textos_do_comprador: list[str]) -> str | None:
+    """Comprador não aceita similar e a marca digitada não aparece em nada do
+    que ele escreveu → aviso (sugestão 7). Só código: a revisão por IA
+    (revisao.py) comenta casos mais sutis; este pega o óbvio sem gastar IA."""
+    marca = (marca or "").strip()
+    texto = " ".join(textos_do_comprador)
+    if not marca or not exige_marca_exata(texto):
+        return None
+    if _sem_acento(marca) in _sem_acento(texto):
+        return None
+    return (f"o comprador não aceita marca similar e \"{marca}\" não aparece no "
+            "pedido — confira se é a marca pedida.")
+
+
 def nao_atendemos(empresa: str | None) -> bool:
     nome = _sem_acento(empresa or "")
     return any(re.search(rf"\b{c}\b", nome) for c in CLIENTES_NAO_ATENDIDOS)
