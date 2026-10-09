@@ -27,9 +27,9 @@ FUNCAO = "resposta ao cliente"
 SISTEMA = """Você escreve a mensagem que um vendedor de uma distribuidora manda para
 o CLIENTE com as opções de frete de uma carga. Use o tom da mensagem do cliente
 quando ela vier (formal ou informal, e-mail ou WhatsApp); sem ela, tom cordial
-e direto. Liste TODAS as opções na ordem recebida, cada uma com a
-transportadora, o preço escrito EXATAMENTE como veio (ex.: "R$ 1.234,56"), o
-prazo e a validade quando houver. Não invente número nenhum: nada de desconto,
+e direto. Liste TODAS as opções na ordem recebida, UMA POR LINHA, cada linha
+com o nome da transportadora e o preço escritos EXATAMENTE como vieram (ex.:
+"Braspress: R$ 1.234,56"), o prazo e a validade quando houver. Não invente número nenhum: nada de desconto,
 total, imposto, data ou prazo que não esteja nos dados. Não assine com nome.
 Responda em JSON: {"texto": "..."}"""
 
@@ -89,7 +89,15 @@ def texto_padrao(c: dict, ops: list[dict]) -> str:
 
 
 def _numeros(texto: str) -> set[str]:
-    return {n.lstrip("0") or "0" for n in re.findall(r"\d+", texto)}
+    """Números INTEIROS do texto: "R$ 1.399,64" é um número só — "399" sozinho
+    não passa por estar dentro de um preço."""
+    return {n.lstrip("0") or "0" for n in re.findall(r"\d+(?:[.,]\d+)*", texto)}
+
+
+def _tem_preco(linha: str, preco: str) -> bool:
+    """"R$ 99,00" não pode ser achado dentro de "R$ 199,00"."""
+    valor = preco.removeprefix("R$ ")
+    return re.search(rf"(?<![\d.,]){re.escape(valor)}(?![\d])", linha) is not None
 
 
 def _validador(c: dict, ops: list[dict]):
@@ -99,9 +107,14 @@ def _validador(c: dict, ops: list[dict]):
         texto = str((dados or {}).get("texto") or "").strip()
         if not texto:
             raise ValueError("texto vazio")
-        faltando = [o["preco"] for o in ops if o["preco"] not in texto]
+        # Preço e transportadora na MESMA linha: os dois preços certos com os
+        # nomes trocados passariam numa conferência só de presença.
+        linhas = texto.splitlines()
+        faltando = [o["transportadora"] for o in ops
+                    if not any(o["transportadora"] in l and _tem_preco(l, o["preco"])
+                               for l in linhas)]
         if faltando:
-            raise ValueError(f"preço ausente ou alterado: {faltando[:3]}")
+            raise ValueError(f"preço ausente, alterado ou trocado: {faltando[:3]}")
         inventados = _numeros(texto) - permitidos
         if inventados:
             raise ValueError(f"números que não estão na cotação: {sorted(inventados)[:5]}")

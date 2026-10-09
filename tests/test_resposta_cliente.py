@@ -54,9 +54,9 @@ def test_texto_padrao_tem_todos_os_precos():
 def test_ia_que_muda_preco_ou_inventa_numero_e_descartada(prov):
     ops = rc.opcoes(C)
     prov.roteiro["melhor"] = [Resp(conteudo=json.dumps(
-        {"texto": "Camilo R$ 208,89 e Braspress R$ 1.399,64 com 15% de desconto"}))]
+        {"texto": "camilo R$ 208,89\nbraspress R$ 1.399,64 com 15% de desconto"}))]
     prov.roteiro["reserva:free"] = [Resp(conteudo=json.dumps(
-        {"texto": "Oi! Camilo sai R$ 208,89 (vale até 20/10/2026); Braspress R$ 1.399,64 em 2 dias."}))]
+        {"texto": "Oi!\ncamilo sai R$ 208,89 (vale até 20/10/2026)\nbraspress R$ 1.399,64 em 2 dias."}))]
 
     r = rc.pedir(C, ops, "oi, quanto fica?")
 
@@ -84,3 +84,28 @@ def test_tela_mostra_o_texto_padrao(tmp_path, monkeypatch):
 
     assert "R$ 208,89, válido até 20/10/2026" in html
     assert f'href="/resposta/{cid}"' in cli.get(f"/cotacao/{cid}").text
+
+
+def _valida(texto):
+    return rc._validador(C, rc.opcoes(C))({"texto": texto})
+
+
+def test_precos_trocados_entre_transportadoras_sao_recusados():
+    with pytest.raises(ValueError, match="trocado"):
+        _valida("camilo: R$ 1.399,64\nbraspress: R$ 208,89")
+
+
+def test_pedaco_de_preco_nao_vale_como_numero():
+    """"399" existe dentro de 1.399,64, mas não como número da cotação."""
+    with pytest.raises(ValueError, match="não estão"):
+        _valida("camilo: R$ 208,89\nbraspress: R$ 1.399,64, entrega em 399 dias")
+
+
+def test_preco_menor_nao_e_achado_dentro_de_um_maior():
+    c = C | {"resultados": [
+        {"transportadora": "camilo", "valor": Decimal("99"), "prazo": None, "validade": None},
+        {"transportadora": "jadlog", "valor": Decimal("199"), "prazo": None, "validade": None}]}
+    validar = rc._validador(c, rc.opcoes(c))
+    with pytest.raises(ValueError):
+        validar({"texto": "camilo: R$ 199,00\njadlog: R$ 199,00"})
+    assert validar({"texto": "camilo: R$ 99,00\njadlog: R$ 199,00"})
