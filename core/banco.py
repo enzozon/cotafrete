@@ -414,6 +414,13 @@ class Banco:
         con.execute(
             "DELETE FROM email_processado WHERE desfecho = 'sem_carimbo'")
 
+        # "revisão IA indisponível ... falta ANTHROPIC_API_KEY" é da versão
+        # de antes de 24/09/2026, quando a IA passou para Groq/OpenRouter. Não
+        # é problema atual e confundia o resumo e o painel do ME (sugestão F).
+        con.execute(
+            "DELETE FROM me_historico WHERE evento = 'revisão IA indisponível'"
+            " AND detalhe LIKE '%ANTHROPIC_API_KEY%'")
+
         # Assunto e hora do e-mail: é por eles que se acha a mensagem na
         # caixa do suporte a partir da tela /adm/dellavolpe (24/09/2026).
         existentes = {r["name"] for r in
