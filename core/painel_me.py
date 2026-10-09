@@ -210,6 +210,45 @@ def ia_modelos(con: sqlite3.Connection, dias: int) -> list[dict]:
     return saida
 
 
+# Cota grátis por dia (sugestão E, 24/09/2026), conferida nas páginas dos
+# provedores na mesma data: OpenRouter = 50 pedidos/dia na CONTA inteira (1.000
+# com US$ 10 de crédito); Groq = 1.000/dia POR MODELO. Os dois zeram à
+# meia-noite UTC (21h em Brasília). Mudou o plano: IA_LIMITE_OPENROUTER /
+# IA_LIMITE_GROQ no .env.
+COTA_DIARIA = {"openrouter": ("conta", 50), "groq": ("modelo", 1000)}
+
+
+def _inicio_do_dia_utc() -> str:
+    """Meia-noite UTC de hoje, na hora local em que ia_chamada grava."""
+    from datetime import timezone
+    meia_noite = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+    return meia_noite.astimezone().replace(tzinfo=None).isoformat(timespec="seconds")
+
+
+def ia_cota_hoje(con: sqlite3.Connection) -> list[dict]:
+    """Quanto da cota grátis já foi pedido hoje, por provedor. Conta TODA
+    tentativa registrada (até as que falharam): melhor sobrar que faltar."""
+    import os
+    por_modelo = dict(con.execute(
+        "SELECT modelo, COUNT(*) FROM ia_chamada WHERE quando >= ? GROUP BY modelo",
+        (_inicio_do_dia_utc(),)).fetchall())
+    saida = []
+    for provedor, (escopo, padrao) in COTA_DIARIA.items():
+        try:
+            limite = int(os.getenv(f"IA_LIMITE_{provedor.upper()}") or padrao)
+        except ValueError:
+            limite = padrao
+        usos = {m.split(":", 1)[1]: n for m, n in por_modelo.items()
+                if m.split(":", 1)[0] == provedor}
+        if escopo == "conta":
+            usados, quem = sum(usos.values()), None
+        else:   # por modelo: o que vale é o mais gasto
+            quem, usados = max(usos.items(), key=lambda kv: kv[1], default=(None, 0))
+        saida.append({"provedor": provedor, "escopo": escopo, "limite": limite,
+                      "usados": usados, "faltam": max(limite - usados, 0), "modelo": quem})
+    return saida
+
+
 def serie(con: sqlite3.Connection, dias: int) -> dict:
     """Cotações que apareceram no ME × salvas pelo robô, por balde de tempo."""
     unidade = unidade_do_periodo(dias)

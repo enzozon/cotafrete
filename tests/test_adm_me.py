@@ -248,6 +248,23 @@ def test_cartao_da_ia_mostra_quem_respondeu_e_quem_esta_no_limite(monkeypatch, b
     assert (m2["modelo"], m2["estado"], m2["respostas"]) == ("openrouter:reserva:free", "livre", 1)
     html = cliente.get("/adm/me").text
     assert "IA — modelos" in html and "limite por minuto atingido" in html and "fora até" in html
+    # sugestão E: quanto da cota grátis de hoje já foi
+    assert "<b>openrouter</b>: 1 de 50 pedidos hoje na conta" in html
+    assert "<b>groq</b>: 1 de 1000 pedidos hoje no modelo mais usado (melhor)" in html
     # o histórico da cotação diz qual modelo revisou
     assert any("openrouter:reserva:free" in (h["detalhe"] or "") for h in banco.me_historico(cid))
     assert "ia" in cliente.get("/adm/me/agora").json()
+
+
+def test_cota_da_ia_conta_so_desde_a_meia_noite_utc(banco, monkeypatch):
+    monkeypatch.setenv("IA_LIMITE_OPENROUTER", "1000")
+    inicio = pm._inicio_do_dia_utc()
+    with banco._conectar() as con:
+        for quando, modelo in (("2000-01-01T00:00:00", "openrouter:a"), (inicio, "openrouter:a"),
+                               (inicio, "openrouter:b"), (inicio, "groq:x"), (inicio, "groq:x"),
+                               (inicio, "groq:y")):
+            con.execute("INSERT INTO ia_chamada (quando, funcao, modelo, ok) VALUES (?, 'f', ?, 1)",
+                        (quando, modelo))
+        cota = {c["provedor"]: c for c in pm.ia_cota_hoje(con)}
+    assert (cota["openrouter"]["usados"], cota["openrouter"]["limite"]) == (2, 1000)
+    assert (cota["groq"]["modelo"], cota["groq"]["usados"], cota["groq"]["faltam"]) == ("x", 2, 998)
