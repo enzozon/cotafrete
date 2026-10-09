@@ -80,3 +80,17 @@ def test_cartao_mostra_a_frase_guardada_antes_do_texto_tecnico(monkeypatch, tmp_
     assert app_web._explicacao_ia("camilo", TIMEOUT) == "Frase da IA."
     # sem frase guardada e IA desligada (conftest): None, o cartão mostra só o técnico
     assert app_web._explicacao_ia("camilo", "erro nunca visto") is None
+
+
+def test_falha_nao_e_pedida_de_novo_a_cada_abertura(monkeypatch, conectar):
+    """A cotação se recarrega sozinha: sem a espera, cada recarga gastaria cota."""
+    chamadas = []
+    monkeypatch.setattr(ex, "LIGADA", True)
+    monkeypatch.setattr(ex, "_pedidos", {})
+    monkeypatch.setattr(ia, "configurada", lambda: True)
+    monkeypatch.setattr(ex, "explicar", lambda *a: chamadas.append(a))
+
+    assert ex.explicar_em_fundo(conectar, "camilo", "Camilo", TIMEOUT) is True
+    assert ex.explicar_em_fundo(conectar, "camilo", "Camilo", TIMEOUT) is False
+    monkeypatch.setattr(ex, "ESPERA_FALHA_S", 0)
+    assert ex.explicar_em_fundo(conectar, "camilo", "Camilo", TIMEOUT) is True

@@ -20,6 +20,7 @@ from __future__ import annotations
 import re
 import sqlite3
 import threading
+import time
 from contextlib import closing
 from datetime import datetime
 from typing import Callable
@@ -48,7 +49,10 @@ ESQUEMA = {
     "additionalProperties": False,
 }
 
-_pedidos: set[str] = set()
+# chave → quando foi pedida. Falhou: a chave fica até ESPERA_FALHA_S, senão
+# cada abertura da cotação (que se recarrega sozinha) gastaria a cota grátis.
+ESPERA_FALHA_S = 30 * 60
+_pedidos: dict[str, float] = {}
 _trava = threading.Lock()
 
 
@@ -107,19 +111,17 @@ def explicar_em_fundo(conectar: Callable[[], sqlite3.Connection], slug: str, nom
         return False
     k = chave(slug, erro)
     with _trava:
-        if k in _pedidos:
+        if time.monotonic() - _pedidos.get(k, -ESPERA_FALHA_S) < ESPERA_FALHA_S:
             return False
-        _pedidos.add(k)
+        _pedidos[k] = time.monotonic()
 
     def rodar():
         try:
             explicar(conectar, slug, nome, erro)
         except Exception:      # a explicação nunca derruba nada
             pass
-        finally:
-            # Falhou: libera para a próxima abertura tentar de novo.
-            with _trava:
-                _pedidos.discard(k)
+        # Deu certo: a frase está no banco e ninguém pede de novo. Falhou: a
+        # chave fica em _pedidos e só volta a tentar depois de ESPERA_FALHA_S.
 
     threading.Thread(target=rodar, name="explicar-erro", daemon=True).start()
     return True
