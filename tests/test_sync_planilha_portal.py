@@ -192,6 +192,16 @@ def test_correcao_identidade_so_relata(c):
     assert r['conflitos'] and not r['acoes']
 
 
+def test_correcao_manual_nas_duas_pontas_resolve_identidade(c):
+    c.rodar()
+    c.excel('C2', 99)
+    c.salvar_portal([pedido(PEDIDO=99)])
+    assert not c.rodar()['conflitos']
+    c.excel('I2', 'ENTREGUE')
+    c.rodar()
+    assert c.portal()[0]['STATUS'] == 'ENTREGUE'
+
+
 def test_aberta_adia_sem_mudar_foto(c, monkeypatch):
     c.rodar()
     foto = (c.dados / SP.ARQ_ESTADO).read_bytes()

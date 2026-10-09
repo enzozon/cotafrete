@@ -150,11 +150,12 @@ def planejar(linhas, pedidos, estado, ignorar, vistos):
         except ValueError as e:
             r['pendentes'].append({'chave': k, 'erro': str(e)})
             continue
-        if any(ve[nome] != vp[nome] or (nome in registro['base'] and ve[nome] != registro['base'][nome])
-               for nome in IDENTIDADE):
+        if any(ve[nome] != vp[nome] for nome in IDENTIDADE):
             r['conflitos'].append({'chave': k, 'linha': n, 'campo': 'IDENTIDADE',
                                    'erro': 'PEDIDO, RFQ ou PRODUTO mudou; revisão manual'})
             continue
+        # Correção feita manualmente nas duas pontas pode atualizar a foto, nunca os identificadores.
+        registro['chaves'] = sorted(set(registro['chaves']) | {CP.chave(l), CP.chave(p)})
         conflitos, alteracoes = [], []
         for nome in EDITAVEIS:
             a, b = ve[nome], vp[nome]
