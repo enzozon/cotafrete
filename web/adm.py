@@ -45,7 +45,7 @@ from core import sessao
 from core.banco import Banco
 from core.evidencias import montar_zip_de_prints
 from carriers.dellavolpe.ingestor import texto_do_cabecalho
-from core import ia, painel as contas, resumo_erros
+from core import ia, painel as contas, resumo_erros, resumo_semana
 from web import painel_ui as ui, transportadoras
 from web.ficha_ui import ficha_da_cotacao, lugar, quando as _quando
 from web.layout import e, entrada, moeda, print_embutido
@@ -732,6 +732,8 @@ def painel(adm: str | None = Cookie(None, alias=COOKIE_ADM),
         # empresa inteira para quem pediu uma pessoa.
         linhas = contas.historico(con, dias=dias, usuario=quem or None,
                                   so_com_falha=so_falhas)
+        semana = resumo_semana.linhas(
+            resumo_semana.fatos(con, date.today(), transportadoras.nome_de))
         resumo_html = _resumo_do_dia(
             con, date.today(),
             "A IA não respondeu agora (limite ou fora do ar). Os números abaixo "
@@ -760,6 +762,11 @@ def painel(adm: str | None = Cookie(None, alias=COOKIE_ADM),
                    classe="c12", atraso=0.02) if avisos else "")
         + ui.cartao("Resumo do dia", resumo_html, ident="resumo",
                     nota="erros de hoje em português simples", classe="c12", atraso=0.04)
+        + ui.cartao("Resumo da semana",
+                    '<ul style="margin:0;padding-left:18px;font-size:13px">'
+                    + "".join(f"<li>{e(l)}</li>" for l in semana) + "</ul>",
+                    ident="semana", nota="últimos 7 dias × os 7 anteriores",
+                    classe="c12", atraso=0.045)
         + ui.cartao(
             "Movimento", ui.grafico_periodo(serie["pontos"], serie["unidade"]),
             ident="movimento", nota=f"por {serie['unidade']} · {rotulo}",
