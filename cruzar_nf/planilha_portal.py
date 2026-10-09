@@ -140,7 +140,7 @@ def conferir(linhas: List[Tuple[int, Dict[str, Any]]], pedidos: List[Dict[str, A
         no_portal = sorted({nf_de(pedidos[i]) for i in pares[n]} - {""})
         if no_portal and not na_planilha:
             rel["nf_so_no_portal"] += 1
-        elif no_portal and nfs(na_planilha) != set().union(*(nfs(x) for x in no_portal)):
+        elif nfs(na_planilha) != set().union(*(nfs(x) for x in no_portal)):
             rel["nf_divergente"].append(dict(linha=n, **_desc(l), nf_planilha=na_planilha,
                                              nf_portal=" / ".join(no_portal)))
     return rel
