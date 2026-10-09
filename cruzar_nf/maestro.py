@@ -196,6 +196,11 @@ def registrar(sio: Any, config: Dict[str, Any], logger: Any, manager: Any = None
             estado["rodando"] = execucao.rodando
             estado["cadastro_pedidos"] = _estado_cadastro()
             estado["conferencia_planilha"] = _conferencia()
+            from cruzar_nf.sync_planilha_portal import estado_para_tela as estado_sync_planilha
+            try:
+                estado["sync_planilha_portal"] = estado_sync_planilha(_pasta())
+            except Exception as e:
+                estado["sync_planilha_portal"] = {"erro": str(e)}
             sio.emit("retorno_sync_nf_estado", {"sucesso": True, "estado": estado,
                                                 "clientId": dados.get("clientId")})
         except Exception as e:
