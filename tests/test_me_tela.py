@@ -410,3 +410,17 @@ def test_ligacao_padrao_da_limpeza(monkeypatch):
                         lambda conta, n, *, dry_run, anexos: chamadas.append((conta, n, dry_run, anexos)))
     me_ui._limpador_padrao("uniao", 23052403, False, anexos=("p.pdf",))
     assert chamadas == [(Conta.UNIAO, 23052403, False, ["p.pdf"])]
+
+
+def test_exigencias_do_comprador_aparecem_com_o_trecho(cliente, monkeypatch):
+    from mercado_eletronico import revisao as rv
+
+    def revisar(c, previa, erros, avisos, obs_geral=""):
+        return rv.Revisao(modelo="m", exigencias=[rv.Exigencia("Anexar proposta", "anexar a proposta")])
+    monkeypatch.setattr(me_ui, "REVISOR", revisar)
+    cliente.post("/me/atualizar")
+    cid = _id(23049227)
+    cliente.post(f"/me/{cid}/ler")
+    html = _preencher(cliente, cid, acao="revisar").text
+    assert "O comprador exige" in html
+    assert "<b>Anexar proposta</b> <small>— “anexar a proposta”</small>" in html

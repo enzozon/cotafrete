@@ -121,3 +121,29 @@ def test_assinatura_muda_com_o_preenchimento():
     # o que veio do ME não conta: reler os itens não "envelhece" a revisão
     relido = {**COTACAO, "itens": [{**COTACAO["itens"][0], "descricao": "POSTO DUPLO (rev)"}]}
     assert rv.assinatura(relido) == a
+
+
+# ---------------------------------- exigências do comprador (sugestão 3)
+def test_exigencia_so_fica_com_trecho_que_existe_no_texto(prov):
+    prov.roteiro["melhor"] = [Resp(conteudo=json.dumps({"alertas": [], "exigencias": [
+        {"regra": "Não aceita similar", "trecho": "não serão aceitas  MARCAS similares"},
+        {"regra": "Entrega em Brasília", "trecho": "ENTREGAR EM BSB"},
+        {"regra": "Anexar proposta", "trecho": "anexar proposta comercial"},   # inventado
+        {"regra": "", "trecho": "Bortolini"}]}))]
+
+    r = rv.revisar(COTACAO, PREVIA, [], [], "NÃO SERÃO ACEITAS MARCAS SIMILARES")
+
+    assert [x.regra for x in r.exigencias] == ["Não aceita similar", "Entrega em Brasília"]
+
+
+def test_resposta_sem_exigencias_continua_valendo(prov):
+    """Modelo que só manda `alertas` (formato antigo) não é descartado."""
+    prov.roteiro["melhor"] = [Resp(conteudo=_json((10, "info", "x")))]
+    r = rv.revisar(COTACAO, PREVIA, [], [])
+    assert len(r.alertas) == 1 and r.exigencias == []
+
+
+def test_exigencias_vao_e_voltam_pelo_banco():
+    r = rv.Revisao(exigencias=[rv.Exigencia("Não aceita similar", "SEM SIMILAR")], modelo="m")
+    assert rv.Revisao.de_json(r.como_json()) == r
+    assert rv.Revisao.de_json('{"alertas": []}').exigencias == []   # gravada antes
