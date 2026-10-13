@@ -27,6 +27,7 @@ import json
 import os
 import re
 import threading
+import tempfile
 import time
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
@@ -98,8 +99,9 @@ class ArquivoPedidosConcorrente:
     def salvar(self) -> bool:
         if self._assinatura is None or _assinatura(self.caminho_pedidos) != self._assinatura:
             raise ConflitoGravacao("o PEDIDOS.json mudou depois da leitura")
-        temporario = self.caminho_pedidos + ".sync_nf.tmp"
-        with open(temporario, "w", encoding="utf-8") as f:
+        fd, temporario = tempfile.mkstemp(prefix=".sync_nf_", suffix=".tmp",
+                                         dir=os.path.dirname(os.path.abspath(self.caminho_pedidos)))
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
             json.dump(self.pedidos, f, indent=1, ensure_ascii=False)
         if _assinatura(self.caminho_pedidos) != self._assinatura:   # última conferência
             os.remove(temporario)

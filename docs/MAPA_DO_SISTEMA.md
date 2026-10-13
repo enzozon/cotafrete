@@ -110,15 +110,16 @@ juntas. O `monitorar.py` se atualiza sozinho.
 
 ---
 
-## 4. NF e pedidos: três escritores no mesmo arquivo
+## 4. NF e pedidos: escritores concorrentes no JSON e no Excel
 
-O ponto mais frágil da empresa é o **PEDIDOS.json**, porque três processos
+O ponto mais frágil da empresa é o **PEDIDOS.json**, porque vários processos
 escrevem nele:
 
 ```
 gerenciador.py / planilha_manager.py   (dono; fora do git)
 cruzar_nf/servico.py → sincronizar.py  (preenche NF vazia)
 cruzar_nf/cadastro_pedidos.py          (acrescenta pedido novo da planilha)
+cruzar_nf/sync_planilha_portal.py     (sincronização diária de campos e novos itens)
 ```
 
 **Por que não se corrompe:** `cruzar_nf/arquivo_pedidos.py` grava só se a data
@@ -142,6 +143,23 @@ qualquer mudança no fluxo, pelo hash do arquivo no servidor.
 | `cadastro_pedidos.py` | planilha → PEDIDOS.json | chave = PEDIDO + RFQ + começo do PRODUTO (30 caracteres). **O que já foi visto não volta**, mesmo se apagado no portal. Linha incompleta fica esperando |
 | `nf_planilha.py` | escreve a NF na coluna "NF (MAESTRO)" da planilha | edita o XML do .xlsx de forma cirúrgica. **Planilha aberta = não grava** |
 | `planilha_portal.py` | confere planilha × portal todo dia | linhas canceladas ficam em `conferencia_ignorar.json` |
+| `sync_planilha_portal.py` | merge de três pontas, prévia padrão; tarefa própria às 12:30 | primeira gravação só inicializa a foto; conflitos, exclusões e histórico antigo não são sobrescritos. PEDIDO/RFQ/PRODUTO exigem revisão |
+| `planilha_edicao.py` | atualiza células e acrescenta linhas no XML do Excel | compartilha `nf_planilha.trava` com o gravador de NF; fórmulas e estruturas não suportadas bloqueiam a operação |
+
+Cadastro, NF e sincronização bidirecional compartilham `sync_nf.trava`.
+A sincronização adquire depois `nf_planilha.trava`, sempre nessa ordem; não
+segura travas entre tentativas do Agendador. O gerenciador externo não usa
+essas travas: continua necessária a verificação otimista e a recarga dele.
+Os temporários do JSON têm nomes exclusivos. Uma edição concorrente de um
+campo não é sobrescrita por uma repetição cega.
+
+A foto (`sync_planilha_portal.json`) guarda a base comum por campo, as duas
+pontas observadas, chaves conhecidas, exclusões e operações pendentes antes
+da escrita. Não apagar nem reinicializar esse arquivo para resolver erro.
+O relatório próprio é entregue pelo evento de estado existente; o portal
+precisa também do PR do painel. NF continua com os escritores antigos.
+Datas americanas do JSON legado são identificadas por comparação com o
+Excel e o formato fica guardado por item; dados inválidos são pendências.
 
 ### Configuração (o `.env` fica na pasta `sync_nf`, não no repo)
 

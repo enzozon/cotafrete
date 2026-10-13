@@ -74,3 +74,9 @@ def test_cli_grava_o_relatorio_uma_vez_por_dia(tmp_path, monkeypatch):
 
 def test_tela_sem_relatorio_ainda():
     assert resumo_para_tela("pasta_que_nao_existe") is None
+
+
+def test_nf_so_no_excel_tambem_e_divergencia():
+    rel = conferir([(2, lin(1, 'MONITOR', nf='123'))], [lin(1, 'MONITOR')], ignorar=set())
+    assert rel['nf_divergente'][0]['nf_planilha'] == '123'
+    assert rel['nf_divergente'][0]['nf_portal'] == ''

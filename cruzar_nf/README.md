@@ -80,3 +80,37 @@ conta duas vezes). As contagens do ERP são por **OC distinta**.
 ## Portal Maestro
 
 Como ligar isto na tela da planilha do portal: [INTEGRACAO_MAESTRO.md](INTEGRACAO_MAESTRO.md).
+
+## Sincronização da planilha com o portal
+
+`python -m cruzar_nf.sync_planilha_portal` é somente prévia: não grava dados,
+estado, relatórios nem travas. `--gravar` autoriza a rodada. A primeira
+rodada gravando registra a foto atual, sem alterar Excel nem PEDIDOS.json.
+O cadastro de dez em dez minutos continua funcionando.
+
+Após a foto, itens novos podem entrar nas duas pontas. Campos CIDADE,
+FRETE, VALOR, DATA DE ENTREGA, FATURAMENTO, STATUS, DAV, REQUISITANTE e
+EMAIL REQUSITAN podem ser editados em qualquer ponta. Um campo alterado
+somente de um lado é propagado; conflito bloqueia o item inteiro. Diferenças
+anteriores à foto aguardam correção humana. PEDIDO, RFQ e PRODUTO não são
+corrigidos automaticamente; NF continua com as rotinas existentes.
+
+Histórico antigo de um lado só não é importado. Exclusões não são
+propagadas nem desfeitas. Ignorados e pareamentos ambíguos não são escritos.
+Fórmulas ou mesclagens em campos sincronizáveis, linha modelo com fórmula e tabela com
+total exigem revisão. Ao editar um e-mail, seu hyperlink antigo é retirado;
+os links das demais células são preservados. Datas legadas americanas são reconhecidas quando
+conferem com o Excel; pedidos novos seguem a convenção brasileira do cadastro.
+
+O Excel é editado no XML, com estilos existentes, conferência das células
+não autorizadas, backup, temporário na mesma pasta e troca final. Aberto
+no Excel ou alterado no meio: adia; a foto não avança. O estado guarda a
+operação pendente para retomar sem duplicar após uma interrupção.
+
+`SincronizarPlanilhaPortal.bat --gravar --diario` é a tarefa própria:
+dias úteis, de 12:30 até 18:00, repetida a cada dez minutos pelo Windows.
+Uma rodada concluída não roda novamente naquele dia; adiamentos tentam
+novamente. Logs: `logs/sync_planilha_portal.log`. A foto e o relatório
+ficam no mesmo `SYNC_NF_DADOS`, que não deve ser alterado.
+
+Instalação, validação e rollback: [INSTALAR_SERVIDOR.md](INSTALAR_SERVIDOR.md).
