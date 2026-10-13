@@ -415,3 +415,56 @@ def test_validacao_e_formatacao_condicional_acompanham_linha_nova(c):
     assert str(s.data_validations.dataValidation[0].sqref) == 'I2:I3'
     assert any(str(cf.sqref) == 'D2:D3' for cf in s.conditional_formatting)
     w.close()
+
+
+def test_pedidos_gemeos_pareiam_pela_chave_exata(c):
+    """Duas OCs do mesmo item, mesma cidade e valor: CIDADE+VALOR casa as duas com
+    as duas; a chave exata (PEDIDO+RFQ+PRODUTO) desempata. Na planilha real eram 33."""
+    gemeo = dict(PRODUTO='ETIQUETADORA')
+    c.excel('E2', 'ETIQUETADORA')
+    w = openpyxl.load_workbook(c.xlsx)
+    w['PEDIDOS'].append(list(pedido(2, **gemeo).values()))
+    w.save(c.xlsx)
+    w.close()
+    c.salvar_portal([pedido(1, **gemeo), pedido(2, **gemeo)])
+    assert not c.rodar()['ambiguas']
+    c.salvar_portal([pedido(1, **gemeo), pedido(2, STATUS='ENTREGUE', **gemeo)])
+    r = c.rodar()
+    assert not r['ambiguas'] and len(r['acoes']) == 1
+    assert c.valor('I3') == 'ENTREGUE' and c.valor('I2') == 'ABERTO'
+
+
+def test_gemeo_sem_par_no_portal_continua_ambiguo(c):
+    gemeo = dict(PRODUTO='ETIQUETADORA')
+    c.excel('E2', 'ETIQUETADORA')
+    w = openpyxl.load_workbook(c.xlsx)
+    w['PEDIDOS'].append(list(pedido(3, **gemeo).values()))
+    w.save(c.xlsx)
+    w.close()
+    c.salvar_portal([pedido(1, **gemeo)])
+    c.rodar()
+    r = c.rodar()
+    assert [a['linha'] for a in r['ambiguas']] == [2, 3] and not r['acoes']
+
+
+def test_data_legada_sem_ano_nao_trava_a_linha(c):
+    """337 pedidos antigos têm "24-Jun" no portal e a data completa na planilha."""
+    c.excel('F2', dt.datetime(2026, 11, 10))
+    c.salvar_portal([pedido(**{'DATA DE ENTREGA': '10-Nov'})])
+    assert not c.rodar()['pendentes']
+    c.salvar_portal([pedido(STATUS='ENTREGUE', **{'DATA DE ENTREGA': '10-Nov'})])
+    r = c.rodar()
+    assert not r['pendentes'] and not r['conflitos'] and c.valor('I2') == 'ENTREGUE'
+
+
+def test_data_sem_ano_de_outro_dia_continua_pendente(c):
+    c.excel('F2', dt.datetime(2026, 11, 10))
+    c.salvar_portal([pedido(**{'DATA DE ENTREGA': '11-Nov'})])
+    c.rodar()
+    assert c.rodar()['pendentes']
+
+
+@pytest.mark.parametrize('texto', ['3,961.46', '3.961,46', '3961,46', '3961.46'])
+def test_valor_com_milhar_nos_dois_formatos(texto):
+    from cruzar_nf.planilha_portal import normalizar
+    assert normalizar('VALOR', texto) == '3961.46'
