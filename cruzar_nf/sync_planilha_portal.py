@@ -256,10 +256,10 @@ def sincronizar(planilha, caminho_pedidos, pasta_dados, gravar=False, dormir=tim
             return {'sem_mudanca': True, 'acoes': []}
     with trava(pasta, 'Sincronização planilha/portal') if gravar else nullcontext():
         with trava(pasta, 'Pedidos na planilha', arquivo=NP.ARQ_TRAVA) if gravar else nullcontext():
-            return _rodar(planilha, caminho_pedidos, pasta, gravar, dormir, antes_de_trocar)
+            return _rodar(planilha, caminho_pedidos, pasta, gravar, dormir, antes_de_trocar, agora)
 
 
-def _rodar(planilha, caminho_pedidos, pasta, gravar, dormir, antes_de_trocar):
+def _rodar(planilha, caminho_pedidos, pasta, gravar, dormir, antes_de_trocar, agora):
     assinatura = CP._assinatura(planilha)
     original = Path(planilha).read_bytes()
     if CP._assinatura(planilha) != assinatura:
@@ -357,7 +357,7 @@ def _rodar(planilha, caminho_pedidos, pasta, gravar, dormir, antes_de_trocar):
         r['gravou'] = True
     proximo.pop('pendente', None)
     _salvar(pasta, ARQ_ESTADO, proximo)
-    r['concluido_em'] = r['gerado_em']
+    r['concluido_em'] = agora.strftime('%d/%m/%Y %H:%M:%S')
     _salvar(pasta, ARQ_RELATORIO, r)
     if r['gravou']:
         r['conferencia'] = conferir(finais, manager.pedidos['PEDIDOS'], ignorar)
