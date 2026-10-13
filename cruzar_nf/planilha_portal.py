@@ -42,7 +42,9 @@ def normalizar(nome: str, valor: Any, formato_data: str = "dmy") -> Any:
         return None
     if nome == "VALOR":
         texto = str(valor).strip()
-        if "," in texto:
+        if "," in texto and texto.rfind(",") < texto.rfind("."):   # americano: 3,961.46
+            texto = texto.replace(",", "")
+        elif "," in texto:
             texto = texto.replace(".", "").replace(",", ".")
         try:
             numero = Decimal(texto)
@@ -54,6 +56,10 @@ def normalizar(nome: str, valor: Any, formato_data: str = "dmy") -> Any:
     if isinstance(valor, (_dt.date, _dt.datetime)):
         return valor.strftime("%Y-%m-%d")
     if nome == "DATA DE ENTREGA":
+        if formato_data.startswith("dmon"):   # legado "24-Jun": o ano vem da planilha
+            dia, _, mes = str(valor).strip().partition("-")
+            if dia.isdigit() and mes.lower() in MESES:
+                return "%s-%02d-%02d" % (formato_data[4:], MESES[mes.lower()], int(dia))
         formatos = ("%m/%d/%Y", "%d/%m/%Y") if formato_data == "mdy" else ("%d/%m/%Y", "%m/%d/%Y")
         for formato in formatos + ("%Y-%m-%d", "%Y-%m-%dT%H:%M:%S"):
             try:
@@ -69,11 +75,18 @@ def normalizar(nome: str, valor: Any, formato_data: str = "dmy") -> Any:
     return " ".join("".join(c for c in texto if not unicodedata.combining(c)).casefold().split())
 
 
+MESES = {m: i + 1 for i, m in enumerate("jan feb mar apr may jun jul aug sep oct nov dec".split())}
+MESES.update(fev=2, abr=4, mai=5, ago=8, set=9, out=10, dez=12)
+
+
 def formato_data_portal(excel, portal):
-    """O JSON antigo veio de exportação americana; o cadastro atual escreve dd/mm/aaaa."""
+    """O JSON antigo veio de exportação americana ("7/3/2025" ou "24-Jun", sem ano);
+    o cadastro atual escreve dd/mm/aaaa. Só vale o legado que bate com a planilha."""
     try:
         a = normalizar('DATA DE ENTREGA', _campo(excel or {}, 'DATA DE ENTREGA'))
         valor = _campo(portal or {}, 'DATA DE ENTREGA')
+        if a is not None and normalizar('DATA DE ENTREGA', valor, 'dmon' + a[:4]) == a:
+            return 'dmon' + a[:4]
         if a is not None and normalizar('DATA DE ENTREGA', valor, 'mdy') == a:
             if normalizar('DATA DE ENTREGA', valor, 'dmy') != a:
                 return 'mdy'

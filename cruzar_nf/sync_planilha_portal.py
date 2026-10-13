@@ -60,6 +60,29 @@ def _registro(excel, portal, antigo=False):
             'removido_excel': False, 'removido_portal': False, 'formato_data_portal': formato}
 
 
+def _desempatar(linhas, pedidos, pares):
+    """Pedidos gêmeos (mesmo item, cidade e valor em OCs diferentes) casam todos com
+    todos por CIDADE+VALOR. Onde a chave exata casa um com um só, fica esse par."""
+    original = {n: list(v) for n, v in pares.items()}
+    exatos = Counter(CP.chave(p) for p in pedidos)
+    na_planilha = Counter(CP.chave(l) for _, l in linhas)
+    for n, l in linhas:
+        k = CP.chave(l)
+        if len(pares[n]) < 2 or exatos[k] != 1 or na_planilha[k] != 1:
+            continue
+        unico = next((i for i in pares[n] if CP.chave(pedidos[i]) == k), None)
+        if unico is None:
+            continue
+        pares[n] = [unico]
+        for m, _ in linhas:
+            if m != n and unico in pares[m]:
+                pares[m] = [i for i in pares[m] if i != unico]
+    for n, v in original.items():   # quem ficaria sem par continua ambíguo
+        if v and not pares[n]:
+            pares[n] = v
+    return pares
+
+
 def planejar(linhas, pedidos, estado, ignorar, vistos):
     primeira = not estado
     proximo = copy.deepcopy(estado) if estado else {'versao': 1, 'itens': {}}
@@ -70,7 +93,7 @@ def planejar(linhas, pedidos, estado, ignorar, vistos):
              primeira_vez=primeira, gravou=False, adiado=False, aviso=None,
              **{nome: [] for nome in LISTAS})
     r['conferencia'] = conferir(linhas, pedidos, ignorar)
-    pares = parear(linhas, pedidos)
+    pares = _desempatar(linhas, pedidos, parear(linhas, pedidos))
     inverso = {i: [n for n, indices in pares.items() if i in indices] for i in range(len(pedidos))}
     consumidos = set()
     grupos = []
