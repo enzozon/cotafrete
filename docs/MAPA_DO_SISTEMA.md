@@ -78,7 +78,10 @@ herda o `GenerosoAdapter` inteiro. Só mudam os atributos de conta
 (`url_base`, `prefixo_env`, `empresas`, `trava_conta`, `nome_curto`). Mexeu na
 mecânica da Generoso? Rode também `pytest tests -k favorita`. A conta da
 Favorita só tem a Ventura no "Alterar empresa", e o agendamento de coleta dela
-não foi levantado (levanta `NotImplementedError`).
+não foi levantado (levanta `NotImplementedError`). CNPJ "nao cadastrado" na
+ponta digitada é recusa na Generoso, mas na Favorita não
+(`cota_sem_cadastro`): o robô digita o CEP e, se for CEP geral de cidade,
+completa rua e bairro pela Receita (`core/cnpj.endereco`).
 
 ### IA na tela do vendedor
 

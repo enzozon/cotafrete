@@ -45,6 +45,9 @@ class FavoritaAdapter(GenerosoAdapter):
     # Conta própria, trava própria: cotar Favorita e Generoso ao mesmo
     # tempo não mexe na empresa ativa de ninguém.
     trava_conta = threading.Lock()
+    # Destinatário sem cadastro na Favorita não é recusa: o endereço é
+    # digitado e ela cota (medido em 14/10/2026, Prefeitura de Pequi).
+    cota_sem_cadastro = True
     fator_cubagem: Decimal = Decimal(300)   # ⚠ presumido, como na Generoso
 
     def __init__(self, workdir: str = "teste_real/favorita", **kw) -> None:
