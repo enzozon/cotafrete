@@ -22,6 +22,11 @@ from cruzar_nf.sincronizar import trava, SincronizacaoEmAndamento
 ARQ_ESTADO = 'sync_planilha_portal.json'
 ARQ_RELATORIO = 'sync_planilha_portal_relatorio.json'
 LISTAS = ('acoes', 'conflitos', 'ambiguas', 'removidos', 'historico', 'pendentes')
+ARQ_HISTORICO = 'sync_planilha_portal_historico.json'
+FMT_HORA = '%d/%m/%Y %H:%M:%S'
+DIAS_HISTORICO = 7
+ALERTA_SEM_GRAVAR_MIN = 60
+MAX_ITENS_PAINEL = 500
 
 
 def _ler(pasta, nome):
@@ -155,13 +160,14 @@ def planejar(linhas, pedidos, estado, ignorar, vistos):
                 else:
                     r['historico'].append({'chave': k, 'lado': 'excel'})
                 continue
+            lado = 'portal' if l is None else 'excel'
             try:
                 _valores(atual)
             except ValueError as e:
-                r['pendentes'].append({'chave': k, 'erro': str(e)})
+                r['pendentes'].append({'chave': k, 'linha': n, 'lado': lado, 'erro': str(e)})
                 continue
             if not CP.completa(atual):
-                r['pendentes'].append({'chave': k, 'erro': 'Pedido incompleto'})
+                r['pendentes'].append({'chave': k, 'linha': n, 'lado': lado, 'erro': 'Pedido incompleto'})
                 continue
             r['acoes'].append({'chave': k, 'destino': 'excel' if l is None else 'portal',
                                'tipo': 'novo', 'linha': n, 'pedido': CP._sem_colunas_do_robo(atual)})
@@ -173,13 +179,19 @@ def planejar(linhas, pedidos, estado, ignorar, vistos):
             r['removidos'].append({'chave': k, 'lado': 'reapareceu; exige revisão'})
             continue
         try:
-            ve, vp = _valores(l), _valores(p, registro.get('formato_data_portal', 'dmy'))
-        except ValueError as e:
-            r['pendentes'].append({'chave': k, 'erro': str(e)})
+            lado = 'excel'
+            ve = _valores(l)
+            lado = 'portal'
+            vp = _valores(p, registro.get('formato_data_portal', 'dmy'))
+        except ValueError as e:   # o painel mostra em qual lado está o dado a corrigir
+            r['pendentes'].append({'chave': k, 'linha': n, 'lado': lado, 'erro': str(e)})
             continue
         if any(ve[nome] != vp[nome] for nome in IDENTIDADE):
             r['conflitos'].append({'chave': k, 'linha': n, 'campo': 'IDENTIDADE',
-                                   'erro': 'PEDIDO, RFQ ou PRODUTO mudou; revisão manual'})
+                                   'erro': 'PEDIDO, RFQ ou PRODUTO mudou; revisão manual',
+                                   'excel': {nome: CP._campo(l, nome) for nome in IDENTIDADE},
+                                   'portal': {nome: CP._campo(p, nome) for nome in IDENTIDADE},
+                                   'base': {nome: registro['base'].get(nome) for nome in IDENTIDADE}})
             continue
         # Correção feita manualmente nas duas pontas pode atualizar a foto, nunca os identificadores.
         registro['chaves'] = sorted(set(registro['chaves']) | {CP.chave(l), CP.chave(p)})
@@ -279,7 +291,30 @@ def sincronizar(planilha, caminho_pedidos, pasta_dados, gravar=False, dormir=tim
             return {'sem_mudanca': True, 'acoes': []}
     with trava(pasta, 'Sincronização planilha/portal') if gravar else nullcontext():
         with trava(pasta, 'Pedidos na planilha', arquivo=NP.ARQ_TRAVA) if gravar else nullcontext():
-            return _rodar(planilha, caminho_pedidos, pasta, gravar, dormir, antes_de_trocar, agora)
+            try:
+                r = _rodar(planilha, caminho_pedidos, pasta, gravar, dormir, antes_de_trocar, agora)
+            except Exception as e:
+                if gravar:
+                    _registrar_rodada(pasta, agora, {'erro': str(e)})
+                raise
+    if gravar:
+        _registrar_rodada(pasta, agora, r)
+    return r
+
+
+def _registrar_rodada(pasta, agora, r):
+    """Uma linha por rodada, só dos últimos dias: o painel lê isto, não o log inteiro."""
+    resultado = ('erro' if r.get('erro') else 'adiado' if r.get('adiado') else 'gravou' if r.get('gravou')
+                 else 'inicializou' if r.get('primeira_vez') else 'sem_acoes')
+    rodada = {'em': agora.strftime(FMT_HORA), 'resultado': resultado, 'aviso': r.get('erro') or r.get('aviso'),
+              'contagens': {k: len(r.get(k, [])) for k in LISTAS}}
+    limite = agora - dt.timedelta(days=DIAS_HISTORICO)
+    try:
+        rodadas = [x for x in _ler(pasta, ARQ_HISTORICO).get('rodadas', [])
+                   if dt.datetime.strptime(x['em'], FMT_HORA) >= limite]
+        _salvar(pasta, ARQ_HISTORICO, {'rodadas': rodadas + [rodada]})
+    except (OSError, ValueError) as e:   # o histórico é só para o painel; não derruba a rodada
+        print('[AVISO] Histórico da sincronização não foi gravado: %s' % e)
 
 
 def _rodar(planilha, caminho_pedidos, pasta, gravar, dormir, antes_de_trocar, agora):
@@ -301,15 +336,16 @@ def _rodar(planilha, caminho_pedidos, pasta, gravar, dormir, antes_de_trocar, ag
     r, proximo = planejar(linhas, manager.pedidos['PEDIDOS'], estado, ignorar, vistos)
     colunas, formulas, _epoch = PE.ler(original)
     linhas_formula = {n for n, _ in linhas if any(colunas.get(nome, '') + str(n) in formulas for nome in EDITAVEIS)}
-    chaves_formula = {CP.chave(l) for n, l in linhas if n in linhas_formula}
+    chaves_formula = {CP.chave(l): n for n, l in linhas if n in linhas_formula}
     if not r['primeira_vez']:
-        for k in chaves_formula:
-            r['pendentes'].append({'chave': k, 'erro': 'Campo sincronizável contém fórmula ou mesclagem; revisão manual'})
-    bloqueadas = {a['chave'] for a in r['acoes'] if a['tipo'] == 'campo'
+        for k, n in chaves_formula.items():
+            r['pendentes'].append({'chave': k, 'linha': n, 'lado': 'excel',
+                                   'erro': 'Campo sincronizável contém fórmula ou mesclagem; revisão manual'})
+    bloqueadas = {a['chave']: a['linha'] for a in r['acoes'] if a['tipo'] == 'campo'
                   and a['destino'] == 'excel' and colunas.get(a['campo'], '') + str(a['linha']) in formulas}
-    for k in bloqueadas:
-        r['pendentes'].append({'chave': k, 'erro': 'Célula de destino contém fórmula'})
-    r['acoes'] = [a for a in r['acoes'] if a['chave'] not in bloqueadas | chaves_formula]
+    for k, n in bloqueadas.items():
+        r['pendentes'].append({'chave': k, 'linha': n, 'lado': 'excel', 'erro': 'Célula de destino contém fórmula'})
+    r['acoes'] = [a for a in r['acoes'] if a['chave'] not in set(bloqueadas) | set(chaves_formula)]
     mudancas = {}
     for a in r['acoes']:
         if a['tipo'] == 'campo' and a['destino'] == 'excel':
@@ -399,6 +435,38 @@ def estado_para_tela(pasta):
                 listas={k: r.get(k, [])[:30] for k in LISTAS})
 
 
+def _alerta(rodadas, agora):
+    """Seguidas sem conseguir gravar (adiada/erro) há mais de ALERTA_SEM_GRAVAR_MIN."""
+    desde = None
+    for x in reversed(rodadas):
+        if x['resultado'] not in ('adiado', 'erro'):
+            break
+        desde = x
+    if desde is None:
+        return None
+    inicio = dt.datetime.strptime(desde['em'], FMT_HORA)
+    if agora - inicio < dt.timedelta(minutes=ALERTA_SEM_GRAVAR_MIN):
+        return None
+    return {'desde': desde['em'], 'minutos': int((agora - inicio).total_seconds() // 60),
+            'motivo': rodadas[-1].get('aviso')}
+
+
+def painel_para_tela(pasta, agora=None):
+    """Tudo o que o painel do portal mostra: última rodada completa, rodadas dos últimos dias e alerta."""
+    agora = agora or dt.datetime.now()
+    r = _ler(pasta, ARQ_RELATORIO)
+    rodadas = _ler(pasta, ARQ_HISTORICO).get('rodadas', [])
+    conferencia = r.get('conferencia') or _ler(pasta, 'conferencia_planilha.json')
+    return dict(
+        {k: r.get(k) for k in ('gerado_em', 'concluido_em', 'gravou', 'adiado', 'aviso', 'erro', 'primeira_vez')},
+        agora=agora.strftime(FMT_HORA),
+        totais={k: len(r.get(k, [])) for k in LISTAS},
+        listas={k: r.get(k, [])[:MAX_ITENS_PAINEL] for k in LISTAS},
+        conferencia_totais={k: len(v) if isinstance(v, list) else v for k, v in conferencia.items()},
+        conferencia={k: v[:MAX_ITENS_PAINEL] for k, v in conferencia.items() if isinstance(v, list)},
+        rodadas=rodadas, alerta=_alerta(rodadas, agora))
+
+
 def main(argv=None):
     from dotenv import load_dotenv
     from cruzar_nf.sincronizar import DADOS_PADRAO, PEDIDOS_PADRAO
@@ -417,8 +485,9 @@ def main(argv=None):
         if a.gravar:
             Path(a.dados).mkdir(parents=True, exist_ok=True)
             if not isinstance(e, SincronizacaoEmAndamento):
-                _salvar(a.dados, ARQ_RELATORIO, {'gerado_em': dt.datetime.now().strftime('%d/%m/%Y %H:%M:%S'),
-                                               'erro': str(e), 'adiado': True})
+                # mantém as listas da última rodada boa: o painel continua mostrando o que revisar
+                _salvar(a.dados, ARQ_RELATORIO, dict(_ler(a.dados, ARQ_RELATORIO), gravou=False, erro=str(e),
+                                                     adiado=True, gerado_em=dt.datetime.now().strftime(FMT_HORA)))
         return 1
     if not r.get('sem_mudanca'):
         resumo = {k: r.get(k) for k in ('gerado_em', 'primeira_vez', 'gravou', 'adiado', 'aviso')}

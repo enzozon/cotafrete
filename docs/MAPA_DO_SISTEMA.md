@@ -173,6 +173,13 @@ precisa também do PR do painel. NF continua com os escritores antigos.
 Datas americanas do JSON legado são identificadas por comparação com o
 Excel e o formato fica guardado por item; dados inválidos são pendências.
 
+Painel (`sync.html` no portal, só admin): o serviço de NF responde
+`comando_sync_planilha_painel` com `painel_para_tela()`: listas completas do
+relatório, conflitos com os valores do Excel/portal/base, pendências com
+linha e lado, e `sync_planilha_portal_historico.json` (uma linha por rodada,
+7 dias). Alerta quando fica mais de 1 h adiada/com erro. Rodada com erro
+mantém as listas da última rodada boa.
+
 ### Configuração (o `.env` fica na pasta `sync_nf`, não no repo)
 
 `SYNC_NF_DADOS=\\SERVIDOR2\Publico\ALLAN\database\sync_nf` guarda o

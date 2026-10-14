@@ -468,3 +468,63 @@ def test_data_sem_ano_de_outro_dia_continua_pendente(c):
 def test_valor_com_milhar_nos_dois_formatos(texto):
     from cruzar_nf.planilha_portal import normalizar
     assert normalizar('VALOR', texto) == '3961.46'
+
+
+def test_conflito_de_identidade_mostra_os_dois_lados(c):
+    c.rodar()
+    c.excel('C2', 99)
+    conflito = c.rodar()['conflitos'][0]
+    assert conflito['excel']['PEDIDO'] == 99 and conflito['portal']['PEDIDO'] == 1
+    assert conflito['base']['PEDIDO'] is not None
+
+
+def test_historico_guarda_uma_linha_por_rodada_e_so_os_ultimos_dias(c, monkeypatch):
+    c.rodar(agora=dt.datetime(2026, 10, 1, 13))
+    c.salvar_portal([pedido(STATUS='NOVO')])
+    monkeypatch.setattr(SP.NP, 'esta_aberta', lambda _: 'Planilha aberta')
+    c.rodar(agora=dt.datetime(2026, 10, 9, 13))
+    c.rodar(agora=dt.datetime(2026, 10, 9, 13, 10))
+    rodadas = SP._ler(c.dados, SP.ARQ_HISTORICO)['rodadas']
+    assert [x['resultado'] for x in rodadas] == ['adiado', 'adiado']   # a de 01/10 saiu (7 dias)
+    assert rodadas[-1]['aviso'] == 'Planilha aberta' and rodadas[-1]['contagens']['acoes'] == 1
+
+
+def test_painel_alerta_quando_fica_mais_de_uma_hora_sem_gravar(c, monkeypatch):
+    c.rodar(agora=dt.datetime(2026, 10, 9, 12, 30))
+    c.salvar_portal([pedido(STATUS='NOVO')])
+    monkeypatch.setattr(SP.NP, 'esta_aberta', lambda _: 'Planilha aberta')
+    c.rodar(agora=dt.datetime(2026, 10, 9, 12, 40))
+    assert SP.painel_para_tela(c.dados, agora=dt.datetime(2026, 10, 9, 13, 30))['alerta'] is None
+    alerta = SP.painel_para_tela(c.dados, agora=dt.datetime(2026, 10, 9, 13, 50))['alerta']
+    assert alerta == {'desde': '09/10/2026 12:40:00', 'minutos': 70, 'motivo': 'Planilha aberta'}
+
+
+def test_erro_na_rodada_mantem_as_listas_no_painel(c):
+    c.rodar()
+    c.excel('C2', 99)
+    c.rodar()
+    assert SP.main(['--planilha', str(c.dados / 'nao_existe.xlsx'), '--pedidos', str(c.json),
+                    '--dados', str(c.dados), '--gravar']) == 1
+    painel = SP.painel_para_tela(c.dados)
+    assert painel['erro'] and painel['totais']['conflitos'] == 1
+    assert painel['rodadas'][-1]['resultado'] == 'erro'
+
+
+def test_painel_chega_ao_portal_pelo_servico_de_nf(c):
+    from cruzar_nf.maestro import registrar
+    from tests.test_sincronizar import Sio, Log
+    c.rodar()
+    sio = Sio()
+    h = registrar(sio, {'caminho_banco_dados': str(c.dados)}, Log(), manager=object(), em_thread=False)
+    h['painel_planilha']({'clientId': 'abc'})
+    resposta = sio.ultimo('retorno_sync_planilha_painel')
+    assert resposta['sucesso'] and resposta['clientId'] == 'abc'
+    assert resposta['painel']['rodadas'][-1]['resultado'] == 'inicializou'
+
+
+def test_pendente_diz_a_linha_e_o_lado_a_corrigir(c):
+    c.rodar()
+    c.excel('F2', 'veio sem data')
+    pendente = c.rodar()['pendentes'][0]
+    assert (pendente['linha'], pendente['lado']) == (2, 'excel')
+    assert 'Data inválida' in pendente['erro']

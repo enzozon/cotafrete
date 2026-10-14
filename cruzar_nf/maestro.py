@@ -207,6 +207,16 @@ def registrar(sio: Any, config: Dict[str, Any], logger: Any, manager: Any = None
             sio.emit("retorno_sync_nf_estado", {"sucesso": False, "erro": str(e),
                                                 "clientId": dados.get("clientId")})
 
+    def comando_sync_planilha_painel(dados: Optional[dict] = None) -> None:
+        dados = dados or {}
+        try:
+            from cruzar_nf.sync_planilha_portal import painel_para_tela
+            sio.emit("retorno_sync_planilha_painel", {"sucesso": True, "painel": painel_para_tela(_pasta()),
+                                                      "clientId": dados.get("clientId")})
+        except Exception as e:
+            sio.emit("retorno_sync_planilha_painel", {"sucesso": False, "erro": str(e),
+                                                      "clientId": dados.get("clientId")})
+
     def comando_sync_nf(dados: Optional[dict] = None) -> None:
         dados = dados or {}
         client_id = dados.get("clientId")
@@ -224,7 +234,8 @@ def registrar(sio: Any, config: Dict[str, Any], logger: Any, manager: Any = None
     sio.on("comando_sync_nf_estado", comando_sync_nf_estado)
     sio.on("comando_sync_nf", comando_sync_nf)
     sio.on("comando_nf_planilha", comando_nf_planilha)
+    sio.on("comando_sync_planilha_painel", comando_sync_planilha_painel)
     if schedule is not None and horario:
         schedule.every().day.at(horario).do(agendado)
     return {"estado": comando_sync_nf_estado, "sincronizar": comando_sync_nf, "agendado": agendado,
-            "nf_planilha": comando_nf_planilha}
+            "nf_planilha": comando_nf_planilha, "painel_planilha": comando_sync_planilha_painel}
