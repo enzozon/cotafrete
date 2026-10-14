@@ -65,6 +65,29 @@ def buscar(cnpj: str) -> str | None:
     return nome or None
 
 
+def endereco(cnpj: str) -> dict[str, str] | None:
+    """Endereço da Receita (cep, rua, numero, bairro), ou None.
+
+    Para portal que aceita destinatário sem cadastro mas exige rua e bairro
+    digitados — CEP geral de cidade pequena (35667-000, Pequi/MG) não traz
+    nenhum dos dois. Sem cache: só roda nesse caso raro."""
+    d = _digitos(cnpj)
+    if len(d) != 14:
+        return None
+    try:
+        r = httpx.get(URL.format(cnpj=d), timeout=TIMEOUT_S)
+        r.raise_for_status()
+        dados = r.json()
+    except Exception:
+        return None
+    rua = " ".join(filter(None, (
+        (dados.get("descricao_tipo_de_logradouro") or "").strip(),
+        (dados.get("logradouro") or "").strip())))
+    return {"cep": _digitos(dados.get("cep")), "rua": rua,
+            "numero": (dados.get("numero") or "").strip(),
+            "bairro": (dados.get("bairro") or "").strip()}
+
+
 def formatar(cnpj: str) -> str:
     """00.000.000/0000-00 a partir de qualquer entrada."""
     d = _digitos(cnpj)

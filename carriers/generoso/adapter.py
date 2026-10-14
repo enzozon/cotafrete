@@ -70,6 +70,7 @@ from carriers.generoso.mapping import (
     recusa_cep_nao_atendido, recusa_cliente_nao_cadastrado, recusa_mesmo_cep,
     validar_agendamento,
 )
+from core import cnpj as buscador_cnpj
 from core.models import CotacaoRequest, StatusCotacao, TipoFrete, limpa_doc
 
 URL = "https://cliente.generoso.com.br/cotacao"
@@ -435,6 +436,9 @@ class GenerosoAdapter:
     # Uma trava POR CONTA, e não por plataforma: a empresa ativa é estado
     # da conta (ver _TRAVA_CONTA), e contas diferentes não se pisam.
     trava_conta = _TRAVA_CONTA
+    # CNPJ "nao cadastrado" na ponta digitada: recusar (Generoso, #56) ou
+    # digitar o endereço e seguir (Favorita, ver _endereco_a_mao).
+    cota_sem_cadastro = False
     modo: Modo = Modo.ASSINCRONO_LENTO      # preço volta por e-mail
     ativo = True
     fator_cubagem: Decimal = Decimal(300)   # ⚠ presumido; não confirmado ainda
@@ -826,6 +830,44 @@ class GenerosoAdapter:
         # Ponta travada não tem busca: ninguém digitou CNPJ nenhum aqui.
         return achado, ""
 
+    def _endereco_a_mao(self, page, req: CotacaoRequest, lado: str,
+                        cnpj: str) -> dict[str, str]:
+        """Destino sem cadastro: digita o endereço em vez de recusar.
+
+        Medido na Favorita em 14/10/2026: o CNPJ da Prefeitura de Pequi
+        voltou "nao cadastrado", os campos de endereço ficaram abertos, e com
+        o CEP digitado o Próximo avançou. CEP de rua preenche o resto sozinho
+        (e trava cidade/UF); CEP geral de cidade (35667-000) não traz rua nem
+        bairro — esses vêm da Receita, só se o CEP de lá for o da cotação.
+        Devolve o endereço da tela; cidade vazia = não deu, e quem chamou
+        mantém a recusa."""
+        local = req.origem if lado == "origem" else req.destino
+        cep = "".join(c for c in (local.cep or "") if c.isdigit())
+        if len(cep) != 8:
+            return self._esperar_endereco(page, tentativas=1)
+        self._digitar(page, 'input[name="cep"]', cep)
+        self._campo(page, 'input[name="cep"]').blur()
+        page.wait_for_timeout(ESPERA_BUSCA_MS)
+        achado = self._esperar_endereco(page, tentativas=3)
+        if achado["city"] and achado["address"]:
+            return achado
+
+        receita = buscador_cnpj.endereco(cnpj)
+        if not receita or receita["cep"] != cep or not receita["rua"]:
+            return {**achado, "city": ""}
+        for nome, valor in (("city", local.cidade), ("state", local.uf),
+                            ("neighborhood", receita["bairro"] or "CENTRO"),
+                            ("address", receita["rua"]),
+                            ("number", receita["numero"]
+                             if receita["numero"].isdigit() else "")):
+            campo = self._campo(page, f'input[name="{nome}"]')
+            if valor and campo.is_enabled() and not campo.input_value():
+                self._digitar(page, f'input[name="{nome}"]', valor)
+        if not self._campo(page, 'input[name="number"]').input_value():
+            page.get_by_text("Sem número", exact=True).click()
+        page.wait_for_timeout(1_000)
+        return self._esperar_endereco(page, tentativas=2)
+
     def _conferir_cobertura(self, page, lado: str,
                             req: CotacaoRequest) -> None:
         """Levanta ForaDeArea se a Generoso recusou esta ponta — praça fora
@@ -998,12 +1040,14 @@ class GenerosoAdapter:
                         zip(("origem", "destino"), pontas_a_digitar(req)), 2):
                     achado, resposta_da_busca = self._preencher_ponta(
                         page, cnpj)
+                    sem_cadastro = (None if achado["city"] else
+                                    cliente_nao_cadastrado(resposta_da_busca))
+                    if sem_cadastro and self.cota_sem_cadastro:
+                        achado = self._endereco_a_mao(page, req, lado, cnpj)
                     if not achado["city"]:
                         # A Generoso pode ter respondido que não conhece este
                         # CNPJ. Se respondeu, é recusa dela e repetir dá o
                         # mesmo resultado — foi o que a #56 fez três vezes.
-                        sem_cadastro = cliente_nao_cadastrado(
-                            resposta_da_busca)
                         if sem_cadastro:
                             raise ClienteNaoCadastrado(
                                 recusa_cliente_nao_cadastrado(

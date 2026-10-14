@@ -96,6 +96,32 @@ def test_le_a_tela_de_resultado_real():
     assert str(res.validade) == "2026-10-23"
 
 
+def test_sem_cadastro_so_a_favorita_digita_o_endereco():
+    """Na Favorita, destinatário sem cadastro é cotável (Pequi, 14/10/2026);
+    na Generoso continua recusa (#56)."""
+    assert FavoritaAdapter.cota_sem_cadastro is True
+    assert GenerosoAdapter.cota_sem_cadastro is False
+
+
+def test_endereco_da_receita_para_cep_geral(monkeypatch):
+    from core import cnpj
+
+    class Resposta:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"descricao_tipo_de_logradouro": "PRACA",
+                    "logradouro": "SANTO ANTONIO", "numero": "190",
+                    "bairro": "CENTRO", "cep": "35667000"}
+
+    monkeypatch.setattr(cnpj.httpx, "get", lambda *a, **k: Resposta())
+    assert cnpj.endereco("18.313.874/0001-64") == {
+        "cep": "35667000", "rua": "PRACA SANTO ANTONIO", "numero": "190",
+        "bairro": "CENTRO"}
+    assert cnpj.endereco("123") is None
+
+
 def test_agendamento_nao_cai_no_portal_da_generoso():
     with pytest.raises(NotImplementedError):
         FavoritaAdapter().agendar_coleta("123", None)
