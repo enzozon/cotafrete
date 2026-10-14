@@ -109,7 +109,7 @@ def test_conferir_cobertura_roda_a_linha_de_verdade():
     page = _PaginaFalsa("cabeçalho\n" + AVISO_REAL + "\nrodapé")
 
     with pytest.raises(ForaDeArea) as excinfo:
-        GenerosoAdapter._conferir_cobertura(page, "destino", montar())
+        GenerosoAdapter()._conferir_cobertura(page, "destino", montar())
 
     assert "01310100" in str(excinfo.value)  # o CEP do destino da ficha
 
@@ -117,7 +117,7 @@ def test_conferir_cobertura_roda_a_linha_de_verdade():
 def test_conferir_cobertura_no_caminho_feliz_nao_levanta_nada():
     page = _PaginaFalsa("Peso total 63,00 kg — tudo certo")
 
-    GenerosoAdapter._conferir_cobertura(page, "origem", montar())  # não lança
+    GenerosoAdapter()._conferir_cobertura(page, "origem", montar())  # não lança
 
 
 # ------------------ a outra metade dos 6: origem e destino no mesmo CEP
@@ -143,7 +143,7 @@ def test_mesmo_cep_vira_recusa_e_nao_erro_generico():
     page = _PaginaFalsa("cabeçalho\n" + AVISO_MESMO_CEP_REAL + "\nrodapé")
 
     with pytest.raises(ForaDeArea) as excinfo:
-        GenerosoAdapter._conferir_cobertura(page, "destino", montar())
+        GenerosoAdapter()._conferir_cobertura(page, "destino", montar())
 
     assert "CNPJ" in str(excinfo.value)
 
@@ -155,7 +155,7 @@ def test_mesmo_cep_nao_precisa_dizer_qual_lado():
     page = _PaginaFalsa(AVISO_MESMO_CEP_INVERTIDO)
 
     with pytest.raises(ForaDeArea) as excinfo:
-        GenerosoAdapter._conferir_cobertura(page, "origem", montar())
+        GenerosoAdapter()._conferir_cobertura(page, "origem", montar())
 
     for lado in ("origem", "destino"):
         assert f"de {lado}" not in str(excinfo.value)
@@ -175,14 +175,14 @@ def test_cotar_esta_protegido_pela_trava_da_conta():
     inteiro (`sync_playwright` é importado DENTRO de `cotar`, não dá para
     substituir de fora). Este é o teste de fumaça mais barato que ainda
     quebra se alguém tirar a trava do lugar certo: confere que `cotar`
-    adquire `_TRAVA_CONTA` ANTES de abrir o navegador, não depois."""
+    adquire a `trava_conta` da classe ANTES de abrir o navegador, não depois."""
     import inspect
 
     from carriers.generoso.adapter import GenerosoAdapter
 
     fonte = inspect.getsource(GenerosoAdapter.cotar)
 
-    assert "_TRAVA_CONTA" in fonte, "a trava sumiu de cotar()"
-    assert fonte.index("_TRAVA_CONTA") < fonte.index("sync_playwright() as p"), (
+    assert "self.trava_conta" in fonte, "a trava sumiu de cotar()"
+    assert fonte.index("self.trava_conta") < fonte.index("sync_playwright() as p"), (
         "a trava tem que vir ANTES do navegador abrir, senão duas sessões "
         "ainda entram juntas na tela que troca a empresa")

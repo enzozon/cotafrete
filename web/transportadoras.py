@@ -128,6 +128,7 @@ NOMES_AUTOMATICAS = {
     "generoso": "Transporte Generoso",
     "dellavolpe": "Della Volpe",
     "braspress": "Braspress",
+    "favorita": "Favorita Transportes",
 }
 
 # Slug sem arquivo aqui desenha um espaço vazio no lugar — melhor do que uma
@@ -143,6 +144,9 @@ LOGOS_AUTOMATICAS = {
     # arquivo orfao em cotafrete-producao, onde ele foi posto a mao.
     "dellavolpe": "DELLAVOLPE.png",
     "braspress": "braspress.png",
+    # O mesmo arquivo do cartão de WhatsApp: ela é automática E tem WhatsApp,
+    # como a Translovato.
+    "favorita": "favorita.png",
 }
 
 
@@ -176,7 +180,7 @@ COTAM_POR_VOLUME = ("jadlog",)
 # Sem as duas chaves, nada muda: ela continua assistida, pelo cartão
 # "Semiautomática" da tela da cotação.
 AUTOMATICAS_FIXAS: tuple[str, ...] = (
-    "camilo", "jadlog", "translovato", "generoso", "braspress")
+    "camilo", "jadlog", "translovato", "generoso", "braspress", "favorita")
 
 
 def automaticas(ambiente=None) -> tuple[str, ...]:

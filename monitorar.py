@@ -44,6 +44,7 @@ from web.transportadoras import AUTOMATICAS  # noqa: E402
 # aqui — só aparece com o slug em maiúsculo até alguém cadastrar o nome.
 TITULOS = {"camilo": "CAMILO", "jadlog": "JADLOG",
            "translovato": "TRANSLOVATO", "generoso": "GENEROSO",
+           "favorita": "FAVORITA",
            "dellavolpe": "DELLA VOLPE"}
 
 PAUSA_S = 5

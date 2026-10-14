@@ -46,6 +46,7 @@ from fastapi.staticfiles import StaticFiles
 load_dotenv(override=False)
 
 from carriers.braspress.adapter import BraspressAdapter
+from carriers.favorita.adapter import FavoritaAdapter
 from carriers.camilo.adapter import CamiloAdapter
 from carriers.dellavolpe import bookmarklet as dv_bookmarklet
 from carriers.dellavolpe import caixa as dv_caixa
@@ -224,6 +225,10 @@ AUTOMATICA_DESDE = {
     "translovato": "2026-08-18T17:28:00",
     "generoso": "2026-08-24T10:47:15",
     "braspress": "2026-09-03T08:51:41",
+    # Merge do PR #59 às ~10:40 de 14/10; o atualizar.py sobe em até 5 min
+    # (mais a espera das cotações em curso). 11:00 fica DEPOIS da subida:
+    # antes disso nenhuma cotação teve a Favorita, então nada vira fantasma.
+    "favorita": "2026-10-14T11:00:00",
 }
 # A data dela vem do .env, junto com a decisão de ligá-la: é o dia em que ela
 # volta a cotar NO SERVIDOR, que nenhum commit sabe.
@@ -357,6 +362,11 @@ NOTAS = {
     "braspress": ("Frete fracionado, com coleta. Cotada sempre com o CNPJ "
                   "padrão da Ventura (08.310.365/0001-24) — é o próprio "
                   "login da Braspress, o site não deixa trocar."),
+    # Mesmo portal da Generoso, mas a conta só tem a Ventura: não há
+    # "empresa do grupo" para escolher (carriers/favorita/adapter.py).
+    "favorita": ("Frete fracionado, com coleta. Cotada sempre com o CNPJ "
+                 "da Ventura (08.310.365/0001-24) — é a única empresa da "
+                 "conta na Favorita."),
 }
 
 # Quanto a resposta por e-mail costuma demorar, por transportadora. MEDIDO,
@@ -428,6 +438,10 @@ MENSAGENS_DE_ERRO = {
     ),
 }
 
+# Mesmo portal, mesmo adapter, mesmas marcas: só muda o nome na frase.
+MENSAGENS_DE_ERRO["favorita"] = tuple(
+    (marca, frase.replace("Generoso", "Favorita"))
+    for marca, frase in MENSAGENS_DE_ERRO["generoso"])
 
 def _sem_acento(texto: str) -> str:
     """Minúsculas e sem acento, para casar a marca.
@@ -1376,6 +1390,12 @@ def _cotar_braspress(req, cotacao_id=None):
     return BraspressAdapter().cotar(req, confirmar_envio=True)
 
 
+def _cotar_favorita(req, cotacao_id=None):
+    """Mesmo portal e mesmo raciocínio de `_cotar_generoso`: logada, a tela
+    final devolve o preço, e sem confirmar não existe preço."""
+    return FavoritaAdapter().cotar(req, confirmar_envio=True)
+
+
 def _cotar_dellavolpe(req, cotacao_id=None, resposta_em="tela"):
     """Envia o formulário público deles — cai na fila de um vendedor da Della
     Volpe, e o preço volta por e-mail (carriers/dellavolpe/ingestor.py).
@@ -1427,7 +1447,7 @@ def request_da_cotacao(c: dict) -> CotacaoRequest:
 # uma thread do executor, e lá um KeyError vira cartão girando para sempre.
 FABRICAS = {"camilo": _cotar_camilo, "jadlog": _cotar_jadlog,
             "translovato": _cotar_translovato, "generoso": _cotar_generoso,
-            "braspress": _cotar_braspress}
+            "braspress": _cotar_braspress, "favorita": _cotar_favorita}
 # Só com ela ligada: fábrica de quem não está em AUTOMATICAS nunca roda, e
 # tests/test_dellavolpe_automatica.py não deixa sobrar fábrica órfã.
 if "dellavolpe" in AUTOMATICAS:

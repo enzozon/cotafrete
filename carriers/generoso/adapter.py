@@ -65,7 +65,7 @@ from carriers.base import (
     recusa_por_validacao,
 )
 from carriers.generoso.mapping import (
-    AVISO_CEP_NAO_ATENDIDO, AVISO_MESMO_CEP, cliente_nao_cadastrado,
+    AVISO_CEP_NAO_ATENDIDO, AVISO_MESMO_CEP, EMPRESAS, cliente_nao_cadastrado,
     conflito_cif_fob, empresa_alvo, empresa_de, ponta_travada_sem_o_grupo,
     recusa_cep_nao_atendido, recusa_cliente_nao_cadastrado, recusa_mesmo_cep,
     validar_agendamento,
@@ -93,6 +93,7 @@ VAR_AGENDAMENTO_AUTORIZADO = "GENEROSO_AGENDAMENTO_AUTORIZADO"
 # `_escolher_empresa` troca antes da etapa 1.
 CNPJ_CONTA = "08.310.365/0001-24"
 ESPERA_LOGIN_MS = 30_000
+ESPERA_RESULTADO_MS = 60_000    # teto do "Registrando cotação..." pós-confirmar
 
 # O portal é um SPA: `fill()` escreve no DOM e o React re-renderiza por cima
 # com o estado dele, que ainda está vazio — o campo volta a ficar em branco e
@@ -315,7 +316,7 @@ def carga_excede_limites(texto: str) -> bool:
     return FRASE_LIMITE_EXCEDIDO in (texto or "").lower()
 
 
-def motivo_limite_excedido(texto: str) -> str:
+def motivo_limite_excedido(texto: str, nome: str = "Generoso") -> str:
     """Mensagem para o vendedor, com os limites que a própria tela deu —
     quando algum não aparece (site pode mudar a lista), a frase genérica
     ainda deixa claro que é recusa e não falha nossa."""
@@ -330,8 +331,8 @@ def motivo_limite_excedido(texto: str) -> str:
     if por_volume:
         limites.append(f"até {por_volume.group(1)} kg por volume")
     detalhe = f" ({'; '.join(limites)})" if limites else ""
-    return (f"A Generoso não atende esta carga: ela ultrapassa os limites "
-            f"do site{detalhe}. Fale com a Generoso pelo WhatsApp, no botão "
+    return (f"A {nome} não atende esta carga: ela ultrapassa os limites "
+            f"do site{detalhe}. Fale com a {nome} pelo WhatsApp, no botão "
             f"aqui embaixo, ou reduza a carga.")
 
 
@@ -370,7 +371,8 @@ def pontas_a_digitar(req: CotacaoRequest) -> tuple[str | None, str | None]:
     return req.remetente.cnpj_formatado, None
 
 
-def _falhar_login(page) -> None:
+def _falhar_login(page, nome: str = "Generoso", prefixo: str = "GENEROSO",
+                  url_login: str = URL_LOGIN) -> None:
     """Olha a tela parada, diz o que de fato aconteceu e levanta.
 
     O TIPO da exceção decide se a cotação vai ser repetida: senha recusada é
@@ -392,19 +394,19 @@ def _falhar_login(page) -> None:
     except Exception:
         # Página navegou ou morreu no meio: sem diagnóstico, mas sem esconder
         # o problema original atrás de uma exceção nova.
-        raise RuntimeError("o login na Generoso não passou e não deu para "
+        raise RuntimeError(f"o login na {nome} não passou e não deu para "
                            "ver a tela para dizer por quê.")
 
     if preenchida:
         raise CredencialRecusada(
-            "a Generoso não aceitou o login. Os dados foram enviados e o site "
+            f"a {nome} não aceitou o login. Os dados foram enviados e o site "
             "não deixou entrar: pode ser senha trocada, conta bloqueada ou "
-            "outra sessão aberta no mesmo usuário. Confira GENEROSO_USUARIO e "
-            f"GENEROSO_SENHA no .env, ou entre à mão em {URL_LOGIN} para ver "
+            f"outra sessão aberta no mesmo usuário. Confira {prefixo}_USUARIO e "
+            f"{prefixo}_SENHA no .env, ou entre à mão em {url_login} para ver "
             "a mensagem do site. Não vou tentar de novo para não travar a "
             "conta.")
     raise RuntimeError(
-        "o login na Generoso não passou: a tela ficou em /login com o campo "
+        f"o login na {nome} não passou: a tela ficou em /login com o campo "
         "de senha vazio, ou seja, o formulário nem chegou a ser enviado. "
         "Costuma passar sozinho na tentativa seguinte.")
 
@@ -422,6 +424,17 @@ def _duas_casas(v: Decimal) -> str:
 class GenerosoAdapter:
     slug = "generoso"
     nome = "Transporte Generoso"
+    # O que muda de um portal para outro da MESMA plataforma. A Favorita
+    # (carriers/favorita) é este formulário com outro endereço e outra
+    # conta — medido em 13/10/2026 por recon/recon_favorita.py.
+    nome_curto = "Generoso"
+    url_base = "https://cliente.generoso.com.br"
+    prefixo_env = "GENEROSO"
+    empresas = EMPRESAS
+    link_unidades: str | None = LINK_UNIDADES
+    # Uma trava POR CONTA, e não por plataforma: a empresa ativa é estado
+    # da conta (ver _TRAVA_CONTA), e contas diferentes não se pisam.
+    trava_conta = _TRAVA_CONTA
     modo: Modo = Modo.ASSINCRONO_LENTO      # preço volta por e-mail
     ativo = True
     fator_cubagem: Decimal = Decimal(300)   # ⚠ presumido; não confirmado ainda
@@ -436,9 +449,9 @@ class GenerosoAdapter:
         # Do .env por padrão, como as outras. Passar por parâmetro existe
         # para o teste, não para o dia a dia.
         self.usuario = usuario if usuario is not None else os.getenv(
-            "GENEROSO_USUARIO")
+            f"{self.prefixo_env}_USUARIO")
         self.senha = senha if senha is not None else os.getenv(
-            "GENEROSO_SENHA")
+            f"{self.prefixo_env}_SENHA")
         self.headless = headless
         self.timeout_ms = timeout_ms
         self.workdir = Path(workdir)
@@ -517,7 +530,7 @@ class GenerosoAdapter:
         page.keyboard.press("Escape")       # não deixa o menu aberto por cima
         raise RuntimeError(
             f"a empresa {empresa.cnpj} não está no menu 'Alterar empresa' da "
-            f"Generoso. O menu oferece: "
+            f"{self.nome_curto}. O menu oferece: "
             + "; ".join(t.replace("\n", " ") for t in textos))
 
     def validar(self, req: CotacaoRequest) -> list[ErroValidacao]:
@@ -526,14 +539,15 @@ class GenerosoAdapter:
         # sentido: os outros erros são campo a campo, este é a DIREÇÃO da
         # carga. Sem ele o site gastava 40s para travar num `aria-invalid`
         # que ninguém lê — e a retentativa fazia isso três vezes.
-        conflito = conflito_cif_fob(req)
+        conflito = conflito_cif_fob(req, self.nome_curto, self.empresas)
         if conflito:
             erros.append(ErroValidacao("CIF/FOB", conflito))
         # A irmã da de cima, e pela mesma razão: o site trava uma ponta no
         # CNPJ da conta. Aquela pega o grupo na ponta ERRADA; esta pega o
         # grupo em ponta NENHUMA — caso em que a ponta travada sai com o
         # endereço da Ventura e o preço volta de outra rota (cotação #154).
-        fora = ponta_travada_sem_o_grupo(req)
+        fora = ponta_travada_sem_o_grupo(req, self.nome_curto,
+                                         self.empresas)
         if fora:
             erros.append(ErroValidacao("CIF/FOB", fora))
         if not req.solicitante.whatsapp:
@@ -721,7 +735,7 @@ class GenerosoAdapter:
                     return
 
         raise RuntimeError(
-            "o formulário de login da Generoso apagou o que foi digitado em "
+            f"o formulário de login da {self.nome_curto} apagou o que foi digitado em "
             f"{TENTATIVAS_PREENCHIMENTO} tentativas — a página não terminou "
             "de carregar. Costuma passar sozinho na tentativa seguinte.")
 
@@ -733,14 +747,15 @@ class GenerosoAdapter:
         formulário público inteiro para no fim descobrir que não estava
         logado — 45s jogados fora e um resultado sem preço, que ninguém
         saberia explicar."""
-        page.goto(URL_LOGIN, wait_until="domcontentloaded")
+        page.goto(self.url_base + "/login", wait_until="domcontentloaded")
         page.wait_for_selector('input[name="email"]')
         self._preencher_login(page)
         page.get_by_role("button", name="Entrar").click()
         try:
             page.wait_for_url("**/dashboard", timeout=ESPERA_LOGIN_MS)
         except Exception:
-            _falhar_login(page)
+            _falhar_login(page, self.nome_curto, self.prefixo_env,
+                          self.url_base + "/login")
 
     def _reativar_cep(self, page) -> None:
         """Acorda a busca de endereço SEM apagar o CEP.
@@ -811,8 +826,8 @@ class GenerosoAdapter:
         # Ponta travada não tem busca: ninguém digitou CNPJ nenhum aqui.
         return achado, ""
 
-    @staticmethod
-    def _conferir_cobertura(page, lado: str, req: CotacaoRequest) -> None:
+    def _conferir_cobertura(self, page, lado: str,
+                            req: CotacaoRequest) -> None:
         """Levanta ForaDeArea se a Generoso recusou esta ponta — praça fora
         da malha, ou origem/destino colidindo no mesmo CEP.
 
@@ -825,9 +840,10 @@ class GenerosoAdapter:
         texto_tela = page.locator("body").inner_text().lower()
         if AVISO_CEP_NAO_ATENDIDO in texto_tela:
             cep = (req.origem if lado == "origem" else req.destino).cep or ""
-            raise ForaDeArea(recusa_cep_nao_atendido(cep, lado))
+            raise ForaDeArea(recusa_cep_nao_atendido(cep, lado,
+                                                     self.nome_curto))
         if AVISO_MESMO_CEP in texto_tela:
-            raise ForaDeArea(recusa_mesmo_cep())
+            raise ForaDeArea(recusa_mesmo_cep(self.nome_curto))
 
     def _avancar(self, page) -> None:
         page.get_by_role("button", name=BOTAO_PROXIMO).last.click()
@@ -892,15 +908,17 @@ class GenerosoAdapter:
             return ResultadoCotacao(
                 self.slug, StatusCotacao.RECUSADO, raw_response=texto[:800],
                 motivo_recusa=(
-                    "A Generoso atende esta origem por uma UNIDADE PARCEIRA, "
+                    f"A {self.nome_curto} atende esta origem por uma UNIDADE PARCEIRA, "
                     "que cota por fora do portal — por isso não veio preço "
                     "aqui. Tem transporte: fale direto com a unidade "
-                    f"responsável. Contatos em {LINK_UNIDADES}"))
+                    "responsável."
+                    + (f" Contatos em {self.link_unidades}"
+                       if self.link_unidades else "")))
 
         if carga_excede_limites(texto):
             return ResultadoCotacao(
                 self.slug, StatusCotacao.RECUSADO, raw_response=texto[:800],
-                motivo_recusa=motivo_limite_excedido(texto))
+                motivo_recusa=motivo_limite_excedido(texto, self.nome_curto))
 
         return ResultadoCotacao(
             self.slug, StatusCotacao.ERRO, raw_response=texto[:800],
@@ -927,8 +945,9 @@ class GenerosoAdapter:
         if not (self.usuario and self.senha):
             return ResultadoCotacao(
                 self.slug, StatusCotacao.ERRO,
-                erro="Faltam GENEROSO_USUARIO e GENEROSO_SENHA no .env. "
-                     "Sem login, a Generoso não mostra o preço na tela.")
+                erro=f"Faltam {self.prefixo_env}_USUARIO e "
+                     f"{self.prefixo_env}_SENHA no .env. Sem login, a "
+                     f"{self.nome_curto} não mostra o preço na tela.")
 
         from playwright.sync_api import sync_playwright
 
@@ -939,7 +958,7 @@ class GenerosoAdapter:
         evidencias: list[str] = []
         avisos: list[str] = []
 
-        with _TRAVA_CONTA, sync_playwright() as p:
+        with self.trava_conta, sync_playwright() as p:
             browser = p.chromium.launch(**self.opcoes_do_navegador())
             page = browser.new_context(
                 locale="pt-BR",
@@ -947,7 +966,8 @@ class GenerosoAdapter:
             page.set_default_timeout(self.timeout_ms)
             try:
                 self._entrar(page)
-                page.goto(URL, wait_until="domcontentloaded")
+                page.goto(self.url_base + "/cotacao",
+                          wait_until="domcontentloaded")
                 page.wait_for_selector("select")
                 page.wait_for_timeout(3_000)
 
@@ -957,7 +977,7 @@ class GenerosoAdapter:
                 # grupo a cotação sai. Até 25/08/2026 saía sempre com a da
                 # conta, e a tela final do Cotafrete tinha um aviso só para
                 # explicar isso ao vendedor.
-                alvo = empresa_alvo(req)
+                alvo = empresa_alvo(req, self.empresas)
                 self._escolher_empresa(page, alvo)
                 if alvo is not None:
                     evidencias += print_seguro(page, run / "etapa0_empresa.png")
@@ -987,12 +1007,13 @@ class GenerosoAdapter:
                         if sem_cadastro:
                             raise ClienteNaoCadastrado(
                                 recusa_cliente_nao_cadastrado(
-                                    cnpj or sem_cadastro, lado))
+                                    cnpj or sem_cadastro, lado,
+                                    self.nome_curto))
 
                         # Ela NÃO disse nada: aí continua sendo "não sabemos",
                         # e não sabemos mesmo. Erro comum, que repete.
                         de_onde = (f"o CNPJ {cnpj}" if cnpj
-                                   else "a conta da Generoso")
+                                   else f"a conta da {self.nome_curto}")
                         raise RuntimeError(
                             f"{de_onde} nao trouxe o endereco de {lado}; sem "
                             f"isso a cotacao sairia de lugar nenhum. O site "
@@ -1049,7 +1070,19 @@ class GenerosoAdapter:
                         evidencias=evidencias)
 
                 page.get_by_role("button", name=BOTAO_CONFIRMAR).last.click()
-                page.wait_for_timeout(8_000)
+                # Espera o "Registrando cotação..." sumir, não um tempo fixo:
+                # em 13/10/2026 a Favorita ainda estava nele aos 8 s e a
+                # cotação 371121 saiu sem ser lida. Sumiu ou estourou, lê o
+                # que estiver na tela — resultado ou recusa.
+                page.wait_for_timeout(2_000)
+                try:
+                    page.wait_for_function(
+                        "!document.body.innerText.includes("
+                        "'Registrando cotação')",
+                        timeout=ESPERA_RESULTADO_MS)
+                except Exception:
+                    pass
+                page.wait_for_timeout(3_000)
                 evidencias += print_seguro(page, run / "resultado.png")
 
                 res = self.normalizar_resposta(
@@ -1128,7 +1161,7 @@ class GenerosoAdapter:
 
         # Mesma trava da cotação, pelo mesmo motivo: a empresa ativa é estado
         # da CONTA na Generoso, não da aba. Duas sessões simultâneas se pisam.
-        with _TRAVA_CONTA, sync_playwright() as p:
+        with self.trava_conta, sync_playwright() as p:
             browser = p.chromium.launch(**self.opcoes_do_navegador())
             page = browser.new_context(
                 locale="pt-BR",

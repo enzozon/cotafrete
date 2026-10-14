@@ -61,7 +61,8 @@ def cliente_nao_cadastrado(corpo: str) -> str | None:
     return achado.group(1) if achado else None
 
 
-def recusa_cliente_nao_cadastrado(cnpj: str, lado: str) -> str:
+def recusa_cliente_nao_cadastrado(cnpj: str, lado: str,
+                                  transportadora: str = "Generoso") -> str:
     """Mensagem para o vendedor. `lado` é "origem" ou "destino".
 
     Escrita para ele RESOLVER sozinho, como recusa_cep_nao_atendido: numa
@@ -69,9 +70,11 @@ def recusa_cliente_nao_cadastrado(cnpj: str, lado: str) -> str:
     escuro. Não é defeito do robô nem carga inválida — é a regra comercial da
     Generoso, que só cota para quem tem cadastro."""
     return (
-        f"A Generoso não tem o CNPJ de {lado} {cnpj} cadastrado como cliente, "
+        f"A {transportadora} não tem o CNPJ de {lado} {cnpj} cadastrado "
+        f"como cliente, "
         f"e só cota para CNPJ cadastrado. Peça o cadastro a ela, use outro "
-        f"CNPJ nessa ponta, ou fale com a Generoso pelo WhatsApp, no botão "
+        f"CNPJ nessa ponta, ou fale com a {transportadora} pelo WhatsApp, "
+        f"no botão "
         f"aqui embaixo.")
 
 
@@ -86,14 +89,16 @@ def recusa_cliente_nao_cadastrado(cnpj: str, lado: str) -> str:
 AVISO_CEP_NAO_ATENDIDO = "não atendemos essa"
 
 
-def recusa_cep_nao_atendido(cep: str, lado: str) -> str:
+def recusa_cep_nao_atendido(cep: str, lado: str,
+                            transportadora: str = "Generoso") -> str:
     """Mensagem para o vendedor. `lado` é "origem" ou "destino".
 
     Numa cotação existem dois CEPs, e não dizer qual deixa quem lê
     procurando no escuro — mesmo raciocínio de recusa_cliente_nao_cadastrado."""
     return (
-        f"A Generoso não atende o CEP de {lado} {cep} — praça fora da malha "
-        f"dela. Cote com outra transportadora, ou fale com a Generoso pelo "
+        f"A {transportadora} não atende o CEP de {lado} {cep} — praça fora "
+        f"da malha dela. Cote com outra transportadora, ou fale com a "
+        f"{transportadora} pelo "
         f"WhatsApp, no botão aqui embaixo.")
 
 
@@ -110,7 +115,7 @@ def recusa_cep_nao_atendido(cep: str, lado: str) -> str:
 AVISO_MESMO_CEP = "não pode ser o mesmo de"
 
 
-def recusa_mesmo_cep() -> str:
+def recusa_mesmo_cep(transportadora: str = "Generoso") -> str:
     """Origem e destino colidiram no mesmo CEP dentro do cadastro da
     Generoso — normalmente porque o CNPJ do lado livre é (ou coincide com)
     uma empresa do grupo Ventura cadastrada no mesmo endereço da ponta
@@ -118,11 +123,12 @@ def recusa_mesmo_cep() -> str:
     as duas ordens ("destino... coleta" e "coleta... destino") e não dá pra
     saber de qual lado ele está reclamando desta vez."""
     return (
-        "A Generoso recusou: origem e destino caíram no mesmo CEP dentro do "
+        f"A {transportadora} recusou: origem e destino caíram no mesmo CEP "
+        "dentro do "
         "cadastro dela — normalmente porque o CNPJ do lado livre é uma "
         "empresa do grupo Ventura com o mesmo endereço da ponta travada. "
         "Confira os CNPJs de remetente e destinatário, ou fale com a "
-        "Generoso pelo WhatsApp, no botão aqui embaixo.")
+        f"{transportadora} pelo WhatsApp, no botão aqui embaixo.")
 
 
 class Empresa(NamedTuple):
@@ -140,23 +146,25 @@ EMPRESAS = (
 )
 
 
-def empresa_de(cnpj: str | None) -> Empresa | None:
+def empresa_de(cnpj: str | None,
+               empresas: tuple[Empresa, ...] = EMPRESAS) -> Empresa | None:
     """A empresa do grupo com este CNPJ, ou None. Ignora máscara e espaço."""
     digitos = limpa_doc(cnpj or "")
     if not digitos:
         return None
-    return next((e for e in EMPRESAS if limpa_doc(e.cnpj) == digitos), None)
+    return next((e for e in empresas if limpa_doc(e.cnpj) == digitos), None)
 
 
-def lado_do_grupo(req: CotacaoRequest) -> str | None:
+def lado_do_grupo(req: CotacaoRequest,
+                  empresas: tuple[Empresa, ...] = EMPRESAS) -> str | None:
     """Em que ponta da carga está o grupo: "origem", "destino", "ambos"
     ou None.
 
     É o fato físico, lido dos CNPJs — independe do que o vendedor marcou.
     O CIF/FOB é a opinião dele sobre esse fato, e é a comparação entre os
     dois que revela o engano."""
-    na_origem = empresa_de(req.remetente.cnpj) is not None
-    no_destino = empresa_de(req.destinatario.cnpj) is not None
+    na_origem = empresa_de(req.remetente.cnpj, empresas) is not None
+    no_destino = empresa_de(req.destinatario.cnpj, empresas) is not None
     if na_origem and no_destino:
         return "ambos"
     if na_origem:
@@ -172,34 +180,36 @@ def lado_do_grupo(req: CotacaoRequest) -> str | None:
 _LADO_ESPERADO = {TipoFrete.CIF: "origem", TipoFrete.FOB: "destino"}
 
 
-def conflito_cif_fob(req: CotacaoRequest) -> str | None:
+def conflito_cif_fob(req: CotacaoRequest, transportadora: str = "Generoso",
+                     empresas: tuple[Empresa, ...] = EMPRESAS) -> str | None:
     """A frase para o vendedor quando o CIF/FOB contradiz os CNPJs, ou None.
 
     Só acusa o caso comprovado — grupo numa ponta e o modo apontando para a
     outra. Cotação sem o grupo em ponta nenhuma, ou com ele nas duas, passa:
     barrar cotação boa é pior que o bug, porque tira o preço do vendedor e
     ainda não diz o que fazer."""
-    lado = lado_do_grupo(req)
+    lado = lado_do_grupo(req, empresas)
     esperado = _LADO_ESPERADO.get(req.tipo_frete)
     if lado is None or lado == "ambos" or lado == esperado:
         return None
 
     marcado, correto = ("CIF", "FOB") if lado == "destino" else ("FOB", "CIF")
     empresa = empresa_de(req.destinatario.cnpj if lado == "destino"
-                         else req.remetente.cnpj)
+                         else req.remetente.cnpj, empresas)
     quem = "recebe" if lado == "destino" else "despacha"
     return (
         f"Esta cotação está marcada como {marcado}, mas quem {quem} é a "
         f"{empresa.nome} — uma empresa do grupo. Carga que "
         f"{'chega para' if lado == 'destino' else 'sai do'} o grupo é "
-        f"{correto}. A Generoso prende o endereço da empresa do grupo no "
+        f"{correto}. A {transportadora} prende o endereço da empresa do grupo no "
         f"CNPJ cadastrado e não deixa trocar o CEP, então do jeito que está "
         f"a cotação sairia e chegaria no mesmo lugar — e o site trava sem "
         f"dizer por quê. Marque {correto} e cote de novo."
     )
 
 
-def empresa_alvo(req: CotacaoRequest) -> Empresa | None:
+def empresa_alvo(req: CotacaoRequest,
+                 empresas: tuple[Empresa, ...] = EMPRESAS) -> Empresa | None:
     """A empresa que precisa estar selecionada no site, ou None.
 
     É a ponta que a Generoso TRAVA: no CIF a origem, no FOB o destino. Até
@@ -212,10 +222,12 @@ def empresa_alvo(req: CotacaoRequest) -> Empresa | None:
     site fica com o que já estava, que é o comportamento de sempre."""
     ponta = (req.remetente if req.tipo_frete is TipoFrete.CIF
              else req.destinatario)
-    return empresa_de(ponta.cnpj)
+    return empresa_de(ponta.cnpj, empresas)
 
 
-def ponta_travada_sem_o_grupo(req: CotacaoRequest) -> str | None:
+def ponta_travada_sem_o_grupo(
+        req: CotacaoRequest, transportadora: str = "Generoso",
+        empresas: tuple[Empresa, ...] = EMPRESAS) -> str | None:
     """A frase para quando a Ventura não está na ponta que a Generoso TRAVA.
 
     O portal cota LOGADO e preenche cada ponta pelo CNPJ, nunca pelo CEP (ver
@@ -250,13 +262,13 @@ def ponta_travada_sem_o_grupo(req: CotacaoRequest) -> str | None:
     dono — `conflito_cif_fob`, que ainda diz qual marcar ("Marque FOB e cote
     de novo"); duas regras acusando o mesmo engano dariam ao vendedor dois
     parágrafos concorrentes para ler."""
-    if lado_do_grupo(req) is not None:
+    if lado_do_grupo(req, empresas) is not None:
         return None
 
     lado, quem = (("origem", "remetente") if req.tipo_frete is TipoFrete.CIF
                   else ("destino", "destinatário"))
     return (
-        f"A Generoso cota logada na conta da Ventura, e o portal dela trava "
+        f"A {transportadora} cota logada na conta da Ventura, e o portal dela trava "
         f"uma das pontas no CNPJ da conta: no CIF a origem, no FOB o destino. "
         f"Nesta cotação o {quem} não é a Ventura, então o {lado} sairia com o "
         f"endereço da Ventura no lugar do endereço real — o preço seria de "

@@ -68,8 +68,17 @@ adapter confere o popup antes de aceitar o preço.
   `ESPERA_MAXIMA_S = 300`. Esses números foram medidos na VM com 4 vCPU (veja
   `docs/SERVIDOR.md`). Só mude depois que um vendedor vir o aviso "não
   responderam em 5 minutos".
-- Generoso e Della Volpe só passam com **janela visível** (Vercel e
+- Generoso, Favorita e Della Volpe só passam com **janela visível** (Vercel e
   reCAPTCHA). Headless "funciona" e não envia nada.
+
+### Generoso e Favorita: um portal, duas contas
+
+A Favorita (`carriers/favorita/adapter.py`) é o mesmo portal da Generoso e
+herda o `GenerosoAdapter` inteiro. Só mudam os atributos de conta
+(`url_base`, `prefixo_env`, `empresas`, `trava_conta`, `nome_curto`). Mexeu na
+mecânica da Generoso? Rode também `pytest tests -k favorita`. A conta da
+Favorita só tem a Ventura no "Alterar empresa", e o agendamento de coleta dela
+não foi levantado (levanta `NotImplementedError`).
 
 ### IA na tela do vendedor
 
