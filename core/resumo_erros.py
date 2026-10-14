@@ -269,7 +269,8 @@ def resumo_sem_ia(fatos: dict) -> list[str]:
 
 # Rótulo legível dos desfechos da Della Volpe (o mesmo sentido de
 # web/adm.DESFECHOS_DV). "sem_pdf" é o e-mail de confirmação: não é problema.
-_DESFECHO_DV = {"sem_pdf": "confirmação sem proposta", "sem_par": "proposta sem cotação",
+_DESFECHO_DV = {"sem_pdf": "confirmação sem proposta",
+                "rota_nao_atendida": "rota não atendida (cotação recusada)", "sem_par": "proposta sem cotação",
                 "ambigua": "proposta serve a mais de uma cotação",
                 "sem_valor": "PDF sem valor", "sem_cotacao": "cotação não existe",
                 "rota_diferente": "rota diferente da cotação"}
@@ -300,7 +301,7 @@ def ocorrencias(fatos: dict) -> list[dict]:
                       "horas": _faixa_de_horas(*p["detalhes"]),
                       "mensagem": p["detalhes"][0]["erro"] if p["detalhes"] else ""})
     for d in fatos["emails_della_volpe_sem_preco"]:
-        itens.append({"tom": "neutro" if d["desfecho"] == "sem_pdf" else "atencao",
+        itens.append({"tom": "neutro" if d["desfecho"] in ("sem_pdf", "rota_nao_atendida") else "atencao",
                       "titulo": "Della Volpe — e-mails", "vezes": d["vezes"],
                       "de": _DESFECHO_DV.get(d["desfecho"], d["desfecho"]),
                       "horas": _faixa_de_horas(*d["detalhes"]), "mensagem": ""})

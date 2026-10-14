@@ -558,9 +558,14 @@ class Banco:
         return sorted(por_id.values(), key=lambda c: c["pedido"])
 
     def email_ja_processado(self, message_id: str) -> bool:
+        # "Rota não atendida" gravada como sem_pdf é da versão de antes de
+        # 14/10/2026, que não sabia ler esse e-mail: relê UMA vez, e o novo
+        # desfecho (rota_nao_atendida) tira ela daqui. `_` casa o "ã".
         with closing(self._conectar()) as con, con:
             return con.execute(
-                "SELECT 1 FROM email_processado WHERE message_id = ?",
+                "SELECT 1 FROM email_processado WHERE message_id = ?"
+                " AND NOT (desfecho = 'sem_pdf'"
+                "  AND COALESCE(assunto, '') LIKE '%rota n_o atendida%')",
                 (message_id,)).fetchone() is not None
 
     def registrar_email(self, message_id: str, transportadora: str, *,
