@@ -17,6 +17,7 @@ O que estes testes travam:
 
 from __future__ import annotations
 
+import re
 from datetime import datetime, timedelta
 from decimal import Decimal
 
@@ -337,8 +338,10 @@ def test_enviando_nao_oferece_o_formulario_de_novo(app_web, cliente,
         f"/cotacao/{cid}").text
 
 
-def test_escolheu_email_mostra_a_confirmacao_do_site(app_web, cliente,
-                                                     com_caixa, tmp_path):
+def test_escolheu_email_mostra_a_confirmacao_so_na_miniatura(
+        app_web, cliente, com_caixa, tmp_path):
+    # Até 14/10/2026 a confirmação do site vinha também em tamanho cheio
+    # embaixo da linha e empurrava as outras transportadoras para longe.
     png = tmp_path / "resposta.png"
     png.write_bytes(b"\x89PNG\r\n\x1a\n")
     cid = _enviando(app_web, "email")
@@ -346,9 +349,12 @@ def test_escolheu_email_mostra_a_confirmacao_do_site(app_web, cliente,
         cid, "dellavolpe", status=StatusCotacao.AGUARDANDO_RETORNO.value,
         evidencia=str(png))
 
-    texto = _texto(cliente.get(f"/cotacao/{cid}").text)
+    html = cliente.get(f"/cotacao/{cid}").text
+    texto = _texto(html)
+    extra = re.search(r'<tr class="r-extra">(.*?)</tr>', html, re.S).group(1)
 
-    assert "Confirmação do site da Della Volpe" in texto
+    assert '<span class="mini"><img' in html
+    assert "<img" not in extra
     assert "vendas@ventura.com.br" in texto
     assert "aparece aqui sozinho" not in texto
 

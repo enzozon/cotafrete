@@ -2296,13 +2296,10 @@ def ver_cotacao(cotacao_id: int,
                 principal = '<span class="sem">aguardando proposta</span>'
                 avisos = cartao_proposta_a_caminho()
             else:
+                # Della Volpe no e-mail do vendedor: a confirmação do site fica
+                # só na miniatura da coluna "Print" (clicar amplia). Grande
+                # aqui ela empurrava as outras transportadoras para longe.
                 avisos = cartao_resposta_por_email(c.get("email"), slug)
-                if slug == "dellavolpe" and r["evidencia"]:
-                    # Escolheu o próprio e-mail: a única prova que ESTA tela
-                    # tem de que a cotação saiu é a confirmação do site.
-                    # Grande, e não só a miniatura da coluna "Print".
-                    avisos += (f'<div class="nota">Confirmação do site da '
-                               f'Della Volpe:</div>{_img(r["evidencia"])}')
         elif r["status"] == StatusCotacao.RECUSADO.value:
             # Recusa NÃO é defeito. O site recebeu a carga inteira, entendeu,
             # e disse não — com estas palavras. Cotação #20 (25/08/2026): a
