@@ -474,8 +474,8 @@ def test_conflito_de_identidade_mostra_os_dois_lados(c):
     c.rodar()
     c.excel('C2', 99)
     conflito = c.rodar()['conflitos'][0]
-    assert conflito['excel']['PEDIDO'] == 99 and conflito['portal']['PEDIDO'] == 1
-    assert conflito['base']['PEDIDO'] is not None
+    assert conflito['valores_excel']['PEDIDO'] == 99 and conflito['valores_portal']['PEDIDO'] == 1
+    assert conflito['valores_base']['PEDIDO'] is not None and 'excel' not in conflito
 
 
 def test_historico_guarda_uma_linha_por_rodada_e_so_os_ultimos_dias(c, monkeypatch):

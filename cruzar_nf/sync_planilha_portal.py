@@ -189,9 +189,10 @@ def planejar(linhas, pedidos, estado, ignorar, vistos):
         if any(ve[nome] != vp[nome] for nome in IDENTIDADE):
             r['conflitos'].append({'chave': k, 'linha': n, 'campo': 'IDENTIDADE',
                                    'erro': 'PEDIDO, RFQ ou PRODUTO mudou; revisão manual',
-                                   'excel': {nome: CP._campo(l, nome) for nome in IDENTIDADE},
-                                   'portal': {nome: CP._campo(p, nome) for nome in IDENTIDADE},
-                                   'base': {nome: registro['base'].get(nome) for nome in IDENTIDADE}})
+                                   # chaves próprias: o resumo antigo da tela lê excel/portal como texto
+                                   'valores_excel': {nome: CP._campo(l, nome) for nome in IDENTIDADE},
+                                   'valores_portal': {nome: CP._campo(p, nome) for nome in IDENTIDADE},
+                                   'valores_base': {nome: registro['base'].get(nome) for nome in IDENTIDADE}})
             continue
         # Correção feita manualmente nas duas pontas pode atualizar a foto, nunca os identificadores.
         registro['chaves'] = sorted(set(registro['chaves']) | {CP.chave(l), CP.chave(p)})
