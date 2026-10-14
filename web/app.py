@@ -225,10 +225,10 @@ AUTOMATICA_DESDE = {
     "translovato": "2026-08-18T17:28:00",
     "generoso": "2026-08-24T10:47:15",
     "braspress": "2026-09-03T08:51:41",
-    # Merge do PR #59 às ~10:40 de 14/10; o atualizar.py sobe em até 5 min
-    # (mais a espera das cotações em curso). 11:00 fica DEPOIS da subida:
+    # Merge do PR #59 às 11:02 de 14/10; o atualizar.py sobe em até 5 min
+    # (mais a espera das cotações em curso). 11:30 fica DEPOIS da subida:
     # antes disso nenhuma cotação teve a Favorita, então nada vira fantasma.
-    "favorita": "2026-10-14T11:00:00",
+    "favorita": "2026-10-14T11:30:00",
 }
 # A data dela vem do .env, junto com a decisão de ligá-la: é o dia em que ela
 # volta a cotar NO SERVIDOR, que nenhum commit sabe.
