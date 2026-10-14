@@ -1318,6 +1318,9 @@ DESFECHOS_DV = {
     "sem_pdf": ("Sem PDF", "neutro", False,
                 "É o segundo e-mail da Della Volpe, a confirmação sem a "
                 "proposta. Não há nada a fazer."),
+    "rota_nao_atendida": ("Rota não atendida", "neutro", False,
+                          "A Della Volpe não faz a rota; a cotação foi "
+                          "marcada como recusada."),
     "sem_par": ("Sem cotação", "atencao", True,
                 "Nenhuma cotação esperando proposta bate com a rota e o peso "
                 "do PDF."),

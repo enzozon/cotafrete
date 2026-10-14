@@ -352,6 +352,89 @@ def _melhor_proposta(pdfs: list[Anexo]) -> tuple[Proposta, Anexo | None, str]:
     return melhor, dono, "; ".join(erros)
 
 
+# ------------------------------------------------ rota não atendida
+# Em vez da proposta, chega "Cotação Della Volpe Proposta Fracionado - Rota
+# não atendida": sem PDF, sem carimbo, texto genérico. Sem isto a cotação
+# ficava para sempre em "Cotação enviada — o preço aparece aqui sozinho"
+# (#399, Pequi/MG, 14/10/2026; e a de 09/10 às 14:14).
+#
+# Quem diz DE QUAL cotação é o e-mail irmão, "Dados preenchidos no
+# Formulário", que sai no mesmo segundo com o mesmo começo de Message-ID
+# (<1791987183.fJ5z…> e <1791987183.a1kE…>) e traz o "(cot. N)" do nome.
+# Medido em 14/10/2026 nos dois pares reais da caixa; os pares normais
+# (dados + proposta) saem com 1–2 s de diferença e NÃO dividem o prefixo.
+ASSUNTO_ROTA_NAO_ATENDIDA = "ROTA NAO ATENDIDA"
+MOTIVO_ROTA_NAO_ATENDIDA = (
+    "A Della Volpe não atende esta rota. Ela respondeu por e-mail: \"a rota "
+    "que você selecionou ao criar sua cotação não é atendida por nossos "
+    "serviços\". Cote com outra transportadora.")
+RE_CARIMBO_FORMULARIO = re.compile(r"\(cot\.\s*(\d+)\)")
+RE_UF_FORMULARIO = re.compile(r"UF (Origem|Destino):\s*([A-Z]{2})\b")
+
+
+def rota_nao_atendida(assunto: str) -> bool:
+    return ASSUNTO_ROTA_NAO_ATENDIDA in _normal(assunto)
+
+
+def prefixo_do_par(message_id: str) -> str | None:
+    """'<1791987183.a1kE…@crm…>' → '<1791987183.' (o que o irmão divide)."""
+    achado = re.match(r"\s*(<\d{6,}\.)", message_id or "")
+    return achado.group(1) if achado else None
+
+
+def texto_do_email(bruto: bytes) -> str:
+    """O text/plain do e-mail (ou o HTML sem tags, se só houver ele)."""
+    msg = email.message_from_bytes(bruto)
+    partes = {}
+    for parte in msg.walk():
+        tipo = parte.get_content_type()
+        if tipo in ("text/plain", "text/html") and tipo not in partes:
+            partes[tipo] = (parte.get_payload(decode=True) or b"").decode(
+                parte.get_content_charset() or "utf-8", "replace")
+    if "text/plain" in partes:
+        return partes["text/plain"]
+    return re.sub(r"<[^>]+>", " ", partes.get("text/html", ""))
+
+
+def dados_do_formulario(texto: str) -> tuple[int | None, dict[str, str]]:
+    """(N do "(cot. N)", {"origem": UF, "destino": UF}). FUNÇÃO PURA."""
+    carimbo = RE_CARIMBO_FORMULARIO.search(texto or "")
+    ufs = {lado.lower(): uf for lado, uf in RE_UF_FORMULARIO.findall(texto or "")}
+    return (int(carimbo.group(1)) if carimbo else None), ufs
+
+
+def _recusar_rota(msg: Mensagem, banco, fim, gravar: bool,
+                  irmaos: Callable[[str], list[bytes]] | None) -> Desfecho:
+    prefixo = prefixo_do_par(msg.message_id)
+    cid, ufs = None, {}
+    for bruto in (irmaos(prefixo) if irmaos and prefixo else []):
+        if ler_mensagem(bruto).message_id == msg.message_id:
+            continue
+        cid, ufs = dados_do_formulario(texto_do_email(bruto))
+        if cid is not None:
+            break
+    if cid is None:
+        return fim("sem_carimbo", "rota não atendida, e o e-mail 'Dados "
+                   "preenchidos' do mesmo envio não foi achado")
+    carga = banco.carga_da_cotacao(cid)
+    if carga is None:
+        return fim("sem_cotacao", f"rota não atendida para a cotação #{cid}, "
+                   f"que não existe", cid=cid)
+    for lado in ("origem", "destino"):
+        da_cotacao = str(carga.get(f"uf_{lado}") or "").upper()
+        if ufs.get(lado) and da_cotacao and ufs[lado] != da_cotacao:
+            return fim("rota_diferente", f"{lado} do formulário é "
+                       f"{ufs[lado]}, a cotação #{cid} é {da_cotacao}",
+                       cid=cid)
+    detalhe = f"rota não atendida na cotação #{cid}"
+    if gravar:
+        banco.salvar_resultado(
+            cid, SLUG, status=StatusCotacao.RECUSADO.value,
+            erro=MOTIVO_ROTA_NAO_ATENDIDA,
+            respondido_em=_hora_local(msg.data))
+    return fim("rota_nao_atendida", detalhe, cid=cid)
+
+
 def _guardar_pdf(anexo: Anexo, p: Proposta, pasta: Path) -> Path:
     numero = re.sub(r"[^0-9A-Za-z-]", "-", p.numero or "sem-numero")
     destino = (pasta / f"{datetime.now():%Y%m%d-%H%M%S}-cot{p.cotacao_id}"
@@ -384,9 +467,13 @@ def _hora_local(data: datetime | None) -> str | None:
 
 def processar(bruto: bytes, banco, *, gravar: bool,
               dominio: str = config.REMETENTE_PADRAO,
-              pasta: Path | None = None) -> Desfecho:
+              pasta: Path | None = None,
+              irmaos: Callable[[str], list[bytes]] | None = None) -> Desfecho:
     """Um e-mail, do começo ao fim. Com `gravar=False` não escreve NADA —
-    nem no banco, nem no disco."""
+    nem no banco, nem no disco.
+
+    `irmaos(prefixo)` devolve os e-mails cujo Message-ID começa com o
+    prefixo — só a "rota não atendida" usa (ver _recusar_rota)."""
     pasta = PASTA_PROPOSTAS if pasta is None else pasta
     msg = ler_mensagem(bruto)
 
@@ -407,6 +494,8 @@ def processar(bruto: bytes, banco, *, gravar: bool,
         # Não registra: não é da Della Volpe, e não é da nossa conta.
         return fim("outro_remetente", msg.remetente, registrar=False)
     if not msg.pdfs:
+        if rota_nao_atendida(msg.assunto):
+            return _recusar_rota(msg, banco, fim, gravar, irmaos)
         return fim("sem_pdf", msg.assunto)
 
     p, anexo, erros = _melhor_proposta(msg.pdfs)
@@ -467,6 +556,18 @@ def _corpo(dados: list) -> bytes:
     return b""
 
 
+# Desfechos que escreveram na cotação: só esses marcam o e-mail como lido.
+GRAVADOS = ("gravado", "rota_nao_atendida")
+
+
+def _irmaos(imap, cx: config.Caixa, prefixo: str) -> list[bytes]:
+    """E-mails da Della Volpe cujo Message-ID contém `prefixo`. PEEK."""
+    uids = _ok(imap.uid("SEARCH", None, "FROM", f'"{cx.remetente}"',
+                        "HEADER", "Message-ID", f'"{prefixo}"'))
+    return [_corpo(_ok(imap.uid("FETCH", u, "(BODY.PEEK[])")))
+            for u in (uids[0] or b"").split()]
+
+
 def varrer(cx: config.Caixa, banco, *, gravar: bool,
            conectar_fn: Callable[[config.Caixa], imaplib.IMAP4] | None = None,
            pasta: Path | None = None,
@@ -500,13 +601,14 @@ def varrer(cx: config.Caixa, banco, *, gravar: bool,
                 # PEEK: baixar não acende a bandeira de lido.
                 bruto = _corpo(_ok(imap.uid("FETCH", uid, "(BODY.PEEK[])")))
                 d = processar(bruto, banco, gravar=gravar,
-                              dominio=cx.remetente, pasta=pasta)
+                              dominio=cx.remetente, pasta=pasta,
+                              irmaos=lambda prefixo: _irmaos(imap, cx, prefixo))
             except Exception as exc:
                 # Um e-mail que quebra não pode derrubar os outros.
                 desfechos.append(Desfecho(uid.decode(), "falhou",
                                           detalhe=f"{type(exc).__name__}: {exc}"))
                 continue
-            if gravar and d.desfecho == "gravado":
+            if gravar and d.desfecho in GRAVADOS:
                 _ok(imap.uid("STORE", uid, "+FLAGS", r"(\Seen)"))
             desfechos.append(d)
     finally:
@@ -544,7 +646,7 @@ class Vigia(threading.Thread):
 
     def volta(self) -> None:
         for d in varrer(self.cx, self.banco, gravar=True):
-            if d.desfecho == "gravado":
+            if d.desfecho in GRAVADOS:
                 self.log(f"[ingestor] Della Volpe: {d.detalhe}")
             elif d.desfecho not in ("ja_processado",):
                 self.log(f"[ingestor] Della Volpe: e-mail não gravado "
