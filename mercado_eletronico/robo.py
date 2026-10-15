@@ -395,12 +395,37 @@ class Sessao:
             try:
                 self.page.wait_for_selector("form[name='RespCota']", state="attached",
                                             timeout=self.timeout_ms)
-                self.page.wait_for_load_state("load")
-                return
             except Exception:
                 if tentativa == 2:
-                    raise RoboRecusou(f"cotação {numero} não abriu o formulário de resposta") from None
+                    raise self._nao_abriu(numero) from None
                 self.page.goto(URL_PELA_LISTA.format(n=numero), wait_until="domcontentloaded")
+                continue
+            # O formulário chegou: o "load" completo é só cortesia. A página
+            # tem ~770 KB e chat/analytics de terceiros; em 15/10/2026, na
+            # nuvem, ela abriu em 4 s numa rodada e estourou 60 s esperando o
+            # "load" na seguinte, com o formulário já lá. Esperar o "load" até
+            # o fim era o que derrubava a leitura com "não abriu o formulário".
+            try:
+                self.page.wait_for_load_state("load", timeout=self.timeout_ms)
+            except Exception:
+                pass
+            return
+
+    def _nao_abriu(self, numero: int) -> "RoboRecusou":
+        """O erro com o que a tela mostrava: URL, título e print. Até
+        15/10/2026 a falha não guardava nada, e 75 leituras seguidas falharam
+        sem ninguém saber em que tela o robô estava."""
+        try:
+            onde = f"{self.page.title() or 'sem título'} — {self.page.url[:120]}"
+        except Exception:
+            onde = "tela ilegível"
+        erro = RoboRecusou(f"cotação {numero} não abriu o formulário de resposta "
+                           f"(a tela ficou em: {onde})")
+        try:
+            erro.prints = [self.print(f"{numero}_nao_abriu")]
+        except Exception:
+            erro.prints = []
+        return erro
 
     def acao(self, clicar: Callable[[], None]) -> int:
         """Clica em Salvar/página e espera o POST voltar. Devolve POSTs liberados."""

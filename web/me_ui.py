@@ -30,7 +30,7 @@ import shutil
 import threading
 import time
 from dataclasses import dataclass, field, replace
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Callable
 
@@ -39,7 +39,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 
 from core import ia
 from core.banco import Banco
-from core.retentativa import VAGA_NAVEGADOR
+from core.retentativa import VAGA_NAVEGADOR, fretes_em_curso
 from mercado_eletronico import logins as L
 from mercado_eletronico import sessao_me
 from mercado_eletronico import ncm as sugestor_ncm
@@ -81,9 +81,9 @@ def _fonte_padrao(conta: str) -> list:
     return ponte.pendencias(conta)
 
 
-def _leitor_padrao(conta: str, numero: int) -> list[str]:
+def _leitor_padrao(conta: str, numero: int, **sessao) -> list[str]:
     from mercado_eletronico import ponte
-    return ponte.ler_paginas(conta, numero)
+    return ponte.ler_paginas(conta, numero, **sessao)
 
 
 def _robo_padrao(conta: str, numero: int, itens: list[rg.EntradaItem],
@@ -245,27 +245,84 @@ def atualizar(contas: list[str] | None = None) -> None:
         VARREDURA.trava.release()
 
 
-# Cotações que a varredura já tentou ler sozinha. Uma tentativa por cotação
-# (por vida do servidor): se falhar, fica no histórico e o botão "Ler itens do
-# ME" segue lá — sem isso, uma cotação quebrada daria erro a cada volta.
-JA_TENTOU_LER: set[int] = set()
+# Leitura automática dos itens: quantas vezes e com que intervalo. Fica no
+# BANCO (o histórico da cotação), não na memória: cada merge reinicia o
+# servidor, e com a lista em memória a varredura tentava tudo de novo a cada
+# reinício — 4 rodadas de ~12 cotações em 14/10/2026, cada uma segurando uma
+# vaga de navegador do frete por até 2 minutos. Depois de MAX falhas, só o
+# botão "Ler itens do ME".
+LEITURA_ESPERAS = (timedelta(hours=1), timedelta(hours=4))
+LEITURA_MAX_FALHAS = 3
+# Tempo de espera do formulário na leitura automática (a manual usa o padrão).
+LEITURA_AUTOMATICA_MS = 20_000
+EVENTO_ERRO_LEITURA = "erro ao ler itens do ME"
+
+
+def _falha_do_robo_antigo(detalhe: str) -> bool:
+    """O robô de até 15/10/2026 esperava o "load" completo da página e caía
+    em "não abriu o formulário de resposta" SEM dizer a tela. Essas falhas
+    não contam contra a leitura nova — o motivo delas foi corrigido."""
+    return (detalhe or "").rstrip().endswith("não abriu o formulário de resposta")
+
+
+def leitura_devida(cid: int, momento: datetime) -> bool:
+    """A varredura deve tentar ler os itens desta cotação agora?"""
+    falhas = [h["quando"] for h in banco.me_historico(cid)
+              if h["evento"] == EVENTO_ERRO_LEITURA and h["usuario"] == "varredura"
+              and not _falha_do_robo_antigo(h["detalhe"])]
+    if not falhas:
+        return True
+    if len(falhas) >= LEITURA_MAX_FALHAS:
+        return False
+    ultima = datetime.fromisoformat(max(falhas))
+    return momento.replace(tzinfo=None) - ultima >= LEITURA_ESPERAS[len(falhas) - 1]
+
+
+def _guardar_prints(cid: int, exc: BaseException) -> None:
+    """O print da tela em que a leitura parou, no mesmo lugar dos prints do
+    robô de salvar — é o que o /adm/me mostra em "Prints do robô"."""
+    novos = [str(p) for p in getattr(exc, "prints", []) or []]
+    if not novos:
+        return
+    try:
+        antigos = json.loads(banco.me_cotacao(cid)["evidencia"] or "[]")
+    except (TypeError, ValueError):
+        antigos = []
+    banco.me_atualizar(cid, evidencia=json.dumps((antigos + novos)[-10:]))
+
+
+def _aviso_leitura(cid: int) -> str:
+    """O que o vendedor faz quando o robô não conseguiu ler os itens. Sem
+    isto a página só dizia "ainda não foram lidos", e o erro ficava no
+    histórico, lá embaixo."""
+    ultimo = next((h for h in reversed(banco.me_historico(cid))
+                   if h["evento"] in (EVENTO_ERRO_LEITURA, "itens lidos do ME")), None)
+    if not ultimo or ultimo["evento"] != EVENTO_ERRO_LEITURA:
+        return ""
+    return ('<p class="aviso">O robô não conseguiu abrir esta cotação no ME '
+            f'({e(_hora(ultimo["quando"]))}). Abra uma vez no ME pelo botão '
+            '"Abrir no ME" e depois clique em "Ler itens do ME".</p>')
 
 
 def ler_itens_novos(conta: str) -> None:
     """Lê os itens das cotações pendentes que ninguém leu ainda, para não ter
     que entrar em cada uma e clicar "Ler itens do ME" (pedido do Enzo,
     09/10/2026). Roda depois da lista de TODAS as contas, para a lista não
-    esperar pelos itens; uma cotação por vez, cada uma com vaga de navegador."""
+    esperar pelos itens; uma cotação por vez, cada uma com vaga de navegador,
+    e cede a vez enquanto houver cotação de frete em curso."""
     for c in banco.me_cotacoes(conta=conta):
-        if (c["itens_lidos_em"] or not c["na_lista"] or c["id"] in JA_TENTOU_LER
-                or c["status"] != Status.PENDENTE.value):
+        if (c["itens_lidos_em"] or not c["na_lista"]
+                or c["status"] != Status.PENDENTE.value
+                or not leitura_devida(c["id"], agora())):
             continue
-        JA_TENTOU_LER.add(c["id"])
+        if fretes_em_curso():
+            return  # a próxima volta continua de onde parou
         try:
             with VAGA_NAVEGADOR:
-                n = carregar_itens(c["id"])
+                n = carregar_itens(c["id"], timeout_ms=LEITURA_AUTOMATICA_MS)
         except Exception as exc:  # as outras cotações ainda são lidas
-            banco.me_registrar(c["id"], "erro ao ler itens do ME",
+            _guardar_prints(c["id"], exc)
+            banco.me_registrar(c["id"], EVENTO_ERRO_LEITURA,
                                f"{type(exc).__name__}: {exc}"[:300], "varredura")
             continue
         banco.me_registrar(c["id"], "itens lidos do ME", f"{n} itens", "varredura")
@@ -300,10 +357,13 @@ def iniciar_vigia() -> threading.Event | None:
 
 
 # --------------------------------------------------------- itens e robô
-def carregar_itens(cid: int) -> int:
-    """Lê as páginas da cotação no ME e grava os itens. Devolve quantos."""
+def carregar_itens(cid: int, timeout_ms: int | None = None) -> int:
+    """Lê as páginas da cotação no ME e grava os itens. Devolve quantos.
+    `timeout_ms` só chega ao leitor de verdade (os de teste não o recebem)."""
     c = banco.me_cotacao(cid)
-    paginas = [pg.ler(h) for h in LEITOR(c["conta"], c["numero"])]
+    extra = ({"timeout_ms": timeout_ms}
+             if timeout_ms and LEITOR is _leitor_padrao else {})
+    paginas = [pg.ler(h) for h in LEITOR(c["conta"], c["numero"], **extra)]
     if any(p.numero != c["numero"] for p in paginas):
         raise ValueError("O ME devolveu a página de outra cotação.")
     itens = [_item_para_banco(i, p.pagina) for p in paginas for i in p.itens]
@@ -1076,6 +1136,7 @@ def ver(cid: int, request: Request, msg: str = ""):
                  if sem_ncm and ia.configurada() else "")
     if not c["itens"]:
         itens_html = (f'<p class="sub">Os itens ainda não foram lidos do ME.</p>'
+                      + _aviso_leitura(cid) +
                       f'<form method="post" action="/me/{cid}/ler"><button type="submit">'
                       f'Ler itens do ME</button></form>')
     else:
@@ -1340,7 +1401,8 @@ def ler_itens(cid: int, request: Request):
         n = carregar_itens(cid)
     except Exception as exc:
         motivo = f"{type(exc).__name__}: {exc}"[:300]
-        banco.me_registrar(cid, "erro ao ler itens do ME", motivo, usuario)
+        _guardar_prints(cid, exc)
+        banco.me_registrar(cid, EVENTO_ERRO_LEITURA, motivo, usuario)
         return _voltar(cid, f"Não consegui ler os itens do ME: {motivo}")
     banco.me_registrar(cid, "itens lidos do ME", f"{n} itens", usuario)
     return _voltar(cid, f"{n} itens lidos do ME.")

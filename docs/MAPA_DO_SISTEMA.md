@@ -131,6 +131,11 @@ juntas. O `monitorar.py` se atualiza sozinho.
   **exigências do comprador** (cada uma com o trecho conferido no texto) e
   nunca escreve no formulário. `core/resumo_erros.py` só aceita um número como fato
   se ele aparece fora da data.
+- **Leitura automática dos itens** (`web/me_ui.ler_itens_novos`): `Sessao.abrir`
+  espera só o formulário (o "load" completo da página é opcional). Na falha,
+  o erro diz a tela e o print vai para "Prints do robô". As tentativas contam
+  pelo histórico no banco (1 h, depois 4 h, para na 3ª falha) e cedem a vez
+  enquanto houver frete em curso (`retentativa.fretes_em_curso`).
 - Guia completo: `docs/MERCADO_ELETRONICO.md`.
 
 ---
