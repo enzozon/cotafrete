@@ -60,7 +60,7 @@ from core import sessao
 from core import cnpj as buscador_cnpj
 from core import busca_historico, explicar_erro, extrair_carga, resposta_cliente
 from core import ia
-from core import selecao
+from core import conferencia, selecao
 from core.aceite import rotulo_validade, vencida
 from carriers.generoso.mapping import Agendamento, validar_agendamento
 from core.banco import Banco
@@ -627,6 +627,40 @@ def tela_erro(problemas: list[str], dados: dict, usuario: str | None) -> str:
   <ul class="listaerro">{itens}</ul>
   <form method="post" action="/voltar">{guardados}
     <button type="submit">Voltar e corrigir</button>
+  </form>
+</div>""", usuario)
+
+
+def tela_conferencia(avisos: list, dados: dict, usuario: str | None) -> str:
+    """Antes de cotar, o que parece engano (core/conferencia.py). Nada foi
+    cotado ainda; o vendedor corrige com um clique ou confirma e segue.
+
+    Os campos vão TODOS de volta escondidos, a lista de transportadoras
+    inclusive — voltar ao formulário perderia a seleção dele."""
+    itens = "".join(f"<li>{e(a.texto)}</li>" for a in avisos)
+    escondidos = "".join(
+        f'<input type="hidden" name="{e(k)}" value="{e(str(v))}">'
+        for k, v in dados.items() if k != "transportadora")
+    escondidos += "".join(
+        f'<input type="hidden" name="transportadora" value="{e(t)}">'
+        for t in dados.get("transportadora") or [])
+    corrigir = "".join(
+        f'<button type="submit" name="corrigir" value="{e(a.correcao["tipo_frete"])}">'
+        f'{e(a.rotulo_correcao)}</button> '
+        for a in avisos if a.correcao.get("tipo_frete"))
+    return pagina("Confira antes de cotar", f"""
+<div class="cartao">
+  <h1>Confira antes de cotar</h1>
+  <p class="sub">Nada foi cotado ainda. Isto parece engano de digitação:</p>
+  <ul class="listaerro">{itens}</ul>
+  <form method="post" action="/cotar">{escondidos}
+    {corrigir}<button type="submit" name="conferido" value="1" class="botao2">
+    Está certo, cotar assim</button>
+  </form>
+  <form method="post" action="/voltar">{"".join(
+      f'<input type="hidden" name="_{k}" value="{e(v)}">'
+      for k, v in dados.items() if k in ROTULOS)}
+    <button type="submit" class="botao2">Voltar e corrigir</button>
   </form>
 </div>""", usuario)
 
@@ -1285,14 +1319,21 @@ def cotar(usuario: str | None = Depends(vendedor),
           # Checkbox nao marcada nao e enviada: a lista chega so com o que
           # o vendedor deixou ligado. Default [] para o caso de alguem
           # postar sem o painel — que `validar_formulario` recusa embaixo.
-          transportadora: list[str] = Form(default=[])):
+          transportadora: list[str] = Form(default=[]),
+          # Vêm da tela de conferência (`tela_conferencia`): "1" = o vendedor
+          # leu os avisos e quer cotar assim; "cif"/"fob" = trocar e cotar.
+          conferido: str = Form(""), corrigir: str = Form("")):
     """Endpoint SÍNCRONO de propósito: o FastAPI o roda numa thread do pool, e
     a API sync do Playwright não pode conviver com um event loop na mesma
     thread."""
     if not usuario:
         return RedirectResponse("/login", status_code=303)
 
-    dados = {k: v for k, v in locals().items() if k != "usuario"}
+    dados = {k: v for k, v in locals().items()
+             if k not in ("usuario", "conferido", "corrigir")}
+    if corrigir in ("cif", "fob"):
+        dados["tipo_frete"] = corrigir
+        conferido = "1"
 
     problemas = validar_formulario(dados)
     if problemas:
@@ -1302,6 +1343,11 @@ def cotar(usuario: str | None = Depends(vendedor),
         req = montar_request(dados)
     except Exception as exc:
         return HTMLResponse(tela_erro([traduzir_erro(exc)], dados, usuario))
+
+    if not conferido:
+        lista = conferencia.avisos(req)
+        if lista:
+            return HTMLResponse(tela_conferencia(lista, dados, usuario))
 
     # None quando esta tudo marcado: assim a cotacao nao "congela" a lista
     # de hoje, e uma transportadora nova entra nas antigas tambem.
@@ -2124,6 +2170,8 @@ ESTADOS = {
     # A Della Volpe esperando o vendedor escolher para onde vai a proposta.
     # Nada saiu ainda: "Enviada" ali seria a mentira mais cara da tela.
     "escolher": ("Falta escolher", "estado-aguardando"),
+    # Cinza neutro, o mesmo do "Cotando": nem bom nem ruim, só não serve.
+    "nao-aplica": ("Não se aplica", "estado-cotando"),
 }
 
 
@@ -2214,7 +2262,10 @@ def ver_cotacao(cotacao_id: int,
     aceites = banco.aceites(cotacao_id)
 
     linhas = ""
-    for r in c["resultados"]:
+    # "Não se aplica" vai para o FIM: a transportadora nem foi consultada, e
+    # o olho do vendedor começa pelas que responderam.
+    for r in sorted(c["resultados"], key=lambda r: (
+            r["status"] == StatusCotacao.NAO_SE_APLICA.value)):
         slug = r["transportadora"]
         # `avisos` vai para a LINHA DE DETALHE, abaixo da linha da
         # transportadora. Cada frase aqui e a mesma de quando isto era cartao:
@@ -2300,6 +2351,14 @@ def ver_cotacao(cotacao_id: int,
                 # só na miniatura da coluna "Print" (clicar amplia). Grande
                 # aqui ela empurrava as outras transportadoras para longe.
                 avisos = cartao_resposta_por_email(c.get("email"), slug)
+        elif r["status"] == StatusCotacao.NAO_SE_APLICA.value:
+            # Regra fixa da transportadora (só CIF, só saindo da Ventura,
+            # conta só da Ventura): nem foi consultada. Cinza e curto — não
+            # é problema para resolver, é só "esta não serve aqui".
+            destaque, selo, estado = "", "", "nao-aplica"
+            principal = '<span class="sem">Não se aplica</span>'
+            avisos = (f'<div class="nota">'
+                      f'{e((r["erro"] or "")[:LIMITE_MENSAGEM_ERRO])}</div>')
         elif r["status"] == StatusCotacao.RECUSADO.value:
             # Recusa NÃO é defeito. O site recebeu a carga inteira, entendeu,
             # e disse não — com estas palavras. Cotação #20 (25/08/2026): a

@@ -66,6 +66,11 @@ class StatusCotacao(str, Enum):
     AGUARDANDO_RETORNO = "aguardando_retorno"
     COTADO = "cotado"
     RECUSADO = "recusado"
+    # A transportadora nem foi consultada: a regra dela, sabida de antemão,
+    # exclui esta carga (só cota saindo da Ventura, só CIF, conta só da
+    # Ventura...). Não é recusa do site nem defeito, e fica fora do
+    # aproveitamento — pedido do Enzo, 15/10/2026.
+    NAO_SE_APLICA = "nao_se_aplica"
     INTERVENCAO_NECESSARIA = "intervencao_necessaria"
     ERRO = "erro"
     CANCELADO = "cancelado"

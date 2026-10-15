@@ -285,13 +285,14 @@ def _barra(fracao: float | None) -> str:
 # confere a linha inteira célula a célula, porque conferir só os cabeçalhos
 # passava mesmo com as colunas trocadas no render.
 COLUNAS_SAUDE = ("Sucessos", "Recusas", "Falhas", "Interrompidas",
-                 "Inesperado")
+                 "Não se aplica", "Inesperado")
 
 EXPLICA_SAUDE = (
     "Recusa é a transportadora dizendo não, com o motivo dela — não é "
     "defeito. Interrompida é o servidor tendo reiniciado no meio, e por isso "
-    "fica fora do aproveitamento. Inesperado é status que core/painel.py "
-    "ainda não conhece — mostrado, e não escondido, porque esconder o "
+    "fica fora do aproveitamento, assim como Não se aplica (a regra fixa "
+    "da transportadora exclui a carga, e ela nem é consultada). Inesperado "
+    "é status que core/painel.py ainda não conhece — mostrado, e não escondido, porque esconder o "
     'desconhecido foi como "(nenhuma mensagem visível)" nasceu.')
 
 
@@ -304,6 +305,7 @@ def _saude(linhas: list[dict]) -> str:
         f'<tr><td>{e(transportadoras.nome_de(l["transportadora"]))}</td>'
         f'<td>{l["sucesso"]}</td><td>{l["recusa"]}</td>'
         f'<td>{l["falha"]}</td><td>{l["nossa"]}</td>'
+        f'<td>{l.get("nao_aplica", 0)}</td>'
         f'<td>{l["inesperado"]}</td>'
         f'<td>{_barra(l["aproveitamento"])}</td></tr>'
         for l in linhas)
@@ -725,6 +727,12 @@ def painel(adm: str | None = Cookie(None, alias=COOKIE_ADM),
         # sem ninguém poder fazer nada para "resolvê-lo".
         avisos = [a for a in contas.falhas_seguidas(con, dias=dias)
                   if a["transportadora"] in transportadoras.AUTOMATICAS]
+        # O mesmo erro 3× em 24 h, mesmo com sucesso no meio. Quem já está no
+        # alerta de "falhou seguido" não aparece duas vezes.
+        ja = {a["transportadora"] for a in avisos}
+        repetidas = [a for a in contas.falhas_repetidas(con)
+                     if a["transportadora"] in transportadoras.AUTOMATICAS
+                     and a["transportadora"] not in ja]
         # `quem` vem cru da URL e vai direto para o WHERE, como parâmetro
         # ligado (nunca concatenado). Nome que não existe devolve lista
         # vazia, que é a resposta honesta — inventar "todos" seria mostrar a
@@ -755,9 +763,10 @@ def painel(adm: str | None = Cookie(None, alias=COOKIE_ADM),
         # cartão "nenhum alerta" fixo no topo treina o olho a pular a região —
         # e aí ele pula também no dia em que o alerta está lá.
         (ui.cartao("Precisa de atenção",
-                   ui.alertas(avisos, transportadoras.nome_de),
-                   nota="falhas seguidas, sem sucesso no meio",
-                   classe="c12", atraso=0.02) if avisos else "")
+                   ui.alertas(avisos, transportadoras.nome_de)
+                   + ui.alertas_repetidas(repetidas, transportadoras.nome_de),
+                   nota="falhas seguidas, ou o mesmo erro 3× em 24 h",
+                   classe="c12", atraso=0.02) if avisos or repetidas else "")
         + ui.cartao("Resumo do dia", resumo_html, ident="resumo",
                     nota="erros de hoje em português simples", classe="c12", atraso=0.04)
         + ui.cartao("Resumo da semana", ui.resumo_da_semana(semana),

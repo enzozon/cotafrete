@@ -648,3 +648,35 @@ def test_versao_da_cotacao_sem_resposta_nenhuma_nao_estoura(db):
     cid = db.salvar_cotacao("enzo", CARGA)
     with db._conectar() as con:
         assert isinstance(painel.versao_da_cotacao(con, cid), str)
+
+
+# ------------- o mesmo erro repetido, mesmo com sucesso no meio (15/10/2026)
+def test_mesmo_erro_3x_em_24h_vira_alerta_mesmo_com_sucesso_no_meio(db):
+    """A Generoso repetiu "a etapa do destino não avançou" 9 vezes entre
+    25/08 e 15/10/2026, sempre com cotações boas entre uma e outra, e o
+    alerta de "falhou seguido" nunca disparou."""
+    for i in range(3):
+        cid = db.salvar_cotacao("enzo", CARGA)
+        db.salvar_resultado(cid, "generoso", status="erro",
+                            erro=f"TimeoutError: Locator.fill: Timeout {45000 + i}ms "
+                                 f"exceeded.\nCall log: {i}")
+        cid = db.salvar_cotacao("enzo", CARGA)
+        db.salvar_resultado(cid, "generoso", status="cotado", valor="10")
+    with db._conectar() as con:
+        assert painel.falhas_seguidas(con) == []
+        [alerta] = painel.falhas_repetidas(con)
+    assert alerta["transportadora"] == "generoso" and alerta["quantas"] == 3
+
+
+def test_erros_diferentes_nao_se_somam(db):
+    for erro in ("TimeoutError: x", "RuntimeError: y", "NameError: z"):
+        cid = db.salvar_cotacao("enzo", CARGA)
+        db.salvar_resultado(cid, "generoso", status="erro", erro=erro)
+    with db._conectar() as con:
+        assert painel.falhas_repetidas(con) == []
+
+
+def test_assinatura_ignora_numeros_e_call_log():
+    a = painel.assinatura_do_erro("Timeout 45000ms exceeded.\nCall log: - a")
+    b = painel.assinatura_do_erro("Timeout 30000ms exceeded.\nCall log: - b")
+    assert a == b

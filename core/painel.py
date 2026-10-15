@@ -10,6 +10,7 @@ Só LEITURA. Nada aqui escreve no banco.
 from __future__ import annotations
 
 import hashlib
+import re
 import sqlite3
 from datetime import datetime, timedelta
 from decimal import Decimal, InvalidOperation
@@ -28,6 +29,9 @@ SUCESSO = frozenset({"cotado", "aguardando_retorno"})
 RECUSA = frozenset({"recusado"})
 FALHA = frozenset({"erro", "intervencao_necessaria"})
 NOSSA = frozenset({"interrompido"})
+# A transportadora nem foi consultada: a regra dela exclui a carga. Fora do
+# aproveitamento — não é resposta do site, nem boa nem ruim.
+NAO_APLICA = frozenset({"nao_se_aplica"})
 
 
 def categoria(status: str) -> str:
@@ -40,6 +44,8 @@ def categoria(status: str) -> str:
         return "falha"
     if status in NOSSA:
         return "nossa"
+    if status in NAO_APLICA:
+        return "nao_aplica"
     # Status que ninguém previu aparece como "inesperado" em vez de sumir:
     # esconder o desconhecido foi como "(nenhuma mensagem visível)" nasceu.
     return "inesperado"
@@ -86,7 +92,8 @@ def saude_das_transportadoras(con: sqlite3.Connection,
             " WHERE c.criado_em >= ?", (_desde(dias),)):
         alvo = linhas.setdefault(r["transportadora"], {
             "transportadora": r["transportadora"], "sucesso": 0,
-            "recusa": 0, "falha": 0, "nossa": 0, "inesperado": 0})
+            "recusa": 0, "falha": 0, "nossa": 0, "nao_aplica": 0,
+            "inesperado": 0})
         alvo[categoria(r["status"])] += 1
 
     for alvo in linhas.values():
@@ -170,6 +177,39 @@ def duracao_s(inicio: str | None, fim: str | None) -> float | None:
     return segundos if segundos >= 0 else None
 
 
+def assinatura_do_erro(erro: str | None) -> str:
+    """O "tipo" de um erro, para juntar repetições: sem números (CNPJ, CEP,
+    milissegundos) e sem o call log do Playwright. FUNÇÃO PURA."""
+    texto = (erro or "").split("Call log")[0]
+    texto = re.sub(r"\d+", "N", texto)
+    return " ".join(texto.split())[:90]
+
+
+def falhas_repetidas(con: sqlite3.Connection, *, horas: int = 24,
+                     minimo: int = 3) -> list[dict]:
+    """O MESMO erro da mesma transportadora repetido `minimo` vezes em
+    `horas`, mesmo com sucessos no meio.
+
+    `falhas_seguidas` não via isto: "a etapa do destino não avançou" se
+    repetiu na Generoso de 25/08 a 15/10/2026 (9 vezes), sempre com cotações
+    boas entre uma e outra, e nunca virou alerta."""
+    desde = (datetime.now() - timedelta(hours=horas)).isoformat(timespec="seconds")
+    grupos: dict[tuple[str, str], list] = {}
+    for r in con.execute(
+            "SELECT r.transportadora, r.status, r.erro, r.cotacao_id,"
+            " c.criado_em FROM resultado r JOIN cotacao c ON c.id = r.cotacao_id"
+            " WHERE c.criado_em >= ? ORDER BY r.cotacao_id DESC", (desde,)):
+        if categoria(r["status"]) != "falha":
+            continue
+        chave = (r["transportadora"], assinatura_do_erro(r["erro"]))
+        grupos.setdefault(chave, []).append(r)
+    saida = [{"transportadora": t, "quantas": len(rs),
+              "ids": [r["cotacao_id"] for r in rs],
+              "ultima": rs[0]["criado_em"], "erro": rs[0]["erro"]}
+             for (t, _), rs in grupos.items() if len(rs) >= minimo]
+    return sorted(saida, key=lambda a: -a["quantas"])
+
+
 def falhas_seguidas(con: sqlite3.Connection, *, dias: int = 30,
                     minimo: int = 3) -> list[dict]:
     """Quem está falhando SEGUIDO, da pior para a menos pior.
@@ -212,7 +252,7 @@ def falhas_seguidas(con: sqlite3.Connection, *, dias: int = 30,
             classe = categoria(r["status"])
             if classe == "falha":
                 seguidas.append(r)
-            elif classe in ("nossa", "inesperado"):
+            elif classe in ("nossa", "nao_aplica", "inesperado"):
                 continue
             else:
                 break

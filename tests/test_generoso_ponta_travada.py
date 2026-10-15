@@ -113,7 +113,9 @@ def test_vira_recusa_sem_abrir_navegador_e_sem_repetir():
     em rede."""
     res = GenerosoAdapter(usuario="", senha="").cotar(cotacao_154())
 
-    assert res.status is StatusCotacao.RECUSADO
+    # NAO_SE_APLICA desde 15/10/2026: é a regra da conta, sabida de antemão,
+    # e fica fora do aproveitamento (tests/test_nao_se_aplica.py).
+    assert res.status is StatusCotacao.NAO_SE_APLICA
     assert res.erro is None, "recusa não é erro; o cartão do vendedor lê isso"
     assert "Ventura" in (res.motivo_recusa or "")
     assert not vale_repetir(res), \

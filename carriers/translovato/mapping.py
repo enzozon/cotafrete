@@ -78,9 +78,10 @@ AVISO_CNPJ_NAO_CADASTRADO = "CNPJ não cadastrado"
 # confirmado pelo Enzo em 19/08/2026) — a Translovato só cota carga SAINDO
 # daqui. Frete vindo para cá é cotado por WhatsApp.
 #
-# Servem para EXPLICAR a recusa, não para barrar antes de tentar: se a
-# Ventura cadastrar um quarto CNPJ, uma lista fechada aqui recusaria uma
-# cotação que o site aceitaria — e ninguém entenderia por quê.
+# Desde 15/10/2026 também BARRAM antes de abrir o navegador ("não se aplica"):
+# 39 cotações em uma semana abriam o site só para ouvir esse não, gastando
+# vaga de navegador. Se a Ventura cadastrar outro CNPJ na Translovato, ele
+# entra AQUI — senão a Translovato some das cotações dele.
 CNPJS_REMETENTE_ACEITOS = (
     "20.837.281/0001-49",
     "05.954.058/0001-98",
@@ -201,6 +202,12 @@ def validar(req: CotacaoRequest) -> list[ErroValidacao]:
             "Translovato cota uma medida por vez. Cotar assim daria um preço "
             "menor que o real — separe em cotações, ou peça o suporte a "
             "várias linhas."))
+
+    remetente = limpa_doc(req.remetente.cnpj or "")
+    if remetente and remetente not in {limpa_doc(c) for c in CNPJS_REMETENTE_ACEITOS}:
+        erros.append(ErroValidacao(
+            "remetente.cnpj", recusa_sem_tabela(req.remetente.cnpj),
+            nao_se_aplica=True))
 
     if req.mercadoria.is_perigoso:
         erros.append(ErroValidacao(

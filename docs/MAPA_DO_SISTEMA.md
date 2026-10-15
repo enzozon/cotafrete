@@ -99,6 +99,20 @@ der, recusa nomeando a cidade do cadastro. Nunca cotar o endereço do cadastro.
 O site escreve "não cadastrado, para prosseguir informe o CEP de Destino". O
 robô digita o CEP da cotação no lado livre (`_endereco_pelo_cep`) e segue.
 
+### "Não se aplica", conferência e alertas
+
+- `StatusCotacao.NAO_SE_APLICA`: regra fixa da transportadora que exclui a
+  carga (Jadlog só CIF, Translovato só saindo da Ventura, conta da Favorita
+  só com a Ventura). Nasce em `recusa_por_validacao` quando todos os erros têm
+  `nao_se_aplica=True`. Não abre navegador e fica fora do aproveitamento
+  (`core/painel.categoria` → "nao_aplica", `resumo_semana`). CNPJ novo da
+  Ventura na Translovato entra em `CNPJS_REMETENTE_ACEITOS`.
+- `core/conferencia.py`: antes de cotar, avisa CIF/FOB trocado com o grupo e
+  medida improvável (menor que 3 cm, ou mais denso que aço). A rota `/cotar`
+  mostra `tela_conferencia`; o vendedor corrige com um clique ou confirma.
+- `painel.falhas_repetidas`: o mesmo erro (sem números) 3× em 24 h vira
+  alerta no /adm, mesmo com sucesso no meio.
+
 ### IA na tela do vendedor
 
 Toda IA nova segue a regra: a IA sugere, o código confere contra os dados

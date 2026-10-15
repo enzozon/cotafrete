@@ -557,7 +557,9 @@ class GenerosoAdapter:
         fora = ponta_travada_sem_o_grupo(req, self.nome_curto,
                                          self.empresas)
         if fora:
-            erros.append(ErroValidacao("CIF/FOB", fora))
+            # A conta não tem a empresa do grupo que a carga precisaria: é a
+            # conta, não a carga. Na Favorita, metade das recusas (15/10/2026).
+            erros.append(ErroValidacao("CIF/FOB", fora, nao_se_aplica=True))
         if not req.solicitante.whatsapp:
             erros.append(ErroValidacao("whatsapp", "O site exige WhatsApp."))
         v = req.volumes[0]

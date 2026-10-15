@@ -116,7 +116,8 @@ def validar(req: CotacaoRequest, *, modalidade: str = "package",
     erros: list[ErroValidacao] = []
 
     if req.tipo_frete is TipoFrete.FOB:
-        erros.append(ErroValidacao("tipo_frete", RECUSA_FOB))
+        erros.append(ErroValidacao("tipo_frete", RECUSA_FOB,
+                                   nao_se_aplica=True))
 
     for lado, local in (("origem", req.origem), ("destino", req.destino)):
         cep = limpa_doc(local.cep or "")
