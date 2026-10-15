@@ -69,6 +69,7 @@ from carriers.generoso.mapping import (
     cliente_nao_cadastrado,
     conflito_cif_fob, empresa_alvo, empresa_de, ponta_travada_sem_o_grupo,
     recusa_cep_nao_atendido, recusa_cidade_nao_atendida,
+    recusa_coleta_sem_cadastro,
     recusa_cliente_nao_cadastrado, recusa_mesmo_cep,
     validar_agendamento,
 )
@@ -238,6 +239,7 @@ RE_LIMITE_POR_VOLUME = re.compile(
 # Digitação humana: a busca de CNPJ/CEP do site não dispara com fill().
 DELAY_DIGITACAO_MS = 60
 ESPERA_BUSCA_MS = 4_500
+ESPERA_CONSULTA_MS = 20_000
 
 
 # A tela de resultado, LOGADO. Medida no envio real de 20/08/2026:
@@ -847,6 +849,12 @@ class GenerosoAdapter:
         cep = "".join(c for c in (local.cep or "") if c.isdigit())
         if len(cep) != 8:
             return self._esperar_endereco(page, tentativas=1)
+        # Coleta de remetente sem cadastro: o CEP vem TRAVADO e o site manda
+        # "Solicitar alteração" à equipe dela (recon de 15/10/2026, #417 e
+        # #418). Esperar o campo destravar custava 45 s e virava Timeout.
+        if not self._campo(page, 'input[name="cep"]').is_enabled():
+            raise ClienteNaoCadastrado(
+                recusa_coleta_sem_cadastro(cnpj, self.nome_curto))
         self._digitar(page, 'input[name="cep"]', cep)
         self._campo(page, 'input[name="cep"]').blur()
         page.wait_for_timeout(ESPERA_BUSCA_MS)
@@ -904,6 +912,15 @@ class GenerosoAdapter:
     def _avancar(self, page) -> None:
         page.get_by_role("button", name=BOTAO_PROXIMO).last.click()
         page.wait_for_timeout(2_500)
+        # O botão vira "Consultando pagador..." enquanto o site confere a
+        # etapa. Em 15/10/2026 a Favorita ficou nele além dos 2,5 s e a etapa
+        # seguinte foi procurada cedo demais ("campo não encontrado").
+        try:
+            page.wait_for_function(
+                "!document.body.innerText.includes('Consultando')",
+                timeout=ESPERA_CONSULTA_MS)
+        except Exception:
+            pass  # quem vem depois confere se a etapa avançou
 
     def _esperar_endereco(self, page, tentativas: int = 12) -> dict[str, str]:
         """Espera cidade e rua chegarem, e devolve o endereço que o site achou.

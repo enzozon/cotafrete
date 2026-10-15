@@ -78,6 +78,22 @@ def recusa_cliente_nao_cadastrado(cnpj: str, lado: str,
         f"aqui embaixo.")
 
 
+def recusa_coleta_sem_cadastro(cnpj: str,
+                               transportadora: str = "Favorita") -> str:
+    """Remetente sem cadastro numa cotação COM COLETA.
+
+    Medido na Favorita em 15/10/2026 (recon com o CNPJ da #417): a busca
+    responde "Cliente ... nao cadastrado" e os campos do endereço de coleta
+    ficam travados. O "Solicitar alteração" abre só um aviso: "Para definir
+    um novo endereço de coleta é preciso solicitar alteração à nossa
+    equipe." No destino ela deixa digitar; na coleta, não."""
+    return (
+        f"A {transportadora} não tem o remetente {cnpj} cadastrado, e não "
+        f"deixa digitar um endereço de coleta novo: o cadastro tem que ser "
+        f"pedido a ela. Peça pelo WhatsApp, no botão aqui embaixo, ou cote "
+        f"com outra transportadora.")
+
+
 # Aviso vermelho embaixo do campo de CEP quando a praça está fora da malha.
 # NÃO aparece em _erros_da_tela (o filtro lá só pega "obrigat/inválid/erro")
 # — por isso 4 das 6 cotações reais que caíram no genérico "a etapa do

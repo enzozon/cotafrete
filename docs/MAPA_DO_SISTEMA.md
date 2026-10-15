@@ -87,6 +87,9 @@ completa rua e bairro pela Receita (`core/cnpj.endereco`).
 do Próximo: `_conferir_cobertura` roda antes e depois dele. Na Favorita a
 mesma recusa também vem na tela de resultado ("Cidade destino não atendida",
 `mapping.cidade_nao_atendida`). As duas viram RECUSADO com a cidade da tela.
+Na Favorita, remetente sem cadastro num FOB (com coleta) é recusa: o CEP da
+coleta vem travado e só a equipe dela cadastra endereço novo
+(`recusa_coleta_sem_cadastro`). No destino ela deixa digitar.
 
 ### Braspress: CNPJ sem cadastro
 
