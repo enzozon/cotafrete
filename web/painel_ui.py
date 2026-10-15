@@ -60,6 +60,7 @@ TOM_DA_CATEGORIA = {
     "recusa": "atencao",
     "falha": "erro",
     "nossa": "neutro",
+    "nao_aplica": "neutro",
     "inesperado": "roxo",
 }
 
@@ -70,6 +71,7 @@ ROTULOS = {
     "recusa": "Recusas",
     "falha": "Falhas",
     "nossa": "Interrompidas",
+    "nao_aplica": "Não se aplica",
     "inesperado": "Inesperado",
 }
 
@@ -80,6 +82,7 @@ SINGULAR = {
     "recusa": "recusa",
     "falha": "falha",
     "nossa": "interrompida",
+    "nao_aplica": "não se aplica",
     "inesperado": "inesperado",
 }
 
@@ -1098,6 +1101,25 @@ def alertas(linhas: list[dict], nome_de) -> str:
     return f'<div class="alertas">{itens}</div>'
 
 
+def alertas_repetidas(linhas: list[dict], nome_de) -> str:
+    """O mesmo erro repetido em 24 h (core/painel.falhas_repetidas), com o
+    link para a última — é lá que estão os prints dela."""
+    itens = ""
+    for l in linhas:
+        quais = "".join(f'<a href="/adm/cotacao/{i}">#{i}</a>'
+                        for i in l["ids"][:5])
+        itens += (
+            f'<div class="alerta-linha">'
+            f'<span class="sino">{_icone(ICONES["alerta"])}</span>'
+            f'<span class="diz"><b>{e(nome_de(l["transportadora"]))}: o mesmo '
+            f'erro {l["quantas"]}× nas últimas 24 h.</b>'
+            f'<p class="quando">a última foi {e(dia_e_hora(l["ultima"]))} · '
+            f'<a href="/adm/cotacao/{l["ids"][0]}">ver o print</a></p>'
+            f'<p class="porque">{e((l["erro"] or "")[:300])}</p></span>'
+            f'<span class="quais">{quais}</span></div>')
+    return f'<div class="alertas">{itens}</div>' if itens else ""
+
+
 # --------------------------------------------------------------- gráficos
 
 def teto(maior: int) -> int:
@@ -1282,7 +1304,7 @@ def pizza_de_status(linhas: list[dict]) -> str:
     lado. As fatias entram sempre na ordem de CORES — a mesma de core.painel
     — para a figura não trocar de forma entre dois carregamentos com os
     mesmos números."""
-    por_categoria = {chave: sum(l[chave] for l in linhas) for chave in CORES}
+    por_categoria = {chave: sum(l.get(chave, 0) for l in linhas) for chave in CORES}
     total = sum(por_categoria.values())
     if not total:
         return ('<p class="vazio">Nenhuma resposta de transportadora no '
@@ -1420,6 +1442,7 @@ ROTULO_STATUS = {
     "erro": "Falhou",
     "intervencao_necessaria": "Precisa de alguém",
     "interrompido": "Interrompida",
+    "nao_se_aplica": "Não se aplica",
 }
 
 # O que dizer no lugar do preço quando não veio preço. A pastilha diz o
@@ -1435,6 +1458,7 @@ SEM_PRECO = {
     "erro": "não retornou preço",
     "intervencao_necessaria": "credencial recusada",
     "interrompido": "fechado no meio",
+    "nao_se_aplica": "não atende este tipo de carga",
 }
 
 

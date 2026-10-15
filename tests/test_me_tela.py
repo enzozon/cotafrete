@@ -61,7 +61,6 @@ def cliente(monkeypatch, tmp_path, robo):
     monkeypatch.setattr(me_ui, "ROBO", robo)
     monkeypatch.setattr(me_ui, "DISPARAR", lambda fn, *a: fn(*a))
     monkeypatch.setattr(me_ui, "VARREDURA", me_ui.EstadoVarredura())
-    monkeypatch.setattr(me_ui, "JA_TENTOU_LER", set())
     for c in ("VENTURA", "UNIAO"):
         monkeypatch.setenv(f"ME_{c}_LOGIN", "x")
         monkeypatch.setenv(f"ME_{c}_SENHA", "x")
@@ -450,3 +449,66 @@ def test_exigencias_do_comprador_aparecem_com_o_trecho(cliente, monkeypatch):
     html = _preencher(cliente, cid, acao="revisar").text
     assert "O comprador exige" in html
     assert "<b>Anexar proposta</b> <small>— “anexar a proposta”</small>" in html
+
+
+# ------------- leitura automática: retentativa espaçada, guardada no banco
+def _quebrar_com_print(monkeypatch, chamadas):
+    def quebra(conta, numero):
+        chamadas.append(numero)
+        erro = RuntimeError(f"cotação {numero} não abriu o formulário de resposta "
+                            "(a tela ficou em: Login — https://www.me.com.br/do/Login)")
+        erro.prints = [f"runs/me/{numero}_nao_abriu.png"]
+        raise erro
+    monkeypatch.setattr(me_ui, "LEITOR", quebra)
+
+
+def test_leitura_volta_depois_de_1h_e_para_na_terceira_falha(cliente, monkeypatch):
+    chamadas = []
+    _quebrar_com_print(monkeypatch, chamadas)
+    cliente.post("/me/atualizar")
+    cid = _id(23039029)
+    agora_real = datetime.now()
+    for horas, esperado in ((0.5, 1), (1.1, 2), (2.0, 2), (5.3, 3), (30, 3)):
+        monkeypatch.setattr(me_ui, "agora", lambda h=horas: agora_real + timedelta(hours=h))
+        me_ui.ler_itens_novos(me_ui.banco.me_cotacao(cid)["conta"])
+        assert chamadas.count(23039029) == esperado, horas
+
+
+def test_falha_do_robo_antigo_nao_conta(cliente, monkeypatch):
+    """As 75 falhas de 09 a 15/10/2026 vieram do robô que esperava o "load"
+    completo; com ele corrigido, a cotação merece tentativa nova."""
+    monkeypatch.setattr(me_ui, "LEITOR", lambda c, n: (_ for _ in ()).throw(TimeoutError()))
+    cliente.post("/me/atualizar")
+    cid = _id(23039029)
+    with me_ui.banco._conectar() as con:
+        con.execute("DELETE FROM me_historico WHERE evento = ?", (me_ui.EVENTO_ERRO_LEITURA,))
+    for _ in range(5):
+        me_ui.banco.me_registrar(cid, me_ui.EVENTO_ERRO_LEITURA,
+                                 "RoboRecusou: cotação 23039029 não abriu o formulário de resposta",
+                                 "varredura")
+    assert me_ui.leitura_devida(cid, datetime.now())
+
+
+def test_print_da_falha_vai_para_os_prints_do_robo(cliente, monkeypatch):
+    _quebrar_com_print(monkeypatch, [])
+    cliente.post("/me/atualizar")
+    cid = _id(23039029)
+    assert "23039029_nao_abriu.png" in me_ui.banco.me_cotacao(cid)["evidencia"]
+    detalhe = [h["detalhe"] for h in me_ui.banco.me_historico(cid)
+               if h["evento"] == me_ui.EVENTO_ERRO_LEITURA][0]
+    assert "a tela ficou em" in detalhe
+
+
+def test_vendedor_ve_o_que_fazer_quando_a_leitura_falha(cliente, monkeypatch):
+    _quebrar_com_print(monkeypatch, [])
+    cliente.post("/me/atualizar")
+    html = cliente.get(f"/me/{_id(23039029)}").text
+    assert "Abra uma vez no ME" in html
+
+
+def test_leitura_cede_a_vez_ao_frete(cliente, monkeypatch):
+    chamadas = []
+    _quebrar_com_print(monkeypatch, chamadas)
+    monkeypatch.setattr(me_ui, "fretes_em_curso", lambda: 1)
+    cliente.post("/me/atualizar")
+    assert chamadas == []

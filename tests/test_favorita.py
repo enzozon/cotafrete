@@ -166,3 +166,24 @@ def test_ligada_no_app():
     assert "favorita" in app_web.AUTOMATICA_DESDE
     assert all("Generoso" not in f
                for _, f in app_web.MENSAGENS_DE_ERRO["favorita"])
+
+
+def test_coleta_sem_cadastro_vira_recusa_na_hora():
+    """#417 e #418 (15/10/2026): remetente sem cadastro num FOB. A Favorita
+    trava o CEP da coleta e manda "Solicitar alteração" à equipe dela — o
+    robô esperava 45 s o campo destravar e saía em TimeoutError."""
+    from carriers.generoso.adapter import ClienteNaoCadastrado
+    from core.models import TipoFrete
+
+    class Campo:
+        def is_enabled(self):
+            return False
+
+    a = FavoritaAdapter()
+    a._campo = lambda page, seletor: Campo()
+    with pytest.raises(ClienteNaoCadastrado) as excinfo:
+        a._endereco_a_mao(None, montar(tipo_frete=TipoFrete.FOB), "origem",
+                          "35.120.753/0001-15")
+    frase = str(excinfo.value)
+    assert "35.120.753/0001-15" in frase and "Favorita" in frase
+    assert "coleta" in frase

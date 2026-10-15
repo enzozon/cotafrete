@@ -83,6 +83,36 @@ ponta digitada é recusa na Generoso, mas na Favorita não
 (`cota_sem_cadastro`): o robô digita o CEP e, se for CEP geral de cidade,
 completa rua e bairro pela Receita (`core/cnpj.endereco`).
 
+"Ainda não atendemos essa origem" (embaixo do CEP) pode aparecer só **depois**
+do Próximo: `_conferir_cobertura` roda antes e depois dele. Na Favorita a
+mesma recusa também vem na tela de resultado ("Cidade destino não atendida",
+`mapping.cidade_nao_atendida`). As duas viram RECUSADO com a cidade da tela.
+Na Favorita, remetente sem cadastro num FOB (com coleta) é recusa: o CEP da
+coleta vem travado e só a equipe dela cadastra endereço novo
+(`recusa_coleta_sem_cadastro`). No destino ela deixa digitar.
+O CNPJ do lado livre preenche o endereço **cadastrado** dele, que pode não ser
+o da cotação. `_usar_cep_da_cotacao` digita o CEP da ficha por cima; se não
+der, recusa nomeando a cidade do cadastro. Nunca cotar o endereço do cadastro.
+
+### Braspress: CNPJ sem cadastro
+
+O site escreve "não cadastrado, para prosseguir informe o CEP de Destino". O
+robô digita o CEP da cotação no lado livre (`_endereco_pelo_cep`) e segue.
+
+### "Não se aplica", conferência e alertas
+
+- `StatusCotacao.NAO_SE_APLICA`: regra fixa da transportadora que exclui a
+  carga (Jadlog só CIF, Translovato só saindo da Ventura, conta da Favorita
+  só com a Ventura). Nasce em `recusa_por_validacao` quando todos os erros têm
+  `nao_se_aplica=True`. Não abre navegador e fica fora do aproveitamento
+  (`core/painel.categoria` → "nao_aplica", `resumo_semana`). CNPJ novo da
+  Ventura na Translovato entra em `CNPJS_REMETENTE_ACEITOS`.
+- `core/conferencia.py`: antes de cotar, avisa CIF/FOB trocado com o grupo e
+  medida improvável (menor que 3 cm, ou mais denso que aço). A rota `/cotar`
+  mostra `tela_conferencia`; o vendedor corrige com um clique ou confirma.
+- `painel.falhas_repetidas`: o mesmo erro (sem números) 3× em 24 h vira
+  alerta no /adm, mesmo com sucesso no meio.
+
 ### IA na tela do vendedor
 
 Toda IA nova segue a regra: a IA sugere, o código confere contra os dados
@@ -118,6 +148,11 @@ juntas. O `monitorar.py` se atualiza sozinho.
   **exigências do comprador** (cada uma com o trecho conferido no texto) e
   nunca escreve no formulário. `core/resumo_erros.py` só aceita um número como fato
   se ele aparece fora da data.
+- **Leitura automática dos itens** (`web/me_ui.ler_itens_novos`): `Sessao.abrir`
+  espera só o formulário (o "load" completo da página é opcional). Na falha,
+  o erro diz a tela e o print vai para "Prints do robô". As tentativas contam
+  pelo histórico no banco (1 h, depois 4 h, para na 3ª falha) e cedem a vez
+  enquanto houver frete em curso (`retentativa.fretes_em_curso`).
 - Guia completo: `docs/MERCADO_ELETRONICO.md`.
 
 ---

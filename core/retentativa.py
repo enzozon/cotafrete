@@ -49,6 +49,21 @@ from core.models import CotacaoRequest, StatusCotacao
 NAVEGADORES_SIMULTANEOS = 2
 VAGA_NAVEGADOR = threading.Semaphore(NAVEGADORES_SIMULTANEOS)
 
+# Quantas cotações de FRETE estão esperando vaga ou cotando agora. O ME lê os
+# itens das cotações dele em segundo plano e cede a vez enquanto isto não for
+# zero: cotação de frete tem vendedor esperando na tela, a leitura do ME não.
+_FRETES = {"n": 0}
+_FRETES_TRAVA = threading.Lock()
+
+
+def fretes_em_curso() -> int:
+    return _FRETES["n"]
+
+
+def _contar_frete(delta: int) -> None:
+    with _FRETES_TRAVA:
+        _FRETES["n"] += delta
+
 # Depois disto a tela para de recarregar e assume que não vem mais nada.
 #
 # Eram 240s, dimensionados quando a mais lenta era a Camilo com ~25s. Seis
@@ -146,9 +161,13 @@ def cotar_com_retentativa(
         # Cronometra a espera por vaga JUNTO com a cotação: as duas contam
         # para o prazo, e numa máquina ocupada a fila pesa tanto quanto o site.
         comecou = time.monotonic()
+        _contar_frete(+1)
         try:
-            with VAGA_NAVEGADOR:
-                res = cotar_fn(req)
+            try:
+                with VAGA_NAVEGADOR:
+                    res = cotar_fn(req)
+            finally:
+                _contar_frete(-1)
         except Exception:
             if tentativa == maximo or not _cabe_outra(
                     inicio, time.monotonic() - comecou):

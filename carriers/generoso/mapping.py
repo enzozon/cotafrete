@@ -78,6 +78,36 @@ def recusa_cliente_nao_cadastrado(cnpj: str, lado: str,
         f"aqui embaixo.")
 
 
+def recusa_endereco_do_cadastro(cnpj: str, lado: str, cidade_cadastro: str,
+                                cep_cotacao: str,
+                                transportadora: str = "Generoso") -> str:
+    """O site usa o endereço CADASTRADO do CNPJ e não aceitou o CEP da
+    cotação. Cotar assim seria o preço de outra cidade (#365, 09/10/2026:
+    Catu na ficha, São Sebastião do Passé no cadastro da Generoso)."""
+    return (
+        f"O CNPJ de {lado} {cnpj} está cadastrado na {transportadora} em "
+        f"{cidade_cadastro}, e o site não aceitou o CEP da cotação "
+        f"({cep_cotacao}). Cotar assim daria o preço de outra cidade. Cote "
+        f"com outra transportadora, ou fale com a {transportadora} pelo "
+        f"WhatsApp, no botão aqui embaixo.")
+
+
+def recusa_coleta_sem_cadastro(cnpj: str,
+                               transportadora: str = "Favorita") -> str:
+    """Remetente sem cadastro numa cotação COM COLETA.
+
+    Medido na Favorita em 15/10/2026 (recon com o CNPJ da #417): a busca
+    responde "Cliente ... nao cadastrado" e os campos do endereço de coleta
+    ficam travados. O "Solicitar alteração" abre só um aviso: "Para definir
+    um novo endereço de coleta é preciso solicitar alteração à nossa
+    equipe." No destino ela deixa digitar; na coleta, não."""
+    return (
+        f"A {transportadora} não tem o remetente {cnpj} cadastrado, e não "
+        f"deixa digitar um endereço de coleta novo: o cadastro tem que ser "
+        f"pedido a ela. Peça pelo WhatsApp, no botão aqui embaixo, ou cote "
+        f"com outra transportadora.")
+
+
 # Aviso vermelho embaixo do campo de CEP quando a praça está fora da malha.
 # NÃO aparece em _erros_da_tela (o filtro lá só pega "obrigat/inválid/erro")
 # — por isso 4 das 6 cotações reais que caíram no genérico "a etapa do
@@ -90,16 +120,67 @@ AVISO_CEP_NAO_ATENDIDO = "não atendemos essa"
 
 
 def recusa_cep_nao_atendido(cep: str, lado: str,
-                            transportadora: str = "Generoso") -> str:
+                            transportadora: str = "Generoso",
+                            cidade: str = "") -> str:
     """Mensagem para o vendedor. `lado` é "origem" ou "destino".
 
     Numa cotação existem dois CEPs, e não dizer qual deixa quem lê
-    procurando no escuro — mesmo raciocínio de recusa_cliente_nao_cadastrado."""
+    procurando no escuro — mesmo raciocínio de recusa_cliente_nao_cadastrado.
+
+    `cidade` é a que a TELA mostrou ("Feira de Santana/BA"). Vem junto
+    porque o site usa o endereço cadastrado do CNPJ, que pode não ser o da
+    cotação (#365, 09/10/2026: Catu na ficha, São Sebastião do Passé na
+    tela) — e quem lê precisa saber de qual cidade a recusa fala."""
+    onde = f"{cidade} (CEP de {lado} {cep})" if cidade else \
+        f"o CEP de {lado} {cep}"
     return (
-        f"A {transportadora} não atende o CEP de {lado} {cep} — praça fora "
+        f"A {transportadora} não atende {onde} — praça fora "
         f"da malha dela. Cote com outra transportadora, ou fale com a "
         f"{transportadora} pelo "
         f"WhatsApp, no botão aqui embaixo.")
+
+
+# A mesma recusa, só que na TELA DE RESULTADO e não embaixo do CEP. Medida
+# na Favorita em 14/10/2026 (#402, #404, #405 e #406, todas para a Petrobras
+# no Rio): o envio passa, e o cartão do topo diz
+#
+#     Aguardando validação: a1abac02-6cb4-...
+#     Cidade destino não atendida Confira as cidades atendidas clicando
+#     aqui: Cidades Atendidas.
+#
+# Até aqui caía no genérico "a tela de resultado não trouxe preço nem
+# confirmação" — FALHA, com retentativa, para ouvir o mesmo não.
+RE_CIDADE_NAO_ATENDIDA = re.compile(
+    r"cidade\s+(destino|origem|de\s+destino|de\s+origem)\s+n[ãa]o\s+atendida",
+    re.IGNORECASE)
+
+# "Endereço destino:" / "Endereço Coleta:" no resumo da tela de resultado,
+# com "Cidade <nome>" e "Estado <UF>" logo abaixo.
+RE_CIDADE_DO_RESUMO = re.compile(
+    r"endere[çc]o\s+{secao}\s*:.*?cidade\s+([^\n\t]+?)\s+estado\s+([A-Z]{{2}})",
+    re.IGNORECASE | re.DOTALL)
+
+
+def cidade_nao_atendida(texto: str) -> tuple[str, str] | None:
+    """(lado, "Cidade/UF") se a tela de resultado recusou a cidade. A cidade
+    sai do resumo da própria tela; vazia se ele não estiver lá."""
+    achado = RE_CIDADE_NAO_ATENDIDA.search(texto or "")
+    if not achado:
+        return None
+    lado = "origem" if "origem" in achado.group(1).lower() else "destino"
+    secao = "coleta" if lado == "origem" else "destino"
+    cidade = re.compile(RE_CIDADE_DO_RESUMO.pattern.format(secao=secao),
+                        RE_CIDADE_DO_RESUMO.flags).search(texto)
+    return lado, (f"{cidade.group(1).strip()}/{cidade.group(2).upper()}"
+                  if cidade else "")
+
+
+def recusa_cidade_nao_atendida(lado: str, cidade: str,
+                               transportadora: str = "Generoso") -> str:
+    onde = f"{cidade} ({lado})" if cidade else f"a cidade de {lado}"
+    return (f"A {transportadora} não atende {onde}. Cote com outra "
+            f"transportadora, ou fale com a {transportadora} pelo WhatsApp, "
+            f"no botão aqui embaixo.")
 
 
 # O outro aviso vermelho que pode aparecer no mesmo lugar: "CEP de destino

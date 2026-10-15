@@ -148,6 +148,10 @@ class ErroValidacao:
     campo: str
     mensagem: str
     severidade: Severidade = Severidade.ERRO
+    # Regra fixa da transportadora que exclui a carga inteira (ex.: Jadlog só
+    # CIF). Só com TODOS os erros assim a resposta vira NAO_SE_APLICA; um
+    # erro de carga no meio (peso, medida) mantém a recusa.
+    nao_se_aplica: bool = False
 
 
 @dataclass
@@ -242,9 +246,11 @@ def recusa_por_validacao(slug: str,
     vendedor ler ("divida em volumes menores"), e `erro` é para o que
     ninguém entendeu.
     """
+    fora = bool(erros) and all(e.nao_se_aplica for e in erros)
     return ResultadoCotacao(
-        slug, StatusCotacao.RECUSADO,
-        motivo_recusa="; ".join(f"{e.campo}: {e.mensagem}" for e in erros))
+        slug, StatusCotacao.NAO_SE_APLICA if fora else StatusCotacao.RECUSADO,
+        motivo_recusa="; ".join(
+            e.mensagem if fora else f"{e.campo}: {e.mensagem}" for e in erros))
 
 
 @dataclass

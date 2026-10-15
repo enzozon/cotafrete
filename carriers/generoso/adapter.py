@@ -65,9 +65,12 @@ from carriers.base import (
     recusa_por_validacao,
 )
 from carriers.generoso.mapping import (
-    AVISO_CEP_NAO_ATENDIDO, AVISO_MESMO_CEP, EMPRESAS, cliente_nao_cadastrado,
+    AVISO_CEP_NAO_ATENDIDO, AVISO_MESMO_CEP, EMPRESAS, cidade_nao_atendida,
+    cliente_nao_cadastrado,
     conflito_cif_fob, empresa_alvo, empresa_de, ponta_travada_sem_o_grupo,
-    recusa_cep_nao_atendido, recusa_cliente_nao_cadastrado, recusa_mesmo_cep,
+    recusa_cep_nao_atendido, recusa_cidade_nao_atendida,
+    recusa_coleta_sem_cadastro, recusa_endereco_do_cadastro,
+    recusa_cliente_nao_cadastrado, recusa_mesmo_cep,
     validar_agendamento,
 )
 from core import cnpj as buscador_cnpj
@@ -236,6 +239,7 @@ RE_LIMITE_POR_VOLUME = re.compile(
 # Digitação humana: a busca de CNPJ/CEP do site não dispara com fill().
 DELAY_DIGITACAO_MS = 60
 ESPERA_BUSCA_MS = 4_500
+ESPERA_CONSULTA_MS = 20_000
 
 
 # A tela de resultado, LOGADO. Medida no envio real de 20/08/2026:
@@ -553,7 +557,9 @@ class GenerosoAdapter:
         fora = ponta_travada_sem_o_grupo(req, self.nome_curto,
                                          self.empresas)
         if fora:
-            erros.append(ErroValidacao("CIF/FOB", fora))
+            # A conta não tem a empresa do grupo que a carga precisaria: é a
+            # conta, não a carga. Na Favorita, metade das recusas (15/10/2026).
+            erros.append(ErroValidacao("CIF/FOB", fora, nao_se_aplica=True))
         if not req.solicitante.whatsapp:
             erros.append(ErroValidacao("whatsapp", "O site exige WhatsApp."))
         v = req.volumes[0]
@@ -845,6 +851,12 @@ class GenerosoAdapter:
         cep = "".join(c for c in (local.cep or "") if c.isdigit())
         if len(cep) != 8:
             return self._esperar_endereco(page, tentativas=1)
+        # Coleta de remetente sem cadastro: o CEP vem TRAVADO e o site manda
+        # "Solicitar alteração" à equipe dela (recon de 15/10/2026, #417 e
+        # #418). Esperar o campo destravar custava 45 s e virava Timeout.
+        if not self._campo(page, 'input[name="cep"]').is_enabled():
+            raise ClienteNaoCadastrado(
+                recusa_coleta_sem_cadastro(cnpj, self.nome_curto))
         self._digitar(page, 'input[name="cep"]', cep)
         self._campo(page, 'input[name="cep"]').blur()
         page.wait_for_timeout(ESPERA_BUSCA_MS)
@@ -868,6 +880,35 @@ class GenerosoAdapter:
         page.wait_for_timeout(1_000)
         return self._esperar_endereco(page, tentativas=2)
 
+    def _usar_cep_da_cotacao(self, page, req: CotacaoRequest, lado: str,
+                             cnpj: str, achado: dict[str, str]) -> dict[str, str]:
+        """O CNPJ preenche o endereço CADASTRADO dele, que pode não ser o da
+        cotação: #365 (09/10/2026) era Catu na ficha e São Sebastião do Passé
+        na tela, e #414 outro CEP de Feira de Santana. O preço sairia de
+        outro lugar sem aviso. Medido em 15/10/2026: com o CNPJ resolvido, o
+        CEP continua editável, e digitar o da cotação troca rua e bairro.
+
+        CEP igual: nada a fazer. Não deu para trocar: recusa nomeando as duas
+        cidades — nunca cotar o endereço do cadastro no lugar."""
+        local = req.origem if lado == "origem" else req.destino
+        cep = "".join(c for c in (local.cep or "") if c.isdigit())
+        na_tela = "".join(c for c in achado.get("cep", "") if c.isdigit())
+        if len(cep) != 8 or cep == na_tela:
+            return achado
+        cidade_cadastro = f'{achado["city"]}/{achado.get("state", "")}'.rstrip("/")
+        recusa = ForaDeArea(recusa_endereco_do_cadastro(
+            cnpj, lado, cidade_cadastro, local.cep or cep, self.nome_curto))
+        if not self._campo(page, 'input[name="cep"]').is_enabled():
+            raise recusa
+        novo = self._endereco_a_mao(page, req, lado, cnpj)
+        if not novo["city"]:
+            self._conferir_cobertura(page, lado, req)  # "não atendemos"?
+            raise recusa
+        if not self._campo(page, 'input[name="number"]').input_value():
+            page.get_by_text("Sem número", exact=True).click()
+            page.wait_for_timeout(500)
+        return novo
+
     def _conferir_cobertura(self, page, lado: str,
                             req: CotacaoRequest) -> None:
         """Levanta ForaDeArea se a Generoso recusou esta ponta — praça fora
@@ -882,14 +923,35 @@ class GenerosoAdapter:
         texto_tela = page.locator("body").inner_text().lower()
         if AVISO_CEP_NAO_ATENDIDO in texto_tela:
             cep = (req.origem if lado == "origem" else req.destino).cep or ""
-            raise ForaDeArea(recusa_cep_nao_atendido(cep, lado,
-                                                     self.nome_curto))
+            tela = self._endereco_na_tela(page)
+            raise ForaDeArea(recusa_cep_nao_atendido(
+                tela.get("cep") or cep, lado, self.nome_curto,
+                cidade="/".join(p for p in (tela.get("city"),
+                                            tela.get("state")) if p)))
         if AVISO_MESMO_CEP in texto_tela:
             raise ForaDeArea(recusa_mesmo_cep(self.nome_curto))
+
+    def _endereco_na_tela(self, page) -> dict[str, str]:
+        """Cidade, UF e CEP que o site resolveu, para a recusa nomear a
+        cidade certa. Vazio se não der para ler — a recusa sai sem ela."""
+        try:
+            return {c: self._campo(page, f'input[name="{c}"]').input_value()
+                    for c in ("cep", "city", "state")}
+        except Exception:
+            return {}
 
     def _avancar(self, page) -> None:
         page.get_by_role("button", name=BOTAO_PROXIMO).last.click()
         page.wait_for_timeout(2_500)
+        # O botão vira "Consultando pagador..." enquanto o site confere a
+        # etapa. Em 15/10/2026 a Favorita ficou nele além dos 2,5 s e a etapa
+        # seguinte foi procurada cedo demais ("campo não encontrado").
+        try:
+            page.wait_for_function(
+                "!document.body.innerText.includes('Consultando')",
+                timeout=ESPERA_CONSULTA_MS)
+        except Exception:
+            pass  # quem vem depois confere se a etapa avançou
 
     def _esperar_endereco(self, page, tentativas: int = 12) -> dict[str, str]:
         """Espera cidade e rua chegarem, e devolve o endereço que o site achou.
@@ -956,6 +1018,13 @@ class GenerosoAdapter:
                     "responsável."
                     + (f" Contatos em {self.link_unidades}"
                        if self.link_unidades else "")))
+
+        nao_atendida = cidade_nao_atendida(texto)
+        if nao_atendida:
+            return ResultadoCotacao(
+                self.slug, StatusCotacao.RECUSADO, raw_response=texto[:800],
+                motivo_recusa=recusa_cidade_nao_atendida(
+                    *nao_atendida, self.nome_curto))
 
         if carga_excede_limites(texto):
             return ResultadoCotacao(
@@ -1044,6 +1113,9 @@ class GenerosoAdapter:
                                     cliente_nao_cadastrado(resposta_da_busca))
                     if sem_cadastro and self.cota_sem_cadastro:
                         achado = self._endereco_a_mao(page, req, lado, cnpj)
+                    elif cnpj and achado["city"]:
+                        achado = self._usar_cep_da_cotacao(
+                            page, req, lado, cnpj, achado)
                     if not achado["city"]:
                         # A Generoso pode ter respondido que não conhece este
                         # CNPJ. Se respondeu, é recusa dela e repetir dá o
@@ -1066,6 +1138,13 @@ class GenerosoAdapter:
                     evidencias += print_seguro(
                         page, run / f"etapa{numero}_{lado}.png")
                     self._avancar(page)
+                    # O aviso "Ainda não atendemos essa origem" pode só
+                    # aparecer DEPOIS do Próximo — a validação do CEP roda no
+                    # envio da etapa. Foi o que derrubou #271, #284, #339,
+                    # #365 e #414 (Generoso e Favorita, 30/09 a 15/10/2026)
+                    # no genérico "etapa do destino não avançou". Se a etapa
+                    # avançou, o aviso sumiu junto com o formulário dela.
+                    self._conferir_cobertura(page, lado, req)
 
                 if not self._chegou_na_carga(page):
                     raise RuntimeError(
