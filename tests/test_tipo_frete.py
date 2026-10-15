@@ -116,7 +116,7 @@ def test_jadlog_recusa_fob_sem_abrir_navegador():
 
     res = JadlogPainelAdapter().cotar(montar(tipo_frete=TipoFrete.FOB))
 
-    assert res.status is StatusCotacao.RECUSADO
+    assert res.status is StatusCotacao.NAO_SE_APLICA  # regra fixa, sabida de antemão (15/10/2026)
     assert res.erro is None, "recusa nao e erro; o cartao le isso"
     assert "CIF" in (res.motivo_recusa or "")
     assert "FOB" in (res.motivo_recusa or "")
@@ -139,7 +139,7 @@ def test_jadlog_adapter_de_api_tambem_recusa_fob():
 
     res = JadlogAdapter(token="fake").cotar(montar(tipo_frete=TipoFrete.FOB))
 
-    assert res.status is StatusCotacao.RECUSADO
+    assert res.status is StatusCotacao.NAO_SE_APLICA  # regra fixa, sabida de antemão (15/10/2026)
     assert "CIF" in (res.motivo_recusa or "")
 
 
