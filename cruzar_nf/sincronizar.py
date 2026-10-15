@@ -105,11 +105,16 @@ def estado_para_tela(pasta: "str | Path") -> Dict[str, Any]:
             "historico": estado.get("historico", [])[:10]}
 
 
-def registrar_falha(pasta: "str | Path", de: _dt.date, ate: _dt.date, erro: str, origem: str) -> None:
+def agora_iso() -> str:
+    return _dt.datetime.now().isoformat(timespec="seconds")
+
+
+def registrar_falha(pasta: "str | Path", de: _dt.date, ate: _dt.date, erro: str, origem: str,
+                    inicio: Optional[str] = None) -> None:
     try:
         estado = carregar_estado(pasta)
         estado.setdefault("historico", []).insert(0, {
-            "rodou_em": _dt.datetime.now().isoformat(timespec="seconds"), "origem": origem,
+            "inicio": inicio, "rodou_em": agora_iso(), "origem": origem,
             "de": _fmt(de), "ate": _fmt(ate), "sucesso": False, "erro": erro})
         _salvar_estado(pasta, estado)
     except Exception:
@@ -197,6 +202,7 @@ def _sincronizar(pasta: Path, manager: Any, de: _dt.date, ate: _dt.date,
                  exportar: Callable[..., Dict[str, Any]], gravar: bool,
                  dir_backup: Optional[str], progresso: Callable[[str], None],
                  origem: str) -> Dict[str, Any]:
+    inicio = agora_iso()
     progresso(f"Exportando as vendas do HSE de {_fmt(de)} a {_fmt(ate)}...")
     exportado = exportar(de, ate, progresso)
     arquivos = [Path(a) for a in exportado.get("arquivos", [exportado.get("arquivo")]) if a]
@@ -229,7 +235,7 @@ def _sincronizar(pasta: Path, manager: Any, de: _dt.date, ate: _dt.date,
     progresso(f"{gravadas} NF(s) {'gravada(s)' if gravar else 'a gravar (prévia)'}.")
 
     resultado = {
-        "rodou_em": _dt.datetime.now().isoformat(timespec="seconds"), "origem": origem,
+        "inicio": inicio, "rodou_em": agora_iso(), "origem": origem,
         "de": _fmt(de), "ate": _fmt(ate), "sucesso": True, "gravou": gravar,
         "nfs_gravadas": gravadas if gravar else 0, "nfs_a_gravar": gravadas,
         "excel": resumo_xls, "excel_guardado": [g.name for g in guardados], "linhas_tela": linhas_tela,
@@ -249,7 +255,7 @@ def _sincronizar(pasta: Path, manager: Any, de: _dt.date, ate: _dt.date,
                                                       "pedidos", "pedidos_com_nf", "sem_nf",
                                                       "divergencias", "aviso")}
     estado.setdefault("historico", []).insert(0, {k: resultado[k] for k in (
-        "rodou_em", "origem", "de", "ate", "sucesso", "gravou", "nfs_gravadas", "nfs_a_gravar",
+        "inicio", "rodou_em", "origem", "de", "ate", "sucesso", "gravou", "nfs_gravadas", "nfs_a_gravar",
         "pedidos_com_nf", "sem_nf", "divergencias", "aviso")})
     _salvar_estado(pasta, estado)
     progresso("Sincronização concluída.")
@@ -315,12 +321,13 @@ def main(argv: Optional[List[str]] = None) -> int:
         from cruzar_nf.hse_robo import exportador_do_config
         exportar = exportador_do_config({})
     manager = ArquivoPedidosConcorrente(a.pedidos, progresso=lambda m: print(m, flush=True))
+    inicio = agora_iso()
     try:
         res = sincronizar(a.dados, manager, de, ate, exportar, gravar=a.gravar,
                           dir_backup=str(Path(a.dados) / "backups"),
                           progresso=lambda m: print(m, flush=True), origem="linha de comando")
     except Exception as e:      # robô, HSE ou arquivo: fica no histórico e o .bat vê o erro
-        registrar_falha(a.dados, de, ate, str(e), "linha de comando")
+        registrar_falha(a.dados, de, ate, str(e), "linha de comando", inicio)
         print(f"[ERRO] {e}", file=sys.stderr)
         return 1
     print(json.dumps({k: res[k] for k in ("de", "ate", "gravou", "nfs_a_gravar", "nfs_gravadas",

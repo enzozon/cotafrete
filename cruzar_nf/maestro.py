@@ -10,6 +10,8 @@ Isso registra:
   e a janela que a próxima vai usar;
 - `comando_sync_nf` -> `progresso_sync_nf` (vários) e `retorno_sync_nf`:
   exporta do HSE, junta na base, grava a NF nos pedidos;
+- `comando_nf_painel` -> `retorno_nf_painel` e `comando_eventos_nf` ->
+  `retorno_eventos_nf`: só leitura, para os dashboards (painel_nf.py);
 - o agendamento diário (padrão 07:30, depois do backup das 07:00).
 
 A gravação usa `planilha_manager.lock`: o planilha_manager carrega o
@@ -123,6 +125,7 @@ def registrar(sio: Any, config: Dict[str, Any], logger: Any, manager: Any = None
         def progresso(msg: str) -> None:
             logger.info(f"[sync NF] {msg}")
             sio.emit("progresso_sync_nf", {"mensagem": msg, "clientId": client_id})
+        inicio = sync.agora_iso()
         try:
             resultado = sync.sincronizar(_pasta(), _manager(), de=de, ate=ate, exportar=_exportar(),
                                          gravar=gravar, dir_backup=config.get("caminho_backups"),
@@ -132,7 +135,7 @@ def registrar(sio: Any, config: Dict[str, Any], logger: Any, manager: Any = None
                 sio.emit("planilha_atualizada")
         except Exception as e:   # o robô não pode cair por causa da sincronização
             logger.error(f"[sync NF] falhou: {e}")
-            sync.registrar_falha(_pasta(), de, ate, str(e), origem)
+            sync.registrar_falha(_pasta(), de, ate, str(e), origem, inicio)
             sio.emit("retorno_sync_nf", {"sucesso": False, "erro": str(e), "clientId": client_id})
         finally:
             execucao.terminar()
@@ -207,6 +210,39 @@ def registrar(sio: Any, config: Dict[str, Any], logger: Any, manager: Any = None
             sio.emit("retorno_sync_nf_estado", {"sucesso": False, "erro": str(e),
                                                 "clientId": dados.get("clientId")})
 
+    def comando_sync_planilha_painel(dados: Optional[dict] = None) -> None:
+        dados = dados or {}
+        try:
+            from cruzar_nf.sync_planilha_portal import painel_para_tela
+            sio.emit("retorno_sync_planilha_painel", {"sucesso": True, "painel": painel_para_tela(_pasta()),
+                                                      "clientId": dados.get("clientId")})
+        except Exception as e:
+            sio.emit("retorno_sync_planilha_painel", {"sucesso": False, "erro": str(e),
+                                                      "clientId": dados.get("clientId")})
+
+    def _responder(evento: str, chave: str, ler: Callable[[dict], Any]) -> Callable:
+        """Comando só de leitura dos dashboards: devolve `chave` ou o erro, sempre com o clientId."""
+        def comando(dados: Optional[dict] = None) -> None:
+            dados = dados if isinstance(dados, dict) else {}
+            try:
+                sio.emit(evento, {"sucesso": True, chave: ler(dados), "clientId": dados.get("clientId")})
+            except Exception as e:
+                sio.emit(evento, {"sucesso": False, "erro": str(e), "clientId": dados.get("clientId")})
+        return comando
+
+    def _painel_nf(_dados: dict) -> Dict[str, Any]:
+        from cruzar_nf.painel_nf import painel_para_tela
+        painel = painel_para_tela(_pasta())
+        painel["rodando"] = execucao.rodando
+        return painel
+
+    def _eventos_nf(dados: dict) -> Dict[str, Any]:
+        from cruzar_nf.painel_nf import eventos
+        return eventos(_pasta(), dados.get("limite", 200), dados.get("desde"))
+
+    comando_nf_painel = _responder("retorno_nf_painel", "painel", _painel_nf)
+    comando_eventos_nf = _responder("retorno_eventos_nf", "resultado", _eventos_nf)
+
     def comando_sync_nf(dados: Optional[dict] = None) -> None:
         dados = dados or {}
         client_id = dados.get("clientId")
@@ -224,7 +260,11 @@ def registrar(sio: Any, config: Dict[str, Any], logger: Any, manager: Any = None
     sio.on("comando_sync_nf_estado", comando_sync_nf_estado)
     sio.on("comando_sync_nf", comando_sync_nf)
     sio.on("comando_nf_planilha", comando_nf_planilha)
+    sio.on("comando_sync_planilha_painel", comando_sync_planilha_painel)
+    sio.on("comando_nf_painel", comando_nf_painel)
+    sio.on("comando_eventos_nf", comando_eventos_nf)
     if schedule is not None and horario:
         schedule.every().day.at(horario).do(agendado)
     return {"estado": comando_sync_nf_estado, "sincronizar": comando_sync_nf, "agendado": agendado,
-            "nf_planilha": comando_nf_planilha}
+            "nf_planilha": comando_nf_planilha, "painel_planilha": comando_sync_planilha_painel,
+            "painel_nf": comando_nf_painel, "eventos_nf": comando_eventos_nf}

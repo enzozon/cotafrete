@@ -173,6 +173,25 @@ precisa também do PR do painel. NF continua com os escritores antigos.
 Datas americanas do JSON legado são identificadas por comparação com o
 Excel e o formato fica guardado por item; dados inválidos são pendências.
 
+Painel (`sync.html` no portal, só admin): o serviço de NF responde
+`comando_sync_planilha_painel` com `painel_para_tela()`: listas completas do
+relatório, conflitos com os valores do Excel/portal/base, pendências com
+linha e lado, e `sync_planilha_portal_historico.json` (uma linha por rodada,
+7 dias). Alerta quando fica mais de 1 h adiada/com erro. Rodada com erro
+mantém as listas da última rodada boa.
+
+Dashboards de NFs e Atividade (`nfs.html` e `atividade.html` no portal, só
+admin): `painel_nf.py` só **lê**. `comando_nf_painel` devolve indicadores do
+`sync_nf.json`, pedidos sem NF (do `RELATORIO_NF_ultimo.json`, mais antigos
+primeiro, com RFQ e entrega), divergências, "NF no portal com a coluna vazia"
+(`nf_so_no_portal_lista` da conferência), rodadas (com `inicio`) e o cadastro.
+`comando_eventos_nf` devolve a linha do tempo de 7 dias montada **na leitura**
+a partir de `sync_nf.json`, `cadastro_pedidos.json` e
+`sync_planilha_portal_historico.json`. Não existe `eventos_nf.jsonl`: são
+processos diferentes (serviço, SincronizarNF.bat, CadastrarPedidos.bat, tarefa
+da sync) e cada um já grava só o próprio histórico. Parte que não lê vem como
+`{"erro": ...}`, nunca como zero.
+
 ### Configuração (o `.env` fica na pasta `sync_nf`, não no repo)
 
 `SYNC_NF_DADOS=\\SERVIDOR2\Publico\ALLAN\database\sync_nf` guarda o
@@ -202,6 +221,9 @@ Eventos da integração de NF e cadastro:
 
 - portal → serviço: `solicitar_sync_nf*`, aceitos só de socket logado;
 - serviço ↔ `maestro.py`: `comando_sync_nf_estado` e `comando_sync_nf`;
+- dashboards (só leitura): `comando_sync_planilha_painel`, `comando_nf_painel`
+  e `comando_eventos_nf` (`{limite, desde, clientId}`), com resposta
+  `retorno_*` e o mesmo `clientId`;
 - serviço/robô → portal: progresso, resultado e `planilha_atualizada`;
 - token comparado em tempo constante. Token errado ou ausente faz o portal
   recusar e desconectar.

@@ -131,7 +131,8 @@ def conferir(linhas: List[Tuple[int, Dict[str, Any]]], pedidos: List[Dict[str, A
         "planilha_sem_portal": [dict(linha=n, **_desc(l)) for n, l in linhas
                                 if not pares[n] and n not in canceladas],
         "portal_sem_planilha": [_desc(p) for i, p in enumerate(pedidos) if i not in usados],
-        "nf_divergente": [], "nf_so_no_portal": 0, "campos_divergentes": [], "ambiguas": [],
+        "nf_divergente": [], "nf_so_no_portal": 0, "nf_so_no_portal_lista": [],
+        "campos_divergentes": [], "ambiguas": [],
     }
     inverso = {i: [n for n, indices in pares.items() if i in indices] for i in usados}
     for n, l in linhas:
@@ -152,7 +153,8 @@ def conferir(linhas: List[Tuple[int, Dict[str, Any]]], pedidos: List[Dict[str, A
         na_planilha = nf_de(l)
         no_portal = sorted({nf_de(pedidos[i]) for i in pares[n]} - {""})
         if no_portal and not na_planilha:
-            rel["nf_so_no_portal"] += 1
+            rel["nf_so_no_portal"] += 1      # o número fica: a tela Planilha Vale lê ele
+            rel["nf_so_no_portal_lista"].append(dict(linha=n, **_desc(l), nf_portal=" / ".join(no_portal)))
         elif nfs(na_planilha) != set().union(*(nfs(x) for x in no_portal)):
             rel["nf_divergente"].append(dict(linha=n, **_desc(l), nf_planilha=na_planilha,
                                              nf_portal=" / ".join(no_portal)))
