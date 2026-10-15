@@ -49,6 +49,11 @@ URL_COTACAO = "https://blue.braspress.com/site/w/cotacao/view"
 # em 02/09/2026, fill() além de não disparar a busca CORTOU um dígito do CEP
 # digitado direto (mascara de input).
 DELAY_DIGITACAO_MS = 70
+
+# Frase do site embaixo do CNPJ desconhecido, medida no print da #380
+# (09/10/2026): "CNPJ/CPF não cadastrado, para prosseguir informe o CEP de
+# Destino." Minúscula, para casar com o texto da tela em minúsculas.
+AVISO_NAO_CADASTRADO = "não cadastrado, para prosseguir informe o cep"
 ESPERA_BUSCA_MS = 3_500
 
 
@@ -219,6 +224,32 @@ class BraspressAdapter:
             page.wait_for_timeout(700)
         return ""
 
+    def _endereco_pelo_cep(self, req: CotacaoRequest, page) -> str:
+        """CNPJ sem cadastro: o site pede o CEP do lado livre e segue.
+
+        Medido em produção (#213 a #380, 23/09 a 09/10/2026): com o CNPJ
+        desconhecido, a Braspress escreve embaixo do campo "CNPJ/CPF não
+        cadastrado, para prosseguir informe o CEP de Destino." — e o robô
+        desistia. Digita o CEP da cotação no lado livre e espera o endereço.
+        Devolve o endereço achado ("" se nem assim veio)."""
+        if AVISO_NAO_CADASTRADO not in page.locator("body").inner_text().lower():
+            return ""
+        livre = req.destino if req.tipo_frete is TipoFrete.CIF else req.origem
+        cep = "".join(ch for ch in (livre.cep or "") if ch.isdigit())
+        if len(cep) != 8:
+            return ""
+        campo_id = ("#cepDestino" if req.tipo_frete is TipoFrete.CIF
+                    else "#cepOrigem")
+        self._digitar(page, campo_id, cep)
+        page.locator(campo_id).blur()
+        page.wait_for_timeout(ESPERA_BUSCA_MS)
+        for _ in range(6):
+            endereco = page.locator("#endereco").input_value().strip()
+            if endereco:
+                return endereco
+            page.wait_for_timeout(700)
+        return ""
+
     def _preencher_carga(self, page, c: dict[str, Any]) -> list[str]:
         """Preenche peso, valor da NF e uma linha de cubagem por volume da
         ficha — clicando "+" (#btnAdd) para cada linha além da primeira.
@@ -290,8 +321,9 @@ class BraspressAdapter:
                     value=c["tipoFrete"])
                 page.wait_for_timeout(1_500)   # o site preenche o lado travado
 
-                endereco = self._preencher_lado_livre(
+                endereco = (self._preencher_lado_livre(
                     req, page, c["cnpjLivre"])
+                    or self._endereco_pelo_cep(req, page))
                 if not endereco:
                     evidencias += print_seguro(
                         page, run / "sem_endereco.png")
