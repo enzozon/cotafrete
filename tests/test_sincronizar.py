@@ -351,7 +351,7 @@ def montar(tmp_path, pedidos, vendas, falhar=False):
 def test_registra_os_comandos_e_o_agendamento(tmp_path):
     sio, agenda, _, _ = montar(tmp_path, [ped(1)], [venda(10, 1, 15)])
     assert set(sio.handlers) == {"comando_sync_nf_estado", "comando_sync_nf", "comando_nf_planilha",
-                                 "comando_sync_planilha_painel"}
+                                 "comando_sync_planilha_painel", "comando_nf_painel", "comando_eventos_nf"}
     assert agenda.horario == "07:30" and len(agenda.tarefas) == 1
 
 
@@ -399,6 +399,8 @@ def test_estado_para_a_tela(tmp_path):
     assert r["sucesso"] and r["clientId"] == "y"
     assert r["estado"]["ultima"]["ate"] == "30/09/2026" and r["estado"]["rodando"] is False
     assert r["estado"]["proxima_janela"]["de"] == "20/09/2026"
+    h0 = r["estado"]["historico"][0]
+    assert h0["inicio"] <= h0["rodou_em"]       # o dashboard de NFs mostra início e fim da rodada
 
 
 def test_agendado_usa_a_janela_padrao(tmp_path):

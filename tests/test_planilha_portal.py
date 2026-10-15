@@ -45,6 +45,7 @@ def test_conferencia_lista_o_que_so_esta_de_um_lado_e_nf_diferente():
     assert rel["nf_divergente"] == [{"linha": 3, "pedido": "2", "produto": "TECLADO",
                                      "nf_planilha": "200", "nf_portal": "201"}]
     assert rel["nf_so_no_portal"] == 1 and rel["ignoradas"] == 1
+    assert rel["nf_so_no_portal_lista"] == [{"linha": 4, "pedido": "3", "produto": "MOUSE", "nf_portal": "300"}]
 
 
 def test_linha_cancelada_tambem_some_do_lado_do_portal():

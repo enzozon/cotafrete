@@ -236,6 +236,8 @@ class ResultadoPedido:
     cidade: Any = None
     requisitante: Any = None
     produto: Any = None
+    rfq: Any = None              # o painel de NFs mostra a lista sem NF com RFQ e entrega
+    entrega: Any = None
 
 
 def _linha_que_nao_e_venda(r: dict) -> bool:
@@ -370,6 +372,8 @@ def cruzar(pedidos: list[dict], comparar: list[dict]) -> tuple[list[dict], dict]
             cidade=campo(pedido, "CIDADE"),
             requisitante=campo(pedido, "REQUISITANTE"),
             produto=campo(pedido, "PRODUTO"),
+            rfq=campo(pedido, "NMR DA RFQ"),
+            entrega=campo(pedido, "DATA DE ENTREGA"),
         ))
 
         novo = {k: v for k, v in pedido.items() if _chave_campo(k) != "NF"}
