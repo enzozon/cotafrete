@@ -69,7 +69,7 @@ from carriers.generoso.mapping import (
     cliente_nao_cadastrado,
     conflito_cif_fob, empresa_alvo, empresa_de, ponta_travada_sem_o_grupo,
     recusa_cep_nao_atendido, recusa_cidade_nao_atendida,
-    recusa_coleta_sem_cadastro,
+    recusa_coleta_sem_cadastro, recusa_endereco_do_cadastro,
     recusa_cliente_nao_cadastrado, recusa_mesmo_cep,
     validar_agendamento,
 )
@@ -878,6 +878,35 @@ class GenerosoAdapter:
         page.wait_for_timeout(1_000)
         return self._esperar_endereco(page, tentativas=2)
 
+    def _usar_cep_da_cotacao(self, page, req: CotacaoRequest, lado: str,
+                             cnpj: str, achado: dict[str, str]) -> dict[str, str]:
+        """O CNPJ preenche o endereço CADASTRADO dele, que pode não ser o da
+        cotação: #365 (09/10/2026) era Catu na ficha e São Sebastião do Passé
+        na tela, e #414 outro CEP de Feira de Santana. O preço sairia de
+        outro lugar sem aviso. Medido em 15/10/2026: com o CNPJ resolvido, o
+        CEP continua editável, e digitar o da cotação troca rua e bairro.
+
+        CEP igual: nada a fazer. Não deu para trocar: recusa nomeando as duas
+        cidades — nunca cotar o endereço do cadastro no lugar."""
+        local = req.origem if lado == "origem" else req.destino
+        cep = "".join(c for c in (local.cep or "") if c.isdigit())
+        na_tela = "".join(c for c in achado.get("cep", "") if c.isdigit())
+        if len(cep) != 8 or cep == na_tela:
+            return achado
+        cidade_cadastro = f'{achado["city"]}/{achado.get("state", "")}'.rstrip("/")
+        recusa = ForaDeArea(recusa_endereco_do_cadastro(
+            cnpj, lado, cidade_cadastro, local.cep or cep, self.nome_curto))
+        if not self._campo(page, 'input[name="cep"]').is_enabled():
+            raise recusa
+        novo = self._endereco_a_mao(page, req, lado, cnpj)
+        if not novo["city"]:
+            self._conferir_cobertura(page, lado, req)  # "não atendemos"?
+            raise recusa
+        if not self._campo(page, 'input[name="number"]').input_value():
+            page.get_by_text("Sem número", exact=True).click()
+            page.wait_for_timeout(500)
+        return novo
+
     def _conferir_cobertura(self, page, lado: str,
                             req: CotacaoRequest) -> None:
         """Levanta ForaDeArea se a Generoso recusou esta ponta — praça fora
@@ -1082,6 +1111,9 @@ class GenerosoAdapter:
                                     cliente_nao_cadastrado(resposta_da_busca))
                     if sem_cadastro and self.cota_sem_cadastro:
                         achado = self._endereco_a_mao(page, req, lado, cnpj)
+                    elif cnpj and achado["city"]:
+                        achado = self._usar_cep_da_cotacao(
+                            page, req, lado, cnpj, achado)
                     if not achado["city"]:
                         # A Generoso pode ter respondido que não conhece este
                         # CNPJ. Se respondeu, é recusa dela e repetir dá o

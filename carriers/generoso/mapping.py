@@ -78,6 +78,20 @@ def recusa_cliente_nao_cadastrado(cnpj: str, lado: str,
         f"aqui embaixo.")
 
 
+def recusa_endereco_do_cadastro(cnpj: str, lado: str, cidade_cadastro: str,
+                                cep_cotacao: str,
+                                transportadora: str = "Generoso") -> str:
+    """O site usa o endereço CADASTRADO do CNPJ e não aceitou o CEP da
+    cotação. Cotar assim seria o preço de outra cidade (#365, 09/10/2026:
+    Catu na ficha, São Sebastião do Passé no cadastro da Generoso)."""
+    return (
+        f"O CNPJ de {lado} {cnpj} está cadastrado na {transportadora} em "
+        f"{cidade_cadastro}, e o site não aceitou o CEP da cotação "
+        f"({cep_cotacao}). Cotar assim daria o preço de outra cidade. Cote "
+        f"com outra transportadora, ou fale com a {transportadora} pelo "
+        f"WhatsApp, no botão aqui embaixo.")
+
+
 def recusa_coleta_sem_cadastro(cnpj: str,
                                transportadora: str = "Favorita") -> str:
     """Remetente sem cadastro numa cotação COM COLETA.

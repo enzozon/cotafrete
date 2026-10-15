@@ -263,3 +263,58 @@ def test_sem_resumo_a_recusa_sai_sem_cidade():
     lado, cidade = m.cidade_nao_atendida("Cidade destino não atendida")
     assert (lado, cidade) == ("destino", "")
     assert "a cidade de destino" in m.recusa_cidade_nao_atendida(lado, cidade)
+
+
+# ------ o CNPJ preenche o endereço CADASTRADO, que pode não ser o da ficha
+class _Cep:
+    def __init__(self, ligado: bool) -> None:
+        self.ligado = ligado
+
+    def is_enabled(self) -> bool:
+        return self.ligado
+
+
+def _adapter_com_cep(ligado: bool, depois: dict | None = None):
+    a = GenerosoAdapter()
+    a._campo = lambda page, seletor: _Cep(ligado)
+    a.chamou_a_mao = False
+
+    def a_mao(page, req, lado, cnpj):
+        a.chamou_a_mao = True
+        return depois
+    a._endereco_a_mao = a_mao
+    return a
+
+
+CADASTRO_CATU = {"cep": "43.850-000", "city": "São Sebastião do Passé",
+                 "state": "BA", "address": "LOC CAMPO DE TAQUIPE"}
+
+
+def test_cep_igual_ao_da_ficha_nao_mexe():
+    a = _adapter_com_cep(True)
+    achado = {**CADASTRO_CATU, "cep": "01.310-100"}  # o CEP de destino da ficha
+    assert a._usar_cep_da_cotacao(None, montar(), "destino", "x", achado) is achado
+    assert not a.chamou_a_mao
+
+
+def test_cep_diferente_digita_o_da_ficha():
+    novo = {"cep": "01.310-100", "city": "São Paulo", "state": "SP",
+            "address": "Avenida Paulista"}
+    a = _adapter_com_cep(True, novo)
+    a._campo = lambda page, seletor: (
+        _Cep(True) if "cep" in seletor else type("N", (), {
+            "input_value": lambda self: "10"})())
+    assert a._usar_cep_da_cotacao(None, montar(), "destino", "x",
+                                  CADASTRO_CATU) == novo
+
+
+def test_cep_travado_recusa_nomeando_a_cidade_do_cadastro():
+    """#365: cotar com o cadastro daria o preço de São Sebastião do Passé
+    para uma carga de Catu."""
+    a = _adapter_com_cep(False)
+    with pytest.raises(ForaDeArea) as excinfo:
+        a._usar_cep_da_cotacao(None, montar(), "destino",
+                               "33.000.167/0236-67", CADASTRO_CATU)
+    frase = str(excinfo.value)
+    assert "São Sebastião do Passé/BA" in frase and "01310100" in frase
+    assert "outra cidade" in frase

@@ -90,6 +90,9 @@ mesma recusa também vem na tela de resultado ("Cidade destino não atendida",
 Na Favorita, remetente sem cadastro num FOB (com coleta) é recusa: o CEP da
 coleta vem travado e só a equipe dela cadastra endereço novo
 (`recusa_coleta_sem_cadastro`). No destino ela deixa digitar.
+O CNPJ do lado livre preenche o endereço **cadastrado** dele, que pode não ser
+o da cotação. `_usar_cep_da_cotacao` digita o CEP da ficha por cima; se não
+der, recusa nomeando a cidade do cadastro. Nunca cotar o endereço do cadastro.
 
 ### Braspress: CNPJ sem cadastro
 
