@@ -186,3 +186,80 @@ def test_cotar_esta_protegido_pela_trava_da_conta():
     assert fonte.index("self.trava_conta") < fonte.index("sync_playwright() as p"), (
         "a trava tem que vir ANTES do navegador abrir, senão duas sessões "
         "ainda entram juntas na tela que troca a empresa")
+
+
+# ---------- o aviso que só aparece DEPOIS do Próximo (30/09 a 15/10/2026)
+class _PaginaQueSoAvisaDepois(_PaginaFalsa):
+    """O CEP só fica vermelho quando a etapa é enviada: antes do Próximo a
+    tela está limpa, depois dele aparece "Ainda não atendemos essa origem".
+    Prints de #365 (Generoso) e #414 (Generoso e Favorita)."""
+    def __init__(self) -> None:
+        super().__init__("Dados do destino\nCEP\n44.079-002")
+        self.avancou = False
+
+    def inner_text(self) -> str:
+        return self._texto + ("\n" + AVISO_REAL if self.avancou else "")
+
+
+def test_aviso_depois_do_proximo_vira_recusa(tmp_path):
+    a = GenerosoAdapter(workdir=str(tmp_path))
+    page = _PaginaQueSoAvisaDepois()
+    a._conferir_cobertura(page, "destino", montar())  # antes: tela limpa
+    page.avancou = True
+    with pytest.raises(ForaDeArea) as excinfo:
+        a._conferir_cobertura(page, "destino", montar())
+    assert "não atende" in str(excinfo.value)
+
+
+def test_cotar_confere_a_cobertura_depois_do_proximo():
+    """A linha que faltava: sem conferir depois do Próximo, o aviso nunca
+    era visto e a cotação virava o genérico "etapa não avançou"."""
+    import inspect
+    fonte = inspect.getsource(GenerosoAdapter.cotar)
+    depois = fonte.split("self._avancar(page)", 2)[1]
+    assert "_conferir_cobertura(page, lado, req)" in depois.split(
+        "_chegou_na_carga")[0]
+
+
+def test_recusa_nomeia_a_cidade_que_a_tela_mostrou():
+    frase = m.recusa_cep_nao_atendido("43850000", "destino",
+                                      cidade="São Sebastião do Passé/BA")
+    assert "São Sebastião do Passé/BA" in frase
+    assert "43850000" in frase
+
+
+# ------------ a mesma recusa na tela de resultado (Favorita, #402-#406)
+# Texto do print da #406 (14/10/2026), como o inner_text devolve.
+RESULTADO_CIDADE_NAO_ATENDIDA = (
+    "Resultado da cotação\nNova cotação\nLista de cotações\n"
+    "Aguardando validação: a1abac02-6cb4-415b-839a-86b69cb5a3c0\n"
+    "Cidade destino não atendida Confira as cidades atendidas clicando "
+    "aqui: Cidades Atendidas.\nDetalhes desta cotação\nAlterar\n"
+    "Solicitante:\nCNPJ\t08.310.365/0001-24\n"
+    "Endereço Coleta:\nCNPJ\t08.310.365/0001-24\nCEP\t29.105-770\n"
+    "Cidade\tVila Velha\nEstado\tES\n"
+    "Endereço destino:\nCNPJ\t33.000.167/0001-01\nCEP\t20.231-030\n"
+    "Cidade\tRio de Janeiro\nEstado\tRJ\nEndereço\tAvenida Henrique Valadares\n"
+    "Carga:\nValor total da nota fiscal\tR$ 4.233,00\n")
+
+
+def test_cidade_nao_atendida_no_resultado_vira_recusa():
+    from carriers.favorita.adapter import FavoritaAdapter
+    res = FavoritaAdapter().normalizar_resposta(RESULTADO_CIDADE_NAO_ATENDIDA)
+    assert res.status is StatusCotacao.RECUSADO
+    assert "Rio de Janeiro/RJ" in res.motivo_recusa
+    assert "destino" in res.motivo_recusa
+    assert "Favorita" in res.motivo_recusa
+    assert not vale_repetir(res)
+
+
+def test_cidade_de_origem_nao_atendida_pega_a_coleta():
+    texto = RESULTADO_CIDADE_NAO_ATENDIDA.replace(
+        "Cidade destino não", "Cidade origem não")
+    assert m.cidade_nao_atendida(texto) == ("origem", "Vila Velha/ES")
+
+
+def test_sem_resumo_a_recusa_sai_sem_cidade():
+    lado, cidade = m.cidade_nao_atendida("Cidade destino não atendida")
+    assert (lado, cidade) == ("destino", "")
+    assert "a cidade de destino" in m.recusa_cidade_nao_atendida(lado, cidade)

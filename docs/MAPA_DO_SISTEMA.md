@@ -83,6 +83,16 @@ ponta digitada é recusa na Generoso, mas na Favorita não
 (`cota_sem_cadastro`): o robô digita o CEP e, se for CEP geral de cidade,
 completa rua e bairro pela Receita (`core/cnpj.endereco`).
 
+"Ainda não atendemos essa origem" (embaixo do CEP) pode aparecer só **depois**
+do Próximo: `_conferir_cobertura` roda antes e depois dele. Na Favorita a
+mesma recusa também vem na tela de resultado ("Cidade destino não atendida",
+`mapping.cidade_nao_atendida`). As duas viram RECUSADO com a cidade da tela.
+
+### Braspress: CNPJ sem cadastro
+
+O site escreve "não cadastrado, para prosseguir informe o CEP de Destino". O
+robô digita o CEP da cotação no lado livre (`_endereco_pelo_cep`) e segue.
+
 ### IA na tela do vendedor
 
 Toda IA nova segue a regra: a IA sugere, o código confere contra os dados

@@ -65,9 +65,11 @@ from carriers.base import (
     recusa_por_validacao,
 )
 from carriers.generoso.mapping import (
-    AVISO_CEP_NAO_ATENDIDO, AVISO_MESMO_CEP, EMPRESAS, cliente_nao_cadastrado,
+    AVISO_CEP_NAO_ATENDIDO, AVISO_MESMO_CEP, EMPRESAS, cidade_nao_atendida,
+    cliente_nao_cadastrado,
     conflito_cif_fob, empresa_alvo, empresa_de, ponta_travada_sem_o_grupo,
-    recusa_cep_nao_atendido, recusa_cliente_nao_cadastrado, recusa_mesmo_cep,
+    recusa_cep_nao_atendido, recusa_cidade_nao_atendida,
+    recusa_cliente_nao_cadastrado, recusa_mesmo_cep,
     validar_agendamento,
 )
 from core import cnpj as buscador_cnpj
@@ -882,10 +884,22 @@ class GenerosoAdapter:
         texto_tela = page.locator("body").inner_text().lower()
         if AVISO_CEP_NAO_ATENDIDO in texto_tela:
             cep = (req.origem if lado == "origem" else req.destino).cep or ""
-            raise ForaDeArea(recusa_cep_nao_atendido(cep, lado,
-                                                     self.nome_curto))
+            tela = self._endereco_na_tela(page)
+            raise ForaDeArea(recusa_cep_nao_atendido(
+                tela.get("cep") or cep, lado, self.nome_curto,
+                cidade="/".join(p for p in (tela.get("city"),
+                                            tela.get("state")) if p)))
         if AVISO_MESMO_CEP in texto_tela:
             raise ForaDeArea(recusa_mesmo_cep(self.nome_curto))
+
+    def _endereco_na_tela(self, page) -> dict[str, str]:
+        """Cidade, UF e CEP que o site resolveu, para a recusa nomear a
+        cidade certa. Vazio se não der para ler — a recusa sai sem ela."""
+        try:
+            return {c: self._campo(page, f'input[name="{c}"]').input_value()
+                    for c in ("cep", "city", "state")}
+        except Exception:
+            return {}
 
     def _avancar(self, page) -> None:
         page.get_by_role("button", name=BOTAO_PROXIMO).last.click()
@@ -956,6 +970,13 @@ class GenerosoAdapter:
                     "responsável."
                     + (f" Contatos em {self.link_unidades}"
                        if self.link_unidades else "")))
+
+        nao_atendida = cidade_nao_atendida(texto)
+        if nao_atendida:
+            return ResultadoCotacao(
+                self.slug, StatusCotacao.RECUSADO, raw_response=texto[:800],
+                motivo_recusa=recusa_cidade_nao_atendida(
+                    *nao_atendida, self.nome_curto))
 
         if carga_excede_limites(texto):
             return ResultadoCotacao(
@@ -1066,6 +1087,13 @@ class GenerosoAdapter:
                     evidencias += print_seguro(
                         page, run / f"etapa{numero}_{lado}.png")
                     self._avancar(page)
+                    # O aviso "Ainda não atendemos essa origem" pode só
+                    # aparecer DEPOIS do Próximo — a validação do CEP roda no
+                    # envio da etapa. Foi o que derrubou #271, #284, #339,
+                    # #365 e #414 (Generoso e Favorita, 30/09 a 15/10/2026)
+                    # no genérico "etapa do destino não avançou". Se a etapa
+                    # avançou, o aviso sumiu junto com o formulário dela.
+                    self._conferir_cobertura(page, lado, req)
 
                 if not self._chegou_na_carga(page):
                     raise RuntimeError(
