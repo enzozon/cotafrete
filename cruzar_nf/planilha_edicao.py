@@ -88,6 +88,12 @@ def _remover_links(xml, refs):
     return re.sub(r'<hyperlink\b[^>]*/>', remover, xml)
 
 
+def _trocar_celula(xml, numero, col, nova):
+    xml = NP.editar_aba(xml, {numero: ''}, coluna=col, coluna_estilo=col)
+    ref = 'r="%s%s"' % (col, numero)
+    return NP.CELL_RE.sub(lambda m: nova if NP.REF_RE.search(m.group(0)).group(0) == ref else m.group(0), xml)
+
+
 def preparar(original, mudancas, novas):
     """mudanças: linha -> campos; novas: pedidos. Retorna bytes e células autorizadas."""
     colunas, formulas, epoch = ler(original)
@@ -108,10 +114,7 @@ def preparar(original, mudancas, novas):
                 ref = '%s%s' % (col, numero)
                 if ref in formulas:
                     raise NP.GravacaoRecusada('Não substituo fórmula em %s.' % ref)
-                xml = NP.editar_aba(xml, {numero: ''}, coluna=col, coluna_estilo=col)
-                nova = celula(ref, valor, estilos.get(col), nome, epoch)
-                xml = NP.CELL_RE.sub(lambda m: nova if NP.REF_RE.search(m.group(0)).group(0)
-                                    == 'r="%s"' % ref else m.group(0), xml)
+                xml = _trocar_celula(xml, numero, col, celula(ref, valor, estilos.get(col), nome, epoch))
                 esperadas[ref] = (nome, valor)
         partes = {}
         novas_linhas = []
@@ -130,22 +133,33 @@ def preparar(original, mudancas, novas):
             if any(re.search(r'<f\b', c) for c in NP.CELL_RE.findall(linhas[modelo])):
                 raise NP.GravacaoRecusada('Linha modelo tem fórmula; inserção exige revisão.')
             estilos = _estilos(linhas[modelo])
-            ultima = max(linhas)
-            for pedido in novas:
-                ultima += 1
-                corpo = []
+            # Linha só com borda/formatação não conta: o pedido entra logo após o último valor.
+            proxima = max(n for n, l in linhas.items() if re.search(r'<(?:v|is|f)\b', l)) + 1
+            ultima = proxima + len(novas) - 1
+            for numero, pedido in enumerate(novas, proxima):
+                corpo = {}
                 for nome, col in colunas.items():
                     if nome == 'NF (MAESTRO)' or 'NOTA FISCAL' in nome:
                         continue
                     valor = _campo(pedido, nome)
-                    ref = '%s%s' % (col, ultima)
-                    corpo.append(celula(ref, valor, estilos.get(col), nome, epoch))
+                    ref = '%s%s' % (col, numero)
+                    if ref in formulas:
+                        raise NP.GravacaoRecusada('Não substituo fórmula em %s.' % ref)
+                    corpo[col] = celula(ref, valor, estilos.get(col), nome, epoch)
                     esperadas[ref] = (nome, valor)
+                if numero in linhas:
+                    for col, nova in corpo.items():
+                        xml = _trocar_celula(xml, numero, col, nova)
+                    continue
                 abertura = linhas[modelo].split('>', 1)[0] + '>'
-                abertura = re.sub(r'\br="\d+"', 'r="%s"' % ultima, abertura)
+                abertura = re.sub(r'\br="\d+"', 'r="%s"' % numero, abertura)
                 abertura = re.sub(r'\s+(?:spans|hidden)="[^"]*"', '', abertura)
-                novas_linhas.append(abertura + ''.join(corpo) + '</row>')
-            xml = xml.replace('</sheetData>', ''.join(novas_linhas) + '</sheetData>', 1)
+                nova_linha = abertura + ''.join(corpo.values()) + '</row>'
+                novas_linhas.append(nova_linha)
+                # Mantém a ordem das linhas: entra antes da próxima linha formatada, se houver.
+                seguinte = min((n for n in linhas if n > numero), default=None)
+                antes = linhas[seguinte] if seguinte else '</sheetData>'
+                xml = xml.replace(antes, nova_linha + antes, 1)
             def dimension(m):
                 a, b, c, d = range_boundaries(m.group(1))
                 return '<dimension ref="%s%s:%s%s"' % (get_column_letter(a), b, get_column_letter(c), max(d, ultima))
@@ -154,7 +168,7 @@ def preparar(original, mudancas, novas):
             raiz = ET.fromstring(xml0)
             ns = {'m': NP.NS_MAIN}
             for mescla in raiz.findall('m:mergeCells/m:mergeCell', ns):
-                if range_boundaries(mescla.get('ref'))[3] >= min(int(NP.REF_RE.search(r).group(2)) for r in novas_linhas):
+                if range_boundaries(mescla.get('ref'))[3] >= proxima:
                     raise NP.GravacaoRecusada('Mesclagem alcança as linhas novas.')
             relpath = parte.rsplit('/', 1)[0] + '/_rels/' + parte.rsplit('/', 1)[1] + '.rels'
             if relpath in z.namelist():
@@ -174,11 +188,12 @@ def preparar(original, mudancas, novas):
         xml = _remover_links(xml, esperadas)
         partes[parte] = xml.encode('utf-8')
         novo = NP._reempacotar(original, partes)
-    conferir(original, novo, esperadas, partes, len(novas_linhas))
-    return novo, esperadas, partes, len(novas_linhas)
+    ultima = ultima if novas else None
+    conferir(original, novo, esperadas, partes, len(novas_linhas), ultima)
+    return novo, esperadas, partes, len(novas_linhas), ultima
 
 
-def conferir(antes, depois, esperadas, partes, acrescentadas):
+def conferir(antes, depois, esperadas, partes, acrescentadas, ultima=None):
     """XML das células antigas não autorizadas e partes externas devem ser idênticos."""
     parte = NP.parte_da_aba(antes, 'PEDIDOS')
     with zipfile.ZipFile(io.BytesIO(antes)) as a, zipfile.ZipFile(io.BytesIO(depois)) as d:
@@ -207,8 +222,8 @@ def conferir(antes, depois, esperadas, partes, acrescentadas):
                 raise NP.GravacaoRecusada('Estrutura da linha antiga mudou: %s' % n)
         # Compara também os blocos fora das linhas, exceto referências ampliadas.
         rx, ry = _remover_links(NP.ROW_RE.sub('', x), esperadas), NP.ROW_RE.sub('', y)
-        if acrescentadas:
-            rx = _intervalos(rx, max(int(NP.REF_RE.search(c).group(2)) for c in cd))
+        if ultima:
+            rx = _intervalos(rx, ultima)
             rx = re.sub(r'<dimension\b[^>]*/>', '', rx)
             ry = re.sub(r'<dimension\b[^>]*/>', '', ry)
         if rx != ry:
