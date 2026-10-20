@@ -373,7 +373,7 @@ def _rodar(planilha, caminho_pedidos, pasta, gravar, dormir, antes_de_trocar, ag
         _salvar(pasta, ARQ_ESTADO, pendente)
         _marcar_vistos(str(pasta), linhas, r['acoes'])
         if preparado:
-            novo, esperadas, partes, acrescentadas = preparado
+            novo, esperadas, partes, acrescentadas, ultima = preparado
             r['backup_planilha'] = NP._guardar_backup(original, str(pasta / NP.PASTA_BACKUPS))
             fd, tmp = tempfile.mkstemp(prefix='~sync_planilha_', suffix='.tmp',
                                        dir=str(Path(planilha).resolve().parent))
@@ -388,7 +388,7 @@ def _rodar(planilha, caminho_pedidos, pasta, gravar, dormir, antes_de_trocar, ag
                     raise ConflitoGravacao('Portal mudou antes da troca; recalcular.')
                 NP._trocar(tmp, planilha)
                 no_disco = Path(planilha).read_bytes()
-                PE.conferir(original, no_disco, esperadas, partes, acrescentadas)
+                PE.conferir(original, no_disco, esperadas, partes, acrescentadas, ultima)
             finally:
                 if os.path.exists(tmp):
                     os.remove(tmp)
