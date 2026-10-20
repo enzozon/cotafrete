@@ -52,6 +52,16 @@ def test_translovato_com_remetente_fornecedor_nem_abre_o_site():
     assert translovato.validar(montar(remetente=VENTURA)) == []
 
 
+def test_translovato_cota_a_filial_que_ela_atende():
+    """#407 e #408 (15/10/2026): a filial 0006-42 do fornecedor 07.500.596
+    recebeu preço da Translovato, apesar de não ser CNPJ da Ventura. A matriz
+    (0001-38) continua sem tabela (#146)."""
+    filial = Parte(cnpj="07.500.596/0006-42")
+    matriz = Parte(cnpj="07.500.596/0001-38")
+    assert translovato.validar(montar(remetente=filial)) == []
+    assert [e.nao_se_aplica for e in translovato.validar(montar(remetente=matriz))] == [True]
+
+
 def test_favorita_com_alianca_nao_se_aplica():
     erros = FavoritaAdapter().validar(montar(remetente=ALIANCA))
     assert recusa_por_validacao("favorita", erros).status is \

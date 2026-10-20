@@ -86,6 +86,10 @@ CNPJS_REMETENTE_ACEITOS = (
     "20.837.281/0001-49",
     "05.954.058/0001-98",
     "08.310.365/0001-24",
+    # Filial de um fornecedor que a Translovato cota mesmo assim: #407 e #408
+    # (15/10/2026) voltaram com preço. A matriz dele (07.500.596/0001-38) segue
+    # sem tabela (#146), então a lista é por CNPJ completo, nunca pela raiz.
+    "07.500.596/0006-42",
 )
 
 
