@@ -714,8 +714,12 @@ def _cookie_vale_para(conta: dict, cookie: str) -> bool:
     assinatura só prova nome e prazo. Sessão só nasce depois de a senha
     existir (`entrar`), então convite aberto não tem sessão válida, e cookie
     assinado antes da senha atual ser definida é de uma senha anterior."""
-    if conta["senha_hash"] is None or not conta.get("definida_em"):
+    if conta["senha_hash"] is None:
         return False
+    if not conta.get("definida_em"):
+        # Senha sem data (não deveria existir): sem com o que comparar, aceita,
+        # para não prender a pessoa num login que nunca abre.
+        return True
     emitido = sessao.emitido_em(cookie)
     try:
         definida = datetime.fromisoformat(conta["definida_em"]).timestamp()
