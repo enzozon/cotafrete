@@ -273,3 +273,23 @@ serviço pelo arquivo de reinício. Não restaurar Excel/JSON indiscriminadament
 pode haver edições humanas posteriores. Para restaurar dados, fechar o Excel,
 parar todos os escritores e comparar com o backup antes. Preservar a foto,
 o cadastro e as operações pendentes para análise; não apagar estado para retentar.
+
+---
+
+# Botões do dashboard do admin (sincronização manual)
+
+O portal (seção "Sincronização" do `dashboard2.html`) manda para o serviço de NF:
+
+- `comando_sincronizacao {servico: "nf_completo"}`: HSE → portal (mesma janela da
+  rodada agendada) e, se deu certo, portal → coluna N da planilha. Planilha aberta:
+  o portal já ficou certo e a mensagem diz que a planilha não foi gravada.
+- `comando_sincronizacao {servico: "sync_planilha"}`: planilha ⇄ portal gravando,
+  **sem** `--diario` (roda mesmo depois da rodada do dia). A trava é a mesma do
+  Agendador: se coincidir, responde "Já existe uma sincronização rodando".
+- `comando_sincronizacao_estado`: o que está rodando e o último resultado de cada um.
+
+Respostas: `progresso_sincronizacao` e `retorno_sincronizacao`.
+
+Instalação: copiar `maestro.py` e `sync_planilha_portal.py` para `sync_nf\cruzar_nf`
+(com as tarefas do Agendador paradas, como na seção acima) e reiniciar pelo
+`ReiniciarServicoNF.bat`. O serviço de NF não é atualizado pelo atualizador automático.
