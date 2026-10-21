@@ -756,6 +756,43 @@ def _lembrar_ncm_conferido(c: dict) -> None:
                                       marca=None, origem=None)
 
 
+# Robôs que escrevem no ME rodando agora. O /_ocupado soma este número: o
+# atualizar.py não pode reiniciar o servidor no meio de um Salvar.
+_ROBOS_LOCK = threading.Lock()
+_robos_em_curso = 0
+
+
+def robos_em_curso() -> int:
+    return _robos_em_curso
+
+
+def _contar_robo(delta: int) -> None:
+    global _robos_em_curso
+    with _ROBOS_LOCK:
+        _robos_em_curso += delta
+
+
+def _nunca_preso(trabalho: Callable[..., None]) -> Callable[..., None]:
+    """Roda o trabalho do robô e garante que a cotação não fica em
+    `salvando`: qualquer exceção fora do previsto (banco travado ao
+    registrar um aviso, por exemplo) vira `erro` com o motivo."""
+    def rodar(cid: int, usuario: str, *args) -> None:
+        try:
+            trabalho(cid, usuario, *args)
+        except Exception as exc:
+            motivo = f"o robô parou no meio ({type(exc).__name__}: {exc}); confira o rascunho no ME"[:500]
+            try:
+                if banco.me_trocar_status(cid, (Status.SALVANDO.value,), Status.ERRO.value, erro=motivo):
+                    banco.me_registrar(cid, "erro do robô", motivo, usuario)
+            except Exception:
+                pass
+        finally:
+            _contar_robo(-1)
+    rodar.__name__ = trabalho.__name__
+    return rodar
+
+
+@_nunca_preso
 def _rodar_robo(cid: int, usuario: str, dry_run: bool, status_antes: str) -> None:
     c = banco.me_cotacao(cid)
     try:
@@ -822,10 +859,12 @@ def mandar_robo(cid: int, usuario: str, dry_run: bool) -> str | None:
         return "Esta cotação não está aberta para salvar (ou o robô já está nela)."
     banco.me_registrar(cid, "robô: teste sem salvar" if dry_run else "robô: salvar no ME",
                        f"{len([i for i in c['itens'] if i['preco']])} itens com preço", usuario)
+    _contar_robo(+1)
     DISPARAR(_rodar_robo, cid, usuario, dry_run, c["status"])
     return None
 
 
+@_nunca_preso
 def _rodar_limpeza(cid: int, usuario: str, status_antes: str) -> None:
     c = banco.me_cotacao(cid)
     try:
@@ -865,6 +904,7 @@ def mandar_limpeza(cid: int, usuario: str) -> str | None:
     if not banco.me_trocar_status(cid, abertos, Status.SALVANDO.value):
         return "Esta cotação não está aberta (ou o robô já está nela)."
     banco.me_registrar(cid, "robô: limpar no ME", "", usuario)
+    _contar_robo(+1)
     DISPARAR(_rodar_limpeza, cid, usuario, c["status"])
     return None
 

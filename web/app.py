@@ -317,6 +317,15 @@ if _orfas:
     print(f"[cotafrete] {_orfas} cotação(ões) pendente(s) marcadas como "
           f"interrompidas — o sistema foi fechado durante elas.")
 
+# Mesmo motivo no ME: o robô roda numa thread que morre com o processo, e a
+# cotação ficava "Salvando no ME…" para sempre, com os botões recusando.
+_me_soltas = banco.me_soltar_salvando(
+    "o sistema foi fechado durante o salvamento; confira o rascunho no ME "
+    "antes de salvar de novo")
+if _me_soltas:
+    print(f"[cotafrete] {len(_me_soltas)} cotação(ões) do ME estavam salvando "
+          f"quando o sistema fechou e voltaram para 'erro'.")
+
 # A Della Volpe é a única automática que envia um formulário PÚBLICO: cada
 # submissão vira uma cotação na fila de um vendedor da transportadora. Por
 # isso o adapter exige DV_ENVIO_REAL_AUTORIZADO=sim e, sem a variável, recusa
@@ -763,7 +772,7 @@ def ocupado() -> dict:
 
     Sem login de propósito: quem pergunta é um script da própria VM. E só
     sai um número — nada de cliente, rota nem vendedor."""
-    return {"em_curso": EXECUTOR.em_curso}
+    return {"em_curso": EXECUTOR.em_curso + me_ui.robos_em_curso()}
 
 
 @app.get("/login", response_class=HTMLResponse)
