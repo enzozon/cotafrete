@@ -247,6 +247,26 @@ def test_numero_corrigido_em_linha_sem_rfq_nao_duplica(cenario):
     assert len(ler_pedidos(cenario.pedidos)) == 2
 
 
+def test_gemeo_com_pedido_e_rfq_diferentes_e_cadastrado(cenario):
+    """Mesma cidade, valor e produto, mas PEDIDO e RFQ diferentes: é outro
+    pedido. Antes casava por CIDADE+VALOR, ia para os vistos e nunca entrava
+    no portal, sem aviso."""
+    cenario.rodar()
+    escrever_planilha(cenario.xlsx, cenario.antigas + [linha(4500111, "BANDEJA", cidade="CATU-BA",
+                                                             valor=2442.49, rfq="RFQ-1")])
+    assert cenario.rodar()["gravados"] == 1
+    escrever_planilha(cenario.xlsx, cenario.antigas + [
+        linha(4500111, "BANDEJA", cidade="CATU-BA", valor=2442.49, rfq="RFQ-1"),
+        linha(4500999, "BANDEJA", cidade="CATU-BA", valor=2442.49, rfq="RFQ-7")])
+    assert cenario.rodar()["gravados"] == 1
+    assert len(ler_pedidos(cenario.pedidos)) == 3
+
+
+def test_valor_no_formato_americano_conta_como_igual():
+    from cruzar_nf.cadastro_pedidos import _valor
+    assert _valor("3,961.46") == _valor("3.961,46") == _valor(3961.46) == 3961.46
+
+
 def test_valor_no_formato_do_portal_conta_como_igual():
     from cruzar_nf.cadastro_pedidos import _valor
     assert _valor("3.219,70") == _valor(3219.7) == _valor("3219,70") == 3219.7
