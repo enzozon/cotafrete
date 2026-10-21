@@ -79,3 +79,25 @@ def test_a_senha_nunca_aparece_na_resposta(cliente):
 
     assert SENHA not in resposta.text
     assert "chutando" not in resposta.text
+
+
+def test_cookie_do_painel_vence_no_servidor(monkeypatch):
+    """O prazo de 12 h vale no servidor, não só no navegador: um cookie
+    copiado deixa de abrir o painel depois do prazo."""
+    import time as _t
+    monkeypatch.setenv("COTAFRETE_ADM_SENHA", SENHA)
+    agora = _t.time()
+    token = adm.token_de(SENHA, agora=agora)
+
+    assert adm.autorizado(token, agora=agora + adm.VALIDADE_S - 1)
+    assert not adm.autorizado(token, agora=agora + adm.VALIDADE_S + 1)
+
+
+def test_prazo_adulterado_no_cookie_do_painel_nao_passa(monkeypatch):
+    monkeypatch.setenv("COTAFRETE_ADM_SENHA", SENHA)
+    prazo, _, assinatura = adm.token_de(SENHA).partition(".")
+    esticado = f"{int(prazo) + 10 * 365 * 86400}.{assinatura}"
+
+    assert not adm.autorizado(esticado)
+    assert not adm.autorizado("é.abc")
+    assert not adm.autorizado(f"{prazo}.")

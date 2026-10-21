@@ -30,6 +30,7 @@ Três regras que não devem ser afrouxadas sem pensar:
 from __future__ import annotations
 
 import hmac
+import json
 import os
 import time
 from contextlib import closing
@@ -77,15 +78,29 @@ def senha_configurada() -> str | None:
     return os.getenv("COTAFRETE_ADM_SENHA") or None
 
 
-def token_de(senha: str) -> str:
-    """O valor que vai no cookie. Derivado da senha, então trocá-la derruba
-    as sessões sozinha."""
-    return hmac.new(senha.encode(), b"cotafrete-adm", "sha256").hexdigest()
+def token_de(senha: str, agora: float | None = None) -> str:
+    """O valor que vai no cookie: o prazo e o HMAC dele com a senha.
+
+    Derivado da senha, então trocá-la derruba as sessões sozinha. O prazo vai
+    DENTRO do que é assinado: antes o valor era sempre o mesmo, e o
+    `max_age` de 12 h só valia para o navegador honesto. Um cookie copiado
+    (de um backup do perfil, de outra máquina) abria o painel para sempre,
+    até alguém trocar a senha."""
+    prazo = int(agora if agora is not None else time.time()) + VALIDADE_S
+    return f"{prazo}.{_assinatura_adm(senha, prazo)}"
 
 
-def autorizado(cookie: str | None) -> bool:
+def _assinatura_adm(senha: str, prazo: int) -> str:
+    return hmac.new(senha.encode(), f"cotafrete-adm|{prazo}".encode(),
+                    "sha256").hexdigest()
+
+
+def autorizado(cookie: str | None, agora: float | None = None) -> bool:
     senha = senha_configurada()
     if not senha or not cookie:
+        return False
+    prazo_txt, _, assinatura = cookie.partition(".")
+    if not prazo_txt.isascii() or not prazo_txt.isdigit():
         return False
     # compare_digest, não ==: comparação comum vaza tempo e conta a quem
     # tenta quantos caracteres já acertou.
@@ -93,7 +108,10 @@ def autorizado(cookie: str | None) -> bool:
     # .encode() nos dois lados: compare_digest com `str` só aceita ASCII e
     # levanta TypeError (viraria 500) diante de qualquer outro caractere —
     # um cookie adulterado com acento bastava para derrubar a checagem.
-    return hmac.compare_digest(cookie.encode(), token_de(senha).encode())
+    if not hmac.compare_digest(assinatura.encode(),
+                               _assinatura_adm(senha, int(prazo_txt)).encode()):
+        return False
+    return (agora if agora is not None else time.time()) <= int(prazo_txt)
 
 
 def _exigir_montado() -> str:
@@ -1163,6 +1181,13 @@ def _linha_da_conta(c: dict) -> str:
         situacao = (f'<span class="sub">entra desde '
                     f'{e(_quando(c["definida_em"]))}</span>')
     nome = e(c["nome"])
+    # Texto do confirm() como literal JSON, e só depois escapado para o
+    # atributo: o navegador desfaz o &#x27; antes de rodar o JS, então um nome
+    # com apóstrofo (D'Arc) fechava a string e o formulário removia a conta
+    # sem perguntar.
+    pergunta = e(json.dumps(
+        f"Tirar o acesso de {c['nome']}? As cotacoes que ela ja fez "
+        f"continuam no historico.", ensure_ascii=False))
     return f"""
 <tr>
   <td><b>{nome}</b></td>
@@ -1173,7 +1198,7 @@ def _linha_da_conta(c: dict) -> str:
       <button type="submit" class="botao2">Esquecer senha</button>
     </form>
     <form method="post" action="/adm/contas/remover" style="display:inline"
-          onsubmit="return confirm('Tirar o acesso de {nome}? As cotacoes que ela ja fez continuam no historico.')">
+          onsubmit="return confirm({pergunta})">
       <input type="hidden" name="nome" value="{nome}">
       <button type="submit" class="botao2">Remover</button>
     </form>
