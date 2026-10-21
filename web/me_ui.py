@@ -864,12 +864,22 @@ def mandar_robo(cid: int, usuario: str, dry_run: bool) -> str | None:
     return None
 
 
+def anexos_subidos_pelo_robo(c: dict) -> list[str]:
+    """Os arquivos guardados aqui que o robô de fato subiu no ME (evento
+    "anexado no ME" no histórico). O robô não sobe arquivo com nome que já
+    está lá, então o nome guardado aqui pode ser o anexo de um colega, e o
+    Limpar não pode excluí-lo."""
+    subidos = {h["detalhe"] for h in banco.me_historico(c["id"])
+               if h["evento"] == "aviso do robô" and (h["detalhe"] or "").startswith("anexado no ME: ")}
+    return [a["nome"] for a in anexos_locais(c).values()
+            if any(d.startswith(f"anexado no ME: {a['nome']} em ") for d in subidos)]
+
+
 @_nunca_preso
 def _rodar_limpeza(cid: int, usuario: str, status_antes: str) -> None:
     c = banco.me_cotacao(cid)
     try:
-        r = LIMPADOR(c["conta"], c["numero"], False,
-                     anexos=[a["nome"] for a in anexos_locais(c).values()])
+        r = LIMPADOR(c["conta"], c["numero"], False, anexos=anexos_subidos_pelo_robo(c))
     except Exception as exc:
         r, erro = None, f"{type(exc).__name__}: {exc}"[:500]
     else:
