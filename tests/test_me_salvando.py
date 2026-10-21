@@ -49,12 +49,13 @@ def test_excecao_fora_do_previsto_vira_erro_e_nao_trava(banco, monkeypatch):
         return real(cotacao_id, evento, detalhe, usuario)
 
     monkeypatch.setattr(banco, "me_registrar", registrar)
+    antes = me_ui.robos_em_curso()
     me_ui._contar_robo(+1)
     me_ui._rodar_robo(cid, "enzo", False, "pendente")
 
     c = banco.me_cotacao(cid)
     assert c["status"] == "erro" and "database is locked" in c["erro"]
-    assert me_ui.robos_em_curso() == 0
+    assert me_ui.robos_em_curso() == antes           # a vaga foi devolvida
 
 
 def test_ocupado_conta_o_robo_do_me(monkeypatch):
