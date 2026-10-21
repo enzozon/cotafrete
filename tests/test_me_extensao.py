@@ -133,10 +133,14 @@ def test_clicar_abre_o_me_ja_com_a_sessao_da_conta_certa(servidor, tmp_path):
     with sync_playwright() as p:
         # O ME de verdade fica inalcançável: a aba que a extensão abre escapa do
         # ctx.route, então o nome nem resolve e o teste não sai da máquina.
+        # --no-proxy-server: atrás de um proxy (HTTPS_PROXY no ambiente), quem
+        # resolve o nome é o proxy e a regra acima não vale; a aba chegava ao
+        # ME real, que redirecionava ao login e o teste falhava.
         ctx = p.chromium.launch_persistent_context(
             str(tmp_path / "perfil"), channel="chromium", headless=True,
             args=[f"--disable-extensions-except={ext}", f"--load-extension={ext}",
-                  "--host-resolver-rules=MAP www.me.com.br ~NOTFOUND"])
+                  "--host-resolver-rules=MAP www.me.com.br ~NOTFOUND",
+                  "--no-proxy-server"])
         sw = ctx.service_workers[0] if ctx.service_workers else ctx.wait_for_event("serviceworker")
         assert sw.url.split("/")[2] == sessao_me.EXTENSAO_ID       # identidade fixa
         # O vendedor estava logado em OUTRA conta.
