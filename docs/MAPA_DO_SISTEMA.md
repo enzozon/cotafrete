@@ -190,7 +190,10 @@ cruzar_nf/sync_planilha_portal.py     (sincronização diária de campos e novos
 **Por que não se corrompe:** `cruzar_nf/arquivo_pedidos.py` grava só se a data
 e o tamanho não mudaram desde a leitura. Ele escreve num temporário e troca o
 arquivo com `os.replace`, depois relê. Se o gerenciador gravou por cima, ele
-grava de novo. Isso **depende** de o `planilha_manager.py` recarregar o JSON
+grava de novo. A conferência final e a troca acontecem segurando
+`PEDIDOS.json.lock` (1 byte com `msvcrt.locking`, até 30 s), a trava combinada
+com o gerenciador em 21/10/2026; a janela só fecha quando o gerenciador
+também a usar. Isso **depende** de o `planilha_manager.py` recarregar o JSON
 quando a data de modificação muda. Se alguém tirar essa recarga do servidor,
 o gerenciador volta a sobrescrever as NFs. Confira essa recarga antes de
 qualquer mudança no fluxo, pelo hash do arquivo no servidor.
