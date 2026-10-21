@@ -700,9 +700,28 @@ def vendedor(usuario: str | None = Cookie(None, alias=COOKIE)) -> str | None:
     `sessao.DIAS_DE_SESSAO` dias para fazer efeito, que é o prazo do cookie
     que a pessoa já tem na máquina. Demitiu, perdeu o acesso agora."""
     nome = sessao.dono_do_cookie(usuario, banco.segredo_sessao())
-    if nome is None or banco.conta(nome) is None:
+    conta = banco.conta(nome) if nome is not None else None
+    if conta is None or not _cookie_vale_para(conta, usuario):
         return None
     return nome
+
+
+def _cookie_vale_para(conta: dict, cookie: str) -> bool:
+    """O cookie precisa ser da senha ATUAL da conta.
+
+    Sem isto, "Esquecer senha" (usado quando a senha vazou) e "Remover" +
+    recriar o mesmo nome deixavam o cookie antigo valendo até 7 dias: a
+    assinatura só prova nome e prazo. Sessão só nasce depois de a senha
+    existir (`entrar`), então convite aberto não tem sessão válida, e cookie
+    assinado antes da senha atual ser definida é de uma senha anterior."""
+    if conta["senha_hash"] is None or not conta.get("definida_em"):
+        return False
+    emitido = sessao.emitido_em(cookie)
+    try:
+        definida = datetime.fromisoformat(conta["definida_em"]).timestamp()
+    except (TypeError, ValueError):
+        return False
+    return emitido is not None and emitido >= int(definida)
 
 
 

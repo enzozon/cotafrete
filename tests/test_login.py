@@ -325,3 +325,33 @@ def test_sair_derruba_a_sessao(c, app_web):
     c.cookies.clear()
 
     assert c.get("/").status_code == 303
+
+
+# ------------------------------------------------- revogar sessão
+def test_esquecer_a_senha_derruba_a_sessao_aberta(app_web):
+    """"Esquecer senha" é o que o admin usa quando a senha vazou. O cookie
+    antigo continuava valendo até 7 dias."""
+    from tests.apoio import entrar
+    c = entrar(TestClient(app_web.app, follow_redirects=False), app_web, "joao")
+    assert c.get("/").status_code == 200
+    app_web.banco.esquecer_senha("joao")
+    assert c.get("/").headers.get("location") == "/login"
+
+
+def test_conta_recriada_nao_herda_o_cookie_da_antiga(app_web):
+    from datetime import datetime, timedelta
+    app_web.banco.criar_conta("joao")
+    app_web.banco.definir_senha("joao", sessao.hash_senha("senha-antiga-1"))
+    antigo = sessao.assinar("joao", app_web.banco.segredo_sessao(),
+                            agora=datetime.now() - timedelta(hours=1))
+    app_web.banco.remover_conta("joao")
+    app_web.banco.criar_conta("joao")
+    app_web.banco.definir_senha("joao", sessao.hash_senha("senha-nova-12"))
+    c = TestClient(app_web.app, follow_redirects=False)
+    c.cookies.set(app_web.COOKIE, antigo)
+    assert c.get("/").headers.get("location") == "/login"
+
+
+def test_cookie_com_acento_e_recusado_sem_erro_500():
+    """compare_digest com str não-ASCII levantava TypeError (500)."""
+    assert sessao.dono_do_cookie("61|9999999999|é", "segredo") is None

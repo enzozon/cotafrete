@@ -8,6 +8,8 @@ verdade, com o ME respondido localmente.
 
 from __future__ import annotations
 
+from core import sessao as sessao_senha
+
 import io
 import json
 import socket
@@ -109,6 +111,7 @@ def servidor(tmp_path, monkeypatch):
     monkeypatch.setattr(me_extensao, "SESSAO_ME", lambda conta: FALSOS)
     cid = banco.me_criar("edp_alianca", 23083602, status="pendente", empresa="EDP - Outsourcing")
     banco.criar_conta("enzo")
+    banco.definir_senha("enzo", sessao_senha.hash_senha("senha-de-teste"))  # sessão só vale com senha
     with socket.socket() as s:
         s.bind(("127.0.0.1", 0))
         porta = s.getsockname()[1]

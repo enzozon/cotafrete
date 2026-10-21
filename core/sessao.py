@@ -122,7 +122,10 @@ def dono_do_cookie(valor: str | None, segredo: str,
         return None
 
     corpo = f"{nome_hex}{SEPARADOR}{prazo_txt}"
-    if not hmac.compare_digest(assinatura, _assinatura(corpo, segredo)):
+    # .encode(): compare_digest com str só aceita ASCII e levantava TypeError
+    # (erro 500) com um cookie adulterado com acento. Mesmo caso do /adm.
+    if not hmac.compare_digest(assinatura.encode(),
+                               _assinatura(corpo, segredo).encode()):
         return None
 
     # A assinatura já provou que o prazo não foi mexido; só depois dela vale
@@ -136,6 +139,15 @@ def dono_do_cookie(valor: str | None, segredo: str,
     if (agora or datetime.now()).timestamp() > prazo:
         return None
     return nome
+
+
+def emitido_em(valor: str, dias: int = DIAS_DE_SESSAO) -> int | None:
+    """Quando o cookie foi assinado (epoch), deduzido do prazo. Só chame
+    depois de `dono_do_cookie` aceitar o valor."""
+    try:
+        return int(valor.split(SEPARADOR)[1]) - dias * 86400
+    except (IndexError, ValueError, AttributeError):
+        return None
 
 
 def cookie_seguro() -> bool:
