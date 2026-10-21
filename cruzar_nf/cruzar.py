@@ -17,7 +17,9 @@ sem instalar nada. Rodar à mão: ver README.md desta pasta.
 from __future__ import annotations
 
 import json
+import os
 import re
+import tempfile
 import unicodedata
 from collections import Counter, defaultdict
 from dataclasses import asdict, dataclass, field
@@ -635,9 +637,21 @@ def resumo_console(rel: dict) -> str:
 def gravar_json(caminho: str | Path, dados: Any) -> None:
     """Grava num temporário e troca: se cair no meio, o arquivo anterior fica inteiro."""
     caminho = Path(caminho)
-    tmp = caminho.with_name(caminho.name + ".tmp")
-    tmp.write_text(json.dumps(dados, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    tmp.replace(caminho)
+    caminho.parent.mkdir(parents=True, exist_ok=True)
+    # Temporário com nome exclusivo: dois escritores do mesmo arquivo (estado
+    # gravado pela rodada e pela falha de outra) não misturam o .tmp.
+    fd, tmp = tempfile.mkstemp(prefix="." + caminho.name + ".", suffix=".tmp",
+                               dir=str(caminho.parent))
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(json.dumps(dados, ensure_ascii=False, indent=2) + "\n")
+        os.replace(tmp, str(caminho))
+    except BaseException:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+        raise
 
 
 def rodar(pedidos: str | Path, comparar: str | Path, saida: str | Path,
