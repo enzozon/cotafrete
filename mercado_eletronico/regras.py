@@ -94,6 +94,24 @@ def nao_atendemos(empresa: str | None) -> bool:
     return any(re.search(rf"\b{c}\b", nome) for c in CLIENTES_NAO_ATENDIDOS)
 
 
+_RE_CIF_FOB = re.compile(r"\b(CIF|FOB)\b", re.IGNORECASE)
+_RE_NEGACAO = re.compile(r"\b(nao|exceto|sem|nunca|nem)\b[^.;,\n]{0,25}$", re.IGNORECASE)
+
+
+def _frete_do_aviso(aviso: str) -> str | None:
+    """O CIF/FOB que o aviso PEDE, ou None se ele não decide.
+
+    Antes valia o primeiro CIF/FOB perto de "frete": "Frete: não aceitamos
+    FOB, somente CIF" dava FOB. Agora sigla negada ("não", "exceto"...) não
+    conta, e aviso que deixa as duas de pé não decide."""
+    if not _RE_FRETE_AVISO.search(aviso or ""):
+        return None
+    texto = _sem_acento(aviso)
+    pedidas = {m.group(1).upper() for m in _RE_CIF_FOB.finditer(texto)
+               if not _RE_NEGACAO.search(texto[:m.start()])}
+    return pedidas.pop() if len(pedidas) == 1 else None
+
+
 def tipo_frete(avisos: list[str], empresa: str | None,
                formulario: str = "") -> tuple[str, str]:
     """("CIF" | "FOB", de onde veio) — o motivo aparece na tela.
@@ -101,8 +119,8 @@ def tipo_frete(avisos: list[str], empresa: str | None,
     Ordem: aviso do comprador, o formulário pedindo preço CIF, o cliente,
     e só então o padrão FOB."""
     for aviso in avisos or []:
-        if m := _RE_FRETE_AVISO.search(aviso):
-            return m.group(1).upper(), f"aviso do comprador: \"{aviso}\""
+        if frete := _frete_do_aviso(aviso):
+            return frete, f"aviso do comprador: \"{aviso}\""
     if formulario == "CIF":
         return "CIF", "o formulário do comprador pede \"Preço a Prazo CIF\""
     nome = _sem_acento(empresa or "")

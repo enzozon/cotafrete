@@ -333,3 +333,18 @@ def test_preco_com_mais_de_duas_casas_bloqueia(digitado):
 @pytest.mark.parametrize("digitado", ["1.234,50", "1234,5", "17", "0,01", "12.5"])
 def test_precos_validos_continuam_passando(digitado):
     assert R.validar_item(_item(preco=digitado), HOJE).pode_salvar
+
+
+@pytest.mark.parametrize("aviso,esperado", [
+    ("Frete: não aceitamos FOB, somente CIF", "CIF"),
+    ("Frete CIF obrigatório", "CIF"),
+    ("Frete FOB", "FOB"),
+    ("Frete: exceto CIF", "FOB"),
+])
+def test_aviso_de_frete_com_negacao(aviso, esperado):
+    assert R.tipo_frete([aviso], "QUALQUER")[0] == esperado
+
+
+def test_aviso_que_cita_as_duas_sem_negar_nao_decide():
+    frete, motivo = R.tipo_frete(["Frete CIF ou FOB, a combinar"], "NESTLE")
+    assert (frete, "aviso" in motivo) == ("CIF", False)     # cai na regra do cliente
