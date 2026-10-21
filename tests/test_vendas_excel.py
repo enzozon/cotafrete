@@ -196,3 +196,15 @@ def test_data_br():
 def test_sintaxe_compativel_com_python_38(arquivo):
     """O gerenciador roda num Windows Server 2012 R2: nada de sintaxe nova."""
     ast.parse(arquivo.read_text(encoding="utf-8"), feature_version=(3, 8))
+
+
+def test_exportacao_vazia_nao_apaga_a_base_da_janela():
+    """Excel vazio com vendas já na base naquele período é exportação que
+    falhou (tela velha, mês sem arquivo), não 'todas canceladas'. Antes as
+    vendas sumiam da base e o pedido lançado depois não achava mais a NF."""
+    base = BaseVendas()
+    base.mesclar([v(1, 10, 100, 5, "05/09/2026"), v(2, 20, 200, 6, "25/09/2026")], D(2026, 9, 1), D(2026, 9, 30))
+    with pytest.raises(ValueError, match="vazia"):
+        base.mesclar([], D(2026, 9, 20), D(2026, 9, 30))
+    assert sorted(x["Código"] for x in base.lista()) == [1, 2]
+    assert base.cobertura == [(D(2026, 9, 1), D(2026, 9, 30))]
