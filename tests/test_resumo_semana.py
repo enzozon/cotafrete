@@ -70,3 +70,24 @@ def test_cartao_da_semana_tem_numeros_tabela_tendencia_e_rotas(con):
     assert "50%</b><span>aproveitamento geral" in html
     assert "▼ piorou -100 p.p." in html and ">novo<" in html
     assert "Rotas mais cotadas" in html and "Serra/ES → Anchieta/ES" in html
+
+
+def test_interrompido_e_nosso_e_fica_fora_do_aproveitamento(con):
+    """O painel tira `interrompido` do aproveitamento; o resumo contava como
+    pedido sem preço e a transportadora aparecia pior do que no painel."""
+    cid = con.execute(
+        "INSERT INTO cotacao (usuario, criado_em, cep_origem, cep_destino, cidade_origem, uf_origem,"
+        " cidade_destino, uf_destino, peso_kg, quantidade, comprimento_cm, largura_cm, altura_cm,"
+        " valor_nf) VALUES ('enzo', '2026-10-08T10:00:00', '1', '2', 'Serra', 'ES', 'Anchieta', 'ES',"
+        " '10', 1, 1, 1, 1, '1')").lastrowid
+    con.execute("INSERT INTO resultado (cotacao_id, transportadora, status, valor)"
+                " VALUES (?, 'camilo', 'cotado', '10')", (cid,))
+    cid2 = con.execute(
+        "INSERT INTO cotacao (usuario, criado_em, cep_origem, cep_destino, cidade_origem, uf_origem,"
+        " cidade_destino, uf_destino, peso_kg, quantidade, comprimento_cm, largura_cm, altura_cm,"
+        " valor_nf) VALUES ('enzo', '2026-10-08T11:00:00', '1', '2', 'Serra', 'ES', 'Anchieta', 'ES',"
+        " '10', 1, 1, 1, 1, '1')").lastrowid
+    con.execute("INSERT INTO resultado (cotacao_id, transportadora, status, valor)"
+                " VALUES (?, 'camilo', 'interrompido', NULL)", (cid2,))
+    (t,) = rs.fatos(con, HOJE)["transportadoras"]
+    assert (t["aproveitamento"], t["pedidos"]) == (100, 1)
