@@ -166,6 +166,14 @@ def ler_decimal(texto: str | None) -> Decimal | None:
         return None
 
 
+def _milhar_sem_virgula(texto: str | None) -> bool:
+    """`"1.234"`, `"12.500.000"`: ponto seguido de grupos de 3 dígitos e sem
+    vírgula. É o jeito brasileiro de escrever milhar, mas ler_decimal o lê
+    como ponto decimal."""
+    t = str(texto or "").strip().replace(" ", "")
+    return "," not in t and re.fullmatch(r"\d{1,3}(\.\d{3})+", t) is not None
+
+
 def normalizar_ncm(texto: str) -> str:
     """Só os dígitos: `"8467.29.92"` → `"84672992"`."""
     return re.sub(r"\D", "", texto or "")
@@ -338,6 +346,13 @@ def validar_item(item: EntradaItem, hoje: date) -> Resultado:
     preco = ler_decimal(item.preco)
     if preco is None or preco <= 0:
         r.erros.append(f"{n}: preço inválido ({item.preco!r}).")
+    elif _milhar_sem_virgula(item.preco):
+        # "1.234" é 1234 ou 1,234? ler_decimal lê 1,234 e o ME recebia "1,23".
+        r.erros.append(f"{n}: preço ambíguo ({item.preco!r}). Use vírgula nos "
+                       f"centavos: \"1.234,00\" ou \"1,23\".")
+    elif preco != preco.quantize(Decimal("0.01")):
+        # O ME guarda 2 casas: "0,004" virava "0,00" sem erro.
+        r.erros.append(f"{n}: preço com mais de 2 casas ({item.preco!r}).")
 
     if len(normalizar_ncm(item.ncm)) != 8:
         r.erros.append(f"{n}: NCM precisa ter 8 dígitos ({item.ncm!r}).")
