@@ -24,12 +24,13 @@ from __future__ import annotations
 
 import datetime as _dt
 import glob
+import json
 import os
 import shutil
 import threading
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from cruzar_nf.cruzar import _chave_campo, campo, cruzar
+from cruzar_nf.cruzar import _chave_campo, campo, cruzar, gravar_json
 
 HORARIO_PADRAO = "07:30"
 CAMPO_NF = "Nº NOTA FISCAL"     # mesmo nome da coluna da planilha Excel antiga
@@ -129,6 +130,8 @@ def registrar(sio: Any, config: Dict[str, Any], logger: Any, manager: Any = None
             return sync.sincronizar(_pasta(), _manager(), de=de, ate=ate, exportar=_exportar(),
                                     gravar=gravar, dir_backup=config.get("caminho_backups"),
                                     progresso=progresso, origem=origem)
+        except sync.SincronizacaoEmAndamento:   # outra rodada segurando a trava não é falha da NF
+            raise
         except Exception as e:
             logger.error(f"[sync NF] falhou: {e}")
             sync.registrar_falha(_pasta(), de, ate, str(e), origem, inicio)
@@ -271,37 +274,42 @@ def registrar(sio: Any, config: Dict[str, Any], logger: Any, manager: Any = None
 
     # -- Sincronização manual (botões do dashboard do admin; docs/sincronizacao no portal) ---------------
     execucao_planilha = _Execucao()
+    ARQ_MANUAL = "sincronizacao_manual.json"   # último resultado de cada botão (a falha na planilha não fica em outro lugar)
 
     def _nf_completo(progresso: Callable[[str], None]) -> str:
-        """HSE -> portal e, se deu certo, portal -> coluna N da planilha. Mesma janela da rodada agendada."""
+        """HSE -> portal e, se deu certo, portal -> coluna N da planilha. Mesma janela da rodada agendada.
+        Fica "rodando" até o fim da planilha: antes disso outro clique faria uma segunda exportação do HSE."""
         if not execucao.iniciar():
-            raise RuntimeError("Já existe uma sincronização de NF rodando.")
+            raise sync.SincronizacaoEmAndamento("Já existe uma sincronização de NF rodando.")
         try:
             de, ate = sync.janela(_pasta(), None, None)
             resultado = _sincronizar_nf(de, ate, True, progresso, "portal")
+            if resultado.get("nfs_gravadas"):
+                sio.emit("planilha_atualizada")
+            feito = f"HSE → portal: {resultado.get('nfs_gravadas', 0)} NF(s) gravada(s)"
+            try:
+                res = _gravar_planilha(True, progresso)
+            except Exception as e:   # planilha aberta, mudou no meio: o portal já está certo
+                raise RuntimeError(f"{feito}; a planilha não foi gravada: {e}") from e
+            return f"{feito}; portal → planilha: {res.get('gravadas', 0)} NF(s) gravada(s)"
         finally:
             execucao.terminar()
-        if resultado.get("nfs_gravadas"):
-            sio.emit("planilha_atualizada")
-        feito = f"HSE → portal: {resultado.get('nfs_gravadas', 0)} NF(s) gravada(s)"
-        try:
-            res = _gravar_planilha(True, progresso)
-        except Exception as e:   # planilha aberta, mudou no meio: o portal já está certo
-            raise RuntimeError(f"{feito}; a planilha não foi gravada: {e}") from e
-        return f"{feito}; portal → planilha: {res.get('gravadas', 0)} NF(s) gravada(s)"
 
     def _sync_planilha(progresso: Callable[[str], None]) -> str:
         """Planilha ⇄ portal gravando, sem o `--diario`: roda mesmo depois da rodada do dia."""
         from cruzar_nf import sync_planilha_portal as SP
         if not execucao_planilha.iniciar():
-            raise RuntimeError("O sync da planilha já está rodando.")
+            raise sync.SincronizacaoEmAndamento("O sync da planilha já está rodando.")
         try:
             planilha, pedidos = _planilha_e_pedidos()
             progresso("Comparando a planilha dos estagiários com o portal...")
             try:
                 r = SP.sincronizar(planilha, pedidos, _pasta(), gravar=True)
             except Exception as e:
-                SP.registrar_erro(_pasta(), e)
+                try:
+                    SP.registrar_erro(_pasta(), e)
+                except Exception as e2:   # o erro original é o que importa para quem clicou
+                    logger.error(f"[sync_planilha] não consegui registrar o erro no painel: {e2}")
                 raise
         finally:
             execucao_planilha.terminar()
@@ -326,6 +334,23 @@ def registrar(sio: Any, config: Dict[str, Any], logger: Any, manager: Any = None
                                            ("mensagem" if sucesso else "erro"): texto,
                                            "clientId": dados.get("clientId"), "audit_id": dados.get("audit_id")})
 
+    def _ler_manual() -> Dict[str, Any]:
+        arq = os.path.join(_pasta(), ARQ_MANUAL)
+        if not os.path.exists(arq):
+            return {}
+        with open(arq, encoding="utf-8") as f:
+            return json.load(f)
+
+    def _guardar_manual(servico: str, sucesso: bool, texto: str) -> None:
+        arq = os.path.join(_pasta(), ARQ_MANUAL)
+        try:
+            atual = _ler_manual()
+            atual[servico] = {"em": sync.agora_iso(), "nivel": "ok" if sucesso else "erro", "resumo": texto,
+                              "detalhe": {"origem": "portal"}}
+            gravar_json(arq, atual)
+        except Exception as e:   # é só para o cartão; não muda o resultado do botão
+            logger.error(f"[{servico}] resultado não guardado para o cartão: {e}")
+
     def _rodar_manual(dados: dict) -> None:
         servico = dados["servico"]
 
@@ -334,14 +359,19 @@ def registrar(sio: Any, config: Dict[str, Any], logger: Any, manager: Any = None
             sio.emit("progresso_sincronizacao", {"servico": servico, "mensagem": msg})
         try:
             progresso("Começou.")
-            _responder_sincronizacao(dados, True, manuais[servico](progresso))
+            texto = manuais[servico](progresso)
+            _guardar_manual(servico, True, texto)
+            _responder_sincronizacao(dados, True, texto)
+        except sync.SincronizacaoEmAndamento as e:   # recusado: nada rodou, o último resultado continua o mesmo
+            _responder_sincronizacao(dados, False, str(e))
         except Exception as e:   # o serviço não pode cair por causa de um botão
             logger.error(f"[{servico}] {e}")
+            _guardar_manual(servico, False, str(e))
             _responder_sincronizacao(dados, False, str(e))
 
     def comando_sincronizacao(dados: Optional[dict] = None) -> None:
         dados = dados if isinstance(dados, dict) else {}
-        if dados.get("servico") not in manuais:
+        if not isinstance(dados.get("servico"), str) or dados["servico"] not in manuais:
             _responder_sincronizacao(dados, False, f"Serviço desconhecido: {dados.get('servico')}")
         elif em_thread:
             threading.Thread(target=_rodar_manual, args=(dados,), daemon=True).start()
@@ -352,19 +382,31 @@ def registrar(sio: Any, config: Dict[str, Any], logger: Any, manager: Any = None
         """Último resultado de cada cartão, no formato dos eventos do gerenciador ({em, nivel, resumo})."""
         from cruzar_nf.sync_planilha_portal import FMT_HORA, ultima_rodada
         ultimas: Dict[str, Any] = {}
-        h = next((x for x in sync.carregar_estado(_pasta()).get("historico", [])
-                  if x.get("gravou") or not x.get("sucesso")), None)   # prévia não conta
-        if h:
-            ultimas["nf_completo"] = {
-                "em": h.get("rodou_em"), "nivel": "ok" if h.get("sucesso") else "erro",
-                "resumo": (f"{h.get('nfs_gravadas', 0)} NF(s) gravada(s) no portal" if h.get("sucesso")
-                           else h.get("erro")), "detalhe": {"origem": h.get("origem")}}
-        rod = ultima_rodada(_pasta())
-        if rod:
-            ultimas["sync_planilha"] = {
-                "em": _dt.datetime.strptime(rod["em"], FMT_HORA).isoformat(timespec="seconds"),
-                "nivel": "erro" if rod.get("resultado") in ("erro", "adiado") else "ok",
-                "resumo": rod.get("resultado", "") + (f": {rod['aviso']}" if rod.get("aviso") else "")}
+        try:   # cada cartão por si: um arquivo ruim não derruba os outros nem o "rodando"
+            h = next((x for x in sync.carregar_estado(_pasta()).get("historico", [])
+                      if x.get("gravou") or not x.get("sucesso")), None)   # prévia não conta
+            if h:
+                ultimas["nf_completo"] = {
+                    "em": h.get("rodou_em"), "nivel": "ok" if h.get("sucesso") else "erro",
+                    "resumo": (f"{h.get('nfs_gravadas', 0)} NF(s) gravada(s) no portal" if h.get("sucesso")
+                               else h.get("erro")), "detalhe": {"origem": h.get("origem")}}
+        except Exception as e:
+            logger.error(f"[estado] histórico da NF ilegível: {e}")
+        try:
+            rod = ultima_rodada(_pasta())
+            if rod:
+                ultimas["sync_planilha"] = {
+                    "em": _dt.datetime.strptime(rod["em"], FMT_HORA).isoformat(timespec="seconds"),
+                    "nivel": "erro" if rod.get("resultado") in ("erro", "adiado") else "ok",
+                    "resumo": rod.get("resultado", "") + (f": {rod['aviso']}" if rod.get("aviso") else "")}
+        except Exception as e:
+            logger.error(f"[estado] histórico do sync da planilha ilegível: {e}")
+        try:   # o botão mais recente vale mais (ex.: o portal recebeu a NF mas a planilha estava aberta)
+            for servico, manual in _ler_manual().items():
+                if servico not in ultimas or str(manual.get("em", "")) >= str(ultimas[servico].get("em") or ""):
+                    ultimas[servico] = manual
+        except Exception as e:
+            logger.error(f"[estado] resultado dos botões ilegível: {e}")
         return ultimas
 
     def comando_sincronizacao_estado(dados: Optional[dict] = None) -> None:

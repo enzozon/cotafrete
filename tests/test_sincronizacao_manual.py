@@ -161,3 +161,74 @@ def test_servico_desconhecido_e_estado_para_os_cartoes(tmp_path):
 def test_registra_os_comandos_novos(tmp_path):
     _, sio, _ = montar_sync(tmp_path)
     assert {"comando_sincronizacao", "comando_sincronizacao_estado"} <= set(sio.handlers)
+
+
+# -- revisão: estado certo durante e depois de cada passo ------------------------------------
+
+def test_nf_completo_continua_rodando_durante_a_gravacao_na_planilha(tmp_path, monkeypatch):
+    from cruzar_nf import nf_planilha as NP
+    cen, sio, h = montar_nf(tmp_path, [venda(10, 3, 16001, emissao=HOJE)])
+    vistos, real = [], NP.gravar_nf_na_planilha
+
+    def espiar(*a, **k):
+        h["sincronizacao_estado"]({"clientId": "espiao"})
+        vistos.append(sio.ultimo("retorno_sincronizacao_estado")["estado"]["rodando"])
+        return real(*a, **k)
+    monkeypatch.setattr(NP, "gravar_nf_na_planilha", espiar)
+    h["sincronizacao"]({"servico": "nf_completo"})
+    assert vistos == [["nf_completo"]]
+    assert retorno(sio)["sucesso"]
+
+
+def test_colisao_com_outra_rodada_nao_vira_falha_da_nf(tmp_path):
+    cen, sio, h = montar_nf(tmp_path, [venda(10, 3, 16001, emissao=HOJE)])
+    h["sincronizacao"]({"servico": "nf_completo"})                    # uma boa
+    with trava(cen.dados, "Sincronização planilha/portal"):
+        h["sincronizacao"]({"servico": "nf_completo"})                # colide
+    assert "rodando" in retorno(sio)["erro"]
+    h["sincronizacao_estado"]({"clientId": "c"})
+    assert sio.ultimo("retorno_sincronizacao_estado")["estado"]["ultimas"]["nf_completo"]["nivel"] == "ok"
+
+
+def test_falha_na_planilha_fica_registrada_no_cartao(tmp_path, monkeypatch):
+    from cruzar_nf import nf_planilha as NP
+
+    def recusar(*a, **k):
+        raise NP.GravacaoRecusada("A planilha está aberta no Excel (ANA).")
+    monkeypatch.setattr(NP, "gravar_nf_na_planilha", recusar)
+    cen, sio, h = montar_nf(tmp_path, [venda(10, 3, 16001, emissao=HOJE)])
+    h["sincronizacao"]({"servico": "nf_completo"})
+    sio2 = Sio()                                                       # outra instância: serviço reiniciado / tela recarregada
+    h2 = registrar(sio2, {"caminho_banco_dados": str(cen.dados)}, Log(), manager=object(), em_thread=False)
+    h2["sincronizacao_estado"]({"clientId": "depois"})
+    ultima = sio2.ultimo("retorno_sincronizacao_estado")["estado"]["ultimas"]["nf_completo"]
+    assert ultima["nivel"] == "erro" and "aberta no Excel (ANA)" in ultima["resumo"]
+
+
+def test_servico_que_nao_e_texto_responde_erro(tmp_path):
+    _, sio, h = montar_sync(tmp_path)
+    for servico in ([], {}, ["nf_completo"], None):
+        h["sincronizacao"]({"servico": servico})
+        assert retorno(sio)["sucesso"] is False
+
+
+def test_erro_ao_registrar_o_erro_nao_esconde_o_erro_original(tmp_path, monkeypatch):
+    c, sio, h = montar_sync(tmp_path)
+
+    def quebrar(*a, **k):
+        raise OSError("rede caiu")
+
+    def registrar_quebrado(*a, **k):
+        raise PermissionError("pasta de dados sem permissão")
+    monkeypatch.setattr(SP, "sincronizar", quebrar)
+    monkeypatch.setattr(SP, "registrar_erro", registrar_quebrado)
+    h["sincronizacao"]({"servico": "sync_planilha"})
+    assert retorno(sio)["erro"] == "rede caiu"
+
+
+def test_cartao_com_dado_ruim_nao_derruba_o_estado(tmp_path):
+    c, sio, h = montar_sync(tmp_path)
+    (c.dados / SP.ARQ_HISTORICO).write_text(json.dumps({"rodadas": [{"resultado": "gravou"}]}), encoding="utf-8")   # sem "em"
+    h["sincronizacao_estado"]({"clientId": "c"})
+    r = sio.ultimo("retorno_sincronizacao_estado")
+    assert r["sucesso"] and r["estado"]["rodando"] == []
