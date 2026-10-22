@@ -468,6 +468,21 @@ def painel_para_tela(pasta, agora=None):
         rodadas=rodadas, alerta=_alerta(rodadas, agora))
 
 
+def registrar_erro(pasta, e):
+    """Rodada gravando que falhou (linha de comando ou botão do portal). Outra rodada em andamento não é erro."""
+    Path(pasta).mkdir(parents=True, exist_ok=True)
+    if not isinstance(e, SincronizacaoEmAndamento):
+        # mantém as listas da última rodada boa: o painel continua mostrando o que revisar
+        _salvar(pasta, ARQ_RELATORIO, dict(_ler(pasta, ARQ_RELATORIO), gravou=False, erro=str(e),
+                                           adiado=True, gerado_em=dt.datetime.now().strftime(FMT_HORA)))
+
+
+def ultima_rodada(pasta):
+    """A rodada gravando mais recente (do histórico do painel), ou None."""
+    rodadas = _ler(pasta, ARQ_HISTORICO).get('rodadas', [])
+    return rodadas[-1] if rodadas else None
+
+
 def main(argv=None):
     from dotenv import load_dotenv
     from cruzar_nf.sincronizar import DADOS_PADRAO, PEDIDOS_PADRAO
@@ -484,11 +499,7 @@ def main(argv=None):
     except Exception as e:
         print('[ERRO] %s' % e)
         if a.gravar:
-            Path(a.dados).mkdir(parents=True, exist_ok=True)
-            if not isinstance(e, SincronizacaoEmAndamento):
-                # mantém as listas da última rodada boa: o painel continua mostrando o que revisar
-                _salvar(a.dados, ARQ_RELATORIO, dict(_ler(a.dados, ARQ_RELATORIO), gravou=False, erro=str(e),
-                                                     adiado=True, gerado_em=dt.datetime.now().strftime(FMT_HORA)))
+            registrar_erro(a.dados, e)
         return 1
     if not r.get('sem_mudanca'):
         resumo = {k: r.get(k) for k in ('gerado_em', 'primeira_vez', 'gravou', 'adiado', 'aviso')}
