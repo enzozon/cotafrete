@@ -278,7 +278,7 @@ o cadastro e as operações pendentes para análise; não apagar estado para ret
 
 # Botões do dashboard do admin (sincronização manual)
 
-O portal (seção "Sincronização" do `dashboard2.html`) manda para o serviço de NF:
+O portal (tela "Rodar agora", `sincronizar.html`) manda para o serviço de NF:
 
 - `comando_sincronizacao {servico: "nf_completo"}`: HSE → portal (mesma janela da
   rodada agendada) e, se deu certo, portal → coluna N da planilha. Planilha aberta:
