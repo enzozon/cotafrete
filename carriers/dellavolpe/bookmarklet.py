@@ -197,8 +197,14 @@ SCRIPT_JS = """(function () {
     if (!valor) return false;
     var el = campo(nome);
     if (!el || el.tagName !== 'SELECT') return false;
+    // Sem caixa nem acento, como opcao_da_cidade: o site lista "Santa
+    // Bárbara d'Oeste" e o vendedor tinha "D'Oeste" (cotação #472).
+    var plano = function (t) {
+      return t.normalize('NFD').replace(/[\\u0300-\\u036f]/g, '')
+              .toLowerCase().trim();
+    };
     var opcao = Array.prototype.slice.call(el.options).find(function (o) {
-      return o.value === valor || o.textContent.trim() === valor;
+      return o.value === valor || plano(o.textContent) === plano(valor);
     });
     if (!opcao) return false;
     el.value = opcao.value;
