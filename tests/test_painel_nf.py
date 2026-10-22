@@ -194,7 +194,12 @@ class Log:
     error = info
 
 
-def test_comandos_respondem_com_o_client_id(dados):
+def test_comandos_respondem_com_o_client_id(dados, monkeypatch):
+    # Os eventos são "dos últimos 7 dias": sem relógio fixo o teste vencia uma
+    # semana depois das datas do `dados` (falhou em 22/10/2026).
+    eventos = PN.eventos
+    monkeypatch.setattr(PN, "eventos", lambda pasta, limite=200, desde=None, agora=None:
+                        eventos(pasta, limite, desde, agora=agora or AGORA))
     sio = Sio()
     registrar(sio, {"caminho_banco_dados": str(dados)}, Log(), manager=object(), em_thread=False)
     sio.handlers["comando_nf_painel"]({"clientId": "c1"})
