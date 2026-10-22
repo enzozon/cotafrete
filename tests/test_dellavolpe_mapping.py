@@ -416,3 +416,35 @@ def test_carga_sem_anexo_nao_cria_chave_de_arquivo():
         dv.campos_do_formulario(dv.preparar_payload(montar())))
     assert arquivos == {}
     assert len(texto) == 18
+
+
+def test_envio_que_o_site_diz_que_falhou_vira_erro_com_a_frase_do_site():
+    """Cotação #467 (21/10/2026): o site respondeu 'O envio da sua mensagem
+    falhou'. Sem classe -ng e sem "falha"/"erro" no texto, a frase do cartão
+    era a genérica "Confirmação de envio não identificada" — e o vendedor não
+    sabia se tinha saído. Agora diz que NÃO saiu, com as palavras do site."""
+    html = ('<div class="wpcf7-response-output" aria-hidden="true">'
+            'O envio da sua mensagem falhou. Clique em "Pedir orçamento" '
+            'novamente</div>')
+
+    res = dv.normalizar_resposta(html)
+
+    assert res.status is StatusCotacao.ERRO
+    assert "nada foi enviado" in res.erro.lower()
+    assert "falhou" in res.erro
+
+
+@pytest.mark.parametrize("digitada, esperada", [
+    ("Santa Bárbara D'Oeste", "Santa Bárbara d'Oeste"),   # cotação #472
+    ("SANTA BARBARA D'OESTE", "Santa Bárbara d'Oeste"),
+    ("Vitória", "Vitória"),
+])
+def test_cidade_casa_com_a_opcao_do_site_sem_olhar_caixa_nem_acento(
+        digitada, esperada):
+    opcoes = ["Selecione a cidade", "Santa Bárbara d'Oeste", "Vitória",
+              "Águas de Santa Bárbara"]
+    assert dv.opcao_da_cidade(digitada, opcoes) == esperada
+
+
+def test_cidade_que_o_site_nao_tem_devolve_none():
+    assert dv.opcao_da_cidade("Pequi", ["Vitória"]) is None

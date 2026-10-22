@@ -200,6 +200,19 @@ def test_cidade_espera_as_opcoes_chegarem_do_xhr(adapter, page):
             == "Vitória")
 
 
+def test_cidade_com_caixa_diferente_da_lista_do_site(adapter, page):
+    """Cotação #472 (21/10/2026): o vendedor tinha "Santa Bárbara D'Oeste" e
+    o site lista "Santa Bárbara d'Oeste". O select_option exige o texto
+    exato: 90s de timeout e o cartão vermelho."""
+    campos = {"Selecione o estado de origem": "SP",
+              "Selecione a cidade de origem": "Santa Bárbara D'Oeste"}
+
+    adapter._preencher(page, campos)
+
+    assert (page.locator('#form-fracionado [name="cidade_origem"]').input_value()
+            == "Santa Bárbara d'Oeste")
+
+
 # ------------------------------------------- integração: formulário inteiro
 def test_print_recorta_o_formulario_e_nao_o_site_inteiro(page, tmp_path):
     """O print é a única forma de o Enzo conferir o que foi enviado.
