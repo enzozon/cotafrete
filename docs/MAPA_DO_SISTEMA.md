@@ -81,7 +81,13 @@ Favorita só tem a Ventura no "Alterar empresa", e o agendamento de coleta dela
 não foi levantado (levanta `NotImplementedError`). CNPJ "nao cadastrado" na
 ponta digitada é recusa na Generoso, mas na Favorita não
 (`cota_sem_cadastro`): o robô digita o CEP e, se for CEP geral de cidade,
-completa rua e bairro pela Receita (`core/cnpj.endereco`).
+completa rua e bairro pela Receita (`core/cnpj.endereco`). Cliente
+cadastrado com bairro "." e campo travado (#466) é recusa
+(`recusa_cadastro_sem_bairro`), não erro: só a transportadora corrige.
+
+A Della Volpe escolhe a cidade sem diferenciar maiúscula nem acento
+(`mapping.opcao_da_cidade`, e o mesmo no bookmarklet): o site lista "Santa
+Bárbara d'Oeste", e o texto exato derrubava a cotação (#472).
 
 "Ainda não atendemos essa origem" (embaixo do CEP) pode aparecer só **depois**
 do Próximo: `_conferir_cobertura` roda antes e depois dele. Na Favorita a
