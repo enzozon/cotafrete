@@ -512,3 +512,18 @@ def test_leitura_cede_a_vez_ao_frete(cliente, monkeypatch):
     monkeypatch.setattr(me_ui, "fretes_em_curso", lambda: 1)
     cliente.post("/me/atualizar")
     assert chamadas == []
+
+
+def test_limpar_so_exclui_anexo_que_o_robo_subiu(cliente, monkeypatch):
+    """O robô não sobe arquivo com nome que já está no ME. Se um colega
+    anexou "Proposta.pdf" direto no site e o vendedor guardou um arquivo com
+    o mesmo nome aqui, o Limpar mandava excluir o do colega."""
+    limpador = LimpadorFalso()
+    monkeypatch.setattr(me_ui, "LIMPADOR", limpador)
+    cid = _salva(cliente)
+    monkeypatch.setattr(me_ui, "anexos_locais", lambda c: {
+        "RDC": {"nome": "Proposta.pdf", "arquivo": "x/Proposta.pdf"},
+        "RDCT": {"nome": "Tecnica.pdf", "arquivo": "x/Tecnica.pdf"}})
+    me_ui.banco.me_registrar(cid, "aviso do robô", "anexado no ME: Tecnica.pdf em Proposta técnica", "enzo")
+    cliente.post(f"/me/{cid}/limpar")
+    assert limpador.anexos == ["Tecnica.pdf"]

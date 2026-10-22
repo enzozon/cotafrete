@@ -31,6 +31,8 @@ suíte de quem só quer rodar os testes de lógica.
 
 from __future__ import annotations
 
+from core import sessao as sessao_senha
+
 import threading
 from datetime import date, timedelta
 from pathlib import Path
@@ -82,6 +84,7 @@ def servidor(tmp_path_factory):
     modulo.banco = banco
     modulo.adm.banco = banco
     banco.criar_conta("enzo")
+    banco.definir_senha("enzo", sessao_senha.hash_senha("senha-de-teste"))  # sessão só vale com senha
     # Senha do painel só neste processo: sem ela /adm responde 404 de
     # propósito, e a tela do painel não entraria nos prints.
     import os

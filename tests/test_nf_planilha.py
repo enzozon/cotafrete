@@ -351,3 +351,32 @@ def test_estado_leva_o_resumo_da_conferencia(cen):
     h["estado"]({"clientId": "y"})
     conf = sio.ultimo("retorno_sync_nf_estado")["estado"]["conferencia_planilha"]
     assert conf["planilha_sem_portal"] == 0 and conf["nf_so_no_portal"] == 2
+
+
+# -- NF de gêmeo ---------------------------------------------------------------------
+
+def _l(pedido, rfq, nf=None):
+    d = {"CIDADE": "ITABIRA - MG", "PEDIDO": pedido, "VALOR ": 100.0, "PRODUTO": "MONITOR",
+         "NMR DA RFQ": rfq}
+    if nf:
+        d["Nº NOTA FISCAL"] = nf
+    return d
+
+
+def test_nf_do_gemeo_nao_vai_para_a_linha():
+    """A linha 2 tem o par verdadeiro no portal com o PEDIDO digitado errado
+    (mesma RFQ, ainda sem NF). O gêmeo 4500222, de outra RFQ, casava por
+    CIDADE+VALOR e a NF dele era gravada na planilha."""
+    linhas = [(2, _l(4500111, "R1"))]
+    pedidos = [_l(450011, "R1"), _l(4500222, "R9", nf="15016")]
+    plano = NP.planejar(linhas, pedidos)
+    assert plano["mudancas"] == {}
+
+
+def test_par_aproximado_de_duas_linhas_nao_grava():
+    """Um pedido do portal que casa com duas linhas da planilha não decide
+    nenhuma das duas."""
+    linhas = [(2, _l(1, None)), (3, _l(2, None))]
+    pedidos = [_l(9, None, nf="15016")]
+    plano = NP.planejar(linhas, pedidos)
+    assert plano["mudancas"] == {} and {a["linha"] for a in plano["ambiguas"]} == {2, 3}

@@ -29,7 +29,8 @@ import re
 import threading
 import tempfile
 import time
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from contextlib import contextmanager
+from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple
 
 from cruzar_nf.maestro import aplicar_nfs as _aplicar_nfs
 
@@ -42,6 +43,66 @@ PASSO_DATA_NS = 20 * 1000 * 1000
 
 class ConflitoGravacao(RuntimeError):
     """O PEDIDOS.json mudou entre a leitura e a gravação."""
+
+
+# Trava combinada com o gerenciador (allan-max/gerenciador-maestro,
+# planilha_manager._salvar_arquivo): `PEDIDOS.json.lock` na mesma pasta,
+# 1 byte na posição 0 travado com msvcrt.locking LK_NBLCK (fcntl.lockf fora do
+# Windows), nova tentativa a cada 0,2 s por até 30 s. Segura só durante
+# conferir-e-trocar. Estourou o prazo: não grava. O arquivo nunca é apagado.
+# Fecha a janela entre a última conferência e o os.replace, em que uma
+# gravação do gerenciador podia se perder; só fecha com os DOIS lados no ar.
+TRAVA_SUFIXO = ".lock"
+TRAVA_PASSO_S = 0.2
+TRAVA_PRAZO_S = 30.0
+
+
+def _travar_byte(fd: int) -> bool:
+    try:
+        if os.name == "nt":
+            import msvcrt
+            os.lseek(fd, 0, os.SEEK_SET)
+            msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
+        else:
+            import fcntl
+            fcntl.lockf(fd, fcntl.LOCK_EX | fcntl.LOCK_NB, 1, 0)
+        return True
+    except OSError:
+        return False
+
+
+def _soltar_byte(fd: int) -> None:
+    try:
+        if os.name == "nt":
+            import msvcrt
+            os.lseek(fd, 0, os.SEEK_SET)
+            msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
+        else:
+            import fcntl
+            fcntl.lockf(fd, fcntl.LOCK_UN, 1, 0)
+    except OSError:
+        pass
+
+
+@contextmanager
+def trava_pedidos(caminho: str, prazo: Optional[float] = None,
+                  dormir: Callable[[float], None] = time.sleep) -> Iterator[None]:
+    prazo = TRAVA_PRAZO_S if prazo is None else prazo
+    fd = os.open(caminho + TRAVA_SUFIXO, os.O_RDWR | os.O_CREAT)
+    try:
+        esperou = 0.0
+        while not _travar_byte(fd):
+            if esperou >= prazo:
+                raise ConflitoGravacao(
+                    f"o gerenciador segurou a trava do PEDIDOS.json por mais de {prazo:.0f} s")
+            dormir(TRAVA_PASSO_S)
+            esperou += TRAVA_PASSO_S
+        try:
+            yield
+        finally:
+            _soltar_byte(fd)
+    finally:
+        os.close(fd)
 
 
 def _assinatura(caminho: str) -> Tuple[int, int]:
@@ -103,17 +164,20 @@ class ArquivoPedidosConcorrente:
                                          dir=os.path.dirname(os.path.abspath(self.caminho_pedidos)))
         with os.fdopen(fd, "w", encoding="utf-8") as f:
             json.dump(self.pedidos, f, indent=1, ensure_ascii=False)
-        if _assinatura(self.caminho_pedidos) != self._assinatura:   # última conferência
-            os.remove(temporario)
-            raise ConflitoGravacao("o PEDIDOS.json mudou durante a gravação")
         try:
-            os.replace(temporario, self.caminho_pedidos)
-        except OSError as e:                 # o gerenciador estava com o arquivo aberto
+            with trava_pedidos(self.caminho_pedidos, dormir=self.dormir):
+                if _assinatura(self.caminho_pedidos) != self._assinatura:   # última conferência
+                    raise ConflitoGravacao("o PEDIDOS.json mudou durante a gravação")
+                try:
+                    os.replace(temporario, self.caminho_pedidos)
+                except OSError as e:     # o gerenciador estava com o arquivo aberto
+                    raise ConflitoGravacao(f"não consegui trocar o arquivo: {e}")
+        except ConflitoGravacao:
             try:
                 os.remove(temporario)
             except OSError:
                 pass
-            raise ConflitoGravacao(f"não consegui trocar o arquivo: {e}")
+            raise
         lido_em = self._assinatura[0]
         if _assinatura(self.caminho_pedidos)[0] <= lido_em:
             # o planilha_manager só relê se a data AUMENTAR; no mesmo passo do relógio ele não veria

@@ -232,3 +232,35 @@ def test_cartao_com_dado_ruim_nao_derruba_o_estado(tmp_path):
     h["sincronizacao_estado"]({"clientId": "c"})
     r = sio.ultimo("retorno_sincronizacao_estado")
     assert r["sucesso"] and r["estado"]["rodando"] == []
+
+
+def test_dois_botoes_terminando_juntos_guardam_os_dois_cartoes(tmp_path, monkeypatch):
+    import threading
+
+    from cruzar_nf import hse_robo, maestro, sincronizar
+
+    c, sio, h = montar_sync(tmp_path)
+    gravar = maestro.gravar_json
+    juntos = threading.Barrier(2)
+
+    def gravar_junto(arq, dados):   # cada botão espera o outro antes de gravar o arquivo dos cartões
+        try:
+            juntos.wait(timeout=1)
+        except threading.BrokenBarrierError:   # com a trava o outro só lê depois desta gravação
+            pass
+        gravar(arq, dados)
+
+    def quebrar(*a, **k):
+        raise OSError("rede caiu")
+    monkeypatch.setattr(maestro, "gravar_json", gravar_junto)
+    monkeypatch.setattr(hse_robo, "exportador_do_config", lambda config: None)
+    monkeypatch.setattr(sincronizar, "sincronizar", quebrar)
+    monkeypatch.setattr(SP, "sincronizar", quebrar)
+    botoes = [threading.Thread(target=h["sincronizacao"], args=({"servico": s},))
+              for s in ("nf_completo", "sync_planilha")]
+    for b in botoes:
+        b.start()
+    for b in botoes:
+        b.join()
+    assert set(json.loads((c.dados / "sincronizacao_manual.json").read_text(encoding="utf-8"))) == {
+        "nf_completo", "sync_planilha"}

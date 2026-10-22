@@ -94,6 +94,11 @@ O CNPJ do lado livre preenche o endereço **cadastrado** dele, que pode não ser
 o da cotação. `_usar_cep_da_cotacao` digita o CEP da ficha por cima; se não
 der, recusa nomeando a cidade do cadastro. Nunca cotar o endereço do cadastro.
 
+### Braspress: recusa antes do preço
+
+`normalizar_resposta` confere a caixa de recusa (`alert-danger`) antes do
+sucesso. Sucesso sem valor de frete vira ERRO, não COTADO.
+
 ### Braspress: CNPJ sem cadastro
 
 O site escreve "não cadastrado, para prosseguir informe o CEP de Destino". O
@@ -148,6 +153,19 @@ juntas. O `monitorar.py` se atualiza sozinho.
   **exigências do comprador** (cada uma com o trecho conferido no texto) e
   nunca escreve no formulário. `core/resumo_erros.py` só aceita um número como fato
   se ele aparece fora da data.
+- **Nunca preso em "salvando".** O robô roda numa thread. Na subida,
+  `banco.me_soltar_salvando` troca `salvando` por `erro` com o motivo, e
+  exceção fora do previsto no robô vira `erro` (`me_ui._nunca_preso`). O
+  `/_ocupado` soma `me_ui.robos_em_curso()`, para o `atualizar.py` não
+  reiniciar no meio de um Salvar.
+- **Limpar exclui só o anexo que o robô subiu** (evento "anexado no ME" no
+  histórico, `me_ui.anexos_subidos_pelo_robo`), nunca o de mesmo nome que
+  um colega pôs direto no site.
+- **Preço**: `regras.validar_item` recusa "1.234" sem vírgula (ambíguo) e
+  mais de 2 casas. Aviso de frete com sigla negada ("não aceitamos FOB")
+  não decide por ela (`regras._frete_do_aviso`).
+- **Pendente:** Salvar e Limpar ainda **não** conferem se há rascunho de
+  outra pessoa nos campos de item. Ver a auditoria de 21/10/2026.
 - **Leitura automática dos itens** (`web/me_ui.ler_itens_novos`): `Sessao.abrir`
   espera só o formulário (o "load" completo da página é opcional). Na falha,
   o erro diz a tela e o print vai para "Prints do robô". As tentativas contam
@@ -172,7 +190,10 @@ cruzar_nf/sync_planilha_portal.py     (sincronização diária de campos e novos
 **Por que não se corrompe:** `cruzar_nf/arquivo_pedidos.py` grava só se a data
 e o tamanho não mudaram desde a leitura. Ele escreve num temporário e troca o
 arquivo com `os.replace`, depois relê. Se o gerenciador gravou por cima, ele
-grava de novo. Isso **depende** de o `planilha_manager.py` recarregar o JSON
+grava de novo. A conferência final e a troca acontecem segurando
+`PEDIDOS.json.lock` (1 byte com `msvcrt.locking`, até 30 s), a trava combinada
+com o gerenciador em 21/10/2026; a janela só fecha quando o gerenciador
+também a usar. Isso **depende** de o `planilha_manager.py` recarregar o JSON
 quando a data de modificação muda. Se alguém tirar essa recarga do servidor,
 o gerenciador volta a sobrescrever as NFs. Confira essa recarga antes de
 qualquer mudança no fluxo, pelo hash do arquivo no servidor.
@@ -185,10 +206,10 @@ qualquer mudança no fluxo, pelo hash do arquivo no servidor.
 | `ServicoNF.bat` | sobe e reinicia o serviço | roda pela tarefa "Maestro NF Servico" (ONSTART, Administrator). `schtasks /End` **não** mata o python |
 | `ReiniciarServicoNF.bat` | encerra os que sobraram e sobe de novo | não reinicia enquanto `nf_planilha` grava (trava própria) |
 | `hse_robo.py` | Selenium no ERP HSE, com login em duas etapas e um Excel por mês | usa Chrome 109, o último que roda no Server 2012 R2 |
-| `sincronizar.py` | exporta, monta a base, cruza, grava e escreve o `sync_nf.json` | base acumulada desde 01/01/2025 em `vendas_hse.json` |
+| `sincronizar.py` | exporta, monta a base, cruza, grava e escreve o `sync_nf.json` | base acumulada desde 01/01/2025 em `vendas_hse.json`. Data final no futuro é recusada. A trava leva uma ficha e só a dona a apaga. Exportação vazia com vendas na janela é recusada (`base_vendas.mesclar`), nada é apagado |
 | `cruzar.py` | casa pedido com NF | regra de casamento documentada em `cruzar_nf/README.md` |
-| `cadastro_pedidos.py` | planilha → PEDIDOS.json | chave = PEDIDO + RFQ + começo do PRODUTO (30 caracteres). **O que já foi visto não volta**, mesmo se apagado no portal. Linha incompleta fica esperando |
-| `nf_planilha.py` | escreve a NF na coluna "NF (MAESTRO)" da planilha | edita o XML do .xlsx de forma cirúrgica. **Planilha aberta = não grava** |
+| `cadastro_pedidos.py` | planilha → PEDIDOS.json | chave = PEDIDO + RFQ + começo do PRODUTO (30 caracteres). **O que já foi visto não volta**, mesmo se apagado no portal. Linha incompleta fica esperando. Gêmeo (PEDIDO e RFQ diferentes, mesma CIDADE+VALOR) não conta como já cadastrado (`_gemeo`) |
+| `nf_planilha.py` | escreve a NF na coluna "NF (MAESTRO)" da planilha | edita o XML do .xlsx de forma cirúrgica. **Planilha aberta = não grava**. Par só aproximado (sem mesmo PEDIDO) precisa ser exclusivo, e gêmeo nunca empresta a NF; senão vai para `ambiguas` |
 | `planilha_portal.py` | confere planilha × portal todo dia | linhas canceladas ficam em `conferencia_ignorar.json` |
 | `sync_planilha_portal.py` | merge de três pontas, prévia padrão; tarefa própria às 12:30 | primeira gravação só inicializa a foto; conflitos, exclusões e histórico antigo não são sobrescritos. PEDIDO/RFQ/PRODUTO exigem revisão |
 | `planilha_edicao.py` | atualiza células e acrescenta linhas no XML do Excel | compartilha `nf_planilha.trava` com o gravador de NF; fórmulas e estruturas não suportadas bloqueiam a operação |

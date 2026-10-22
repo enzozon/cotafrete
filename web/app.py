@@ -317,6 +317,15 @@ if _orfas:
     print(f"[cotafrete] {_orfas} cotação(ões) pendente(s) marcadas como "
           f"interrompidas — o sistema foi fechado durante elas.")
 
+# Mesmo motivo no ME: o robô roda numa thread que morre com o processo, e a
+# cotação ficava "Salvando no ME…" para sempre, com os botões recusando.
+_me_soltas = banco.me_soltar_salvando(
+    "o sistema foi fechado durante o salvamento; confira o rascunho no ME "
+    "antes de salvar de novo")
+if _me_soltas:
+    print(f"[cotafrete] {len(_me_soltas)} cotação(ões) do ME estavam salvando "
+          f"quando o sistema fechou e voltaram para 'erro'.")
+
 # A Della Volpe é a única automática que envia um formulário PÚBLICO: cada
 # submissão vira uma cotação na fila de um vendedor da transportadora. Por
 # isso o adapter exige DV_ENVIO_REAL_AUTORIZADO=sim e, sem a variável, recusa
@@ -691,9 +700,32 @@ def vendedor(usuario: str | None = Cookie(None, alias=COOKIE)) -> str | None:
     `sessao.DIAS_DE_SESSAO` dias para fazer efeito, que é o prazo do cookie
     que a pessoa já tem na máquina. Demitiu, perdeu o acesso agora."""
     nome = sessao.dono_do_cookie(usuario, banco.segredo_sessao())
-    if nome is None or banco.conta(nome) is None:
+    conta = banco.conta(nome) if nome is not None else None
+    if conta is None or not _cookie_vale_para(conta, usuario):
         return None
     return nome
+
+
+def _cookie_vale_para(conta: dict, cookie: str) -> bool:
+    """O cookie precisa ser da senha ATUAL da conta.
+
+    Sem isto, "Esquecer senha" (usado quando a senha vazou) e "Remover" +
+    recriar o mesmo nome deixavam o cookie antigo valendo até 7 dias: a
+    assinatura só prova nome e prazo. Sessão só nasce depois de a senha
+    existir (`entrar`), então convite aberto não tem sessão válida, e cookie
+    assinado antes da senha atual ser definida é de uma senha anterior."""
+    if conta["senha_hash"] is None:
+        return False
+    if not conta.get("definida_em"):
+        # Senha sem data (não deveria existir): sem com o que comparar, aceita,
+        # para não prender a pessoa num login que nunca abre.
+        return True
+    emitido = sessao.emitido_em(cookie)
+    try:
+        definida = datetime.fromisoformat(conta["definida_em"]).timestamp()
+    except (TypeError, ValueError):
+        return False
+    return emitido is not None and emitido >= int(definida)
 
 
 
@@ -763,7 +795,7 @@ def ocupado() -> dict:
 
     Sem login de propósito: quem pergunta é um script da própria VM. E só
     sai um número — nada de cliente, rota nem vendedor."""
-    return {"em_curso": EXECUTOR.em_curso}
+    return {"em_curso": EXECUTOR.em_curso + me_ui.robos_em_curso()}
 
 
 @app.get("/login", response_class=HTMLResponse)

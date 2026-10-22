@@ -15,8 +15,18 @@ from __future__ import annotations
 
 import os
 import threading
+import time
 
 import pytest
+
+# O banco guarda hora local sem fuso, e produção roda no horário de Brasília.
+# Numa máquina em UTC (CI, container) as conversões de `Date:` de e-mail
+# davam 3 h de diferença e o teste falhava sem defeito no código. Fixa o fuso
+# de produção antes de qualquer import. `tzset` só existe fora do Windows; lá
+# a máquina de desenvolvimento já está em Brasília.
+os.environ["TZ"] = "America/Sao_Paulo"
+if hasattr(time, "tzset"):
+    time.tzset()
 
 # A Della Volpe só é automática com DV_AUTOMATICA_DESDE no .env — e o .env é
 # o de QUEM RODA os testes. Numa máquina com ela ligada, os testes que supõem

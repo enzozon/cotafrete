@@ -12,9 +12,19 @@ setlocal
 set TAREFA=Maestro NF Servico
 
 pushd "%~dp0.."
-set DADOS=\SERVIDOR2\Publico\ALLAN\database\sync_nf
+set "DADOS=\\SERVIDOR2\Publico\ALLAN\database\sync_nf"
 if exist ".env" for /f "usebackq tokens=1,* delims==" %%a in (".env") do if /i "%%a"=="SYNC_NF_DADOS" set "DADOS=%%b"
 popd
+
+REM Sem a pasta de dados nao da para ver as travas: reiniciar assim mataria
+REM o servico no meio de uma gravacao. Antes o padrao tinha uma barra so
+REM (\SERVIDOR2...) e a conferencia abaixo olhava uma pasta que nao existe.
+if not exist "%DADOS%\" (
+    echo.
+    echo  [ERRO] Nao achei a pasta de dados: %DADOS%
+    echo  Confira SYNC_NF_DADOS no .env. Nada foi reiniciado.
+    exit /b 1
+)
 
 REM sync_nf.trava: sincronizacao de NF; nf_planilha.trava: gravando a NF na planilha
 for %%t in (sync_nf.trava nf_planilha.trava) do if exist "%DADOS%\%%t" (

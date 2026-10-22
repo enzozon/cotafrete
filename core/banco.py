@@ -930,6 +930,26 @@ class Banco:
                 (para, *campos.values(), cotacao_id, *de))
             return cur.rowcount == 1
 
+    def me_soltar_salvando(self, motivo: str) -> list[int]:
+        """Na subida: nenhum robô do ME sobrevive ao processo anterior. O que
+        ficou em `salvando` vira `erro` com o motivo, para a tela reabrir a
+        edição (antes ficava "Salvando no ME…" para sempre e os botões
+        recusavam). Devolve as cotações soltas."""
+        agora = datetime.now().isoformat(timespec="seconds")
+        with closing(self._conectar()) as con, con:
+            ids = [r[0] for r in con.execute(
+                "SELECT id FROM me_cotacao WHERE status = 'salvando'")]
+            for cid in ids:
+                cur = con.execute(
+                    "UPDATE me_cotacao SET status = 'erro', erro = ?"
+                    " WHERE id = ? AND status = 'salvando'", (motivo, cid))
+                if cur.rowcount:
+                    con.execute(
+                        "INSERT INTO me_historico (cotacao_id, quando, usuario, evento,"
+                        " detalhe) VALUES (?, ?, ?, ?, ?)",
+                        (cid, agora, None, "erro do robô", motivo))
+            return ids
+
     def me_cotacao(self, cotacao_id: int) -> dict | None:
         with closing(self._conectar()) as con, con:
             r = con.execute("SELECT * FROM me_cotacao WHERE id = ?",

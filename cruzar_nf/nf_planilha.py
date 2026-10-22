@@ -43,7 +43,7 @@ import zipfile
 from typing import Any, Callable, Dict, List, Optional, Tuple
 from xml.sax.saxutils import escape
 
-from cruzar_nf.cadastro_pedidos import COLUNA_NF_MAESTRO, _campo, _norm, ler_planilha_com_linhas
+from cruzar_nf.cadastro_pedidos import COLUNA_NF_MAESTRO, _campo, _gemeo, _norm, ler_planilha_com_linhas
 from cruzar_nf.planilha_portal import nf_de, parear
 
 TITULO = COLUNA_NF_MAESTRO
@@ -235,13 +235,30 @@ def planejar(linhas: List[Tuple[int, Dict[str, Any]]], pedidos: List[Dict[str, A
     pares = parear(linhas, pedidos)
     plano: Dict[str, Any] = {"mudancas": {}, "ambiguas": [], "sem_nf": 0, "iguais": 0, "atualizadas": 0,
                              "sem_par": 0}
+    linhas_do_pedido: Dict[int, int] = {}
+    for indices in pares.values():
+        for i in indices:
+            linhas_do_pedido[i] = linhas_do_pedido.get(i, 0) + 1
     for n, l in linhas:
         if not pares[n]:
             plano["sem_par"] += 1
             continue
-        candidatos = pares[n]
+        # Gêmeo (PEDIDO e RFQ diferentes dos dois lados) nunca empresta a NF.
+        candidatos = [i for i in pares[n] if not _gemeo(l, pedidos[i])]
+        if not candidatos:
+            plano["sem_par"] += 1
+            continue
         mesmo_numero = [i for i in candidatos if _norm(_campo(l, "PEDIDO"))
                         and _norm(_campo(pedidos[i], "PEDIDO")) == _norm(_campo(l, "PEDIDO"))]
+        if not mesmo_numero and (len(candidatos) > 1 or linhas_do_pedido[candidatos[0]] > 1):
+            # Par só aproximado e não exclusivo: a NF pode ser de outro pedido.
+            # Mesmo critério do `inverso` em planilha_portal.conferir.
+            nfs = sorted({nf_de(pedidos[i]) for i in candidatos} - {""})
+            if nfs:
+                plano["ambiguas"].append({"linha": n, "pedido": _texto(_campo(l, "PEDIDO")), "nfs": nfs})
+            else:
+                plano["sem_nf"] += 1
+            continue
         no_portal = sorted({nf_de(pedidos[i]) for i in (mesmo_numero or candidatos)} - {""})
         if not no_portal:
             plano["sem_nf"] += 1

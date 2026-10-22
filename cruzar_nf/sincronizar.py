@@ -26,6 +26,7 @@ import os
 import shutil
 import sys
 import threading
+import uuid
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple
@@ -87,9 +88,15 @@ def janela(pasta: "str | Path", de: Any = None, ate: Any = None,
     """Período da próxima exportação. Sem datas: última sincronizada - 10 dias até hoje."""
     hoje = hoje or _dt.date.today()
     fim = _ler_data(ate) or hoje
+    if fim > hoje:
+        # Ano digitado errado ia para a cobertura e travava a janela padrão
+        # para sempre (início depois de hoje).
+        raise ValueError(f"A data final ({_fmt(fim)}) está no futuro.")
     inicio = _ler_data(de)
     if inicio is None:
         ultima = _ultima_data(carregar_estado(pasta))
+        if ultima and ultima > hoje:      # cobertura futura gravada antes desta trava
+            ultima = hoje
         inicio = (ultima - _dt.timedelta(days=SOBREPOSICAO_DIAS)) if ultima \
             else hoje - _dt.timedelta(days=JANELA_SEM_HISTORICO_DIAS)
     if inicio > fim:
@@ -160,16 +167,24 @@ def trava(pasta: "str | Path", origem: str, arquivo: str = ARQ_TRAVA) -> Iterato
                 pass
     else:
         raise SincronizacaoEmAndamento("Já existe uma sincronização rodando. Tente de novo quando ela terminar.")
+    # A ficha leva um código só desta rodada: se ela passar do prazo e outra
+    # tomar a trava, no fim ela não apaga a trava da outra.
+    ficha = uuid.uuid4().hex
     with os.fdopen(fd, "w", encoding="utf-8") as f:
-        json.dump({"origem": origem, "pid": os.getpid(),
+        json.dump({"origem": origem, "pid": os.getpid(), "ficha": ficha,
                    "desde": _dt.datetime.now().strftime("%d/%m/%Y %H:%M")}, f, ensure_ascii=False)
     try:
         yield
     finally:
         try:
-            arq.unlink()
-        except FileNotFoundError:
-            pass
+            dona = json.loads(arq.read_text(encoding="utf-8")).get("ficha") == ficha
+        except (OSError, ValueError):
+            dona = False
+        if dona:
+            try:
+                arq.unlink()
+            except FileNotFoundError:
+                pass
 
 
 # -- rodada -------------------------------------------------------------------

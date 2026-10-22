@@ -221,3 +221,43 @@ def test_gravacoes_simultaneas_do_gerenciador_nao_perdem_pedido(tmp_path):
     pedidos = [p["PEDIDO"] for p in final]
     assert set(pedidos) >= set(range(1, 51))                 # os pedidos antigos estão todos lá
     assert sorted(p for p in pedidos if p >= 100) == do_robo  # nenhum pedido do robô se perdeu
+
+
+# -- trava combinada com o gerenciador (PEDIDOS.json.lock) -----------------------
+
+def _segurar_trava(caminho, pronto, soltar):
+    import fcntl
+    fd = os.open(caminho + ".lock", os.O_RDWR | os.O_CREAT)
+    fcntl.lockf(fd, fcntl.LOCK_EX, 1, 0)
+    pronto.set()
+    soltar.wait(10)
+    os.close(fd)
+
+
+@pytest.mark.skipif(os.name == "nt", reason="o outro processo trava com fcntl")
+def test_nao_troca_o_arquivo_enquanto_o_gerenciador_segura_a_trava(tmp_path, monkeypatch):
+    """O gerenciador segura PEDIDOS.json.lock enquanto confere e troca o
+    arquivo dele. Com a trava ocupada além do prazo, nada é gravado."""
+    import multiprocessing
+    from cruzar_nf import arquivo_pedidos as AP
+    arq = tmp_path / "PEDIDOS.json"
+    escrever_como_o_gerenciador(arq, [ped(1)])
+    antes = arq.read_bytes()
+    ctx = multiprocessing.get_context("fork")
+    pronto, soltar = ctx.Event(), ctx.Event()
+    outro = ctx.Process(target=_segurar_trava, args=(str(arq), pronto, soltar))
+    outro.start()
+    try:
+        assert pronto.wait(10)
+        monkeypatch.setattr(AP, "TRAVA_PRAZO_S", 0.4)
+        g = ArquivoPedidosConcorrente(str(arq), tentativas=1, dormir=lambda _s: None)
+        with pytest.raises(RuntimeError):
+            g.aplicar_nfs([venda(10, 1, 15)], gravar=True)
+        assert arq.read_bytes() == antes
+        assert not [p for p in tmp_path.iterdir() if p.suffix == ".tmp"]
+    finally:
+        soltar.set()
+        outro.join(10)
+    g.aplicar_nfs([venda(10, 1, 15)], gravar=True)          # trava livre: grava
+    assert ler(arq)["PEDIDOS"][0][CAMPO] == "15"
+    assert (tmp_path / "PEDIDOS.json.lock").exists()          # nunca é apagado

@@ -1,0 +1,43 @@
+# Roda a suíte a cada push e PR. Nada aqui fala com transportadora, ME, HSE
+# ou e-mail de verdade: os testes usam fixtures e falsos (ver tests/conftest.py).
+name: testes
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  suite:
+    # A VM de produção roda Python 3.14.
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - name: Dependências
+        run: |
+          python -m pip install -r requirements.txt selenium
+          python -m playwright install --with-deps chromium
+      # xvfb: Generoso, Favorita e Della Volpe só funcionam com janela visível.
+      - name: Testes
+        run: xvfb-run -a python -m pytest tests -q
+
+  cruzar_nf_py38:
+    # cruzar_nf/ roda no Windows Server 2012 R2, preso no Python 3.8.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.8"
+      - name: Dependências do serviço de NF
+        run: python -m pip install pytest openpyxl python-dotenv selenium
+      - name: Testes do cruzar_nf em Python 3.8
+        run: python -m pytest -q $(grep -l "cruzar_nf" tests/test_*.py)

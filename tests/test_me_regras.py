@@ -310,3 +310,41 @@ def test_marca_curta_dentro_de_outra_palavra_ainda_avisa():
 
 def test_exclusivamente_nao_e_marca_exclusiva():
     assert not R.exige_marca_exata("marca exclusivamente nacional")
+
+
+# ----------------------------------------------- preço que muda de tamanho
+@pytest.mark.parametrize("digitado", ["1.234", "2.000", "12.500"])
+def test_ponto_de_milhar_sem_virgula_bloqueia(digitado):
+    """"1.234" sem vírgula era lido como 1,234 e ia para o ME como "1,23":
+    mil vezes menor, sem erro nenhum, e a conferência depois de salvar lia do
+    mesmo jeito e confirmava. Ambíguo: o vendedor precisa dizer qual é."""
+    r = R.validar_item(_item(preco=digitado), HOJE)
+    assert any("preço" in e for e in r.erros)
+
+
+@pytest.mark.parametrize("digitado", ["0,004", "10,005", "1,999"])
+def test_preco_com_mais_de_duas_casas_bloqueia(digitado):
+    """O ME guarda 2 casas: "0,004" virava "0,00" e passava, porque a
+    validação olhava o número antes de arredondar."""
+    r = R.validar_item(_item(preco=digitado), HOJE)
+    assert any("preço" in e for e in r.erros)
+
+
+@pytest.mark.parametrize("digitado", ["1.234,50", "1234,5", "17", "0,01", "12.5"])
+def test_precos_validos_continuam_passando(digitado):
+    assert R.validar_item(_item(preco=digitado), HOJE).pode_salvar
+
+
+@pytest.mark.parametrize("aviso,esperado", [
+    ("Frete: não aceitamos FOB, somente CIF", "CIF"),
+    ("Frete CIF obrigatório", "CIF"),
+    ("Frete FOB", "FOB"),
+    ("Frete: exceto CIF", "FOB"),
+])
+def test_aviso_de_frete_com_negacao(aviso, esperado):
+    assert R.tipo_frete([aviso], "QUALQUER")[0] == esperado
+
+
+def test_aviso_que_cita_as_duas_sem_negar_nao_decide():
+    frete, motivo = R.tipo_frete(["Frete CIF ou FOB, a combinar"], "NESTLE")
+    assert (frete, "aviso" in motivo) == ("CIF", False)     # cai na regra do cliente
