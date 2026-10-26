@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import functools
 import hashlib
 import json
 
@@ -194,7 +195,9 @@ class Log:
     error = info
 
 
-def test_comandos_respondem_com_o_client_id(dados):
+def test_comandos_respondem_com_o_client_id(dados, monkeypatch):
+    # O comando usa a hora de agora; sem fixar, os eventos de 14-15/10 saem da janela de 7 dias.
+    monkeypatch.setattr(PN, "eventos", functools.partial(PN.eventos, agora=AGORA))
     sio = Sio()
     registrar(sio, {"caminho_banco_dados": str(dados)}, Log(), manager=object(), em_thread=False)
     sio.handlers["comando_nf_painel"]({"clientId": "c1"})
