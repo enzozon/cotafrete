@@ -1,0 +1,41 @@
+name: testes
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: testes-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Mesmo sistema e Python da VM (Windows, 3.14): alguns testes só rodam no Windows.
+  cotafrete:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+      - run: tzutil /s "E. South America Standard Time"  # fuso da VM
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          cache: pip
+      - run: pip install -r requirements.txt selenium  # selenium: robô da HSE (cruzar_nf)
+      - run: python -m playwright install chromium
+      - run: python -m pytest tests -q
+
+  # cruzar_nf roda no Server 2012 R2, que só tem Python 3.8.
+  cruzar-nf-py38:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.8"
+      - run: pip install openpyxl python-dotenv pytest
+      - run: >
+          python -m pytest -q
+          tests/test_cruzar_nf.py tests/test_conferir.py tests/test_nf_planilha.py
+          tests/test_painel_nf.py tests/test_planilha_portal.py tests/test_sync_planilha_portal.py
