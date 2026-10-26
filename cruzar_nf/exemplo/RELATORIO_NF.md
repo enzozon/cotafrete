@@ -1,9 +1,9 @@
 # Relatório do cruzamento de NF
 
-Gerado em 2026-09-29T19:22:41.
-- **PEDIDOS:** `cruzar_nf/exemplo/PEDIDOS.json`
-- **comparar:** `cruzar_nf/exemplo/comparar.json`
-- **gerado:** `cruzar_nf/exemplo/PEDIDOS_ATUALIZADO.json`
+Gerado em 2026-09-29T17:06:06.
+- **PEDIDOS:** `cruzar_nf\exemplo\PEDIDOS.json`
+- **comparar:** `cruzar_nf\exemplo\comparar.json`
+- **gerado:** `cruzar_nf\exemplo\PEDIDOS_ATUALIZADO.json`
 
 ## Resumo
 
@@ -23,7 +23,8 @@ Gerado em 2026-09-29T19:22:41.
 | Mesma NF para várias OCs | 1 |
 | NF da planilha trocada pela do ERP | 1 |
 | Valor da planilha ≠ valor do ERP | 1 |
-| Linhas do ERP sem ordem de compra | 1 |
+| Vendas do ERP sem ordem de compra | 1 |
+| Linhas do ERP que não são venda (cabeçalho, total) | 0 |
 | Pedidos com NF preenchida | 70,0% |
 
 Tipos de lançamento no ERP (das linhas com OC): VEN: 9.

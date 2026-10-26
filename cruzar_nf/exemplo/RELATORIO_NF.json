@@ -1,11 +1,12 @@
 {
-  "gerado_em": "2026-09-29T19:22:41",
+  "gerado_em": "2026-09-29T17:06:06",
   "resumo": {
     "pedidos_na_planilha": 10,
     "ocs_distintas_na_planilha": 8,
     "linhas_no_erp": 10,
     "ocs_distintas_no_erp": 8,
     "linhas_erp_sem_oc": 1,
+    "linhas_erp_ignoradas": 0,
     "bateram_1_nf": 5,
     "mais_de_uma_nf": 2,
     "no_erp_sem_nf": 1,
@@ -315,8 +316,8 @@
     }
   ],
   "arquivos": {
-    "pedidos": "cruzar_nf/exemplo/PEDIDOS.json",
-    "comparar": "cruzar_nf/exemplo/comparar.json",
-    "saida": "cruzar_nf/exemplo/PEDIDOS_ATUALIZADO.json"
+    "pedidos": "cruzar_nf\\exemplo\\PEDIDOS.json",
+    "comparar": "cruzar_nf\\exemplo\\comparar.json",
+    "saida": "cruzar_nf\\exemplo\\PEDIDOS_ATUALIZADO.json"
   }
 }

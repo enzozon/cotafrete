@@ -45,6 +45,17 @@ OC vazia ou `0` não cruza com nada.
 A planilha tem `"VALOR "` e `"REQUISITANTE "` com espaço no fim, e isso muda
 quando alguém edita o cabeçalho.
 
+**Valores.** O ERP exporta dinheiro como `"1.740,000000"`, mas abaixo de
+R$ 1.000 o valor chega como inteiro com 6 casas embutidas (`"217,400000"` vira
+`217400000`); o programa divide esses por um milhão. Na planilha, `VALOR`
+pode vir como número, `"3.961,46"` ou `"3,961.46"`.
+
+**O que não é venda.** Linha de cabeçalho repetida no meio do `comparar.json`
+e a linha de total no fim são ignoradas (e contadas no relatório).
+
+**Formato.** Se o `PEDIDOS.json` for `{"PEDIDOS": [...]}` (o formato do
+Maestro), o `PEDIDOS_ATUALIZADO.json` sai igual; se for uma lista, sai lista.
+
 **Que NF vai para o arquivo novo.**
 
 | situação no ERP | `NF` gravada | seção do relatório |
