@@ -11,6 +11,7 @@ automação viva quando eles mexerem no layout.
 from __future__ import annotations
 
 import re
+import unicodedata
 from decimal import ROUND_CEILING, ROUND_HALF_UP, Decimal
 from typing import Any
 
@@ -274,6 +275,22 @@ def separar_anexos(campos: dict[str, Any]) -> tuple[dict[str, Any], dict[str, An
     return texto, arquivos
 
 
+def _sem_acento_nem_caixa(texto: str) -> str:
+    plano = "".join(c for c in unicodedata.normalize("NFD", texto)
+                    if unicodedata.category(c) != "Mn")
+    return " ".join(plano.casefold().split())
+
+
+def opcao_da_cidade(cidade: str, opcoes: list[str]) -> str | None:
+    """O texto EXATO da option do site para esta cidade, ou None.
+
+    O select_option exige o texto idêntico. Cotação #472 (21/10/2026): o
+    vendedor tinha "Santa Bárbara D'Oeste" e o site lista "Santa Bárbara
+    d'Oeste" — 90s de timeout e o cartão vermelho por causa de um "d"."""
+    alvo = _sem_acento_nem_caixa(cidade)
+    return next((o for o in opcoes if _sem_acento_nem_caixa(o) == alvo), None)
+
+
 # ---------------------------------------------------------------- resposta
 # Texto de dentro da div de resposta do CF7 — é lá que a confirmação aparece.
 RE_RESPOSTA_CF7 = re.compile(
@@ -320,14 +337,26 @@ def normalizar_resposta(raw: Any) -> ResultadoCotacao:
                           "Nenhum e-mail foi gerado.",
         )
 
+    # "falhou" à parte: "O envio da sua mensagem falhou" (cotação #467,
+    # 21/10/2026) não contém "falha" e caía no genérico "não identificada".
     falhou = ("wpcf7-mail-sent-ng" in texto
-              or any(t in dentro for t in ("erro", "falha", "não foi possível")))
+              or any(t in dentro for t in ("erro", "falha", "falhou",
+                                           "não foi possível")))
     sucesso = (not falhou
                and any(t in dentro for t in FRASES_DE_CONFIRMACAO))
+    if sucesso:
+        erro = None
+    elif falhou:
+        # Pega a frase do texto ORIGINAL (o `texto` está em minúsculas).
+        frase = " ".join(RE_RESPOSTA_CF7.findall(str(raw))).strip()
+        erro = (f'O site da Della Volpe respondeu: "{frase}". Nada foi '
+                f'enviado; envie pelo formulário já preenchido.')
+    else:
+        erro = "Confirmação de envio não identificada na resposta."
     return ResultadoCotacao(
         transportadora=SLUG,
         status=StatusCotacao.AGUARDANDO_RETORNO if sucesso else StatusCotacao.ERRO,
         valor_frete=None,   # correto: ainda não existe preço
         raw_response=raw,
-        erro=None if sucesso else "Confirmação de envio não identificada na resposta.",
+        erro=erro,
     )

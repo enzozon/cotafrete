@@ -65,9 +65,10 @@ from carriers.base import (
     recusa_por_validacao,
 )
 from carriers.generoso.mapping import (
-    AVISO_CEP_NAO_ATENDIDO, AVISO_MESMO_CEP, EMPRESAS, cidade_nao_atendida,
-    cliente_nao_cadastrado,
+    AVISO_CEP_NAO_ATENDIDO, AVISO_MESMO_CEP, EMPRESAS, bairro_vazio,
+    cidade_nao_atendida, cliente_nao_cadastrado,
     conflito_cif_fob, empresa_alvo, empresa_de, ponta_travada_sem_o_grupo,
+    recusa_cadastro_sem_bairro,
     recusa_cep_nao_atendido, recusa_cidade_nao_atendida,
     recusa_coleta_sem_cadastro, recusa_endereco_do_cadastro,
     recusa_cliente_nao_cadastrado, recusa_mesmo_cep,
@@ -1135,6 +1136,13 @@ class GenerosoAdapter:
                             f"isso a cotacao sairia de lugar nenhum. O site "
                             f"diz: {self._erros_da_tela(page)}")
                     self._conferir_cobertura(page, lado, req)
+                    # Cadastro com bairro "." e campo travado (#466): o
+                    # Próximo não avança, e repetir não muda o cadastro.
+                    bairro = self._campo(page, 'input[name="neighborhood"]')
+                    if (bairro_vazio(bairro.input_value())
+                            and not bairro.is_enabled()):
+                        raise ClienteNaoCadastrado(recusa_cadastro_sem_bairro(
+                            cnpj or "da conta", lado, self.nome_curto))
                     evidencias += print_seguro(
                         page, run / f"etapa{numero}_{lado}.png")
                     self._avancar(page)
