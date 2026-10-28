@@ -53,3 +53,41 @@ def test_gerar_dry_run_vira_simulado_sem_pdf(tmp_path):
     r = gerar(p, cfg(tmp_path, dry_run=True), HseFalso(), tmp_path / "pdfs")
     assert r.estado == "simulado" and r.pdf is None
     assert not (tmp_path / "pdfs").exists()
+
+
+def test_gerar_chama_ao_salvar_antes_de_baixar_dav(tmp_path):
+    p = criar(tmp_path, None, "orc.xlsx")
+    hse = HseFalso()
+    r = gerar(p, cfg(tmp_path), hse, tmp_path / "pdfs", lambda n: hse.chamadas.append(("ao_salvar", n)))
+    assert r.estado == "pronto"
+    nomes = hse.nomes()
+    assert nomes.index("ao_salvar") == nomes.index("salvar_orcamento") + 1 < nomes.index("baixar_dav")
+    assert ("ao_salvar", "55555") in hse.chamadas
+
+
+def test_gerar_salvo_incerto_chama_ao_salvar_com_o_numero(tmp_path):
+    p = criar(tmp_path, None, "orc.xlsx")
+    vistos = []
+    gerar(p, cfg(tmp_path), HseFalso(falhar_em={"salvo_incerto"}), tmp_path / "pdfs", vistos.append)
+    assert vistos == ["55555"]
+
+
+def test_modo_pasta_marca_a_planilha_mesmo_se_o_download_for_interrompido(tmp_path):
+    import json
+    import pytest
+    from orcamento.processador import processar_arquivo
+    pasta = tmp_path / "ORC"
+    pasta.mkdir()
+    prog = tmp_path / "prog"
+    prog.mkdir()
+    c = Config(usuario="u", senha="s", client_id="ventura", pasta=pasta, dry_run=False, headless=True,
+               pasta_programa=prog)
+    p = criar(pasta, None, "orc.xlsx")
+
+    class Interrompido(HseFalso):
+        def baixar_dav(self, numero, destino):
+            raise KeyboardInterrupt
+
+    with pytest.raises(KeyboardInterrupt):
+        processar_arquivo(p, c, Interrompido())
+    assert len(json.loads((prog / "processados_estado.json").read_text(encoding="utf-8"))) == 1

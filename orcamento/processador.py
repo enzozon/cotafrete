@@ -332,7 +332,8 @@ def _finalizar(path: Path, cfg: Config, texto: str, destino: str) -> str:
 
 
 def _executar_real(orc: Orcamento, cliente: Cliente, resolucoes: list[Resolucao],
-                   hse: HseApi, rel: Relatorio, pasta_pdf: Path) -> "Resultado":
+                   hse: HseApi, rel: Relatorio, pasta_pdf: Path,
+                   ao_salvar: Callable[[str], None] | None = None) -> "Resultado":
     cadastrados: list[str] = []
     novos: dict[str, tuple[Produto, int]] = {}  # descrição normalizada → (produto, item que cadastrou)
     numero = None
@@ -356,12 +357,16 @@ def _executar_real(orc: Orcamento, cliente: Cliente, resolucoes: list[Resolucao]
             pares.append((r.item, produto))
         hse.montar_orcamento(orc, cliente, pares, incluir=True)
         numero = hse.salvar_orcamento()
+        if ao_salvar:
+            ao_salvar(numero)
         pasta_pdf.mkdir(parents=True, exist_ok=True)
         dav = destino_livre(pasta_pdf / f"DAV_{numero}_{sanitizar(cliente.nome)}.pdf")
         hse.baixar_dav(numero, dav)
         rel.resultado = f"OK - orçamento {numero} salvo; DAV {dav.name}"
         return Resultado("pronto", numero, dav, rel.texto(), nome_cliente)
     except SalvoIncerto as e:
+        if ao_salvar:
+            ao_salvar(e.numero)
         log.exception("Salvar sem confirmação em %s", orc.arquivo.name)
         rel.erro(_resumo(e))
         rel.resultado = (f"ERRO - Salvar foi clicado mas não confirmei: o orçamento {e.numero} PODE ter sido "
@@ -409,7 +414,8 @@ def _nome_cliente(cliente: Cliente | None) -> str:
     return f"{cliente.codigo} - {cliente.nome}" if cliente else ""
 
 
-def gerar(path: Path, cfg: Config, hse: HseApi, pasta_pdf: Path) -> Resultado:
+def gerar(path: Path, cfg: Config, hse: HseApi, pasta_pdf: Path,
+          ao_salvar: Callable[[str], None] | None = None) -> Resultado:
     """Gera o orçamento/DAV de uma planilha. Não move arquivos nem grava .txt: só devolve o resultado."""
     rel = Relatorio(path.name, cfg.dry_run)
     cliente = None
@@ -444,7 +450,7 @@ def gerar(path: Path, cfg: Config, hse: HseApi, pasta_pdf: Path) -> Resultado:
         rel.erro(_resumo(e))
         return pronto("erro", "ERRO inesperado (nada foi criado no HSE)")
 
-    return _executar_real(orc, cliente, resolucoes, hse, rel, pasta_pdf)
+    return _executar_real(orc, cliente, resolucoes, hse, rel, pasta_pdf, ao_salvar)
 
 
 def processar_arquivo(path: Path, cfg: Config, hse: HseApi) -> str:
@@ -460,11 +466,13 @@ def processar_arquivo(path: Path, cfg: Config, hse: HseApi) -> str:
             log.info("%s está aberto em outro programa; fica para o próximo ciclo", path.name)
             return "ADIADO"
 
-    r = gerar(path, cfg, hse, cfg.pasta / "DAVs")
+    def marcar(_numero: str) -> None:  # logo após o Salvar: uma queda durante o download não duplica o orçamento
+        if not cfg.dry_run:
+            _marcar(cfg, "processados_estado.json", h, path)
+
+    r = gerar(path, cfg, hse, cfg.pasta / "DAVs", marcar)
     if r.estado == "adiado":
         return "ADIADO"
-    if r.estado in ("pronto", "incerto") and not cfg.dry_run:
-        _marcar(cfg, "processados_estado.json", h, path)  # o orçamento existe (ou pode existir)
     destino = {"pronto": "PROCESSADOS", "simulado": "DRYRUN"}.get(r.estado, "DRYRUN" if cfg.dry_run else "ERRO")
     return _finalizar(path, cfg, r.relatorio, destino)
 
