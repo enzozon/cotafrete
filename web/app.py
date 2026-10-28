@@ -64,6 +64,7 @@ from core import conferencia, selecao
 from core.aceite import rotulo_validade, vencida
 from carriers.generoso.mapping import Agendamento, validar_agendamento
 from core.banco import Banco
+from orcamento.fila import FilaDav
 from core.evidencias import limpar_antigas, montar_zip_de_prints
 from core.retentativa import (
     ESPERA_MAXIMA_S, SEM_REPETICAO, TENTATIVAS_MAXIMAS, cotar_com_retentativa,
@@ -100,6 +101,9 @@ VIGIA_ME = None
 @asynccontextmanager
 async def _vida(_app):
     global INGESTOR, VIGIA_ME
+    # DAVs que estavam na fila quando o servidor caiu voltam a rodar; o que
+    # estava gerando vira "confira no HSE" (orcamento/fila.py).
+    FILA_DAV.retomar()
     if VIGIA_ME is None:
         me_ui.LOG_CHEGADAS = Path(__file__).resolve().parent.parent / "log" / "me_chegadas.txt"
         VIGIA_ME = me_ui.iniciar_vigia()
@@ -124,6 +128,8 @@ async def _vida(_app):
 
 app = FastAPI(title="Cotafrete — Ventura", lifespan=_vida)
 banco = Banco()
+# Fila do Gerar DAV: a thread só nasce no primeiro DAV (nada sobe no import).
+FILA_DAV = FilaDav(banco, Path("davs"))
 
 # Faxina dos prints velhos (>30 dias) a cada início do servidor — não há
 # scheduler no projeto, e reiniciar já é rotina (ver core/evidencias.py).
@@ -763,7 +769,7 @@ def ocupado() -> dict:
 
     Sem login de propósito: quem pergunta é um script da própria VM. E só
     sai um número — nada de cliente, rota nem vendedor."""
-    return {"em_curso": EXECUTOR.em_curso}
+    return {"em_curso": EXECUTOR.em_curso + FILA_DAV.em_curso}
 
 
 @app.get("/login", response_class=HTMLResponse)
