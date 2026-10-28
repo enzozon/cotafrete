@@ -41,6 +41,15 @@ class Produto:
     ativo: bool
 
 
+@dataclass(frozen=True)
+class Resultado:
+    estado: str             # "pronto" | "erro" | "incerto" | "simulado" | "adiado"
+    numero: str | None      # nº do orçamento no HSE (pronto/incerto)
+    pdf: Path | None        # PDF gravado (só "pronto")
+    relatorio: str          # Relatorio.texto()
+    cliente: str            # "8411 - BELO VALE ..." ou "" se não chegou a achar
+
+
 class HseIndisponivel(Exception):
     """Rede/login/HSE fora do ar: a planilha fica para o próximo ciclo."""
 
@@ -299,34 +308,35 @@ def _listar_itens(rel: Relatorio, resolucoes: list[Resolucao], dry_run: bool) ->
 
 # --- fluxo -------------------------------------------------------------------
 
-def _gravar(rel: Relatorio, destino: Path) -> None:
+def _gravar(texto: str, destino: Path) -> None:
     try:
-        rel.gravar(destino)
+        destino.write_text(texto, encoding="utf-8-sig")  # BOM: acentos certos no Bloco de Notas
     except OSError as e:  # o conteúdo não se perde: vai inteiro para o robo.log
-        log.error("Não consegui gravar %s (%s). Conteúdo:\n%s", destino, e, rel.texto())
+        log.error("Não consegui gravar %s (%s). Conteúdo:\n%s", destino, e, texto)
 
 
-def _finalizar(path: Path, cfg: Config, rel: Relatorio, destino: str) -> str:
+def _finalizar(path: Path, cfg: Config, texto: str, destino: str) -> str:
     pasta = cfg.pasta / destino
     if destino == "DRYRUN":
-        _gravar(rel, destino_livre(pasta / f"{path.stem}.txt"))
+        _gravar(texto, destino_livre(pasta / f"{path.stem}.txt"))
         _marcar(cfg, "dryrun_estado.json", _hash(path), path)
         return destino
     try:
         movida = _mover(path, pasta)
     except OSError as e:
         log.error("Não consegui mover %s para %s: %s", path.name, destino, e)
-        rel.erro(f"a planilha não pôde ser movida para {destino} ({e}); mova manualmente")
+        texto += f"\nERRO: a planilha não pôde ser movida para {destino} ({e}); mova manualmente\n"
         movida = path
-    _gravar(rel, destino_livre(pasta / f"{movida.stem}.txt"))
+    _gravar(texto, destino_livre(pasta / f"{movida.stem}.txt"))
     return destino
 
 
 def _executar_real(orc: Orcamento, cliente: Cliente, resolucoes: list[Resolucao],
-                   hse: HseApi, cfg: Config, rel: Relatorio, h: str) -> str:
+                   hse: HseApi, rel: Relatorio, pasta_pdf: Path) -> "Resultado":
     cadastrados: list[str] = []
     novos: dict[str, tuple[Produto, int]] = {}  # descrição normalizada → (produto, item que cadastrou)
     numero = None
+    nome_cliente = _nome_cliente(cliente)
     try:
         pares = []
         for r in resolucoes:
@@ -346,31 +356,32 @@ def _executar_real(orc: Orcamento, cliente: Cliente, resolucoes: list[Resolucao]
             pares.append((r.item, produto))
         hse.montar_orcamento(orc, cliente, pares, incluir=True)
         numero = hse.salvar_orcamento()
-        _marcar(cfg, "processados_estado.json", h, orc.arquivo)
-        dav = destino_livre(cfg.pasta / "DAVs" / f"DAV_{numero}_{sanitizar(cliente.nome)}.pdf")
+        pasta_pdf.mkdir(parents=True, exist_ok=True)
+        dav = destino_livre(pasta_pdf / f"DAV_{numero}_{sanitizar(cliente.nome)}.pdf")
         hse.baixar_dav(numero, dav)
         rel.resultado = f"OK - orçamento {numero} salvo; DAV {dav.name}"
-        return "PROCESSADOS"
+        return Resultado("pronto", numero, dav, rel.texto(), nome_cliente)
     except SalvoIncerto as e:
         log.exception("Salvar sem confirmação em %s", orc.arquivo.name)
-        _marcar(cfg, "processados_estado.json", h, orc.arquivo)
         rel.erro(_resumo(e))
         rel.resultado = (f"ERRO - Salvar foi clicado mas não confirmei: o orçamento {e.numero} PODE ter sido "
                          f"salvo. Confira no HSE e NÃO reenvie a planilha")
         if cadastrados:
             rel.info("Produtos cadastrados no HSE (continuam lá): " + "; ".join(cadastrados))
-        return "ERRO"
+        return Resultado("incerto", e.numero, None, rel.texto(), nome_cliente)
     except Exception as e:  # noqa: BLE001 — qualquer falha precisa desfazer o rascunho
         log.exception("Falha em %s", orc.arquivo.name)
         rel.erro(f"falha durante a criação no HSE: {_resumo(e)}")
-        if numero:
+        if numero:  # salvou mas o DAV falhou: o orçamento existe
             rel.resultado = f"ERRO - orçamento {numero} FOI SALVO no HSE, mas o DAV falhou; NÃO reenvie a planilha"
+            estado = "incerto"
         else:
             rel.resultado = "ERRO - orçamento não criado"
             _desfazer_rascunho(hse, rel)
+            estado = "erro"
         if cadastrados:
             rel.info("Produtos cadastrados no HSE (continuam lá): " + "; ".join(cadastrados))
-        return "ERRO"
+        return Resultado(estado, numero, None, rel.texto(), nome_cliente)
 
 
 def _desfazer_rascunho(hse: HseApi, rel: Relatorio) -> None:
@@ -394,10 +405,50 @@ def _executar_dry(orc: Orcamento, cliente: Cliente, resolucoes: list[Resolucao],
     rel.resultado = "DRY_RUN - simulação concluída sem erros (nada foi salvo)"
 
 
+def _nome_cliente(cliente: Cliente | None) -> str:
+    return f"{cliente.codigo} - {cliente.nome}" if cliente else ""
+
+
+def gerar(path: Path, cfg: Config, hse: HseApi, pasta_pdf: Path) -> Resultado:
+    """Gera o orçamento/DAV de uma planilha. Não move arquivos nem grava .txt: só devolve o resultado."""
+    rel = Relatorio(path.name, cfg.dry_run)
+    cliente = None
+
+    def pronto(estado: str, resultado: str = "") -> Resultado:
+        if resultado:
+            rel.resultado = resultado
+        return Resultado(estado, None, None, rel.texto(), _nome_cliente(cliente))
+
+    try:
+        orc = ler_planilha(path)
+    except ErroPlanilha as e:
+        for erro in e.erros:
+            rel.erro(erro)
+        return pronto("erro", "ERRO na planilha (nada foi feito no HSE)")
+    for aviso in orc.avisos:
+        rel.info(aviso)
+
+    try:
+        cliente, resolucoes = validar_online(orc, hse, rel, ajudantes(cfg))
+        _listar_itens(rel, resolucoes, cfg.dry_run)
+        if rel.tem_erro:
+            return pronto("erro", "ERRO na validação com o HSE (nada foi criado)")
+        if cfg.dry_run:
+            _executar_dry(orc, cliente, resolucoes, hse, rel)
+            return pronto("simulado")
+    except HseIndisponivel as e:
+        log.warning("HSE indisponível ao processar %s: %s", path.name, e)
+        return pronto("adiado")
+    except Exception as e:  # noqa: BLE001 — antes de qualquer criação: só reporta
+        log.exception("Falha inesperada em %s", path.name)
+        rel.erro(_resumo(e))
+        return pronto("erro", "ERRO inesperado (nada foi criado no HSE)")
+
+    return _executar_real(orc, cliente, resolucoes, hse, rel, pasta_pdf)
+
+
 def processar_arquivo(path: Path, cfg: Config, hse: HseApi) -> str:
     """Retorna "PROCESSADOS" | "ERRO" | "DRYRUN" | "ADIADO"."""
-    rel = Relatorio(path.name, cfg.dry_run)
-    destino_erro = "DRYRUN" if cfg.dry_run else "ERRO"
     for sub in SUBPASTAS:
         (cfg.pasta / sub).mkdir(exist_ok=True)
     h = _hash(path)
@@ -409,36 +460,13 @@ def processar_arquivo(path: Path, cfg: Config, hse: HseApi) -> str:
             log.info("%s está aberto em outro programa; fica para o próximo ciclo", path.name)
             return "ADIADO"
 
-    try:
-        orc = ler_planilha(path)
-    except ErroPlanilha as e:
-        rel.resultado = "ERRO na planilha (nada foi feito no HSE)"
-        for erro in e.erros:
-            rel.erro(erro)
-        return _finalizar(path, cfg, rel, destino_erro)
-    for aviso in orc.avisos:
-        rel.info(aviso)
-
-    try:
-        cliente, resolucoes = validar_online(orc, hse, rel, ajudantes(cfg))
-        _listar_itens(rel, resolucoes, cfg.dry_run)
-        if rel.tem_erro:
-            rel.resultado = "ERRO na validação com o HSE (nada foi criado)"
-            return _finalizar(path, cfg, rel, destino_erro)
-        if cfg.dry_run:
-            _executar_dry(orc, cliente, resolucoes, hse, rel)
-            return _finalizar(path, cfg, rel, "DRYRUN")
-    except HseIndisponivel as e:
-        log.warning("HSE indisponível ao processar %s: %s", path.name, e)
+    r = gerar(path, cfg, hse, cfg.pasta / "DAVs")
+    if r.estado == "adiado":
         return "ADIADO"
-    except Exception as e:  # noqa: BLE001 — antes de qualquer criação: só reporta
-        log.exception("Falha inesperada em %s", path.name)
-        rel.resultado = "ERRO inesperado (nada foi criado no HSE)"
-        rel.erro(_resumo(e))
-        return _finalizar(path, cfg, rel, destino_erro)
-
-    destino = _executar_real(orc, cliente, resolucoes, hse, cfg, rel, h)
-    return _finalizar(path, cfg, rel, destino)
+    if r.estado in ("pronto", "incerto") and not cfg.dry_run:
+        _marcar(cfg, "processados_estado.json", h, path)  # o orçamento existe (ou pode existir)
+    destino = {"pronto": "PROCESSADOS", "simulado": "DRYRUN"}.get(r.estado, "DRYRUN" if cfg.dry_run else "ERRO")
+    return _finalizar(path, cfg, r.relatorio, destino)
 
 
 @contextmanager
