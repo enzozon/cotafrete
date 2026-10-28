@@ -69,7 +69,7 @@ from core.evidencias import limpar_antigas, montar_zip_de_prints
 from core.retentativa import (
     ESPERA_MAXIMA_S, SEM_REPETICAO, TENTATIVAS_MAXIMAS, cotar_com_retentativa,
 )
-from web import adm, adm_me, me_extensao, me_ui, transportadoras
+from web import adm, adm_me, dav_ui, me_extensao, me_ui, transportadoras
 from web.ficha_ui import (
     ficha_da_cotacao, kg as _kg, pagador_da_cotacao, peso_por_volume,
     quando as quando_humano, quem_e as _quem,
@@ -141,10 +141,13 @@ app.include_router(adm.router)
 adm.banco = banco
 app.include_router(me_extensao.router)   # antes do me_ui: /me/{cid}/sessao-me
 app.include_router(me_ui.router)
+app.include_router(dav_ui.router)
 # O ME no painel do administrador (/adm/me): mesma senha e o mesmo banco do
 # /adm, que ele lê por `adm.banco`.
 app.include_router(adm_me.router)
 me_ui.banco = banco
+dav_ui.banco = banco
+dav_ui.FILA = FILA_DAV
 # Cada chamada à IA (core/ia.py) fica registrada no banco para o /adm/me
 # mostrar quem respondeu. Lambda, e não o método: os testes trocam `banco`.
 ia.REGISTRO = lambda **kw: banco.ia_registrar(**kw)
@@ -706,6 +709,8 @@ def vendedor(usuario: str | None = Cookie(None, alias=COOKIE)) -> str | None:
 # A tela do ME pergunta quem é a pessoa pela MESMA porta do vendedor.
 me_ui.vendedor = vendedor
 me_ui.COOKIE = COOKIE
+dav_ui.vendedor = vendedor
+dav_ui.COOKIE = COOKIE
 
 def _tela_login(erro: str = "", nome: str = "",
                 escolher_senha: bool = False) -> str:

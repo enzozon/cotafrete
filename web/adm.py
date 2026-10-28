@@ -702,6 +702,17 @@ def gerar_resumo_ia(adm: str | None = Cookie(None, alias=COOKIE_ADM)):
     return RedirectResponse("/adm#resumo", status_code=303)
 
 
+@router.get("/dav", response_class=HTMLResponse)
+def todos_os_davs(adm: str | None = Cookie(None, alias=COOKIE_ADM)):
+    _exigir_montado()
+    if not autorizado(adm):
+        return RedirectResponse("/adm/entrar", status_code=303)
+    from web.dav_ui import tabela_davs   # tardio: dav_ui importa este módulo
+    from web.layout import pagina
+    return HTMLResponse(pagina("Gerar DAV — todos", "<h1>Gerar DAV: todos os vendedores</h1>"
+                               + tabela_davs(banco.davs(None, 200), com_vendedor=True)))
+
+
 @router.get("", response_class=HTMLResponse)
 def painel(adm: str | None = Cookie(None, alias=COOKIE_ADM),
            dias: int = 30, quem: str = "", falhas: int = 0, resumo_ia: str = ""):
