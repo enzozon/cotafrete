@@ -103,7 +103,10 @@ async def _vida(_app):
     global INGESTOR, VIGIA_ME
     # DAVs que estavam na fila quando o servidor caiu voltam a rodar; o que
     # estava gerando vira "confira no HSE" (orcamento/fila.py).
-    FILA_DAV.retomar()
+    try:
+        FILA_DAV.retomar()
+    except Exception as exc:  # noqa: BLE001 — banco travado no boot não derruba o servidor
+        print(f"[cotafrete] Fila do DAV: retomar falhou ({exc!r}); o servidor sobe assim mesmo.")
     if VIGIA_ME is None:
         me_ui.LOG_CHEGADAS = Path(__file__).resolve().parent.parent / "log" / "me_chegadas.txt"
         VIGIA_ME = me_ui.iniciar_vigia()

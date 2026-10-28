@@ -178,3 +178,39 @@ def test_nome_do_arquivo_escapado(cli, app_web, tmp_path):
 
 def test_modelo_baixa(cli):
     assert cli.get("/dav/modelo").status_code == 200
+
+
+def test_incerto_sem_numero_nao_tem_buraco_no_aviso(cli, app_web, tmp_path):
+    enviar(cli, planilha(tmp_path))
+    cli.post("/dav/1/gerar")
+    app_web.banco.dav_atualizar(1, estado="incerto")
+    t = cli.get("/dav/1").text
+    assert "Confira no HSE os orçamentos deste cliente de hoje antes de gerar de novo." in t
+    assert "orçamento  e" not in t
+
+
+def test_historico_tem_coluna_pdf_com_link_so_quando_ha_pdf(cli, app_web, tmp_path):
+    enviar(cli, planilha(tmp_path))
+    cli.post("/dav/1/gerar")
+    t = cli.get("/dav").text
+    assert "<th>PDF</th>" in t and "/dav/1/pdf" not in t
+    app_web.banco.dav_atualizar(1, estado="pronto", numero="9", pdf="x.pdf")
+    assert '<a href="/dav/1/pdf">PDF</a>' in cli.get("/dav").text
+
+
+def test_conferir_roda_na_threadpool_nao_no_loop():
+    import inspect
+    from web import dav_ui
+    assert not inspect.iscoroutinefunction(dav_ui.conferir)
+
+
+def test_retomar_que_falha_nao_impede_o_servidor_de_subir(app_web, monkeypatch):
+    def quebra():
+        raise RuntimeError("database is locked")
+
+    monkeypatch.setattr(app_web.FILA_DAV, "retomar", quebra)
+    monkeypatch.setattr(app_web.dv_ingestor, "iniciar", lambda b: None)
+    monkeypatch.setattr(app_web.me_ui, "iniciar_vigia", lambda: None)
+    monkeypatch.setattr(app_web, "INGESTOR", None)
+    with TestClient(app_web.app) as c:
+        assert c.get("/login").status_code == 200

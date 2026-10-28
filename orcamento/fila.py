@@ -11,6 +11,7 @@ A planilha de cada DAV é `<pasta>/entrada/<id>.xlsx` e o PDF vai para
 
 from __future__ import annotations
 
+import inspect
 import logging
 import os
 import queue
@@ -132,7 +133,7 @@ class FilaDav:
         self._no_banco(self.banco.dav_atualizar, dav_id, estado="gerando",
                        iniciado_em=_agora())
         try:
-            campos = self._campos(self._executar(self.planilha(dav_id), self.pasta / "pdf"))
+            campos = self._campos(self._chamar_executor(dav_id, linha["arquivo"]))
         except Exception as e:
             campos = {"estado": "erro", "erro": _sem_segredo(str(e) or type(e).__name__)}
         linha = self._no_banco(self.banco.dav, dav_id, None)
@@ -141,6 +142,17 @@ class FilaDav:
                         dav_id, linha and linha["estado"])
             return
         self._no_banco(self.banco.dav_atualizar, dav_id, terminado_em=_agora(), **campos)
+
+    def _chamar_executor(self, dav_id: int, nome: str) -> Resultado:
+        def ao_salvar(numero: str) -> None:
+            # Já existe no HSE: grava já, para a queda não virar "incerto" sem número.
+            self._no_banco(self.banco.dav_atualizar, dav_id, numero=numero)
+            log.warning("Fila do DAV: DAV %s salvo no HSE como orçamento %s", dav_id, numero)
+
+        extras = {"ao_salvar": ao_salvar, "nome": nome}
+        aceitos = inspect.signature(self._executar).parameters
+        return self._executar(self.planilha(dav_id), self.pasta / "pdf",
+                              **{k: v for k, v in extras.items() if k in aceitos})
 
     @staticmethod
     def _campos(r: Resultado) -> dict:
@@ -151,7 +163,8 @@ class FilaDav:
             campos.update(estado="erro", erro=HSE_FORA)
         return campos
 
-    def _executar_no_hse(self, planilha: Path, pasta_pdf: Path) -> Resultado:
+    def _executar_no_hse(self, planilha: Path, pasta_pdf: Path,
+                         ao_salvar=None, nome: str | None = None) -> Resultado:
         # Import aqui: o playwright só carrega quando um DAV roda de verdade.
         from core.retentativa import VAGA_NAVEGADOR
         from orcamento.config import config_do_ambiente
@@ -167,6 +180,6 @@ class FilaDav:
         pasta_pdf.mkdir(parents=True, exist_ok=True)
         try:
             with VAGA_NAVEGADOR, Hse(cfg) as hse:
-                return gerar(planilha, cfg, hse, pasta_pdf)
+                return gerar(planilha, cfg, hse, pasta_pdf, ao_salvar, nome)
         except HseIndisponivel:
             return Resultado("adiado", None, None, "", "")

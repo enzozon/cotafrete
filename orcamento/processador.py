@@ -415,9 +415,10 @@ def _nome_cliente(cliente: Cliente | None) -> str:
 
 
 def gerar(path: Path, cfg: Config, hse: HseApi, pasta_pdf: Path,
-          ao_salvar: Callable[[str], None] | None = None) -> Resultado:
+          ao_salvar: Callable[[str], None] | None = None,
+          nome: str | None = None) -> Resultado:
     """Gera o orçamento/DAV de uma planilha. Não move arquivos nem grava .txt: só devolve o resultado."""
-    rel = Relatorio(path.name, cfg.dry_run)
+    rel = Relatorio(nome or path.name, cfg.dry_run)
     cliente = None
 
     def pronto(estado: str, resultado: str = "") -> Resultado:

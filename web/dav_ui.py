@@ -50,16 +50,21 @@ def _html(titulo: str, corpo: str, usuario: str | None) -> HTMLResponse:
     return HTMLResponse(pagina(titulo, corpo, usuario))
 
 
+def pdf_link(d: dict) -> str:
+    return f'<a href="/dav/{d["id"]}/pdf">PDF</a>' if d["pdf"] else ""
+
+
 def tabela_davs(linhas: list[dict], com_vendedor: bool = False) -> str:
     if not linhas:
         return '<p class="sub">Nenhum DAV ainda.</p>'
     cab = ("<th>Data</th>" + ("<th>Vendedor</th>" if com_vendedor else "")
-           + "<th>Arquivo</th><th>Cliente</th><th>Número</th><th>Estado</th><th></th>")
+           + "<th>Arquivo</th><th>Cliente</th><th>Número</th><th>Estado</th><th>PDF</th><th></th>")
     corpo = "".join(
         f"<tr><td>{e((d['criado_em'] or '')[:16].replace('T', ' '))}</td>"
         + (f"<td>{e(d['usuario'])}</td>" if com_vendedor else "")
         + f"<td>{e(d['arquivo'])}</td><td>{e(d['cliente'] or '')}</td>"
         f"<td>{e(d['numero'] or '')}</td><td>{e(ESTADOS.get(d['estado'], d['estado']))}</td>"
+        f'<td>{pdf_link(d)}</td>'
         f'<td><a href="/dav/{d["id"]}">abrir</a></td></tr>' for d in linhas)
     return f"<table><thead><tr>{cab}</tr></thead><tbody>{corpo}</tbody></table>"
 
@@ -122,14 +127,14 @@ def _resumo(o, dav_id: int) -> str:
 
 
 @router.post("/conferir", response_class=HTMLResponse)
-async def conferir(planilha: UploadFile = File(...),
+def conferir(planilha: UploadFile = File(...),
                    usuario: str | None = Depends(_quem)):
     if not usuario:
         return _login()
     nome = Path(planilha.filename or "planilha.xlsx").name
     if not nome.lower().endswith(".xlsx"):
         return _erro(usuario, "Envie um arquivo .xlsx (a PLANILHA-BASE v3).")
-    dados = await planilha.read(MAX_BYTES + 1)
+    dados = planilha.file.read(MAX_BYTES + 1)
     if len(dados) > MAX_BYTES:
         return _erro(usuario, "O arquivo passa de 5 MB.")
     hash_ = hashlib.sha256(dados).hexdigest()
@@ -200,9 +205,11 @@ def ver(dav_id: int, usuario: str | None = Depends(_quem),
                       if x["estado"] == "fila" and x["id"] < dav_id)
         corpo += f"<p>Posição na fila: {pos}</p>"
     if est == "incerto":
-        corpo += ('<div class="alerta"><b>Não sei se este DAV foi salvo: '
-                  f'confira no HSE o orçamento {e(d["numero"] or "")} '
-                  'e não gere de novo.</b></div>')
+        quando = (f'confira no HSE o orçamento {e(d["numero"])} e não gere de novo.'
+                  if d["numero"] else
+                  "Confira no HSE os orçamentos deste cliente de hoje antes de gerar de novo.")
+        corpo += f'<div class="alerta"><b>Não sei se este DAV foi salvo: {quando}</b></div>'
+
     if est == "pronto":
         corpo += f'<p>Orçamento <b>{e(d["numero"] or "")}</b></p>'
         if d["pdf"]:

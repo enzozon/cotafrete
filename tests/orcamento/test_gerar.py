@@ -91,3 +91,10 @@ def test_modo_pasta_marca_a_planilha_mesmo_se_o_download_for_interrompido(tmp_pa
     with pytest.raises(KeyboardInterrupt):
         processar_arquivo(p, c, Interrompido())
     assert len(json.loads((prog / "processados_estado.json").read_text(encoding="utf-8"))) == 1
+
+
+def test_gerar_usa_o_nome_de_exibicao_no_relatorio(tmp_path):
+    p = criar(tmp_path, None, "7.xlsx")
+    r = gerar(p, cfg(tmp_path), HseFalso(), tmp_path / "pdfs", nome="orcamento_ana.xlsx")
+    assert "Arquivo: orcamento_ana.xlsx" in r.relatorio
+    assert "7.xlsx" not in r.relatorio

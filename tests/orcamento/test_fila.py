@@ -152,3 +152,34 @@ def test_sem_login_no_servidor_vira_erro(banco, tmp_path, monkeypatch):
     d = banco.dav(i, None)
     assert d["estado"] == "erro"
     assert d["erro"] == "Robô do HSE sem login configurado no servidor."
+
+
+def test_numero_gravado_logo_apos_salvar_mesmo_se_o_executor_quebra(banco, tmp_path):
+    def executar(planilha, pasta_pdf, ao_salvar=None, nome=None):
+        ao_salvar("16400")
+        raise RuntimeError("caiu no download do PDF")
+
+    i = _na_fila(banco)
+    FilaDav(banco, tmp_path, executar, _na_hora).enfileirar(i)
+    d = banco.dav(i, None)
+    assert d["estado"] == "erro" and d["numero"] == "16400"
+
+
+def test_retomar_incerto_mantem_numero_gravado_no_salvar(banco, tmp_path):
+    i = _na_fila(banco, "gerando")
+    banco.dav_atualizar(i, numero="16400")   # o que ao_salvar gravou antes da queda
+    FilaDav(banco, tmp_path, _pronto, _na_hora).retomar()
+    d = banco.dav(i, None)
+    assert d["estado"] == "incerto" and d["numero"] == "16400"
+
+
+def test_executor_recebe_o_nome_original_do_arquivo(banco, tmp_path):
+    vistos = []
+
+    def executar(planilha, pasta_pdf, ao_salvar=None, nome=None):
+        vistos.append(nome)
+        return _pronto(planilha, pasta_pdf)
+
+    i = _na_fila(banco)
+    FilaDav(banco, tmp_path, executar, _na_hora).enfileirar(i)
+    assert vistos == ["plan.xlsx"]
