@@ -307,6 +307,25 @@ CREATE TABLE IF NOT EXISTS me_material (
     origem        INTEGER,
     atualizado_em TEXT NOT NULL
 );
+
+-- Gerar DAV: uma linha por planilha enviada. Estados: rascunho, fila,
+-- gerando, pronto, erro, incerto, simulado.
+CREATE TABLE IF NOT EXISTS dav (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    usuario       TEXT NOT NULL,
+    arquivo       TEXT NOT NULL,
+    hash_planilha TEXT NOT NULL,
+    estado        TEXT NOT NULL,
+    numero        TEXT,
+    cliente       TEXT,
+    relatorio     TEXT,
+    pdf           TEXT,
+    erro          TEXT,
+    criado_em     TEXT NOT NULL,
+    iniciado_em   TEXT,
+    terminado_em  TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_dav_hash ON dav(usuario, hash_planilha);
 """
 
 CAMPOS_CARGA = (
@@ -1048,6 +1067,68 @@ class Banco:
                 " origem = COALESCE(excluded.origem, me_material.origem),"
                 " atualizado_em = excluded.atualizado_em",
                 (chave, ncm, marca, origem, datetime.now().isoformat(timespec="seconds")))
+
+    # ---------------------------------------------------------------- DAV
+    CAMPOS_DAV = ("estado", "numero", "cliente", "relatorio", "pdf", "erro",
+                  "iniciado_em", "terminado_em")
+    DAV_REINICIOU = ("O servidor reiniciou durante o DAV: "
+                     "confira no HSE antes de gerar de novo.")
+
+    def dav_criar(self, usuario: str, arquivo: str, hash_planilha: str,
+                  cliente: str) -> int:
+        with closing(self._conectar()) as con, con:
+            return int(con.execute(
+                "INSERT INTO dav (usuario, arquivo, hash_planilha, estado,"
+                " cliente, criado_em) VALUES (?, ?, ?, 'rascunho', ?, ?)",
+                (usuario, arquivo, hash_planilha, cliente,
+                 datetime.now().isoformat(timespec="seconds"))).lastrowid)
+
+    def dav_atualizar(self, dav_id: int, **campos) -> None:
+        if not campos:
+            return
+        self._me_conferir(campos, self.CAMPOS_DAV)
+        with closing(self._conectar()) as con, con:
+            con.execute(
+                f"UPDATE dav SET {', '.join(f'{c} = ?' for c in campos)}"
+                " WHERE id = ?", (*campos.values(), dav_id))
+
+    def dav(self, dav_id: int, usuario: str | None) -> dict | None:
+        """`usuario=None` é o administrador: vê o de qualquer um."""
+        sql, args = "SELECT * FROM dav WHERE id = ?", [dav_id]
+        if usuario is not None:
+            sql += " AND usuario = ?"
+            args.append(usuario)
+        with closing(self._conectar()) as con, con:
+            r = con.execute(sql, args).fetchone()
+            return dict(r) if r else None
+
+    def davs(self, usuario: str | None, limite: int = 50) -> list[dict]:
+        sql, args = "SELECT * FROM dav WHERE estado <> 'rascunho'", []
+        if usuario is not None:
+            sql += " AND usuario = ?"
+            args.append(usuario)
+        with closing(self._conectar()) as con, con:
+            return [dict(r) for r in con.execute(
+                sql + " ORDER BY id DESC LIMIT ?", (*args, limite))]
+
+    def dav_ja_gerado(self, usuario: str, hash_planilha: str) -> dict | None:
+        with closing(self._conectar()) as con, con:
+            r = con.execute(
+                "SELECT * FROM dav WHERE usuario = ? AND hash_planilha = ?"
+                " AND estado IN ('fila', 'gerando', 'pronto', 'incerto')"
+                " ORDER BY id DESC LIMIT 1", (usuario, hash_planilha)).fetchone()
+            return dict(r) if r else None
+
+    def dav_interromper(self) -> list[int]:
+        """Na partida: `gerando` vira `incerto` (nunca roda de novo sozinho);
+        devolve os ids ainda em `fila`, mais antigos primeiro."""
+        agora = datetime.now().isoformat(timespec="seconds")
+        with closing(self._conectar()) as con, con:
+            con.execute(
+                "UPDATE dav SET estado = 'incerto', erro = ?, terminado_em = ?"
+                " WHERE estado = 'gerando'", (self.DAV_REINICIOU, agora))
+            return [r["id"] for r in con.execute(
+                "SELECT id FROM dav WHERE estado = 'fila' ORDER BY id")]
 
     @staticmethod
     def _me_conferir(campos: dict, validos: tuple[str, ...]) -> None:
