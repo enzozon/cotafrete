@@ -21,6 +21,7 @@ trabalhos: **cotar o frete**, **responder cotações dos portais** e
 |---|---|---|---|
 | **Cotafrete** | este repo, `web/` + `core/` + `carriers/` | um formulário e cotação em várias transportadoras | VM Windows 10 no servidor, `cotafrete.ventura.inf.br` |
 | **Mercado Eletrônico** | este repo, `mercado_eletronico/` + `web/me_ui.py` | lê cotações do ME, calcula impostos e prazos, preenche rascunho | VM, junto do Cotafrete |
+| **Gerar DAV** | este repo, `orcamento/` + `web/dav_ui.py` | vendedor envia a PLANILHA-BASE v3, confere, e o robô gera o orçamento (DAV) no HSE; PDF e histórico por vendedor | VM, junto do Cotafrete |
 | **Serviço de NF** | este repo, `cruzar_nf/` | busca NFs no ERP HSE e preenche nos pedidos do Maestro | SERVIDOR2 (Server 2012 R2) |
 | **Cadastro de pedidos** | `cruzar_nf/cadastro_pedidos.py` | leva a planilha dos estagiários para o PEDIDOS.json | SERVIDOR2, a cada 10 min |
 | **Portal Maestro** | `allan-max/portaismaestro` (`server.js` + `public/*.html`) | painel web com socket.io, onde ficam os robôs dos portais, a fila, os pedidos e a planilha Vale | pm2 "Site-Maestro" + Cloudflare Tunnel, `maestro.ventura.inf.br` |
@@ -160,6 +161,23 @@ juntas. O `monitorar.py` se atualiza sozinho.
   pelo histórico no banco (1 h, depois 4 h, para na 3ª falha) e cedem a vez
   enquanto houver frete em curso (`retentativa.fretes_em_curso`).
 - Guia completo: `docs/MERCADO_ELETRONICO.md`.
+
+---
+
+## 3b. Gerar DAV: nunca gerar duas vezes
+
+Código em `orcamento/` (leitura da planilha `planilha.py`, robô do HSE,
+`fila.py`) e a tela em `web/dav_ui.py` (`/dav`; lista do admin em `/adm/dav`).
+O estado fica na tabela `dav` do `cotafrete.db`; a planilha enviada e os PDFs
+ficam em `davs/entrada/<id>.xlsx` e `davs/pdf/` (fora do git).
+
+- A mesma planilha (hash) do mesmo vendedor não gera outro orçamento: a tela
+  diz "já gerou o orçamento N". Servidor reiniciado com DAV "gerando" vira
+  "confira no HSE", nunca roda de novo sozinho.
+- O HSE é produção. Só o `DAV_DRY_RUN=0` salva de verdade.
+- `.env` do Cotafrete: `HSE_USUARIO`, `HSE_SENHA`, `HSE_CLIENT_ID`,
+  `DAV_DRY_RUN`, `DAV_HEADLESS`, `IA`, `IA_MODELO`, `ANTHROPIC_API_KEY`.
+  Senha e chave nunca em log, banco, relatório ou tela.
 
 ---
 

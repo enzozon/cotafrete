@@ -64,11 +64,12 @@ from core import conferencia, selecao
 from core.aceite import rotulo_validade, vencida
 from carriers.generoso.mapping import Agendamento, validar_agendamento
 from core.banco import Banco
+from orcamento.fila import FilaDav
 from core.evidencias import limpar_antigas, montar_zip_de_prints
 from core.retentativa import (
     ESPERA_MAXIMA_S, SEM_REPETICAO, TENTATIVAS_MAXIMAS, cotar_com_retentativa,
 )
-from web import adm, adm_me, me_extensao, me_ui, transportadoras
+from web import adm, adm_me, dav_ui, me_extensao, me_ui, transportadoras
 from web.ficha_ui import (
     ficha_da_cotacao, kg as _kg, pagador_da_cotacao, peso_por_volume,
     quando as quando_humano, quem_e as _quem,
@@ -100,6 +101,12 @@ VIGIA_ME = None
 @asynccontextmanager
 async def _vida(_app):
     global INGESTOR, VIGIA_ME
+    # DAVs que estavam na fila quando o servidor caiu voltam a rodar; o que
+    # estava gerando vira "confira no HSE" (orcamento/fila.py).
+    try:
+        FILA_DAV.retomar()
+    except Exception as exc:  # noqa: BLE001 — banco travado no boot não derruba o servidor
+        print(f"[cotafrete] Fila do DAV: retomar falhou ({exc!r}); o servidor sobe assim mesmo.")
     if VIGIA_ME is None:
         me_ui.LOG_CHEGADAS = Path(__file__).resolve().parent.parent / "log" / "me_chegadas.txt"
         VIGIA_ME = me_ui.iniciar_vigia()
@@ -124,6 +131,8 @@ async def _vida(_app):
 
 app = FastAPI(title="Cotafrete — Ventura", lifespan=_vida)
 banco = Banco()
+# Fila do Gerar DAV: a thread só nasce no primeiro DAV (nada sobe no import).
+FILA_DAV = FilaDav(banco, Path("davs"))
 
 # Faxina dos prints velhos (>30 dias) a cada início do servidor — não há
 # scheduler no projeto, e reiniciar já é rotina (ver core/evidencias.py).
@@ -135,10 +144,13 @@ app.include_router(adm.router)
 adm.banco = banco
 app.include_router(me_extensao.router)   # antes do me_ui: /me/{cid}/sessao-me
 app.include_router(me_ui.router)
+app.include_router(dav_ui.router)
 # O ME no painel do administrador (/adm/me): mesma senha e o mesmo banco do
 # /adm, que ele lê por `adm.banco`.
 app.include_router(adm_me.router)
 me_ui.banco = banco
+dav_ui.banco = banco
+dav_ui.FILA = FILA_DAV
 # Cada chamada à IA (core/ia.py) fica registrada no banco para o /adm/me
 # mostrar quem respondeu. Lambda, e não o método: os testes trocam `banco`.
 ia.REGISTRO = lambda **kw: banco.ia_registrar(**kw)
@@ -700,6 +712,8 @@ def vendedor(usuario: str | None = Cookie(None, alias=COOKIE)) -> str | None:
 # A tela do ME pergunta quem é a pessoa pela MESMA porta do vendedor.
 me_ui.vendedor = vendedor
 me_ui.COOKIE = COOKIE
+dav_ui.vendedor = vendedor
+dav_ui.COOKIE = COOKIE
 
 def _tela_login(erro: str = "", nome: str = "",
                 escolher_senha: bool = False) -> str:
@@ -763,7 +777,7 @@ def ocupado() -> dict:
 
     Sem login de propósito: quem pergunta é um script da própria VM. E só
     sai um número — nada de cliente, rota nem vendedor."""
-    return {"em_curso": EXECUTOR.em_curso}
+    return {"em_curso": EXECUTOR.em_curso + FILA_DAV.em_curso}
 
 
 @app.get("/login", response_class=HTMLResponse)
