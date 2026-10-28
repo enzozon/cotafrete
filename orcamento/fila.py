@@ -24,11 +24,13 @@ from pathlib import Path
 from typing import Callable
 
 from core.banco import Banco
-from orcamento.processador import Resultado
+from orcamento.processador import HseIndisponivel, Resultado
 
 log = logging.getLogger(__name__)
 
 HSE_FORA = "O HSE está fora do ar agora. Tente de novo em alguns minutos."
+RECUSA_LOGIN = "O HSE recusou o login"  # prefixo da HseIndisponivel levantada por Hse._login
+HSE_RECUSOU = " Tente de novo mais tarde, dentro do horário de login do HSE."
 SEM_LOGIN = "Robô do HSE sem login configurado no servidor."
 TENTATIVAS_BANCO = 5
 ESPERA_BANCO_S = 0.5
@@ -134,6 +136,9 @@ class FilaDav:
                        iniciado_em=_agora())
         try:
             campos = self._campos(self._chamar_executor(dav_id, linha["arquivo"]))
+        except HseIndisponivel as e:
+            erro = str(e) + HSE_RECUSOU if str(e).startswith(RECUSA_LOGIN) else HSE_FORA
+            campos = {"estado": "erro", "erro": _sem_segredo(erro)}
         except Exception as e:
             campos = {"estado": "erro", "erro": _sem_segredo(str(e) or type(e).__name__)}
         linha = self._no_banco(self.banco.dav, dav_id, None)
@@ -169,7 +174,7 @@ class FilaDav:
         from core.retentativa import VAGA_NAVEGADOR
         from orcamento.config import config_do_ambiente
         from orcamento.hse import Hse
-        from orcamento.processador import HseIndisponivel, gerar
+        from orcamento.processador import gerar
 
         try:
             cfg = config_do_ambiente()
@@ -181,5 +186,7 @@ class FilaDav:
         try:
             with VAGA_NAVEGADOR, Hse(cfg) as hse:
                 return gerar(planilha, cfg, hse, pasta_pdf, ao_salvar, nome)
-        except HseIndisponivel:
+        except HseIndisponivel as e:
+            if str(e).startswith(RECUSA_LOGIN):
+                raise
             return Resultado("adiado", None, None, "", "")

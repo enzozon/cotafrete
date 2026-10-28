@@ -23,6 +23,19 @@ RE_CLIENTE = re.compile(r"^\s*(\d+)\s*-\s*(.*?)\s*(?:\(([\d./-]*)\))?\s*$")
 RE_PRODUTO = re.compile(r"itemSelected_dsProduto\('([^']*)',\s*'((?:\\'|[^'])*)'")
 
 
+RE_LOGIN_NEGADO = re.compile(r"ACESSO NEGADO!?\s*([^\n]*\S)?", re.I)
+
+
+def _se_recusou(page: Page) -> None:
+    """Levanta HseIndisponivel se a tela de login mostra a recusa do HSE (ex.: fora do horário)."""
+    try:
+        m = RE_LOGIN_NEGADO.search(page.inner_text("body"))
+    except PlaywrightError:
+        return
+    if m:
+        raise HseIndisponivel(f"O HSE recusou o login do robô: {m.group(1) or 'acesso negado'}") from None
+
+
 class ErroHse(Exception):
     """A tela do HSE recusou algo (vendedor/grupo/endereço inexistente etc.)."""
 
@@ -122,6 +135,7 @@ class Hse:
         try:
             page.locator("#empresa").wait_for(state="visible", timeout=15000)
         except PlaywrightError:
+            _se_recusou(page)
             raise HseIndisponivel("login recusado (confira HSE_USUARIO/HSE_SENHA)") from None
         empresa = page.evaluate("() => [...document.querySelectorAll('#empresa option')].find(o => o.value)?.value")
         page.select_option("#empresa", empresa)
@@ -131,7 +145,10 @@ class Hse:
         page.select_option("#filial", page.evaluate(f"() => {achar}.value"))
         page.dispatch_event("#filial", "change")
         page.click("#validarLogin")
-        page.wait_for_url(lambda u: "login2.php" not in u)
+        # Fora do horário do usuário o HSE fica em login2.php com "ACESSO NEGADO!": não espera o timeout.
+        page.wait_for_function("() => !location.href.includes('login2.php') || /ACESSO NEGADO/i.test(document.body.innerText)")
+        if "login2.php" in page.url:
+            _se_recusou(page)
         page.wait_for_load_state("networkidle")
         page.close()
         self._filial = filial

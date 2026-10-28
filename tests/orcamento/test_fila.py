@@ -183,3 +183,31 @@ def test_executor_recebe_o_nome_original_do_arquivo(banco, tmp_path):
     i = _na_fila(banco)
     FilaDav(banco, tmp_path, executar, _na_hora).enfileirar(i)
     assert vistos == ["plan.xlsx"]
+
+
+def test_recusa_de_login_do_hse_vira_erro_com_o_motivo(banco, tmp_path, monkeypatch):
+    from orcamento.processador import HseIndisponivel
+    monkeypatch.setenv("HSE_SENHA", "s3cr3t!")
+
+    def executar(planilha, pasta_pdf):
+        raise HseIndisponivel("O HSE recusou o login do robô: Sem permissão para logar nesse horário")
+
+    fila = FilaDav(banco, tmp_path, executar, _na_hora)
+    i = _na_fila(banco)
+    fila.enfileirar(i)
+    d = banco.dav(i, None)
+    assert d["estado"] == "erro"
+    assert d["erro"] == ("O HSE recusou o login do robô: Sem permissão para logar nesse horário "
+                         "Tente de novo mais tarde, dentro do horário de login do HSE.")
+
+
+def test_outra_indisponibilidade_do_hse_segue_como_fora_do_ar(banco, tmp_path):
+    from orcamento.processador import HseIndisponivel
+
+    def executar(planilha, pasta_pdf):
+        raise HseIndisponivel("login falhou (TimeoutError: x)")
+
+    fila = FilaDav(banco, tmp_path, executar, _na_hora)
+    i = _na_fila(banco)
+    fila.enfileirar(i)
+    assert banco.dav(i, None)["erro"] == "O HSE está fora do ar agora. Tente de novo em alguns minutos."
