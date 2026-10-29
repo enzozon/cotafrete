@@ -58,8 +58,9 @@ def _qtd(v: Decimal) -> str:
 def motivo_recusa(html: str) -> str:
     """O Incluir recusado não dá erro HTTP: o motivo vem num <script> da resposta (visto no orçamento 16354)."""
     m = re.search(r"erroDescontoMsg\s*=\s*'([^']*)'", html)
-    if not m:
-        return "o HSE não informou o motivo"
+    if not m:  # outra recusa (DAV 23): mostra o aviso que a resposta abriria na tela, se houver
+        aviso = re.search(r"""\b(?:alert|toast\w*)\(\s*(['"])(.+?)\1""", html)
+        return re.sub(r"\s*<br\s*/?>\s*", " - ", aviso.group(2)) if aviso else "o HSE não informou o motivo"
     motivo = re.sub(r"\s*<br\s*/?>\s*", " - ", m.group(1))
     original = re.search(r"'vlOriginal',\s*([\d.]+)", html)
     maximo = re.search(r"percentDescMax\s*=\s*([\d.]+)", html)
