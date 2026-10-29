@@ -116,3 +116,38 @@ def test_aviso_do_hse_aparece_no_relatorio_mesmo_quando_o_dav_falha(tmp_path):
     r = gerar(p, cfg(tmp_path), hse, tmp_path / "pdfs")
     assert r.estado == "erro"
     assert "O HSE avisou: Pendência Cliente bloqueado." in r.relatorio
+
+
+def _mouse(preco):
+    from decimal import Decimal
+    from orcamento.processador import Produto
+    return Produto("13370", "DELL MOUSE OPTICO MS116", True, Decimal(preco))
+
+
+def test_desconto_acima_de_15_por_cento_e_barrado_antes_de_criar_qualquer_coisa(tmp_path):
+    p = criar(tmp_path, None, "orc.xlsx")  # item 1 = 13370 a 145,00
+    hse = HseFalso(produtos=[_mouse("200")])  # mínimo = 170,00
+    r = gerar(p, cfg(tmp_path), hse, tmp_path / "pdfs")
+    assert r.estado == "erro"
+    assert ("Item 1: ERRO - valor unitário R$ 145,00 abaixo do mínimo R$ 170,00 "
+            "(preço de tabela R$ 200,00, desconto máximo 15%)") in r.relatorio
+    assert not any(c[0] in ("montar_orcamento", "cadastrar_produto") for c in hse.chamadas)
+
+
+def test_todos_os_itens_com_desconto_demais_aparecem_de_uma_vez(tmp_path):
+    p = criar(tmp_path, {"B3": 1, "C3": 100, "K3": 13370, "B4": 1, "C4": 100, "K4": 13370}, "orc.xlsx")
+    r = gerar(p, cfg(tmp_path), HseFalso(produtos=[_mouse("200")]), tmp_path / "pdfs")
+    for n in (1, 2, 3):
+        assert f"Item {n}: ERRO - valor unitário R$ 145,00 abaixo do mínimo" in r.relatorio
+
+
+def test_desconto_de_ate_15_por_cento_passa(tmp_path):
+    p = criar(tmp_path, None, "orc.xlsx")
+    r = gerar(p, cfg(tmp_path), HseFalso(produtos=[_mouse("170")]), tmp_path / "pdfs")  # mínimo 144,50
+    assert r.estado == "pronto"
+
+
+def test_produto_sem_preco_de_tabela_nao_e_conferido(tmp_path):
+    p = criar(tmp_path, None, "orc.xlsx")
+    r = gerar(p, cfg(tmp_path), HseFalso(), tmp_path / "pdfs")  # MOUSE do HSE falso, sem preço
+    assert r.estado == "pronto"

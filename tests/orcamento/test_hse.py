@@ -4,7 +4,7 @@ from types import SimpleNamespace
 import pytest
 from playwright.sync_api import Error as PlaywrightError
 
-from orcamento.hse import Hse, motivo_recusa, recusa_do_incluir
+from orcamento.hse import Hse, motivo_recusa, preco_de_tabela, recusa_do_incluir
 from orcamento.processador import HseIndisponivel
 
 # trecho real da resposta do Incluir recusado (mouse 13370 a 43,50 no orçamento 16354)
@@ -124,3 +124,10 @@ def test_sem_aviso_nao_mexe_na_tela():
     pagina = _Modal(None)
     hse._fechar_aviso(pagina)
     assert not pagina.fechou and hse.avisos == []
+
+
+def test_preco_de_tabela_vem_do_autocomplete():
+    onclick = ("itemSelected_dsProduto('13370', '13370 - 570-ABIE-DTO86_ES DELL MOUSE OPTICO MS116 PRETO', "
+               "'62.3500', '43.0000', '43.0000', '.0000000000000000000');")
+    assert preco_de_tabela(onclick) == Decimal("62.3500")
+    assert preco_de_tabela("itemSelected_dsProduto('1', 'X')") is None

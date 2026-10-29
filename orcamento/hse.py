@@ -21,6 +21,13 @@ TIMEOUT_MS = 30000
 MARKUP = Decimal(45)  # % aplicado no cadastro de produto novo (spec)
 RE_CLIENTE = re.compile(r"^\s*(\d+)\s*-\s*(.*?)\s*(?:\(([\d./-]*)\))?\s*$")
 RE_PRODUTO = re.compile(r"itemSelected_dsProduto\('([^']*)',\s*'((?:\\'|[^'])*)'")
+# 3º argumento do itemSelected_dsProduto = preço de tabela (conferido com o vlOriginal da tela em 29/10/2026)
+RE_PRECO = re.compile(r"itemSelected_dsProduto\('[^']*',\s*'(?:\\'|[^'])*',\s*'([\d.]+)'")
+
+
+def preco_de_tabela(onclick: str) -> Decimal | None:
+    m = RE_PRECO.search(onclick)
+    return Decimal(m.group(1)) if m else None
 
 
 RE_LOGIN_NEGADO = re.compile(r"ACESSO NEGADO!?\s*([^\n]*\S)?", re.I)
@@ -239,7 +246,7 @@ class Hse:
             desc = rotulo.split(" - ", 1)[1] if rotulo.startswith(f"{codigo} - ") else rotulo
             inativo = "(INATIVO)" in texto.upper() or "(INATIVO)" in desc.upper()
             desc = re.sub(r"\s*\(INATIVO\)\s*", " ", desc, flags=re.I).strip()
-            produtos.append(Produto(codigo, desc, not inativo))
+            produtos.append(Produto(codigo, desc, not inativo, preco_de_tabela(onclick)))
         page.keyboard.press("Escape")
         return produtos
 
