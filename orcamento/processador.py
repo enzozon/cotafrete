@@ -9,13 +9,14 @@ import time
 from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from datetime import datetime
+from decimal import Decimal
 from pathlib import Path
 from typing import Callable, Protocol
 
 from orcamento.config import Config
 from orcamento.ia import Ajudantes, ajudantes
 from orcamento.planilha import ErroPlanilha, Item, Orcamento, ler_planilha, normalizar
-from orcamento.relatorio import Relatorio
+from orcamento.relatorio import Relatorio, moeda
 
 log = logging.getLogger("robo")
 
@@ -25,6 +26,9 @@ MODELO_PREFIXO = "PLANILHA-BASE"
 MAX_DESCRICAO = 100  # limite do campo descrição no cadastro de produto do HSE
 MIN_REFERENCIA = 6   # tamanho mínimo de um código de modelo (letras + números) para checar duplicata
 SUBPASTAS = ("DAVs", "PROCESSADOS", "ERRO", "DRYRUN")
+# Desconto máximo sobre o preço de tabela que o HSE aceita no Incluir (visto em 28/10/2026:
+# "Desconto máximo 15%"). Fixo para todos os itens, por decisão do Enzo (29/10/2026).
+DESCONTO_MAX = Decimal("15")
 
 
 @dataclass(frozen=True)
@@ -39,6 +43,7 @@ class Produto:
     codigo: str
     descricao: str
     ativo: bool
+    preco: Decimal | None = None  # preço de tabela no HSE (None = não conferir o desconto)
 
 
 @dataclass(frozen=True)
@@ -286,7 +291,19 @@ def validar_online(orc: Orcamento, hse: HseApi, rel: Relatorio,
         rel.info(f"Cliente: {cliente.codigo} - {cliente.nome} ({cliente.documento})")
     if not hse.vendedor_existe(orc.vendedor):
         rel.erro(f"Vendedor '{orc.vendedor}' não encontrado no HSE (use o nome exato da lista)")
-    return cliente, [resolver_item(it, hse, ajuda) for it in orc.itens]
+    return cliente, [conferir_desconto(resolver_item(it, hse, ajuda)) for it in orc.itens]
+
+
+def conferir_desconto(r: Resolucao) -> Resolucao:
+    """Barra antes de criar qualquer coisa o item que o HSE recusaria no Incluir por desconto,
+    e assim todos os itens nessa situação aparecem de uma vez no relatório."""
+    if r.erro or r.produto is None or r.produto.preco is None:
+        return r
+    minimo = r.produto.preco * (100 - DESCONTO_MAX) / 100
+    if r.item.valor_unit >= minimo:
+        return r
+    return replace(r, erro=f"valor unitário {moeda(r.item.valor_unit)} abaixo do mínimo {moeda(minimo)} "
+                           f"(preço de tabela {moeda(r.produto.preco)}, desconto máximo {DESCONTO_MAX}%)")
 
 
 def _listar_itens(rel: Relatorio, resolucoes: list[Resolucao], dry_run: bool) -> None:
