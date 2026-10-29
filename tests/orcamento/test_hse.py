@@ -133,6 +133,33 @@ def test_preco_de_tabela_vem_do_autocomplete():
     assert preco_de_tabela("itemSelected_dsProduto('1', 'X')") is None
 
 
+def test_local_de_entrega_ignora_pontuacao():
+    # DAV 20 (29/10/2026): "Barão de cocais MG" não casava com ".../BARÃO DE COCAIS/MG" por causa da barra
+    from orcamento.hse import enderecos_do_local
+    opcoes = [("8410", "1 - Cadastral - R NEIDE FERREIRA DE LACERDA, 75, GARCIA II, BARÃO DE COCAIS/MG"),
+              ("9000", "2 - Entrega - AV BRASIL, 10, CENTRO, ITABIRA/MG")]
+    assert enderecos_do_local("Barão de cocais MG", opcoes) == ["8410"]
+    assert enderecos_do_local("centro", opcoes) == ["9000"]
+    assert enderecos_do_local("MG", opcoes) == ["8410", "9000"]
+    assert enderecos_do_local("Vitória ES", opcoes) == []
+
+
+@pytest.mark.parametrize("html", [
+    "<script>alert('Produto sem tabela de preço nesta filial');</script>",
+    '<script>toastError("Produto sem tabela de preço nesta filial");</script>',
+])
+def test_recusa_sem_desconto_mostra_o_aviso_do_hse(html):
+    # DAV 23 (29/10/2026): o HSE recusou a caixa 76701 sem erroDescontoMsg e o relatório ficou sem motivo
+    assert motivo_recusa(html) == "Produto sem tabela de preço nesta filial"
+
+
+def test_local_de_entrega_com_acento_e_barra():
+    # DAV 33 (29/10/2026): "São luis MA" contra "SÃO LUÍS/MA"
+    from orcamento.hse import enderecos_do_local
+    opcoes = [("1", "1 - Cadastral - AV DOS PORTUGUESES, S/N, ITAQUI, SÃO LUÍS/MA")]
+    assert enderecos_do_local("São luis MA", opcoes) == ["1"]
+
+
 class _Busca:
     """Campo de busca: só a última tecla dispara o searchAjax (como no HSE)."""
 
@@ -167,3 +194,4 @@ def test_busca_longa_cola_o_texto_e_digita_so_a_ultima_letra():
     pagina = _Busca()
     Hse._autocomplete(pagina, "dsProduto", "A" * 544)
     assert pagina.feito == [("fill", "#dsProduto", "A" * 543), ("type", "#dsProduto", "A")]
+

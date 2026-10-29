@@ -469,3 +469,11 @@ def test_planilha_salva_na_pasta_do_modelo_tambem_conta(tmp_path):
 
 def test_sanitizar_nome():
     assert proc.sanitizar('A/B: "C" <D>?') == "AB C D"
+
+
+def test_marca_de_uma_letra_nao_conta():
+    # DAV 22 (29/10/2026): o HSE tem marcas "C" e "X"; o robô achava o "C" de "C/ TAMPA" e o "X" de "26 x 34"
+    marcas = ["C", "X", "LG", "LARPLASTICO"]
+    assert proc.detectar_marca("CAIXA ORGANIZADORA C/ TAMPA AZUL 26L LARPLASTICO", marcas) == "LARPLASTICO"
+    assert proc.detectar_marca("Caixa Organizadora com Tampa 26 x 34 Cm 25 Litros", marcas) is None
+    assert proc.detectar_marca("TV LG 43", marcas) == "LG"
