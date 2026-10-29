@@ -70,6 +70,18 @@ def motivo_recusa(html: str) -> str:
     return motivo
 
 
+def _so_palavras(texto: str) -> str:
+    return " ".join(re.sub(r"[^A-Z0-9]+", " ", normalizar(texto)).split())
+
+
+def enderecos_do_local(local: str, opcoes: list[tuple[str, str]]) -> list[str]:
+    """Endereços do cliente que contêm o texto da B30, sem ligar para pontuação.
+
+    "Barão de cocais MG" não casava com ".../BARÃO DE COCAIS/MG" por causa da barra (DAV 20, 29/10/2026)."""
+    alvo = f" {_so_palavras(local)} "
+    return [v for v, t in opcoes if alvo in f" {_so_palavras(t)} "]
+
+
 def recusa_do_incluir(numero: int, codigo: str, valor: Decimal, html: str) -> str:
     return f"Item {numero}: o HSE recusou o produto {codigo} a {br(valor)} ({motivo_recusa(html)})"
 
@@ -323,7 +335,7 @@ class Hse:
         if orc.local_entrega:
             opcoes = page.eval_on_selector_all("#cdEndereco option",
                                                "os => os.filter(o => o.value).map(o => [o.value, o.text])")
-            achados = [v for v, t in opcoes if normalizar(orc.local_entrega) in normalizar(t)]
+            achados = enderecos_do_local(orc.local_entrega, opcoes)
             if len(achados) != 1:
                 raise ErroHse(f"Local de entrega '{orc.local_entrega}': {len(achados)} endereço(s) do "
                               f"cliente contém esse texto ({'; '.join(t for _, t in opcoes)})")

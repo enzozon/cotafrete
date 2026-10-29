@@ -131,3 +131,14 @@ def test_preco_de_tabela_vem_do_autocomplete():
                "'62.3500', '43.0000', '43.0000', '.0000000000000000000');")
     assert preco_de_tabela(onclick) == Decimal("62.3500")
     assert preco_de_tabela("itemSelected_dsProduto('1', 'X')") is None
+
+
+def test_local_de_entrega_ignora_pontuacao():
+    # DAV 20 (29/10/2026): "Barão de cocais MG" não casava com ".../BARÃO DE COCAIS/MG" por causa da barra
+    from orcamento.hse import enderecos_do_local
+    opcoes = [("8410", "1 - Cadastral - R NEIDE FERREIRA DE LACERDA, 75, GARCIA II, BARÃO DE COCAIS/MG"),
+              ("9000", "2 - Entrega - AV BRASIL, 10, CENTRO, ITABIRA/MG")]
+    assert enderecos_do_local("Barão de cocais MG", opcoes) == ["8410"]
+    assert enderecos_do_local("centro", opcoes) == ["9000"]
+    assert enderecos_do_local("MG", opcoes) == ["8410", "9000"]
+    assert enderecos_do_local("Vitória ES", opcoes) == []
