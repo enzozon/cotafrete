@@ -1,9 +1,10 @@
+from decimal import Decimal
 from types import SimpleNamespace
 
 import pytest
 from playwright.sync_api import Error as PlaywrightError
 
-from orcamento.hse import Hse, motivo_recusa
+from orcamento.hse import Hse, motivo_recusa, recusa_do_incluir
 from orcamento.processador import HseIndisponivel
 
 # trecho real da resposta do Incluir recusado (mouse 13370 a 43,50 no orçamento 16354)
@@ -23,6 +24,14 @@ def test_motivo_da_recusa_por_desconto():
 
 def test_recusa_sem_mensagem():
     assert motivo_recusa("<div>tabela</div>") == "o HSE não informou o motivo"
+
+
+def test_recusa_do_primeiro_item_diz_o_motivo():
+    # 6000162094 (29/10/2026): no 1º item a recusa nem cria o pedido; antes saía só
+    # "Incluir não gerou nº de pedido", sem dizer o porquê
+    assert recusa_do_incluir(1, "60333", Decimal("150"), RECUSA) == (
+        "Item 1: o HSE recusou o produto 60333 a 150,00 (Desconto máximo 15% - desconto aplicado "
+        "30,23%; preço de tabela 62,35, menor preço aceito 53,00)")
 
 
 class _Loc:

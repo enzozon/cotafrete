@@ -63,6 +63,10 @@ def motivo_recusa(html: str) -> str:
     return motivo
 
 
+def recusa_do_incluir(numero: int, codigo: str, valor: Decimal, html: str) -> str:
+    return f"Item {numero}: o HSE recusou o produto {codigo} a {br(valor)} ({motivo_recusa(html)})"
+
+
 def _rede(fn):
     """Falha do navegador/rede durante leitura → HseIndisponivel (tenta no próximo ciclo)."""
     @functools.wraps(fn)
@@ -393,15 +397,15 @@ class Hse:
             cd = self._cd_pedido(page)
             if cd:
                 self.rascunho = cd
-        if not cd:
-            raise ErroHse(f"Item {item.numero}: Incluir não gerou nº de pedido")
+        if not cd:  # no 1º item a recusa (ex.: desconto acima do limite) nem cria o pedido
+            raise ErroHse(recusa_do_incluir(item.numero, produto.codigo, item.valor_unit, resp.value.text()))
         # do 2º item em diante o nº do pedido já existe: só a tabela mostra se o item entrou
         try:
             page.wait_for_function("n => document.querySelectorAll('td.cellDelete').length > n", arg=antes,
                                    timeout=5000)
         except PlaywrightError:
-            raise ErroHse(f"Item {item.numero}: o HSE recusou o produto {produto.codigo} a "
-                          f"{br(item.valor_unit)} ({motivo_recusa(resp.value.text())})") from None
+            raise ErroHse(recusa_do_incluir(item.numero, produto.codigo, item.valor_unit,
+                                            resp.value.text())) from None
         log.info("Item %s incluído; rascunho %s", produto.codigo, cd)
 
     @staticmethod
