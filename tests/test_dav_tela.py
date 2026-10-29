@@ -148,7 +148,7 @@ def test_estados_da_pagina(cli, app_web, tmp_path):
     app_web.banco.dav_atualizar(1, estado="pronto", relatorio="LINHA <b>x</b>", pdf="x.pdf")
     t = cli.get("/dav/1").text
     assert "Baixar PDF" in t and "<b>x</b>" not in t
-    app_web.banco.dav_atualizar(1, estado="erro", erro="deu ruim")
+    app_web.banco.dav_atualizar(1, estado="erro", erro="deu ruim", numero=None)
     assert "Motivo não identificado" in cli.get("/dav/1").text
 
 
