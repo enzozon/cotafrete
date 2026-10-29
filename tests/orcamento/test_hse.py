@@ -131,3 +131,39 @@ def test_preco_de_tabela_vem_do_autocomplete():
                "'62.3500', '43.0000', '43.0000', '.0000000000000000000');")
     assert preco_de_tabela(onclick) == Decimal("62.3500")
     assert preco_de_tabela("itemSelected_dsProduto('1', 'X')") is None
+
+
+class _Busca:
+    """Campo de busca: só a última tecla dispara o searchAjax (como no HSE)."""
+
+    def __init__(self):
+        self.feito = []
+
+    def fill(self, sel, valor):
+        self.feito.append(("fill", sel, valor))
+
+    def type(self, sel, texto, **kw):
+        self.feito.append(("type", sel, texto))
+
+    def expect_response(self, pred):
+        req = SimpleNamespace()
+        resp = SimpleNamespace(url="https://x/searchAjax.php?dsInput=dsProduto&search=" + "A" * 544, request=req)
+        assert pred(resp)
+
+        class Ctx:
+            def __enter__(self): return self
+
+            def __exit__(self, *exc): return False
+        return Ctx()
+
+    def wait_for_timeout(self, ms): pass
+
+    def eval_on_selector_all(self, sel, js):
+        return []
+
+
+def test_busca_longa_cola_o_texto_e_digita_so_a_ultima_letra():
+    # digitar 544 letras com 40 ms cada estourava os 30 s da espera (DAV 1 de 29/10/2026: "HSE offline")
+    pagina = _Busca()
+    Hse._autocomplete(pagina, "dsProduto", "A" * 544)
+    assert pagina.feito == [("fill", "#dsProduto", "A" * 543), ("type", "#dsProduto", "A")]
