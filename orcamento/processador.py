@@ -427,6 +427,9 @@ def _executar_dry(orc: Orcamento, cliente: Cliente, resolucoes: list[Resolucao],
     for r in resolucoes:
         if r.por == "novo":
             hse.cadastrar_produto(r.item, orc.filial, salvar=False)
+    for r in resolucoes:
+        if r.item.descricao:  # a caixa da descrição só aparece depois do Incluir
+            rel.info(f"Item {r.item.numero}: [DRY_RUN] descrição no DAV: {r.item.descricao}")
     try:
         hse.montar_orcamento(orc, cliente, [(r.item, r.produto) for r in resolucoes], incluir=False)
     finally:
@@ -437,6 +440,8 @@ def _executar_dry(orc: Orcamento, cliente: Cliente, resolucoes: list[Resolucao],
 def _avisos_do_hse(hse: HseApi, rel: Relatorio) -> None:
     for aviso in getattr(hse, "avisos", ()):
         rel.info(f"O HSE avisou: {aviso}")
+    for nota in getattr(hse, "notas", ()):
+        rel.info(nota)
 
 
 def _nome_cliente(cliente: Cliente | None) -> str:

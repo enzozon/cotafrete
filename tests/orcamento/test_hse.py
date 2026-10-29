@@ -131,3 +131,84 @@ def test_preco_de_tabela_vem_do_autocomplete():
                "'62.3500', '43.0000', '43.0000', '.0000000000000000000');")
     assert preco_de_tabela(onclick) == Decimal("62.3500")
     assert preco_de_tabela("itemSelected_dsProduto('1', 'X')") is None
+
+
+class _Linha:
+    """Tela depois do Incluir: a linha nova trItem_901 com o botão + e a caixa dsObsItem_901."""
+
+    def __init__(self, falhar_em=None, resposta_ok=True):
+        self.falhar_em, self.resposta_ok = falhar_em, resposta_ok
+        self.feito: list[tuple] = []
+        self.div = ""
+
+    def eval_on_selector_all(self, sel, js):
+        assert sel == "tr[id^=trItem_]"
+        return ["trItem_900", "trItem_901"]
+
+    def _passo(self, nome, *args):
+        if nome == self.falhar_em:
+            raise PlaywrightError(f"{nome} falhou")
+        self.feito.append((nome, *args))
+
+    def click(self, sel):
+        self._passo("click", sel)
+
+    def fill(self, sel, valor):
+        self._passo("fill", sel, valor)
+        self.valor = valor
+
+    def expect_response(self, pred):
+        pagina = self
+        req = SimpleNamespace(post_data="acao=salvarObsItem&cdPedidoItem=901", method="POST")
+        resp = SimpleNamespace(url="https://x/vendaItem.php", request=req, ok=self.resposta_ok)
+        assert pred(resp)
+
+        class Ctx:
+            value = resp
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                if not exc[0] and pagina.resposta_ok:
+                    pagina.div = pagina.valor
+                return False
+        return Ctx()
+
+    def locator(self, sel):
+        return SimpleNamespace(blur=lambda: self._passo("blur", sel))
+
+    def inner_text(self, sel):
+        assert sel == "#divObsItem_901"
+        return self.div
+
+
+def _item(descricao="Cor preta"):
+    return SimpleNamespace(numero=2, descricao=descricao)
+
+
+def test_descricao_do_item_e_gravada_na_linha_nova():
+    hse = Hse.__new__(Hse)
+    hse.notas = []
+    pagina = _Linha()
+    hse._gravar_descricao(pagina, _item(), {"trItem_900"})
+    assert ("fill", "#dsObsItem_901", "Cor preta") in pagina.feito
+    assert ("blur", "#dsObsItem_901") in pagina.feito
+    assert hse.notas == []
+
+
+@pytest.mark.parametrize("pagina", [_Linha(falhar_em="click"), _Linha(resposta_ok=False)])
+def test_descricao_que_falha_vira_nota_sem_derrubar(pagina):
+    hse = Hse.__new__(Hse)
+    hse.notas = []
+    hse._gravar_descricao(pagina, _item(), {"trItem_900"})
+    assert len(hse.notas) == 1
+    assert hse.notas[0].startswith("Item 2: descrição não gravada no HSE (")
+    assert hse.notas[0].endswith("confira no DAV")
+
+
+def test_sem_linha_nova_tambem_vira_nota():
+    hse = Hse.__new__(Hse)
+    hse.notas = []
+    hse._gravar_descricao(_Linha(), _item(), {"trItem_900", "trItem_901"})
+    assert "Item 2: descrição não gravada no HSE" in hse.notas[0]
