@@ -140,7 +140,7 @@ def test_pdf_fora_da_pasta_davs_pdf_404(cli, app_web, tmp_path):
 def test_estados_da_pagina(cli, app_web, tmp_path):
     enviar(cli, planilha(tmp_path))
     cli.post("/dav/1/gerar")
-    assert 'http-equiv="refresh"' in cli.get("/dav/1").text
+    assert 'data-endpoint="/dav/1/agora"' in cli.get("/dav/1").text
     app_web.banco.dav_atualizar(1, estado="incerto", numero="55")
     t = cli.get("/dav/1").text
     assert "confira no HSE o orçamento 55 e não gere de novo" in t

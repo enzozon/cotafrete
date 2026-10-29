@@ -27,6 +27,7 @@ def test_adm_dav_sidebar_e_links(admin, app_web):
     app_web.banco.dav_atualizar(i, estado="erro", erro="Local de entrega não encontrado")
     t = admin.get("/adm/dav").text
     assert 'aria-current="page"' in t and 'href="/adm/dav"' in t
+    assert 'data-tema-troca\n' in t or 'data-tema-troca ' in t
     assert 'href="/adm#movimento"' in t and "bia" in t
     assert "local de entrega" in t.lower() and "Falhas de criação" in t
     assert admin.get(f"/adm/dav/{i}").status_code == 200

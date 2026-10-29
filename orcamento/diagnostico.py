@@ -10,6 +10,13 @@ def _normal(texto: str) -> str:
                    if not unicodedata.combining(c))
 
 
+def _financeiro(texto: str) -> bool:
+    texto = " ".join(_normal(texto).split())
+    return (any(t in texto for t in ("pendencia financeira", "cliente bloqueado", "pendencia cliente",
+                                     "setor financeiro", "titulo vencido", "titulos vencidos"))
+            or bool(re.search(r"\bdf\d+\b.*(?:venc|valor)", texto)))
+
+
 def diagnostico(dav: dict, *, administrador: bool) -> dict:
     rel = dav.get("relatorio") or ""
     erro = dav.get("erro") or ""
@@ -17,7 +24,7 @@ def diagnostico(dav: dict, *, administrador: bool) -> dict:
     texto = _normal(original)
     erros_rel = rel.partition("\nErros:\n")[2]
     falha = _normal(erro + "\n" + erros_rel)
-    financeiro = any(t in texto for t in ("financeir", "cliente bloqueado", "pendencia cliente", "titulo vencido"))
+    financeiro = _financeiro(original)
     completo = all(t in rel for t in ("Robô de Orçamentos HSE", "\nResultado:", "\nItens:"))
     aviso = True if financeiro or "o hse avisou:" in texto else (False if completo else None)
     estado = dav.get("estado", "")
@@ -56,7 +63,11 @@ def diagnostico(dav: dict, *, administrador: bool) -> dict:
     else:
         motivo_admin = motivo
     # Allowlist: um formato novo nunca torna texto livre visível ao vendedor.
-    permitido = "\n".join(filter(None, (titulo, motivo if estado in ("erro", "incerto", "rejeitado") else "",
+    trecho_itens = rel.partition("\nItens:\n")[2].split("\nDetalhes:\n")[0].split("\nErros:\n")[0]
+    itens = [linha for linha in trecho_itens.splitlines()
+             if re.fullmatch(r"Item \d+: usou produto existente \d+ - .+ \((pelo código informado|encontrado pela descrição)\)", linha)
+             and not _financeiro(linha)]
+    permitido = "\n".join(filter(None, (titulo, "\n".join(itens), motivo if estado in ("erro", "incerto", "rejeitado") else "",
                                        orientacao if incerto else "",
                                        "Aviso financeiro: consulte o financeiro." if financeiro else "",
                                        "Detalhes técnicos adicionais disponíveis ao administrador." if original else "")))
@@ -65,4 +76,4 @@ def diagnostico(dav: dict, *, administrador: bool) -> dict:
             "orientacao": orientacao, "aviso_financeiro": financeiro, "tem_aviso": aviso,
             "relatorio_visivel": original if administrador else permitido,
             "diagnostico_copiavel": (original if administrador else permitido),
-            "salvamento": salvamento}
+            "salvamento": salvamento, "itens": itens}

@@ -8,6 +8,7 @@ daqui seria circular), como em web/me_ui.py.
 from __future__ import annotations
 
 import hashlib
+import json
 import sqlite3
 import threading
 import uuid
@@ -18,7 +19,7 @@ from typing import Callable
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, Cookie, Depends, File, Form, HTTPException, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
 
 from core.banco import Banco
 from core import painel_dav
@@ -26,12 +27,13 @@ from orcamento.fila import FilaDav
 from orcamento.diagnostico import diagnostico
 from orcamento.planilha import ErroPlanilha, ler_planilha
 from web import adm
-from web.layout import CSS_DAV, cabecalho, e, pagina
+from web.layout import BOTAO_TEMA, CSS_DAV, cabecalho, e, pagina
 
 banco: Banco | None = None
 vendedor: Callable[[str | None], str | None] | None = None
 FILA: FilaDav | None = None
 COOKIE = "cotafrete_usuario"
+agora = datetime.now
 
 MAX_BYTES = 5 * 1024 * 1024
 MODELO = Path(__file__).resolve().parent.parent / "orcamento" / "modelo" / "PLANILHA-BASE-v3.xlsx"
@@ -60,6 +62,78 @@ document.addEventListener('click', async ev => {
 });
 </script>"""
 
+SCRIPT_PULSO = """<script>
+(() => {
+  const barra = document.querySelector('[data-dav-pulso]');
+  if (!barra) return;
+  const status = barra.querySelector('[role="status"]');
+  const botao = barra.querySelector('button');
+  let versao = '', ocupado = false, continua = true, timer, ultimo = '';
+  function trocar(id, html) {
+    const el = document.getElementById(id);
+    if (!el || el.innerHTML === html) return true;
+    if (el.contains(document.activeElement)) return false;
+    const abertos = [...el.querySelectorAll('details[open]')].map(d => d.id);
+    const linhas = new Map([...el.querySelectorAll('[data-dav]')].map(r => [r.dataset.dav, r.innerHTML]));
+    const numeros = [...el.querySelectorAll('.numero')].map(r => r.textContent);
+    const y = window.scrollY;
+    el.innerHTML = html;
+    abertos.forEach(id => { const d = document.getElementById(id); if (d) d.open = true; });
+    el.querySelectorAll('[data-dav]').forEach(r => { if (linhas.get(r.dataset.dav) !== r.innerHTML) r.classList.add('dav-mudou'); });
+    el.querySelectorAll('.numero').forEach((r,i) => { if (numeros[i] !== r.textContent) r.classList.add('dav-mudou'); });
+    el.querySelectorAll('.dav-mudou').forEach(r => r.addEventListener('animationend', () => r.classList.remove('dav-mudou'), {once:true}));
+    window.scrollTo({top:y, behavior:'instant'});
+    return true;
+  }
+  async function pulsar() {
+    if (ocupado) return;
+    ocupado = true;
+    clearTimeout(timer);
+    const q = new URLSearchParams(location.search);
+    q.delete('origem'); q.set('v', versao);
+    try {
+      const r = await fetch(barra.dataset.endpoint + '?' + q, {cache:'no-store'});
+      if (r.status === 401 || r.redirected) {
+        status.textContent = 'Sessão expirada. Entre novamente para atualizar.';
+        continua = false; botao.hidden = true; return;
+      }
+      if (r.status === 204) { ultimo = new Date().toLocaleTimeString('pt-BR'); status.textContent = 'Atualizado às ' + ultimo; return; }
+      if (!r.ok) throw new Error('consulta indisponível');
+      const d = await r.json();
+      let adiou = false;
+      Object.entries(d.fragmentos).forEach(([id,html]) => { if (!trocar(id,html)) adiou = true; });
+      versao = adiou ? '' : d.v;
+      continua = d.ativo || adiou;
+      ultimo = d.atualizado_em;
+      status.textContent = 'Última atualização: ' + ultimo + (continua ? '' : ' · Resultado concluído');
+    } catch (erro) {
+      status.textContent = 'Não foi possível atualizar. Última atualização: ' + (ultimo || 'não confirmada') + '. Os últimos dados foram mantidos.';
+    } finally {
+      ocupado = false;
+      if (continua) timer = setTimeout(pulsar, 5000);
+    }
+  }
+  botao.addEventListener('click', pulsar);
+  pulsar();
+})();
+</script>"""
+
+
+def barra_pulso(endpoint: str) -> str:
+    return (f'<div class="dav-pulso" data-dav-pulso data-endpoint="{e(endpoint)}">'
+            '<span role="status" aria-live="polite">Consultando atualizações…</span>'
+            '<button type="button">Atualizar agora</button></div>')
+
+
+def resposta_pulso(fragmentos: dict, v: str, *, ativo: bool = True, contexto: str = ""):
+    versao = hashlib.sha256(json.dumps([fragmentos, ativo, contexto], ensure_ascii=False,
+                                      sort_keys=True).encode("utf-8")).hexdigest()
+    cab = {"Cache-Control": "no-store"}
+    if v == versao:
+        return Response(status_code=204, headers=cab)
+    return JSONResponse(dict(v=versao, atualizado_em=agora().strftime("%d/%m/%Y %H:%M:%S"),
+                             fragmentos=fragmentos, ativo=ativo), headers=cab)
+
 
 def _quem(usuario: str | None = Cookie(None, alias=COOKIE)):
     return vendedor(usuario)
@@ -70,7 +144,7 @@ def _login():
 
 
 def _html(titulo: str, corpo: str, usuario: str | None) -> HTMLResponse:
-    return HTMLResponse(pagina(titulo, f'<style>{CSS_DAV}</style><div class="dav">{corpo}</div>{SCRIPT_ACOES}', usuario),
+    return HTMLResponse(pagina(titulo, f'<style>{CSS_DAV}</style><div class="dav">{corpo}</div>{SCRIPT_ACOES}{SCRIPT_PULSO}', usuario),
                         headers={"Cache-Control": "no-store"})
 
 
@@ -157,7 +231,7 @@ def historico_dav(dados: dict, filtros: dict, *, administrador: bool = False) ->
 def _tela_envio(usuario: str, aviso: str = "", origem: int | None = None, **filtros) -> HTMLResponse:
     referencia = f'<input type="hidden" name="origem" value="{origem}">' if origem else ""
     with closing(banco._conectar()) as con:
-        dados = painel_dav.consultar(con, usuario=usuario, agora=datetime.now(), **({"dias": 1} | filtros))
+        dados = painel_dav.consultar(con, usuario=usuario, agora=agora(), **({"dias": 1} | filtros))
     corpo = cabecalho("Da planilha ao DAV, com clareza.", tarja="Orçamentos · Área do vendedor",
                       sub="Envie, confira e acompanhe o resultado dos seus orçamentos.") + f"""
 {aviso}
@@ -176,7 +250,7 @@ def _tela_envio(usuario: str, aviso: str = "", origem: int | None = None, **filt
 <li><b>↓ Encontre seu PDF</b><p>O documento fica junto do resultado, quando disponível.</p></li></ul>
 <p class="dav-note">Uma planilha corrigida cria um novo envio e preserva o histórico anterior.</p></aside></div>
 <section class="cartao dav-card"><h2>Seus DAVs</h2><p class="dav-note">Somente seus envios · período pela data de submissão · Brasília</p>
-{filtros_dav(dados, filtros)}<div id="dav-historico">{historico_dav(dados, filtros)}</div></section>"""
+{filtros_dav(dados, filtros)}{barra_pulso('/dav/agora')}<div id="dav-historico">{historico_dav(dados, filtros)}</div></section>"""
     return _html("Gerar DAV", corpo, usuario)
 
 
@@ -343,6 +417,31 @@ def _acesso(dav_id: int, usuario: str | None, cookie_adm: str | None):
     return d, None
 
 
+@router.get("/agora")
+def historico_agora(usuario: str | None = Depends(_quem), dias: int = 1, estado: str = "",
+                    busca: str = "", pagina: int = 1, v: str = ""):
+    if not usuario:
+        raise HTTPException(401)
+    filtros = dict(dias=dias if dias in (1, 7, 30) else 1, estado=estado[:40], busca=busca[:160], pagina=max(1, pagina))
+    with closing(banco._conectar()) as con:
+        dados = painel_dav.consultar(con, usuario=usuario, agora=agora(), **filtros)
+    return resposta_pulso({"dav-historico": historico_dav(dados, filtros)}, v,
+                          contexto=dados["periodo"]["inicio"] + str(filtros))
+
+
+@router.get("/{dav_id}/agora")
+def detalhe_agora(dav_id: int, usuario: str | None = Depends(_quem), dias: int = 1,
+                  estado: str = "", busca: str = "", pagina: int = 1, v: str = ""):
+    if not usuario:
+        raise HTTPException(401)
+    d = banco.dav(dav_id, usuario)
+    if d is None:
+        raise HTTPException(404)
+    retorno = url_dav("/dav", dict(dias=dias, estado=estado, busca=busca[:160], pagina=pagina))
+    return resposta_pulso({"dav-detalhe": detalhe_dav(d, administrador=False, retorno=retorno)}, v,
+                          ativo=d["estado"] in ("fila", "gerando"))
+
+
 @router.get("/{dav_id}", response_class=HTMLResponse)
 def ver(dav_id: int, usuario: str | None = Depends(_quem),
         cookie_adm: str | None = Cookie(None, alias=adm.COOKIE_ADM),
@@ -355,8 +454,8 @@ def ver(dav_id: int, usuario: str | None = Depends(_quem),
     if d is None:
         raise HTTPException(404)
     retorno = url_dav("/dav", dict(dias=dias, estado=estado, busca=busca[:160], pagina=pagina))
-    meta = '<meta http-equiv="refresh" content="5">' if d["estado"] in ("fila", "gerando") else ""
-    return _html("DAV", meta + detalhe_dav(d, administrador=False, retorno=retorno), usuario)
+    corpo = barra_pulso(f"/dav/{dav_id}/agora") + f'<div id="dav-detalhe">{detalhe_dav(d, administrador=False, retorno=retorno)}</div>'
+    return _html("DAV", corpo, usuario)
 
 
 def detalhe_dav(dav: dict, *, administrador: bool, retorno: str) -> str:
@@ -366,7 +465,8 @@ def detalhe_dav(dav: dict, *, administrador: bool, retorno: str) -> str:
     base = "/adm/dav" if administrador else "/dav"
     tom = "atencao" if incerto else {"pronto": "ok", "erro": "erro", "rejeitado": "atencao"}.get(d["estado"], "")
     corpo = cabecalho(diag["titulo"], tarja=f"Orçamentos DAV · Envio #{d['id']}",
-                       sub=e(d["arquivo"]), acoes=f'<a class="botao2" href="{e(retorno)}">← Voltar ao histórico</a>')
+                       sub=e(d["arquivo"]), acoes=f'<a class="botao2" href="{e(retorno)}">← Voltar ao histórico</a>'
+                       + (BOTAO_TEMA if administrador else ""))
     motivo = diag["motivo"] if d["estado"] in ("erro", "incerto", "rejeitado") else {
         "pronto": "O orçamento foi salvo no HSE. Consulte o documento disponível abaixo.",
         "fila": "Seu orçamento está aguardando a vez de execução.",
@@ -405,6 +505,8 @@ def detalhe_dav(dav: dict, *, administrador: bool, retorno: str) -> str:
              ("Etapa conhecida", diag["etapa"] or "Não informada")]
     corpo += '<section class="cartao dav-card"><h2>Contexto do orçamento</h2><dl class="dav-dados">'
     corpo += "".join(f'<div><dt>{e(k)}</dt><dd>{e(v)}</dd></div>' for k, v in dados) + '</dl>'
+    if diag["itens"]:
+        corpo += '<h3>Itens identificados</h3><ul class="dav-lista">' + "".join(f'<li>{e(item)}</li>' for item in diag["itens"]) + '</ul>'
     with closing(banco._conectar()) as con:
         resolvida = painel_dav.resolvidas(con, [d["id"]], None if administrador else d["usuario"])
         origens = [r[0] for r in con.execute(
@@ -433,4 +535,5 @@ def pdf(dav_id: int, usuario: str | None = Depends(_quem),
     caminho = Path(d["pdf"]).resolve()
     if not caminho.is_relative_to((FILA.pasta / "pdf").resolve()) or not caminho.is_file():
         raise HTTPException(404)
-    return FileResponse(caminho, media_type="application/pdf", filename=caminho.name)
+    return FileResponse(caminho, media_type="application/pdf", filename=caminho.name,
+                        headers={"Cache-Control": "no-store"})

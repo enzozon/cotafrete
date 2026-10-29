@@ -69,3 +69,18 @@ def test_relatorio_completo_sem_aviso_e_mensagem_desconhecida():
     assert diagnostico(registro("pronto", relatorio=relatorio()), administrador=False)["tem_aviso"] is False
     r = registro(erro="Segredo de formato futuro DF15653 vencimento 27/09/2026")
     assert "DF15653" not in str(diagnostico(r, administrador=False))
+
+
+def test_nome_cliente_nao_e_aviso_financeiro():
+    from orcamento.diagnostico import diagnostico
+    d = diagnostico(registro("pronto", relatorio=relatorio(info="Cliente: Financeira Industrial S.A.")), administrador=False)
+    assert d["aviso_financeiro"] is False and d["tem_aviso"] is False
+
+
+def test_itens_reconhecidos_sem_reproduzir_continuacoes():
+    from orcamento.diagnostico import diagnostico
+    texto = relatorio().replace("Itens:\n", "Itens:\nItem 1: usou produto existente 49025 - PORTA CHAVES (pelo código informado)\n"
+                               "continuação privada DF15653 valor 1234,56 vencimento 27/09/2026\n")
+    d = diagnostico(registro("pronto", relatorio=texto), administrador=False)
+    assert d["itens"] == ["Item 1: usou produto existente 49025 - PORTA CHAVES (pelo código informado)"]
+    assert "DF15653" not in str(d)

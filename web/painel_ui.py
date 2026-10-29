@@ -947,7 +947,7 @@ def _lateral(base: str = "", ativo: str = "") -> str:
   <div class="secao">Acompanhar</div>
   {itens}
   <a href="/adm/me">{_icone(ICONES["alerta"])}<span>Mercado Eletrônico</span></a>
-  <a href="/adm/dav"{' aria-current="page" class="ativo"' if ativo == 'dav' else ''}>{_icone(ICONES["cotacoes"])}<span>Orçamentos DAV</span></a>
+  <a href="/adm/dav"{' aria-current="page" class="atual"' if ativo == 'dav' else ''}>{_icone(ICONES["cotacoes"])}<span>Orçamentos DAV</span></a>
   <div class="secao">Administrar</div>
   <a href="/adm/contas">{_icone(ICONES["cotacoes"])}<span>Contas</span></a>
   <a href="/adm/dellavolpe">{_icone(ICONES["email"])}<span>E-mails Della Volpe</span></a>
