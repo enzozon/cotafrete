@@ -347,9 +347,13 @@ def _acesso(dav_id: int, usuario: str | None, cookie_adm: str | None):
 def ver(dav_id: int, usuario: str | None = Depends(_quem),
         cookie_adm: str | None = Cookie(None, alias=adm.COOKIE_ADM),
         dias: int = 1, estado: str = "", busca: str = "", pagina: int = 1):
-    d, ir = _acesso(dav_id, usuario, cookie_adm)
-    if ir:
-        return ir
+    if not usuario:
+        if adm.autorizado(cookie_adm):
+            return RedirectResponse(f"/adm/dav/{dav_id}", status_code=303)
+        return _login()
+    d = banco.dav(dav_id, usuario)
+    if d is None:
+        raise HTTPException(404)
     retorno = url_dav("/dav", dict(dias=dias, estado=estado, busca=busca[:160], pagina=pagina))
     meta = '<meta http-equiv="refresh" content="5">' if d["estado"] in ("fila", "gerando") else ""
     return _html("DAV", meta + detalhe_dav(d, administrador=False, retorno=retorno), usuario)

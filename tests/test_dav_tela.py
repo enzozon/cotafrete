@@ -124,7 +124,7 @@ def test_outro_vendedor_recebe_404_admin_200(cli, app_web, tmp_path, monkeypatch
     monkeypatch.setenv("COTAFRETE_ADM_SENHA", "s3nha")
     cli_adm = TestClient(app_web.app, follow_redirects=False)
     cli_adm.cookies.set(adm.COOKIE_ADM, adm.token_de("s3nha"))
-    assert cli_adm.get("/dav/1").status_code == 200
+    assert cli_adm.get("/dav/1").status_code == 303
     assert cli_adm.get("/dav/1/pdf").status_code == 200
     assert "ana" in cli_adm.get("/adm/dav").text
 

@@ -702,17 +702,6 @@ def gerar_resumo_ia(adm: str | None = Cookie(None, alias=COOKIE_ADM)):
     return RedirectResponse("/adm#resumo", status_code=303)
 
 
-@router.get("/dav", response_class=HTMLResponse)
-def todos_os_davs(adm: str | None = Cookie(None, alias=COOKIE_ADM)):
-    _exigir_montado()
-    if not autorizado(adm):
-        return RedirectResponse("/adm/entrar", status_code=303)
-    from web.dav_ui import tabela_davs   # tardio: dav_ui importa este módulo
-    from web.layout import pagina
-    return HTMLResponse(pagina("Gerar DAV — todos", "<h1>Gerar DAV: todos os vendedores</h1>"
-                               + tabela_davs(banco.davs(None, 200), com_vendedor=True)))
-
-
 @router.get("", response_class=HTMLResponse)
 def painel(adm: str | None = Cookie(None, alias=COOKIE_ADM),
            dias: int = 30, quem: str = "", falhas: int = 0, resumo_ia: str = ""):
@@ -723,7 +712,9 @@ def painel(adm: str | None = Cookie(None, alias=COOKIE_ADM),
     dias = _periodo_valido(dias)
     so_falhas = bool(falhas)
 
+    from web import adm_dav
     with closing(banco._conectar()) as con:
+        dav_resumo = adm_dav.resumo_principal(con)
         resumo = contas.resumo_do_dia(con)
         versao = contas.versao_do_painel(con)
         saude = contas.saude_das_transportadoras(con, dias=dias)
@@ -778,6 +769,8 @@ def painel(adm: str | None = Cookie(None, alias=COOKIE_ADM),
                    + ui.alertas_repetidas(repetidas, transportadoras.nome_de),
                    nota="falhas seguidas, ou o mesmo erro 3× em 24 h",
                    classe="c12", atraso=0.02) if avisos or repetidas else "")
+        + ui.cartao("Orçamentos DAV · Hoje", f'<div id="dav-principal">{dav_resumo}</div>', ident="dav-painel",
+                    nota="criação de orçamentos no HSE", classe="c12", atraso=0.03)
         + ui.cartao("Resumo do dia", resumo_html, ident="resumo",
                     nota="erros de hoje em português simples", classe="c12", atraso=0.04)
         + ui.cartao("Resumo da semana", ui.resumo_da_semana(semana),

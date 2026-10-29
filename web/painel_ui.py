@@ -927,7 +927,7 @@ MENU = (
 )
 
 
-def _lateral(base: str = "") -> str:
+def _lateral(base: str = "", ativo: str = "") -> str:
     """A navegação da esquerda.
 
     `base` é o que vai na frente da âncora. Vazio no painel — os links são
@@ -947,6 +947,7 @@ def _lateral(base: str = "") -> str:
   <div class="secao">Acompanhar</div>
   {itens}
   <a href="/adm/me">{_icone(ICONES["alerta"])}<span>Mercado Eletrônico</span></a>
+  <a href="/adm/dav"{' aria-current="page" class="ativo"' if ativo == 'dav' else ''}>{_icone(ICONES["cotacoes"])}<span>Orçamentos DAV</span></a>
   <div class="secao">Administrar</div>
   <a href="/adm/contas">{_icone(ICONES["cotacoes"])}<span>Contas</span></a>
   <a href="/adm/dellavolpe">{_icone(ICONES["email"])}<span>E-mails Della Volpe</span></a>
@@ -974,7 +975,7 @@ document.addEventListener('click', ev => {
 </script>"""
 
 
-def pagina_painel(titulo: str, corpo: str, *, base: str = "") -> str:
+def pagina_painel(titulo: str, corpo: str, *, base: str = "", ativo: str = "") -> str:
     """A página inteira do painel. Casco próprio, e não o `pagina()` do
     layout: aquele é uma faixa em cima e uma coluna de 1080px, desenhada para
     formulário. Quadro de instrumentos quer a largura toda e uma navegação
@@ -983,7 +984,7 @@ def pagina_painel(titulo: str, corpo: str, *, base: str = "") -> str:
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{e(titulo)} — Cotafrete</title>{ICONE_ABA}{cabeca_do_tema("escuro")}
 <style>{CSS_BASE}{CSS}</style></head><body>
-<div class="painel">{_lateral(base)}<main class="conteudo">{corpo}</main></div>
+<div class="painel">{_lateral(base, ativo)}<main class="conteudo">{corpo}</main></div>
 {LUPA}{SCRIPT_TEMA}{SCRIPT_TOPO}
 </body></html>"""
 
