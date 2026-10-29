@@ -201,9 +201,11 @@ class Hse:
             q = parse_qs(urlparse(r.url).query)
             return ("searchAjax.php" in r.url and q.get("dsInput") == [campo]
                     and q.get("search") == [termo])
-        page.fill(f"#{campo}", "")
+        # cola tudo menos a última letra e digita só ela (é a tecla que dispara a busca): digitar uma
+        # descrição de 544 letras com 40 ms cada estourava os 30 s da espera (DAV 1 de 29/10/2026)
+        page.fill(f"#{campo}", termo[:-1])
         with page.expect_response(eh_busca):
-            page.type(f"#{campo}", termo, delay=40)
+            page.type(f"#{campo}", termo[-1:])
         page.wait_for_timeout(500)
         return page.eval_on_selector_all(
             f"[id^=searchItemClick_{campo}_]",
