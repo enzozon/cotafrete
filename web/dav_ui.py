@@ -18,7 +18,7 @@ from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 
 from core.banco import Banco
 from orcamento.fila import FilaDav
-from orcamento.planilha import ErroPlanilha, ler_planilha
+from orcamento.planilha import ErroPlanilha, ler_planilha, observacoes_hse
 from web import adm
 from web.layout import e, pagina
 
@@ -112,7 +112,8 @@ def _resumo(o, dav_id: int) -> str:
         f"<tr><td>{i.numero}</td><td>{e(i.produto)}</td><td>{e(i.quantidade)}</td>"
         f"<td>{e(i.valor_unit)}</td><td>"
         f"{e(i.codigo) if i.codigo else 'procurar pela descrição / cadastrar se não existir'}"
-        "</td></tr>" for i in o.itens)
+        f"</td><td>{e(i.descricao)}</td></tr>" for i in o.itens)
+    obs = "<br>".join(e(linha) for linha in observacoes_hse(o).split("\n"))  # o mesmo texto que vai ao HSE
     avisos = "".join(f'<div class="aviso">{e(a)}</div>' for a in o.avisos)
     prazo = o.prazo_dias if o.prazo_dias is not None else ""
     return f"""<h1>Conferir</h1>{avisos}
@@ -120,8 +121,8 @@ def _resumo(o, dav_id: int) -> str:
 <dt>Filial</dt><dd>{e(o.filial)}</dd>
 <dt>Pagamento</dt><dd>{e(o.forma_pg or '')} {e(o.parcelamento or '')}</dd>
 <dt>Prazo (dias)</dt><dd>{e(prazo)}</dd>
-<dt>OC</dt><dd>{e(o.ordem_compra or '')}</dd><dt>Observações</dt><dd>{e(o.observacoes)}</dd></dl>
-<table><thead><tr><th>#</th><th>Produto</th><th>Qtd</th><th>Valor unit.</th><th>Código HSE</th></tr></thead>
+<dt>OC</dt><dd>{e(o.ordem_compra or '')}</dd><dt>Observações</dt><dd>{obs}</dd></dl>
+<table><thead><tr><th>#</th><th>Produto</th><th>Qtd</th><th>Valor unit.</th><th>Código HSE</th><th>Descrição</th></tr></thead>
 <tbody>{itens}</tbody></table>
 <form method="post" action="/dav/{dav_id}/gerar"><button type="submit">Gerar</button></form>"""
 

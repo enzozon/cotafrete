@@ -10,6 +10,8 @@ import openpyxl
 
 LINHA_INI, LINHA_FIM = 2, 25
 MAX_OBS = 1024
+MAX_DESCRICAO = 512  # maxLength do #dsObsItem_<cdItem> no HSE (visto em 29/10/2026)
+FRETES = ("CIF", "FOB")
 FILIAIS = {1, 2, 3}
 ICMS_PADRAO = Decimal("17")
 CENTAVO = Decimal("0.01")
@@ -41,6 +43,7 @@ class Item:
     descricao_cadastro: str
     grupo: str | None
     marca: str | None
+    descricao: str = ""  # coluna R: vai para a descrição do item no DAV
 
 
 @dataclass(frozen=True)
@@ -57,6 +60,7 @@ class Orcamento:
     ordem_compra: str | None
     filial: int
     avisos: tuple[str, ...]
+    frete: str | None = None  # B38: CIF ou FOB
 
 
 class ErroPlanilha(Exception):
@@ -106,8 +110,23 @@ def _aba(wb):
     raise ErroPlanilha(["aba ORÇAMENTO não encontrada"])
 
 
+def linha_frete(frete: str, prazo: int) -> str:
+    return f"FRETE {frete}, PRAZO DE ENTREGA {prazo} {'DIA' if prazo == 1 else 'DIAS'}"
+
+
+def _com_frete(obs: str, frete: str | None, prazo: int | None) -> str:
+    if not frete or not prazo:
+        return obs
+    return "\n".join(filter(None, (obs, linha_frete(frete, prazo))))
+
+
+def observacoes_hse(orc: Orcamento) -> str:
+    """Texto do #txObservacao: observações da B26 e, numa linha abaixo, o frete."""
+    return _com_frete(orc.observacoes, orc.frete, orc.prazo_dias)
+
+
 def _ler_item(ws, linha: int, erros: list[str], avisos: list[str]) -> Item | None:
-    cel = {c: ws[f"{c}{linha}"].value for c in "ABCDEFGHIJKLMNOPQ"}
+    cel = {c: ws[f"{c}{linha}"].value for c in "ABCDEFGHIJKLMNOPQR"}
     produto, codigo = _texto(cel["A"]), _texto(cel["K"])
     if not produto and not codigo:
         return None
@@ -129,6 +148,10 @@ def _ler_item(ws, linha: int, erros: list[str], avisos: list[str]) -> Item | Non
                          (("C", "CUSTO"), ("D", "FRETE PARA VIR"), ("E", "FRETE DELLA"),
                           ("F", "MADEIRA"), ("G", "MARGEM")))
     j = num("J", "VALOR DE VENDA UNITARIO")
+    # a caixa do HSE tem uma linha só: quebra de linha (Alt+Enter) vira um espaço
+    descricao = re.sub(r"\s*[\r\n]+\s*", " ", _texto(cel["R"]) or "")
+    if len(descricao) > MAX_DESCRICAO:
+        erros.append(f"{pre} DESCRIÇÃO NO DAV com {len(descricao)} caracteres (máximo {MAX_DESCRICAO})")
     if len(erros) > qtd_errada:
         return None
 
@@ -145,7 +168,7 @@ def _ler_item(ws, linha: int, erros: list[str], avisos: list[str]) -> Item | Non
     if codigo:  # com CÓDIGO HSE as colunas L–Q são ignoradas
         return Item(numero=n, linha=linha, produto=produto or "", quantidade=qtd, custo=custo,
                     valor_unit=valor, codigo=codigo, ncm=None, origem=0, icms=ICMS_PADRAO,
-                    descricao_cadastro=produto or "", grupo=None, marca=None)
+                    descricao_cadastro=produto or "", grupo=None, marca=None, descricao=descricao)
 
     ncm = _texto(cel["L"])
     if ncm:
@@ -164,7 +187,7 @@ def _ler_item(ws, linha: int, erros: list[str], avisos: list[str]) -> Item | Non
         valor_unit=valor, codigo=codigo, ncm=ncm or None,
         origem=int(origem or 0), icms=icms if icms is not None else ICMS_PADRAO,
         descricao_cadastro=_texto(cel["O"]) or produto or "",
-        grupo=_texto(cel["P"]), marca=_texto(cel["Q"]),
+        grupo=_texto(cel["P"]), marca=_texto(cel["Q"]), descricao=descricao,
     )
 
 
@@ -194,8 +217,6 @@ def ler_planilha(path: Path) -> Orcamento:
         erros.append("nenhum item preenchido (linhas 2 a 25, coluna A ou K)")
 
     obs = _texto(ws["B26"].value) or ""
-    if len(obs) > MAX_OBS:
-        erros.append(f"OBSERVAÇÕES com {len(obs)} caracteres (máximo {MAX_OBS})")
     cliente = _texto(ws["B31"].value)
     if not cliente:
         erros.append("Cliente (B31) é obrigatório")
@@ -220,6 +241,16 @@ def ler_planilha(path: Path) -> Orcamento:
             erros.append(f"Forma de pagamento (B34) desconhecida ({forma!r})")
         forma = codigo
 
+    frete = normalizar(ws["B38"].value) or None
+    if frete and frete not in FRETES:
+        erros.append(f"FRETE (B38) deve ser CIF ou FOB ({ws['B38'].value!r})")
+    elif frete and not prazo:
+        erros.append("Prazo de entrega (B32) é obrigatório quando o FRETE (B38) está marcado")
+    texto = _com_frete(obs, frete if frete in FRETES else None, prazo)
+    if len(texto) > MAX_OBS:
+        com = " + linha do FRETE" if texto != obs else ""
+        erros.append(f"OBSERVAÇÕES{com} com {len(texto)} caracteres (máximo {MAX_OBS})")
+
     filial = _filial(ws["B37"].value, erros)
     if erros:
         raise ErroPlanilha(erros)
@@ -227,5 +258,5 @@ def ler_planilha(path: Path) -> Orcamento:
         arquivo=Path(path), itens=tuple(itens), observacoes=obs,
         local_entrega=_texto(ws["B30"].value), cliente=cliente, prazo_dias=prazo,
         vendedor=vendedor, forma_pg=forma, parcelamento=_texto(ws["B35"].value),
-        ordem_compra=_texto(ws["B36"].value), filial=filial, avisos=tuple(avisos),
+        ordem_compra=_texto(ws["B36"].value), filial=filial, avisos=tuple(avisos), frete=frete,
     )

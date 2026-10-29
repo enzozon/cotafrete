@@ -2,7 +2,7 @@ from decimal import Decimal
 
 import pytest
 
-from orcamento.planilha import ErroPlanilha, ler_planilha, normalizar
+from orcamento.planilha import ErroPlanilha, ler_planilha, normalizar, observacoes_hse
 from tests.orcamento.planilhas.gerar import VARIANTES, criar
 
 
@@ -160,3 +160,58 @@ def test_texto_com_ponto_de_milhar(tmp_path):
 
 def test_codigo_float_vira_inteiro(tmp_path):
     assert ler(tmp_path, "valida", {"K2": 13370.0}).itens[0].codigo == "13370"
+
+
+# --- frete (B38) e descrição por item (coluna R) ---
+
+def test_sem_frete_observacoes_ficam_iguais(tmp_path):
+    orc = ler(tmp_path, "valida", {"B26": "Obs do vendedor"})
+    assert orc.frete is None
+    assert observacoes_hse(orc) == "Obs do vendedor"
+
+
+def test_frete_vai_numa_linha_depois_das_observacoes(tmp_path):
+    orc = ler(tmp_path, "valida", {"B26": "Obs do vendedor", "B32": 30, "B38": "CIF"})
+    assert orc.frete == "CIF"
+    assert observacoes_hse(orc) == "Obs do vendedor\nFRETE CIF, PRAZO DE ENTREGA 30 DIAS"
+
+
+def test_frete_sem_observacoes_e_um_dia(tmp_path):
+    orc = ler(tmp_path, "valida", {"B32": 1, "B38": " fob "})
+    assert observacoes_hse(orc) == "FRETE FOB, PRAZO DE ENTREGA 1 DIA"
+
+
+@pytest.mark.parametrize("prazo", [None, 0])
+def test_frete_exige_prazo(tmp_path, prazo):
+    assert "Prazo de entrega (B32) é obrigatório quando o FRETE" in erros(
+        tmp_path, "valida", {"B32": prazo, "B38": "CIF"})
+
+
+def test_frete_invalido(tmp_path):
+    assert "FRETE (B38)" in erros(tmp_path, "valida", {"B32": 5, "B38": "CFI"})
+
+
+def test_prazo_zero_sem_frete_continua_valido(tmp_path):
+    assert ler(tmp_path, "valida", {"B32": 0}).prazo_dias == 0
+
+
+def test_observacoes_com_frete_respeitam_1024(tmp_path):
+    linha = "\nFRETE CIF, PRAZO DE ENTREGA 30 DIAS"
+    assert ler(tmp_path, "valida", {"B26": "x" * (1024 - len(linha)), "B32": 30, "B38": "CIF"})
+    texto = erros(tmp_path, "valida", {"B26": "x" * (1025 - len(linha)), "B32": 30, "B38": "CIF"})
+    assert "OBSERVAÇÕES" in texto and "1025" in texto
+
+
+def test_descricao_do_item(tmp_path):
+    orc = ler(tmp_path, "completa", {"R2": "  Cor preta  ", "R3": "220V\n  Inox\r\nGarantia"})
+    assert [i.descricao for i in orc.itens] == ["Cor preta", "220V Inox Garantia"]
+
+
+def test_descricao_vazia(tmp_path):
+    assert ler(tmp_path, "valida").itens[0].descricao == ""
+
+
+def test_descricao_maximo_512(tmp_path):
+    assert len(ler(tmp_path, "valida", {"R2": "x" * 512}).itens[0].descricao) == 512
+    assert "Item 1: DESCRIÇÃO NO DAV com 513 caracteres (máximo 512)" in erros(
+        tmp_path, "valida", {"R2": "x" * 513})

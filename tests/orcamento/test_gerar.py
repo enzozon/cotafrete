@@ -151,3 +151,18 @@ def test_produto_sem_preco_de_tabela_nao_e_conferido(tmp_path):
     p = criar(tmp_path, None, "orc.xlsx")
     r = gerar(p, cfg(tmp_path), HseFalso(), tmp_path / "pdfs")  # MOUSE do HSE falso, sem preço
     assert r.estado == "pronto"
+
+
+def test_descricao_nao_gravada_vira_aviso_e_o_dav_sai(tmp_path):
+    p = criar(tmp_path, {"R2": "Cor preta"}, "orc.xlsx")
+    hse = HseFalso()
+    hse.notas_ao_montar = ["Item 1: descrição não gravada no HSE (timeout); confira no DAV"]
+    r = gerar(p, cfg(tmp_path), hse, tmp_path / "pdfs")
+    assert r.estado == "pronto"
+    assert "Item 1: descrição não gravada no HSE (timeout); confira no DAV" in r.relatorio
+
+
+def test_dry_run_mostra_a_descricao_que_seria_gravada(tmp_path):
+    p = criar(tmp_path, {"R2": "Cor preta"}, "orc.xlsx")
+    r = gerar(p, cfg(tmp_path, dry_run=True), HseFalso(), tmp_path / "pdfs")
+    assert "Item 1: [DRY_RUN] descrição no DAV: Cor preta" in r.relatorio
