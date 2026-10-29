@@ -98,3 +98,21 @@ def test_gerar_usa_o_nome_de_exibicao_no_relatorio(tmp_path):
     r = gerar(p, cfg(tmp_path), HseFalso(), tmp_path / "pdfs", nome="orcamento_ana.xlsx")
     assert "Arquivo: orcamento_ana.xlsx" in r.relatorio
     assert "7.xlsx" not in r.relatorio
+
+
+def test_aviso_do_hse_ao_escolher_o_cliente_vai_para_o_relatorio(tmp_path):
+    p = criar(tmp_path, None, "orc.xlsx")
+    hse = HseFalso()
+    hse.avisos_ao_montar = ["Pendência Cliente bloqueado. Consultar o setor financeiro"]
+    r = gerar(p, cfg(tmp_path), hse, tmp_path / "pdfs")
+    assert r.estado == "pronto"
+    assert "O HSE avisou: Pendência Cliente bloqueado. Consultar o setor financeiro" in r.relatorio
+
+
+def test_aviso_do_hse_aparece_no_relatorio_mesmo_quando_o_dav_falha(tmp_path):
+    p = criar(tmp_path, None, "orc.xlsx")
+    hse = HseFalso(falhar_em={"salvar_orcamento"})
+    hse.avisos_ao_montar = ["Pendência Cliente bloqueado."]
+    r = gerar(p, cfg(tmp_path), hse, tmp_path / "pdfs")
+    assert r.estado == "erro"
+    assert "O HSE avisou: Pendência Cliente bloqueado." in r.relatorio

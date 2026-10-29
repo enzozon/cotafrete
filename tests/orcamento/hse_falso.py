@@ -20,6 +20,8 @@ class HseFalso:
         self.indisponivel_em = set(indisponivel_em)
         self.chamadas: list[tuple] = []
         self.rascunho: str | None = None
+        self.avisos: list[str] = []
+        self.avisos_ao_montar: list[str] = []  # o que o HSE "mostra" ao montar o orçamento
         self._prox_codigo = 90000
 
     def _registrar(self, nome, *args):
@@ -70,6 +72,7 @@ class HseFalso:
         return str(self._prox_codigo)
 
     def montar_orcamento(self, orc, cliente, itens, incluir: bool) -> None:
+        self.avisos = list(self.avisos_ao_montar)
         if incluir:
             self.rascunho = "77777"
         self._registrar("montar_orcamento", cliente.codigo, [(i.numero, p and p.codigo) for i, p in itens], incluir)

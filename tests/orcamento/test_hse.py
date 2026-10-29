@@ -82,3 +82,36 @@ def test_login_recusado_ja_no_primeiro_passo():
 def test_login_sem_recusa_no_primeiro_passo_mantem_a_mensagem_antiga():
     with pytest.raises(HseIndisponivel, match="confira HSE_USUARIO/HSE_SENHA"):
         _hse(_Pagina("Entrar"))._login(1)
+
+
+class _Modal:
+    def __init__(self, texto):
+        self.texto, self.visivel, self.fechou = texto, texto is not None, False
+
+    def locator(self, sel):
+        assert sel == "#modalAlert"
+        return SimpleNamespace(is_visible=lambda: self.visivel, inner_text=lambda: self.texto)
+
+    def evaluate(self, js):
+        assert "modalAlert" in js and "hide" in js
+        self.visivel, self.fechou = False, True
+
+    def wait_for_timeout(self, ms): pass
+
+
+def test_aviso_do_hse_e_fechado_e_guardado_sem_o_ok():
+    hse = Hse.__new__(Hse)
+    hse.avisos = []
+    pagina = _Modal("Pendência\nCliente bloqueado. Consultar o setor financeiro\nDE15648 Venc: 19/10/2026\nok")
+    hse._fechar_aviso(pagina)
+    hse._fechar_aviso(pagina)  # já fechado: não duplica
+    assert pagina.fechou
+    assert hse.avisos == ["Pendência Cliente bloqueado. Consultar o setor financeiro DE15648 Venc: 19/10/2026"]
+
+
+def test_sem_aviso_nao_mexe_na_tela():
+    hse = Hse.__new__(Hse)
+    hse.avisos = []
+    pagina = _Modal(None)
+    hse._fechar_aviso(pagina)
+    assert not pagina.fechou and hse.avisos == []
