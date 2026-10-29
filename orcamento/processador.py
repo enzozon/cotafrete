@@ -206,10 +206,12 @@ def _por_referencia(item: Item, hse: HseApi) -> str:
 
 
 def detectar_marca(texto: str, marcas: list[str]) -> str | None:
-    """Marca do HSE escrita na descrição (palavra inteira). Só aceita quando há exatamente uma."""
+    """Marca do HSE escrita na descrição (palavra inteira). Só aceita quando há exatamente uma.
+
+    Ignora marcas de uma letra ("C", "X"...): casavam com "C/ TAMPA" e "26 x 34" (DAV 22, 29/10/2026)."""
     t = normalizar(texto)
     achadas = {normalizar(m): m for m in marcas
-               if normalizar(m) and re.search(rf"(?<![A-Z0-9]){re.escape(normalizar(m))}(?![A-Z0-9])", t)}
+               if len(normalizar(m)) >= 2 and re.search(rf"(?<![A-Z0-9]){re.escape(normalizar(m))}(?![A-Z0-9])", t)}
     return next(iter(achadas.values())) if len(achadas) == 1 else None
 
 
