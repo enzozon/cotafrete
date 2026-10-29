@@ -78,6 +78,7 @@ class Hse:
     def __init__(self, cfg: Config):
         self.cfg = cfg
         self.rascunho: str | None = None
+        self.avisos: list[str] = []  # avisos do HSE fechados pelo robô (vão para o relatório)
         self._pw = self._browser = self._ctx = None
         self._filial: int | None = None
         self._buscas: dict[str, Page] = {}
@@ -262,6 +263,7 @@ class Hse:
                          itens: list[tuple[Item, Produto | None]], incluir: bool) -> None:
         self._garantir_filial(orc.filial)
         self.rascunho = None
+        self.avisos = []
         page = self._pedido = self._abrir("vendaAlt.php")
         if page.input_value("#cdFilial") != str(orc.filial):
             raise ErroHse(f"tela abriu na filial {page.input_value('#cdFilial')}, esperado {orc.filial}")
@@ -282,6 +284,23 @@ class Hse:
             has_text=re.compile(rf"^\s*{cliente.codigo} - ")).first.click()
         page.wait_for_function(f"() => document.querySelector('#cdCliente').value === '{cliente.codigo}'")
         page.wait_for_load_state("networkidle")
+        page.wait_for_timeout(500)  # o validaCliente abre o aviso logo depois
+        self._fechar_aviso(page)
+
+    def _fechar_aviso(self, page: Page) -> None:
+        """Fecha o aviso modal do HSE (ex.: "Pendência Cliente bloqueado. Consultar o setor financeiro").
+
+        Visto com a VALE 1485 em 29/10/2026: o aviso cobre a tela e o clique em Incluir caía nele.
+        Num orçamento ele só informa, então o robô guarda o texto para o relatório e segue."""
+        modal = page.locator("#modalAlert")
+        if not modal.is_visible():
+            return
+        texto = " ".join(modal.inner_text().split())
+        texto = re.sub(r"\s*\bok$", "", texto, flags=re.I)
+        if texto and texto not in self.avisos:
+            self.avisos.append(texto)
+        page.evaluate("() => jQuery('#modalAlert').modal('hide')")
+        page.wait_for_timeout(800)  # animação de saída do modal
 
     @staticmethod
     def _set_select_oculto(page: Page, seletor: str, valor: str) -> None:
@@ -337,6 +356,7 @@ class Hse:
             raise ErroHse(f"não consegui manter forma '{orc.forma_pg}' / parcelamento '{orc.parcelamento}'")
 
     def _preencher_item(self, page: Page, item: Item, produto: Produto, incluir: bool) -> None:
+        self._fechar_aviso(page)
         self._autocomplete(page, "dsProduto", produto.codigo)
         alvo = page.locator(f"[id^=searchItemClick_dsProduto_][onclick*=\"itemSelected_dsProduto('{produto.codigo}'\"]")
         if alvo.count() == 0:
@@ -363,6 +383,7 @@ class Hse:
                 page.dblclick("#selected_dsProduto")  # limpa a seleção para o próximo item
             return
         antes = page.locator("td.cellDelete").count()
+        self._fechar_aviso(page)
         try:
             with page.expect_response(lambda r: "vendaItem.php" in r.url and r.request.method == "POST"
                                       and "acao=incluir" in (r.request.post_data or "")) as resp:
@@ -401,6 +422,7 @@ class Hse:
         page = self._pedido
         self._conferir_pagamento(page, self._orc)
         pendente = self.rascunho or "?"
+        self._fechar_aviso(page)
         try:
             with page.expect_response(lambda r: "vendaAlt.php" in r.url and r.request.method == "POST"
                                       and "acao=salvar" in (r.request.post_data or "")) as resp:

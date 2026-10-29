@@ -64,6 +64,7 @@ class SalvoIncerto(Exception):
 
 class HseApi(Protocol):
     rascunho: str | None
+    avisos: list[str]  # avisos que o HSE mostrou ao montar o orçamento (ex.: cliente bloqueado)
     def buscar_cliente(self, chave: str) -> list[Cliente]: ...
     def vendedor_existe(self, nome: str) -> bool: ...
     def buscar_produtos(self, termo: str) -> list[Produto]: ...
@@ -355,7 +356,10 @@ def _executar_real(orc: Orcamento, cliente: Cliente, resolucoes: list[Resolucao]
                     produto = Produto(codigo, r.item.descricao_cadastro, True)
                     novos[chave] = (produto, r.item.numero)
             pares.append((r.item, produto))
-        hse.montar_orcamento(orc, cliente, pares, incluir=True)
+        try:
+            hse.montar_orcamento(orc, cliente, pares, incluir=True)
+        finally:
+            _avisos_do_hse(hse, rel)
         numero = hse.salvar_orcamento()
         if ao_salvar:
             ao_salvar(numero)
@@ -406,8 +410,16 @@ def _executar_dry(orc: Orcamento, cliente: Cliente, resolucoes: list[Resolucao],
     for r in resolucoes:
         if r.por == "novo":
             hse.cadastrar_produto(r.item, orc.filial, salvar=False)
-    hse.montar_orcamento(orc, cliente, [(r.item, r.produto) for r in resolucoes], incluir=False)
+    try:
+        hse.montar_orcamento(orc, cliente, [(r.item, r.produto) for r in resolucoes], incluir=False)
+    finally:
+        _avisos_do_hse(hse, rel)
     rel.resultado = "DRY_RUN - simulação concluída sem erros (nada foi salvo)"
+
+
+def _avisos_do_hse(hse: HseApi, rel: Relatorio) -> None:
+    for aviso in getattr(hse, "avisos", ()):
+        rel.info(f"O HSE avisou: {aviso}")
 
 
 def _nome_cliente(cliente: Cliente | None) -> str:
