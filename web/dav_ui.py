@@ -8,16 +8,18 @@ daqui seria circular), como em web/me_ui.py.
 from __future__ import annotations
 
 import hashlib
+import sqlite3
 import threading
 import uuid
 from pathlib import Path
 from typing import Callable
 
-from fastapi import APIRouter, Cookie, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Cookie, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 
 from core.banco import Banco
 from orcamento.fila import FilaDav
+from orcamento.diagnostico import diagnostico
 from orcamento.planilha import ErroPlanilha, ler_planilha
 from web import adm
 from web.layout import e, pagina
@@ -69,10 +71,12 @@ def tabela_davs(linhas: list[dict], com_vendedor: bool = False) -> str:
     return f"<table><thead><tr>{cab}</tr></thead><tbody>{corpo}</tbody></table>"
 
 
-def _tela_envio(usuario: str, aviso: str = "") -> HTMLResponse:
+def _tela_envio(usuario: str, aviso: str = "", origem: int | None = None) -> HTMLResponse:
+    referencia = f'<input type="hidden" name="origem" value="{origem}">' if origem else ""
     corpo = f"""<h1>Gerar DAV</h1>
 {aviso}
 <form method="post" action="/dav/conferir" enctype="multipart/form-data" class="cartao">
+{referencia}
   <p>Envie a PLANILHA-BASE v3 (.xlsx, até 5 MB). <a href="/dav/modelo">Baixar o modelo v3</a></p>
   <input type="file" name="planilha" accept=".xlsx" required>
   <button type="submit">Conferir</button>
@@ -94,10 +98,11 @@ def _ja_gerou(usuario: str, antigo: dict) -> HTMLResponse:
 
 
 @router.get("", response_class=HTMLResponse)
-def inicio(usuario: str | None = Depends(_quem)):
+def inicio(usuario: str | None = Depends(_quem), origem: int | None = None):
     if not usuario:
         return _login()
-    return _tela_envio(usuario)
+    _validar_origem(usuario, origem)
+    return _tela_envio(usuario, origem=origem)
 
 
 @router.get("/modelo")
@@ -128,15 +133,16 @@ def _resumo(o, dav_id: int) -> str:
 
 @router.post("/conferir", response_class=HTMLResponse)
 def conferir(planilha: UploadFile = File(...),
-                   usuario: str | None = Depends(_quem)):
+             usuario: str | None = Depends(_quem), origem: int | None = Form(None)):
     if not usuario:
         return _login()
+    _validar_origem(usuario, origem)
     nome = Path(planilha.filename or "planilha.xlsx").name
     if not nome.lower().endswith(".xlsx"):
-        return _erro(usuario, "Envie um arquivo .xlsx (a PLANILHA-BASE v3).")
+        return _rejeitar(usuario, nome, origem, "Envie um arquivo .xlsx (a PLANILHA-BASE v3).")
     dados = planilha.file.read(MAX_BYTES + 1)
     if len(dados) > MAX_BYTES:
-        return _erro(usuario, "O arquivo passa de 5 MB.")
+        return _rejeitar(usuario, nome, origem, "O arquivo passa de 5 MB.")
     hash_ = hashlib.sha256(dados).hexdigest()
     pasta = FILA.pasta / "entrada"
     pasta.mkdir(parents=True, exist_ok=True)
@@ -146,19 +152,47 @@ def conferir(planilha: UploadFile = File(...),
         try:
             o = ler_planilha(temp)
         except ErroPlanilha as exc:
-            return _erro(usuario, *exc.erros)
+            return _rejeitar(usuario, nome, origem, *exc.erros)
         except Exception:
-            return _erro(usuario, "Não consegui abrir o arquivo. "
+            return _rejeitar(usuario, nome, origem, "Não consegui abrir o arquivo. "
                                   "É a PLANILHA-BASE v3 em .xlsx?")
         with _TRAVA:
+            _validar_origem(usuario, origem)
             antigo = banco.dav_ja_gerado(usuario, hash_)
             if antigo:
+                if origem:
+                    banco.dav_vincular_correcao(origem, antigo["id"], usuario)
                 return _ja_gerou(usuario, antigo)
             dav_id = banco.dav_criar(usuario, nome, hash_, o.cliente)
+            if origem:
+                banco.dav_vincular_correcao(origem, dav_id, usuario)
             temp.replace(FILA.planilha(dav_id))
         return _html("Conferir DAV", _resumo(o, dav_id), usuario)
     finally:
         temp.unlink(missing_ok=True)
+
+
+def _validar_origem(usuario: str, origem: int | None) -> None:
+    if origem is None:
+        return
+    d = banco.dav(origem, usuario)
+    if d is None:
+        raise HTTPException(404)
+    if d["estado"] not in ("erro", "rejeitado") or diagnostico(d, administrador=False)["salvamento"] == "incerto":
+        raise HTTPException(409, "Confira o resultado no HSE antes de reenviar.")
+
+
+def _rejeitar(usuario: str, nome: str, origem: int | None, *msgs: str) -> HTMLResponse:
+    try:
+        with _TRAVA:
+            _validar_origem(usuario, origem)
+            i = banco.dav_rejeitar(usuario, nome, list(msgs))
+            if origem:
+                banco.dav_vincular_correcao(origem, i, usuario)
+    except sqlite3.Error:
+        return HTMLResponse(pagina("Planilha não aceita", '<h1>Planilha não aceita</h1>'
+            '<p>Não foi possível registrar a rejeição. Nenhum DAV foi enviado ao HSE.</p>', usuario), status_code=503)
+    return _erro(usuario, *msgs)
 
 
 @router.post("/{dav_id}/gerar", response_class=HTMLResponse)

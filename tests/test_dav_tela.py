@@ -58,22 +58,22 @@ def test_conferir_boa_mostra_resumo_e_botao_gerar(cli, app_web, tmp_path):
     assert (tmp_path / "davs" / "entrada" / "1.xlsx").exists()
 
 
-def test_conferir_com_erro_lista_erros_sem_botao_nem_linha(cli, app_web, tmp_path):
+def test_conferir_com_erro_registra_rejeicao_sem_gerar(cli, app_web, tmp_path):
     r = enviar(cli, planilha(tmp_path, {"B31": None}))
     assert r.status_code == 200
     assert "/gerar" not in r.text
-    assert app_web.banco.dav(1, None) is None
+    assert app_web.banco.dav(1, "ana")["estado"] == "rejeitado"
     assert not list((tmp_path / "davs" / "entrada").glob("*"))
 
 
 @pytest.mark.parametrize("nome,conteudo", [
     ("a.xls", b"x"), ("a.xlsx", b"x" * (6 * 1024 * 1024)),
     ("a.xlsx", b"isto nao e um xlsx")], ids=["xls", "6mb", "corrompido"])
-def test_arquivo_errado_nada_criado(cli, app_web, tmp_path, nome, conteudo):
+def test_arquivo_errado_so_registra_rejeicao(cli, app_web, tmp_path, nome, conteudo):
     r = enviar(cli, None, nome, conteudo)
     assert r.status_code == 200
     assert "/gerar" not in r.text
-    assert app_web.banco.dav(1, None) is None
+    assert app_web.banco.dav(1, "ana")["estado"] == "rejeitado"
     assert not list((tmp_path / "davs" / "entrada").glob("*"))
 
 
@@ -214,3 +214,51 @@ def test_retomar_que_falha_nao_impede_o_servidor_de_subir(app_web, monkeypatch):
     monkeypatch.setattr(app_web, "INGESTOR", None)
     with TestClient(app_web.app) as c:
         assert c.get("/login").status_code == 200
+
+
+def test_corrigir_referencia_origem_e_preserva_dono(cli, app_web, tmp_path):
+    origem = app_web.banco.dav_rejeitar("ana", "antiga.xls", ["formato"])
+    assert f'value="{origem}"' in cli.get(f"/dav?origem={origem}").text
+    r = cli.post("/dav/conferir", data={"origem": origem},
+                 files={"planilha": ("nova.xlsx", planilha(tmp_path).read_bytes())})
+    assert r.status_code == 200 and "/gerar" in r.text
+    from contextlib import closing
+    with closing(app_web.banco._conectar()) as con:
+        assert tuple(con.execute("SELECT origem_id, destino_id FROM dav_correcao").fetchone()) == (origem, 2)
+    assert DISPARADOS == []
+
+
+@pytest.mark.parametrize("estado,usuario,numero,esperado", [
+    ("erro", "bia", None, 404), ("incerto", "ana", None, 409),
+    ("erro", "ana", "16410", 409), ("pronto", "ana", None, 409)])
+def test_origem_forjada_e_incerta_nao_permite_correcao(cli, app_web, tmp_path, estado, usuario, numero, esperado):
+    i = app_web.banco.dav_criar(usuario, "antes.xlsx", "x", "A")
+    app_web.banco.dav_atualizar(i, estado=estado, numero=numero)
+    r = cli.post("/dav/conferir", data={"origem": i}, files={"planilha": ("a.xlsx", b"x")})
+    assert r.status_code == esperado
+    assert app_web.banco.dav(2, None) is None and not DISPARADOS
+
+
+def test_correcao_deduplicada_vincula_resultado_existente(cli, app_web, tmp_path):
+    p = planilha(tmp_path)
+    enviar(cli, p)
+    cli.post("/dav/1/gerar")
+    app_web.banco.dav_atualizar(1, estado="pronto", numero="777")
+    origem = app_web.banco.dav_rejeitar("ana", "invalida.xls", ["formato"])
+    r = cli.post("/dav/conferir", data={"origem": origem}, files={"planilha": ("a.xlsx", p.read_bytes())})
+    assert r.status_code == 200 and "777" in r.text
+    from contextlib import closing
+    with closing(app_web.banco._conectar()) as con:
+        assert tuple(con.execute("SELECT origem_id, destino_id FROM dav_correcao").fetchone()) == (origem, 1)
+    assert app_web.banco.dav(3, None) is None and len(DISPARADOS) == 1
+
+
+def test_rejeicao_de_reenvio_tem_vinculo_e_sem_login_nao_grava(cli, app_web):
+    origem = app_web.banco.dav_rejeitar("ana", "a.xls", ["formato"])
+    cli.post("/dav/conferir", data={"origem": origem}, files={"planilha": ("a.xls", b"x")})
+    from contextlib import closing
+    with closing(app_web.banco._conectar()) as con:
+        assert tuple(con.execute("SELECT origem_id, destino_id FROM dav_correcao").fetchone()) == (origem, 2)
+    sem_login = TestClient(app_web.app, follow_redirects=False)
+    assert sem_login.post("/dav/conferir", files={"planilha": ("a.xls", b"x")}).status_code == 303
+    assert app_web.banco.dav(3, None) is None
