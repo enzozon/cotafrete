@@ -59,6 +59,10 @@ class HseIndisponivel(Exception):
     """Rede/login/HSE fora do ar: a planilha fica para o próximo ciclo."""
 
 
+class ErroHse(Exception):
+    """A tela do HSE recusou algo (vendedor/grupo/endereço inexistente etc.)."""
+
+
 class SalvoIncerto(Exception):
     """Clicou em Salvar mas não deu para confirmar: o orçamento pode existir — nunca cancelar."""
 
@@ -477,6 +481,9 @@ def gerar(path: Path, cfg: Config, hse: HseApi, pasta_pdf: Path,
     except HseIndisponivel as e:
         log.warning("HSE indisponível ao processar %s: %s", path.name, e)
         return pronto("adiado")
+    except ErroHse as e:  # a tela recusou um dado da planilha (ex.: local de entrega): não é falha do robô
+        rel.erro(str(e))
+        return pronto("erro", "ERRO na validação com o HSE (nada foi criado)")
     except Exception as e:  # noqa: BLE001 — antes de qualquer criação: só reporta
         log.exception("Falha inesperada em %s", path.name)
         rel.erro(_resumo(e))

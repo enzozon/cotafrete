@@ -12,7 +12,7 @@ from playwright.sync_api import Page, sync_playwright
 
 from orcamento.config import Config
 from orcamento.planilha import Item, Orcamento, normalizar
-from orcamento.processador import Cliente, HseIndisponivel, Produto, SalvoIncerto
+from orcamento.processador import Cliente, ErroHse, HseIndisponivel, Produto, SalvoIncerto
 
 log = logging.getLogger("robo")
 
@@ -41,10 +41,6 @@ def _se_recusou(page: Page) -> None:
         return
     if m:
         raise HseIndisponivel(f"O HSE recusou o login do robô: {m.group(1) or 'acesso negado'}") from None
-
-
-class ErroHse(Exception):
-    """A tela do HSE recusou algo (vendedor/grupo/endereço inexistente etc.)."""
 
 
 def br(v: Decimal, casas: int = 2) -> str:
@@ -78,7 +74,11 @@ def _so_palavras(texto: str) -> str:
 def enderecos_do_local(local: str, opcoes: list[tuple[str, str]]) -> list[str]:
     """Endereços do cliente que contêm o texto da B30, sem ligar para pontuação.
 
-    "Barão de cocais MG" não casava com ".../BARÃO DE COCAIS/MG" por causa da barra (DAV 20, 29/10/2026)."""
+    "Barão de cocais MG" não casava com ".../BARÃO DE COCAIS/MG" por causa da barra (DAV 20, 29/10/2026).
+    Só um número ("2") escolhe pelo número da lista do HSE ("2 - Entrega - ..."): o CEP não aparece na lista
+    e o nome da cidade pode casar com vários endereços (PETROBRAS, 29/10/2026)."""
+    if re.fullmatch(r"\s*\d{1,3}\s*", local):
+        return [v for v, t in opcoes if re.match(rf"\s*{int(local)}\s*-", t)]
     alvo = f" {_so_palavras(local)} "
     return [v for v, t in opcoes if alvo in f" {_so_palavras(t)} "]
 
@@ -216,9 +216,16 @@ class Hse:
                     and q.get("search") == [termo])
         # cola tudo menos a última letra e digita só ela (é a tecla que dispara a busca): digitar uma
         # descrição de 544 letras com 40 ms cada estourava os 30 s da espera (DAV 1 de 29/10/2026)
-        page.fill(f"#{campo}", termo[:-1])
-        with page.expect_response(eh_busca):
-            page.type(f"#{campo}", termo[-1:])
+        for tentativa in (1, 2):  # uma lentidão do HSE não vira "fora do ar" na 1ª vez (davs__20, 29/10/2026)
+            try:
+                page.fill(f"#{campo}", termo[:-1])
+                with page.expect_response(eh_busca):
+                    page.type(f"#{campo}", termo[-1:])
+                break
+            except PlaywrightError:
+                if tentativa == 2:
+                    raise
+                log.warning("Busca de %s demorou demais; tentando de novo", campo)
         page.wait_for_timeout(500)
         return page.eval_on_selector_all(
             f"[id^=searchItemClick_{campo}_]",
@@ -341,7 +348,8 @@ class Hse:
             achados = enderecos_do_local(orc.local_entrega, opcoes)
             if len(achados) != 1:
                 raise ErroHse(f"Local de entrega '{orc.local_entrega}': {len(achados)} endereço(s) do "
-                              f"cliente contém esse texto ({'; '.join(t for _, t in opcoes)})")
+                              f"cliente contém esse texto; escreva na B30 só o número do endereço "
+                              f"({'; '.join(t for _, t in opcoes)})")
             self._set_select_oculto(page, "#cdEndereco", achados[0])
         self._pagamento(page, orc)
         if orc.prazo_dias is not None:

@@ -151,3 +151,17 @@ def test_produto_sem_preco_de_tabela_nao_e_conferido(tmp_path):
     p = criar(tmp_path, None, "orc.xlsx")
     r = gerar(p, cfg(tmp_path), HseFalso(), tmp_path / "pdfs")  # MOUSE do HSE falso, sem preço
     assert r.estado == "pronto"
+
+
+def test_erro_da_tela_do_hse_na_simulacao_e_erro_de_validacao_nao_inesperado(tmp_path):
+    from orcamento.processador import ErroHse
+
+    class LocalNaoCasa(HseFalso):
+        def montar_orcamento(self, *a, **kw):
+            raise ErroHse("Local de entrega 'Rio de Janeiro': 2 endereço(s) do cliente contêm esse texto")
+    p = criar(tmp_path, None, "orc.xlsx")
+    r = gerar(p, cfg(tmp_path, dry_run=True), LocalNaoCasa(), tmp_path / "pdfs")
+    assert r.estado == "erro"
+    assert "inesperado" not in r.relatorio
+    assert "ERRO na validação com o HSE" in r.relatorio
+    assert "Local de entrega 'Rio de Janeiro'" in r.relatorio
