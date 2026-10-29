@@ -58,8 +58,9 @@ def _qtd(v: Decimal) -> str:
 def motivo_recusa(html: str) -> str:
     """O Incluir recusado não dá erro HTTP: o motivo vem num <script> da resposta (visto no orçamento 16354)."""
     m = re.search(r"erroDescontoMsg\s*=\s*'([^']*)'", html)
-    if not m:
-        return "o HSE não informou o motivo"
+    if not m:  # outra recusa (DAV 23): mostra o aviso que a resposta abriria na tela, se houver
+        aviso = re.search(r"""\b(?:alert|toast\w*)\(\s*(['"])(.+?)\1""", html)
+        return re.sub(r"\s*<br\s*/?>\s*", " - ", aviso.group(2)) if aviso else "o HSE não informou o motivo"
     motivo = re.sub(r"\s*<br\s*/?>\s*", " - ", m.group(1))
     original = re.search(r"'vlOriginal',\s*([\d.]+)", html)
     maximo = re.search(r"percentDescMax\s*=\s*([\d.]+)", html)
@@ -68,6 +69,18 @@ def motivo_recusa(html: str) -> str:
         minimo = tabela * (100 - Decimal(maximo.group(1))) / 100
         motivo += f"; preço de tabela {br(tabela)}, menor preço aceito {br(minimo)}"
     return motivo
+
+
+def _so_palavras(texto: str) -> str:
+    return " ".join(re.sub(r"[^A-Z0-9]+", " ", normalizar(texto)).split())
+
+
+def enderecos_do_local(local: str, opcoes: list[tuple[str, str]]) -> list[str]:
+    """Endereços do cliente que contêm o texto da B30, sem ligar para pontuação.
+
+    "Barão de cocais MG" não casava com ".../BARÃO DE COCAIS/MG" por causa da barra (DAV 20, 29/10/2026)."""
+    alvo = f" {_so_palavras(local)} "
+    return [v for v, t in opcoes if alvo in f" {_so_palavras(t)} "]
 
 
 def recusa_do_incluir(numero: int, codigo: str, valor: Decimal, html: str) -> str:
@@ -202,9 +215,11 @@ class Hse:
             q = parse_qs(urlparse(r.url).query)
             return ("searchAjax.php" in r.url and q.get("dsInput") == [campo]
                     and q.get("search") == [termo])
-        page.fill(f"#{campo}", "")
+        # cola tudo menos a última letra e digita só ela (é a tecla que dispara a busca): digitar uma
+        # descrição de 544 letras com 40 ms cada estourava os 30 s da espera (DAV 1 de 29/10/2026)
+        page.fill(f"#{campo}", termo[:-1])
         with page.expect_response(eh_busca):
-            page.type(f"#{campo}", termo, delay=40)
+            page.type(f"#{campo}", termo[-1:])
         page.wait_for_timeout(500)
         return page.eval_on_selector_all(
             f"[id^=searchItemClick_{campo}_]",
@@ -325,7 +340,7 @@ class Hse:
         if orc.local_entrega:
             opcoes = page.eval_on_selector_all("#cdEndereco option",
                                                "os => os.filter(o => o.value).map(o => [o.value, o.text])")
-            achados = [v for v, t in opcoes if normalizar(orc.local_entrega) in normalizar(t)]
+            achados = enderecos_do_local(orc.local_entrega, opcoes)
             if len(achados) != 1:
                 raise ErroHse(f"Local de entrega '{orc.local_entrega}': {len(achados)} endereço(s) do "
                               f"cliente contém esse texto ({'; '.join(t for _, t in opcoes)})")
