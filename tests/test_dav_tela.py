@@ -147,9 +147,9 @@ def test_estados_da_pagina(cli, app_web, tmp_path):
     assert 'http-equiv="refresh"' not in t
     app_web.banco.dav_atualizar(1, estado="pronto", relatorio="LINHA <b>x</b>", pdf="x.pdf")
     t = cli.get("/dav/1").text
-    assert "Baixar PDF" in t and "&lt;b&gt;" in t
+    assert "Baixar PDF" in t and "<b>x</b>" not in t
     app_web.banco.dav_atualizar(1, estado="erro", erro="deu ruim")
-    assert "deu ruim" in cli.get("/dav/1").text
+    assert "Motivo não identificado" in cli.get("/dav/1").text
 
 
 def test_historico_so_do_vendedor(cli, app_web, tmp_path):
@@ -262,3 +262,55 @@ def test_rejeicao_de_reenvio_tem_vinculo_e_sem_login_nao_grava(cli, app_web):
     sem_login = TestClient(app_web.app, follow_redirects=False)
     assert sem_login.post("/dav/conferir", files={"planilha": ("a.xls", b"x")}).status_code == 303
     assert app_web.banco.dav(3, None) is None
+
+
+def test_detalhe_vendedor_nao_embute_relatorio_privado(cli, app_web):
+    i = app_web.banco.dav_criar("ana", "a.xlsx", "a", "Cliente")
+    app_web.banco.dav_atualizar(i, estado="pronto", numero="16410", relatorio=(
+        "Robô de Orçamentos HSE\nResultado: OK\nItens:\n\nDetalhes:\n"
+        "O HSE avisou: Pendência financeira DF15653 valor 1234,56 Venc: 27/09/2026"))
+    t = cli.get(f"/dav/{i}").text
+    assert "financeiro" in t
+    for segredo in ("DF15653", "1234,56", "27/09/2026"):
+        assert segredo not in t
+
+
+def test_reabrir_rascunho_preserva_confirmacao(cli, app_web, tmp_path):
+    enviar(cli, planilha(tmp_path))
+    t = cli.get("/dav/1/conferir")
+    assert t.status_code == 200 and "/dav/1/gerar" in t.text
+    assert "Local de entrega" in t.text and "Pagamento" in t.text and "Observações" in t.text
+    assert app_web.banco.dav(2, None) is None and not DISPARADOS
+    outro = entrar(TestClient(app_web.app, follow_redirects=False), app_web, "bia")
+    assert outro.get("/dav/1/conferir").status_code == 404
+    (tmp_path / "davs" / "entrada" / "1.xlsx").unlink()
+    assert "/gerar" not in cli.get("/dav/1/conferir").text
+
+
+def test_incerto_nao_oferece_reenvio_mesmo_quando_estado_e_erro(cli, app_web):
+    i = app_web.banco.dav_criar("ana", "a.xlsx", "x", "Cliente")
+    app_web.banco.dav_atualizar(i, estado="erro", numero="16410")
+    t = cli.get(f"/dav/{i}").text
+    assert "Confira no HSE" in t
+    assert "Enviar planilha corrigida" not in t and "/gerar" not in t
+
+
+def test_historico_filtra_no_servidor_e_mostra_motivo(cli, app_web):
+    i = app_web.banco.dav_criar("ana", "erro.xlsx", "e", "Cliente")
+    app_web.banco.dav_atualizar(i, estado="erro", erro="Local de entrega não encontrado")
+    p = app_web.banco.dav_criar("ana", "pronto.xlsx", "p", "Cliente")
+    app_web.banco.dav_atualizar(p, estado="pronto")
+    t = cli.get("/dav?estado=erro").text
+    assert "erro.xlsx" in t and "pronto.xlsx" not in t
+    assert "local de entrega" in t.lower()
+
+
+def test_envios_concorrentes_nao_duplicam_geracao(cli, app_web, tmp_path):
+    from concurrent.futures import ThreadPoolExecutor
+    p = planilha(tmp_path)
+    enviar(cli, p)
+    enviar(cli, p)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        respostas = list(pool.map(lambda i: cli.post(f"/dav/{i}/gerar").status_code, [1, 2]))
+    assert set(respostas) <= {200, 303}
+    assert len(DISPARADOS) == 1
