@@ -309,3 +309,41 @@ interessa.
 | `logs\servico_nf.log`, `logs\diag_nf.txt` | leia só o final: `tail -n 200` ou `Get-Content -Tail 200` |
 | `tests/fixtures/*.html` | HTML real dos sites. Não abra para entender código |
 | `runs/`, `recon_out/`, `teste_real/` | saídas de execução. Ignore |
+
+## 7. Orçamentos DAV: resultado, avisos e correções
+
+- `web/dav_ui.py`: envio e conferência do vendedor, histórico pessoal, detalhe,
+  PDF e componentes compartilhados. `web/adm_dav.py`: painel e detalhe próprios
+  de administração; aparece na sidebar de `web/painel_ui.py`. O `/adm` mostra
+  um resumo DAV separado dos números de frete.
+- `orcamento/diagnostico.py`: interpreta `erro` **e** a seção de erros do
+  relatório. Aviso financeiro pode coexistir com DAV pronto e não significa
+  falha de criação. Texto livre do relatório só é entregue ao administrador;
+  o vendedor recebe projeção permitida, inclusive no pulso e na cópia de
+  diagnóstico. Formato desconhecido é omitido com orientação, não exposto por
+  uma tentativa de retirar números. Valores comerciais da conferência e o
+  acesso aos PDFs existentes permanecem como antes.
+- `core/painel_dav.py`: consultas completas por período, filtragem e paginação
+  de 25 registros. Contagem usa o período inteiro pela data de submissão em
+  Brasília; rejeições, conferências e simulações não são tentativas de geração.
+  Ausência de informação de aviso não equivale a zero avisos.
+- `dav.estado`: `rascunho`, `fila`, `gerando`, `pronto`, `erro`, `incerto`,
+  `simulado` e `rejeitado`. Rejeição guarda metadados/motivo, hash vazio e não
+  mantém arquivo nem entra no robô. Estados desconhecidos continuam visíveis.
+- `dav_correcao`: relações explícitas entre envios do mesmo proprietário;
+  validação transacional impede origem incerta e ciclos. Um descendente pronto
+  resolve a pendência visual, preservando o erro e a contagem originais. Não
+  inferir vínculos antigos por nome de arquivo ou cliente.
+- **Duplicidade:** `incerto`, evidência de salvamento ou erro com número HSE
+  exigem conferência antes de reenviar. A deduplicação protege também erro com
+  número já persistido. Nada aqui repete geração automaticamente. O ADM consulta
+  todos os envios, mas não assume o usuário de um vendedor para gerar.
+- GETs de acompanhamento: `/dav/agora`, `/dav/{id}/agora`, `/adm/dav/agora` e
+  `/adm/dav/{id}/agora`. Mesmas permissões das páginas; 401 se a sessão expirou,
+  204 se o conteúdo do recorte não mudou e respostas privadas sem cache. Pulso
+  de 5 s preserva filtros/foco/detalhes abertos; falha de consulta mantém os dados
+  anteriores e exibe aviso. Não adicionar progresso percentual fictício.
+
+Depois de mexer: `python -m pytest tests -k dav -q`, regressão de
+`tests/orcamento/test_fila.py` e conferência visual claro/escuro e celular.
+Arquivos produtivos e robô HSE não são necessários para esses testes.
