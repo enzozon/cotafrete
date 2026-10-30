@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import re
 import unicodedata
+from datetime import datetime
 
 
 def _normal(texto: str) -> str:
@@ -28,11 +29,14 @@ def diagnostico(dav: dict, *, administrador: bool) -> dict:
     completo = all(t in rel for t in ("Robô de Orçamentos HSE", "\nResultado:", "\nItens:"))
     aviso = True if financeiro or "o hse avisou:" in texto else (False if completo else None)
     estado = dav.get("estado", "")
+    resultado = _normal("\n".join(l for l in rel.splitlines() if l.startswith("Resultado:")) + "\n" + erro)
+    simulacao = estado == "simulado" or bool(re.search(r"^Modo: DRY_RUN", rel, re.M))
+    salvo = not simulacao and (bool(re.search(r"\borcamento \S+ foi salvo no hse", resultado))
+                               or "salvar foi clicado" in resultado or "nao reenvie a planilha" in resultado)
     incerto = (estado == "incerto" or (estado == "erro" and bool(dav.get("numero")))
-               or (estado != "pronto" and any(t in texto for t in (
-                   "foi salvo no hse", "salvar foi clicado", "nao reenvie a planilha"))))
+               or (estado == "erro" and salvo))
     salvamento = ("confirmado" if estado == "pronto" else "incerto" if incerto else
-                  "nao_criado" if "orcamento nao criado" in texto or estado == "rejeitado" else "desconhecido")
+                  "nao_criado" if simulacao or "orcamento nao criado" in resultado or estado == "rejeitado" else "desconhecido")
     categoria, etapa = "desconhecido", None
     motivo = "Motivo não identificado; consulte os detalhes disponíveis ou o responsável pelo robô."
     orientacao = "Consulte o responsável pelo robô antes de reenviar se houver dúvida sobre o salvamento."
@@ -50,9 +54,13 @@ def diagnostico(dav: dict, *, administrador: bool) -> dict:
         orientacao = "Use a PLANILHA-BASE v3 em .xlsx, até 5 MB, corrija os dados e confira novamente."
     if salvamento == "incerto":
         motivo = "O orçamento pode já existir no HSE; a conclusão não foi confirmada."
+        try:
+            data = datetime.fromisoformat(dav.get("iniciado_em") or dav.get("criado_em") or "").strftime("%d/%m/%Y")
+        except ValueError:
+            data = ""
         orientacao = (f"Confira no HSE o orçamento {dav['numero']} e não gere de novo."
                       if dav.get("numero") else
-                      "Confira no HSE os orçamentos deste cliente de hoje antes de gerar de novo.")
+                      f"Confira no HSE os orçamentos deste cliente{' de ' + data if data else ''} antes de gerar de novo.")
     titulos = {"pronto": "Seu DAV está pronto", "fila": "Na fila", "gerando": "Gerando no HSE",
                "rascunho": "Confira os dados antes de gerar", "simulado": "Simulação: nada salvo",
                "rejeitado": "Planilha não aceita"}

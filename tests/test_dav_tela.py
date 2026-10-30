@@ -185,7 +185,9 @@ def test_incerto_sem_numero_nao_tem_buraco_no_aviso(cli, app_web, tmp_path):
     cli.post("/dav/1/gerar")
     app_web.banco.dav_atualizar(1, estado="incerto")
     t = cli.get("/dav/1").text
-    assert "Confira no HSE os orçamentos deste cliente de hoje antes de gerar de novo." in t
+    from datetime import datetime
+    data = datetime.fromisoformat(app_web.banco.dav(1, "ana")["criado_em"]).strftime("%d/%m/%Y")
+    assert f"Confira no HSE os orçamentos deste cliente de {data} antes de gerar de novo." in t
     assert "orçamento  e" not in t
 
 
@@ -314,3 +316,32 @@ def test_envios_concorrentes_nao_duplicam_geracao(cli, app_web, tmp_path):
         respostas = list(pool.map(lambda i: cli.post(f"/dav/{i}/gerar").status_code, [1, 2]))
     assert set(respostas) <= {200, 303}
     assert len(DISPARADOS) == 1
+
+
+def test_rejeicao_preserva_correcao_ate_novo_envio_pronto(cli, app_web, tmp_path):
+    from contextlib import closing
+    from core.painel_dav import resolvidas
+    origem = app_web.banco.dav_rejeitar("ana", "antiga.xls", ["formato"])
+    r = cli.post("/dav/conferir", data={"origem": origem}, files={"planilha": ("invalida.xls", b"x")})
+    assert 'name="origem" value="2"' in r.text
+    p = planilha(tmp_path)
+    cli.post("/dav/conferir", data={"origem": 2}, files={"planilha": ("corrigida.xlsx", p.read_bytes())})
+    cli.post("/dav/3/gerar")
+    app_web.banco.dav_atualizar(3, estado="pronto", numero="16410")
+    with closing(app_web.banco._conectar()) as con:
+        assert resolvidas(con, [1, 2], "ana") == {1: 3, 2: 3}
+
+
+def test_deduplicacao_na_confirmacao_resolve_origem_do_rascunho(cli, app_web, tmp_path):
+    from contextlib import closing
+    from core.painel_dav import resolvidas
+    origem = app_web.banco.dav_rejeitar("ana", "antiga.xls", ["formato"])
+    p = planilha(tmp_path)
+    cli.post("/dav/conferir", data={"origem": origem}, files={"planilha": ("corrigida.xlsx", p.read_bytes())})
+    enviar(cli, p)
+    cli.post("/dav/3/gerar")
+    app_web.banco.dav_atualizar(3, estado="pronto", numero="16410")
+    r = cli.post("/dav/2/gerar")
+    assert "16410" in r.text and len(DISPARADOS) == 1
+    with closing(app_web.banco._conectar()) as con:
+        assert resolvidas(con, [origem], "ana") == {origem: 3}

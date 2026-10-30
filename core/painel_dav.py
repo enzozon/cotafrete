@@ -11,6 +11,13 @@ from orcamento.diagnostico import diagnostico
 ESTADOS = {"rascunho", "fila", "gerando", "pronto", "erro", "incerto", "simulado", "rejeitado"}
 
 
+def origens_da_correcao(con, dav_id: int, usuario: str) -> list[int]:
+    return [r[0] for r in con.execute(
+        "SELECT c.origem_id FROM dav_correcao c JOIN dav a ON a.id=c.origem_id"
+        " JOIN dav d ON d.id=c.destino_id WHERE d.id=? AND d.usuario=? AND a.usuario=?"
+        " ORDER BY c.origem_id", (dav_id, usuario, usuario))]
+
+
 def resolvidas(con, ids: list[int], usuario: str | None) -> dict[int, int]:
     if not ids:
         return {}

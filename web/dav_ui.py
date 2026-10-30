@@ -254,9 +254,9 @@ def _tela_envio(usuario: str, aviso: str = "", origem: int | None = None, **filt
     return _html("Gerar DAV", corpo, usuario)
 
 
-def _erro(usuario: str, *msgs: str) -> HTMLResponse:
+def _erro(usuario: str, *msgs: str, origem: int | None = None) -> HTMLResponse:
     itens = "".join(f"<li>{e(m)}</li>" for m in msgs)
-    return _tela_envio(usuario, f'<div class="alerta"><ul>{itens}</ul></div>')
+    return _tela_envio(usuario, f'<div class="alerta" role="alert"><ul>{itens}</ul></div>', origem=origem)
 
 
 def _ja_gerou(usuario: str, antigo: dict) -> HTMLResponse:
@@ -385,7 +385,7 @@ def _rejeitar(usuario: str, nome: str, origem: int | None, *msgs: str) -> HTMLRe
     except sqlite3.Error:
         return HTMLResponse(pagina("Planilha não aceita", '<h1>Planilha não aceita</h1>'
             '<p>Não foi possível registrar a rejeição. Nenhum DAV foi enviado ao HSE.</p>', usuario), status_code=503)
-    return _erro(usuario, *msgs)
+    return _erro(usuario, *msgs, origem=i)
 
 
 @router.post("/{dav_id}/gerar", response_class=HTMLResponse)
@@ -400,6 +400,10 @@ def gerar(dav_id: int, usuario: str | None = Depends(_quem)):
             return RedirectResponse(f"/dav/{dav_id}", status_code=303)
         antigo = banco.dav_ja_gerado(usuario, d["hash_planilha"])
         if antigo:
+            with closing(banco._conectar()) as con:
+                origens = painel_dav.origens_da_correcao(con, dav_id, usuario)
+            for origem in origens:
+                banco.dav_vincular_correcao(origem, antigo["id"], usuario)
             return _ja_gerou(usuario, antigo)
         banco.dav_atualizar(dav_id, estado="fila")   # antes: o robô só pega "fila"
         FILA.enfileirar(dav_id)
@@ -509,9 +513,7 @@ def detalhe_dav(dav: dict, *, administrador: bool, retorno: str) -> str:
         corpo += '<h3>Itens identificados</h3><ul class="dav-lista">' + "".join(f'<li>{e(item)}</li>' for item in diag["itens"]) + '</ul>'
     with closing(banco._conectar()) as con:
         resolvida = painel_dav.resolvidas(con, [d["id"]], None if administrador else d["usuario"])
-        origens = [r[0] for r in con.execute(
-            "SELECT c.origem_id FROM dav_correcao c JOIN dav a ON a.id=c.origem_id"
-            " WHERE c.destino_id=? AND a.usuario=? ORDER BY c.origem_id", (d["id"], d["usuario"]))]
+        origens = painel_dav.origens_da_correcao(con, d["id"], d["usuario"])
     for origem in origens:
         corpo += f'<p>Correção do envio <a href="{base}/{origem}">#{origem}</a>. Histórico preservado.</p>'
     if d["id"] in resolvida:

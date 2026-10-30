@@ -84,3 +84,30 @@ def test_itens_reconhecidos_sem_reproduzir_continuacoes():
     d = diagnostico(registro("pronto", relatorio=texto), administrador=False)
     assert d["itens"] == ["Item 1: usou produto existente 49025 - PORTA CHAVES (pelo código informado)"]
     assert "DF15653" not in str(d)
+
+
+@pytest.mark.parametrize("estado", ["simulado", "erro"])
+def test_relatorio_real_de_simulacao_nao_indica_salvamento(estado):
+    from orcamento.diagnostico import diagnostico
+    from orcamento.relatorio import Relatorio
+    rel = Relatorio("plan.xlsx", True)
+    rel.resultado = "DRY_RUN - simulação concluída sem erros (nada foi salvo)"
+    if estado == "erro":
+        rel.erro("Local de entrega inválido")
+    d = diagnostico(registro(estado, relatorio=rel.texto()), administrador=False)
+    assert d["salvamento"] != "incerto"
+    assert d["titulo"] != "Confira no HSE"
+
+
+def test_evidencia_positiva_do_resultado_preserva_incerto():
+    from orcamento.diagnostico import diagnostico
+    d = diagnostico(registro("erro", relatorio="Resultado: ERRO - orçamento 16410 FOI SALVO no HSE, mas o DAV falhou; NÃO reenvie a planilha"), administrador=False)
+    assert d["salvamento"] == "incerto"
+
+
+def test_incerto_antigo_orienta_pelo_dia_da_execucao():
+    from orcamento.diagnostico import diagnostico
+    d = diagnostico(registro("incerto", criado_em="2026-10-29T23:55:00", iniciado_em="2026-10-30T00:10:00"), administrador=False)
+    assert "30/10/2026" in d["orientacao"] and "de hoje" not in d["orientacao"]
+    sem_data = diagnostico(registro("incerto", criado_em="invalida"), administrador=False)
+    assert "de hoje" not in sem_data["orientacao"]
