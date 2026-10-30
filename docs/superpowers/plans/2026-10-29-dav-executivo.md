@@ -235,8 +235,7 @@ contagens/histórico completo/agrupamentos → 3; sidebar e `/adm` → 6;
 acompanhamento sem recarga → 7; mapa, testes e evidências → 8.
 
 Plano revisado pelo próprio autor contra o desenho aprovado, incluindo consistência
-das interfaces e os cinco pontos de Review Focus. Execução ainda depende da revisão
-do plano e da escolha do método pelo usuário. Recomendação: execução nativa com
+das interfaces e os cinco pontos de Review Focus. Execução nativa autorizada por Enzo, com validação independente e resultado registrado ao final. Recomendação: execução nativa com
 uma revisão independente ao final, pois as tarefas compartilham consultas,
 permissões e renderização; o maior risco é a coerência entre essas interfaces.
 
@@ -244,4 +243,3 @@ permissões e renderização; o maior risco é a coerência entre essas interfac
 ## Resultado da execução — 30/10/2026
 
 Etapas 1–7 concluídas, revisão independente concluída e correções verificadas. A etapa 8 está registrada em docs/superpowers/validation/2026-10-30-dav-executivo.md: suíte completa com 2.463 testes aprovados, conferência das telas e limitações declaradas. Produção não alterada. Método nativo com subagentes para revisão e validação, autorizado por Enzo.
-
