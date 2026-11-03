@@ -361,7 +361,13 @@ def test_hse_so_leitura_instala_a_guarda_depois_do_login(monkeypatch):
     from orcamento.hse import HseSoLeitura
     rotas = []
     monkeypatch.setattr(Hse, "_login_passos", lambda self, filial: setattr(
-        self, "_ctx", SimpleNamespace(route=lambda padrao, fn: rotas.append(padrao))))
+        self, "_ctx", SimpleNamespace(route=lambda padrao, fn: rotas.append((padrao, fn)))))
     hse = HseSoLeitura(SimpleNamespace())
     hse._login_passos(1)
-    assert rotas == ["**/*"] and hse.bloqueados == []
+    assert [p for p, _ in rotas] == ["**/*"] and hse.bloqueados == []
+    guarda = rotas[0][1]
+    gravacao, leitura = _route("POST", "acao=salvarObsItem"), _route("POST", "acao=listar")
+    guarda(gravacao)
+    guarda(leitura)
+    assert gravacao.chamadas == ["abort"] and leitura.chamadas == ["continue"]
+    assert hse.bloqueados == ["vendaAlt.php acao=salvarObsItem"]
