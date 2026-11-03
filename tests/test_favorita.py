@@ -50,16 +50,25 @@ def test_cif_com_a_ventura_na_origem_passa():
     assert FavoritaAdapter().validar(montar(remetente=VENTURA)) == []
 
 
-def test_alianca_nao_e_empresa_da_conta_da_favorita():
-    """Na Generoso a Aliança está no menu; na Favorita não. CIF com ela na
-    origem sairia com o endereço da Ventura — então barra, e com o nome
-    certo da transportadora."""
-    erros = FavoritaAdapter().validar(montar(remetente=ALIANCA))
+def test_alianca_e_uniao_trocam_a_empresa_da_conta():
+    """Desde 03/11/2026 a conta da Favorita tem as três do grupo (cotação
+    #594: FOB para a Aliança saía "não se aplica"). O robô troca pelo CNPJ."""
+    from carriers.generoso.mapping import empresa_alvo
+    uniao = Parte(cnpj="20.837.281/0001-49")
+    a = FavoritaAdapter()
+    assert a.validar(montar(remetente=ALIANCA)) == []
+    assert empresa_alvo(montar(remetente=ALIANCA), a.empresas) is a.empresas[1]
+    fob = montar(destinatario=uniao, tipo_frete=TipoFrete.FOB)
+    assert a.validar(fob) == []
+    assert empresa_alvo(fob, a.empresas) is a.empresas[2]
+
+
+def test_fora_do_grupo_na_ponta_travada_ainda_barra():
+    erros = FavoritaAdapter().validar(
+        montar(remetente=Parte(cnpj="35.120.753/0001-15")))
     assert erros and erros[0].campo == "CIF/FOB"
     assert "Favorita" in erros[0].mensagem
     assert "Generoso" not in erros[0].mensagem
-    # e a Generoso continua aceitando, porque lá a Aliança existe
-    assert GenerosoAdapter().validar(montar(remetente=ALIANCA)) == []
 
 
 def test_cif_fob_trocado_fala_em_favorita():

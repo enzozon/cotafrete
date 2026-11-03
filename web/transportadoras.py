@@ -88,6 +88,10 @@ WHATSAPP: tuple[Transportadora, ...] = (
     Transportadora("dea_carvalho", "Dayse Carvalho – DEA Transportes",
                    "5527998650176", "dea_transportes.png",
                    observacao="Especialista em linha branca no ES"),
+
+    # Cadastrada em 03/11/2026: um número só (Felipe, operacional1@).
+    Transportadora("emalog", "Emalog Transportadora", "5511943432527",
+                   "emalog.png"),
 )
 
 
