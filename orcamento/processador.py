@@ -560,6 +560,27 @@ def _aviso_descricao(r: Resolucao) -> str | None:
             f"{r.produto.codigo} – {r.produto.descricao}; confira se é o produto certo")
 
 
+# Notas de _completar/resolver_item → o que foi preenchido sem o vendedor e de onde veio.
+_PREENCHIDOS = {"marca encontrada na descrição": ("MARCA", "da descrição"),
+                "grupo escolhido por IA": ("GRUPO", "IA"),
+                "NCM sugerido por IA": ("NCM", "IA"),
+                "descrição de cadastro resumida por IA": ("DESCRIÇÃO P/ CADASTRO", "IA")}
+
+
+def aviso_preenchido(r: Resolucao) -> str | None:
+    if r.erro or r.por != "novo":
+        return None
+    partes = []
+    for nota in r.notas:
+        m = re.match(r"Item \d+: (.+?): (.+?)(?: \(confira antes de faturar\))?$", nota)
+        if m and m.group(1) in _PREENCHIDOS:
+            campo, origem = _PREENCHIDOS[m.group(1)]
+            partes.append(f"{campo} {m.group(2)} ({origem})")
+    if not partes:
+        return None
+    return f"Item {r.item.numero}: preenchido automaticamente — {', '.join(partes)}; confira antes de gerar"
+
+
 def _item_conferido(r: Resolucao) -> ItemConferido:
     p = r.produto
     return ItemConferido(r.item.numero, p.codigo if p else "", p.descricao if p else "",
@@ -591,7 +612,8 @@ def conferir(path: Path, cfg: Config, hse: HseApi) -> Conferencia:
     try:
         cliente, resolucoes = validar_online(orc, hse, rel, ajudantes(cfg))
         _listar_itens(rel, resolucoes, True)
-        avisos.extend(a for r in resolucoes for a in (aviso_preco_acima(r), _aviso_descricao(r)) if a)
+        avisos.extend(a for r in resolucoes
+                      for a in (aviso_preco_acima(r), _aviso_descricao(r), aviso_preenchido(r)) if a)
         if not rel.tem_erro:
             try:
                 _executar_dry(orc, cliente, resolucoes, hse, rel)

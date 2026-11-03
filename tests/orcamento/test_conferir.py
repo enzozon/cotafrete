@@ -3,8 +3,9 @@ from pathlib import Path
 
 from orcamento.config import Config
 from orcamento.planilha import Item
+from orcamento.ia import Ajudantes
 from orcamento.processador import (Cliente, Conferencia, ErroHse, HseIndisponivel, Produto, Resolucao, aviso_preco_acima,
-                                   conferir, conferir_desconto)
+                                   aviso_preenchido, conferir, conferir_desconto)
 from tests.orcamento.hse_falso import HseFalso
 from tests.orcamento.planilhas.gerar import VARIANTES, criar
 
@@ -92,6 +93,34 @@ def test_preco_acima_de_2x_avisa_na_fronteira():
 def test_preco_acima_de_2x_vira_aviso_na_conferencia(tmp_path):
     c = conferir(criar(tmp_path, None, "o.xlsx"), cfg(tmp_path), HseFalso(produtos=[_produto("50")]))
     assert c.estado == "ok" and any("2,9× acima da tabela" in a for a in c.avisos)
+
+
+def test_aviso_lista_o_que_foi_preenchido_automaticamente():
+    # DAV 76 (03/11/2026): a IA preencheu GRUPO e NCM e o vendedor não via nada na conferência
+    r = Resolucao(_item(), por="novo", notas=(
+        "Item 1: marca encontrada na descrição: VONDER",
+        "Item 1: grupo escolhido por IA: ILUMINAÇÃO",
+        "Item 1: NCM sugerido por IA: 85131090 (confira antes de faturar)"))
+    assert aviso_preenchido(r) == ("Item 1: preenchido automaticamente — MARCA VONDER (da descrição), "
+                                   "GRUPO ILUMINAÇÃO (IA), NCM 85131090 (IA); confira antes de gerar")
+    resumo = Resolucao(_item(), por="novo", notas=("Item 1: descrição de cadastro resumida por IA: LANTERNA X",))
+    assert aviso_preenchido(resumo) == ("Item 1: preenchido automaticamente — DESCRIÇÃO P/ CADASTRO "
+                                        "LANTERNA X (IA); confira antes de gerar")
+    assert aviso_preenchido(Resolucao(_item(), por="novo")) is None
+    assert aviso_preenchido(Resolucao(_item(), por="novo", erro="x", notas=r.notas)) is None
+
+
+def test_ncm_da_ia_que_nao_existe_no_hse_nao_conta_como_preenchido():
+    r = Resolucao(_item(), por="novo", notas=("Item 1: NCM sugerido por IA (12345678) não existe no HSE",))
+    assert aviso_preenchido(r) is None
+
+
+def test_conferencia_avisa_o_que_a_ia_preencheu(tmp_path, monkeypatch):
+    monkeypatch.setattr("orcamento.processador.ajudantes",
+                        lambda c: Ajudantes(ncm=lambda d: "84716053"))
+    c = conferir(criar(tmp_path, VARIANTES["novo_sem_ncm"], "o.xlsx"), cfg(tmp_path), HseFalso())
+    assert c.estado == "ok"
+    assert "Item 2: preenchido automaticamente — NCM 84716053 (IA); confira antes de gerar" in c.avisos
 
 
 def test_produto_achado_pela_descricao_avisa(tmp_path):
