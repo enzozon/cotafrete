@@ -102,6 +102,7 @@ class Hse:
     def __init__(self, cfg: Config):
         self.cfg = cfg
         self.rascunho: str | None = None
+        self.endereco = ""  # texto do endereço de entrega escolhido em #cdEndereco
         self.avisos: list[str] = []  # avisos do HSE fechados pelo robô (vão para o relatório)
         self.notas: list[str] = []  # descrições de item que não gravaram (vão para o relatório)
         self._pw = self._browser = self._ctx = None
@@ -297,6 +298,7 @@ class Hse:
                          itens: list[tuple[Item, Produto | None]], incluir: bool) -> None:
         self._garantir_filial(orc.filial)
         self.rascunho = None
+        self.endereco = ""
         self.avisos = []
         self.notas = []
         page = self._pedido = self._abrir("vendaAlt.php")
@@ -353,6 +355,7 @@ class Hse:
                               f"cliente contém esse texto; escreva na B30 só o número do endereço "
                               f"({'; '.join(t for _, t in opcoes)})")
             self._set_select_oculto(page, "#cdEndereco", achados[0])
+            self.endereco = next(t for v, t in opcoes if v == achados[0])
         self._pagamento(page, orc)
         if orc.prazo_dias is not None:
             previsao = date.today() + timedelta(days=orc.prazo_dias)
@@ -655,3 +658,27 @@ class Hse:
             page.close()
         grupos = sorted({g.split("-", 1)[1].strip() if "-" in g else g for g in grupos})
         return vendedores, grupos, sorted(set(marcas))
+
+
+GRAVACAO = re.compile(r"acao=\w*(incluir|salvar|excluir|gravar|alterar|cadastr|inserir|atualizar|delet)", re.I)
+
+
+def guarda_gravacao(route, bloqueados: list[str]) -> None:
+    """Aborta qualquer requisição que grave no HSE; o resto passa."""
+    corpo = route.request.post_data or ""
+    if route.request.method != "GET" and GRAVACAO.search(corpo):
+        bloqueados.append(f"{route.request.url.rsplit('/', 1)[-1]} {corpo[:60]}")
+        return route.abort()
+    return route.continue_()
+
+
+class HseSoLeitura(Hse):
+    """Navegador que nunca grava: usado para conferir um DAV já feito."""
+
+    def __init__(self, cfg: Config):
+        super().__init__(cfg)
+        self.bloqueados: list[str] = []
+
+    def _login_passos(self, filial: int) -> None:
+        super()._login_passos(filial)
+        self._ctx.route("**/*", lambda route: guarda_gravacao(route, self.bloqueados))  # cada login cria um contexto novo
