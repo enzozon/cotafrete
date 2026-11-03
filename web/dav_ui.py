@@ -307,7 +307,7 @@ def historico_dav(dados: dict, filtros: dict, *, administrador: bool = False) ->
     anterior = (f'<a href="{e(url_dav(base, filtros, pagina=dados["pagina"]-1))}">← Anterior</a>' if dados["pagina"] > 1 else '<span>Início</span>')
     proxima = (f'<a href="{e(url_dav(base, filtros, pagina=dados["pagina"]+1))}">Próxima →</a>' if dados["pagina"] < dados["paginas"] else '<span>Fim</span>')
     return (tabela_davs(dados["linhas"], administrador, administrador=administrador, filtros=filtros)
-            + f'<nav class="dav-paginacao" aria-label="Páginas do histórico DAV">{anterior}<span>{dados["total"]} registros · Página {dados["pagina"]} de {dados["paginas"]}</span>{proxima}</nav>')
+            + f'<nav class="dav-paginacao" aria-label="Páginas do histórico DAV">{anterior}<span>{dados["total"]} {"registro" if dados["total"] == 1 else "registros"} · Página {dados["pagina"]} de {dados["paginas"]}</span>{proxima}</nav>')
 
 
 def _tela_envio(usuario: str, aviso: str = "", origem: int | None = None, **filtros) -> HTMLResponse:

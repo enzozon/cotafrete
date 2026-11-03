@@ -1,6 +1,6 @@
 # DAV Filters and Diagnosis Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Entregar as telas DAV aprovadas e orientação útil ao vendedor sobre a origem dos erros.
 
@@ -36,10 +36,10 @@ as rotas apenas autorizam e apresentam. Nenhuma mudança na geração do HSE.
 **Produces:** diagnostico(dav: dict, *, administrador: bool) -> dict, com os campos
 existentes e origem/origem_rotulo/onde_conferir/como_corrigir/campos conforme spec.
 
-- [ ] Adicionar testes: quantidade Item 3 → B4; cliente → B31; endereço ambíguo → desconhecida/B30, rótulo Conferir planilha e cadastro HSE; automação conhecida → contato; mensagem desconhecida → desconhecida; incerto domina orientação; nenhum financeiro em novos campos; conferência inválida com erro de item.
-- [ ] Rodar `python -m pytest tests/test_dav_diagnostico.py -q` e confirmar novas falhas.
-- [ ] Implementar classificação conservadora e projeção segura, sem alterar o robô nem assumir que rejeição de arquivo é bug da automação.
-- [ ] Rodar testes de diagnóstico e planilha; registrar resultado e commit dos arquivos próprios.
+- [x] Adicionar testes: quantidade Item 3 → B4; cliente → B31; endereço ambíguo → desconhecida/B30, rótulo Conferir planilha e cadastro HSE; automação conhecida → contato; mensagem desconhecida → desconhecida; incerto domina orientação; nenhum financeiro em novos campos; conferência inválida com erro de item.
+- [x] Rodar `python -m pytest tests/test_dav_diagnostico.py -q` e confirmar novas falhas.
+- [x] Implementar classificação conservadora e projeção segura, sem alterar o robô nem assumir que rejeição de arquivo é bug da automação.
+- [x] Rodar testes de diagnóstico e planilha; registrar resultado e commit dos arquivos próprios.
 
 ## T2 — Resumo administrativo dos erros
 
@@ -50,11 +50,11 @@ origem_rotulo, onde_conferir, como_corrigir, total, envios); rota GET /adm/dav/e
 componente resumo_erros(dados, filtros) de acesso no painel. Grupo usa todos os
 registros filtrados, antes da paginação; cada envio só uma vez. Preservar grupos existentes.
 
-- [ ] Escrever testes de 30 ocorrências, financeiro pronto separado, erro com salvamento classificado incerto, rascunho inválido, autorização e escape HTML.
-- [ ] Confirmar falhas com `python -m pytest tests/test_dav_painel.py tests/test_adm_dav.py -q`.
-- [ ] Implementar agregação, tela com diagnóstico/orientações e links por envio, preservando período/vendedor/busca e autenticação.
-- [ ] Encurtar textos do painel e adicionar acesso ao resumo. Não editar web/dav_ui.py nem web/layout.py.
-- [ ] Reexecutar os testes e fazer commit dos arquivos próprios.
+- [x] Escrever testes de 30 ocorrências, financeiro pronto separado, erro com salvamento classificado incerto, rascunho inválido, autorização e escape HTML.
+- [x] Confirmar falhas com `python -m pytest tests/test_dav_painel.py tests/test_adm_dav.py -q`.
+- [x] Implementar agregação, tela com diagnóstico/orientações e links por envio, preservando período/vendedor/busca e autenticação.
+- [x] Encurtar textos do painel e adicionar acesso ao resumo. Não editar web/dav_ui.py nem web/layout.py.
+- [x] Reexecutar os testes e fazer commit dos arquivos próprios.
 
 ## T3 — Modelo 02, vendedor, detalhes e movimento
 
@@ -64,27 +64,28 @@ registros filtrados, antes da paginação; cada envio só uma vez. Preservar gru
 base: str | None=None) -> str; barra compacta com menus de links GET; detalhes
 com origem/local/correção e resumo copiável seguro; tempo calculado de datas reais.
 
-- [ ] Testar remoção individual/limpeza de filtros, busca/categoria escapadas, vendedor restrito, bloco de envio sem aside, novos campos seguros nos detalhes/cópia e datas inválidas/futuras.
-- [ ] Executar os testes novos e confirmar falhas antes de implementar.
-- [ ] Manter cartão de envio, remover painel promocional e slogans, aplicar barra modelo 02 com menus nativos details/summary e links GET, chips e busca com Enter.
-- [ ] Integrar diagnóstico e tempo nos detalhes/histórico; destacar vínculos de correção existentes; melhorar cópia sem duplicar dados secretos.
-- [ ] Aplicar CSS de claro/escuro/celular, animações breves e reduced motion; pulso mantém foco e detalhes abertos.
-- [ ] Rodar `python -m pytest tests -k dav -q` e regressão `tests/orcamento/test_fila.py`; commit dos arquivos próprios.
+- [x] Testar remoção individual/limpeza de filtros, busca/categoria escapadas, vendedor restrito, bloco de envio sem aside, novos campos seguros nos detalhes/cópia e datas inválidas/futuras.
+- [x] Executar os testes novos e confirmar falhas antes de implementar.
+- [x] Manter cartão de envio, remover painel promocional e slogans, aplicar barra modelo 02 com menus nativos details/summary e links GET, chips e busca com Enter.
+- [x] Integrar diagnóstico e tempo nos detalhes/histórico; destacar vínculos de correção existentes; melhorar cópia sem duplicar dados secretos.
+- [x] Aplicar CSS de claro/escuro/celular, animações breves e reduced motion; pulso mantém foco e detalhes abertos.
+- [x] Rodar `python -m pytest tests -k dav -q` e regressão `tests/orcamento/test_fila.py`; commit dos arquivos próprios.
 
 ## T4 — Integração, revisão e entrega
 
 **Files:** docs/MAPA_DO_SISTEMA.md; docs/superpowers/validation/2026-11-03-dav-filtros-diagnostico.md.
 **Consumes:** T1–T3 integradas. **Produces:** revisão independente, resultados e capturas.
 
-- [ ] Atualizar mapa da área DAV e registrar decisões/desvios no ledger.
-- [ ] Revisão independente dos diagnósticos/permissões/rotas e aderência ao modelo.
-- [ ] Executar suíte apropriada e suíte completa em segundo plano; investigar falhas introduzidas.
-- [ ] Prévia local sintética, sem POSTs/HSE; conferir ADM/vendedor/resumo/detalhe, temas e viewport celular.
-- [ ] Registrar comandos/resultados/capturas, fazer commit e entregar branch/PR para revisão sem merge/deploy.
+- [x] Atualizar mapa da área DAV e registrar decisões/desvios no ledger.
+- [x] Revisão independente dos diagnósticos/permissões/rotas e aderência ao modelo.
+- [x] Executar suíte apropriada e suíte completa em segundo plano; investigar falhas introduzidas.
+- [x] Prévia local sintética, sem POSTs/HSE; conferir ADM/vendedor/resumo/detalhe, temas e viewport celular.
+- [x] Registrar comandos/resultados/capturas, fazer commit e entregar branch/PR para revisão sem merge/deploy.
 
 ## Execução autorizada
 
 O usuário pediu explicitamente desenvolvimento após este planejamento. Prosseguir
 na mesma sessão sem nova aprovação intermediária; subagentes para partes isoladas
 e revisão, conforme autorização anterior. Base inicial: origin/main 509ced3.
+
 

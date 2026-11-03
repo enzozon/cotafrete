@@ -86,7 +86,7 @@ def ocorrencias(dados: dict, filtros: dict) -> str:
     corpo = ""
     for g in dados["ocorrencias"]:
         corpo += (f'<section class="cartao dav-card dav-guia-erro" data-tipo="{e(g["tipo"])}"><p class="dav-note">{e(rotulos[g["tipo"]])}</p>'
-                  f'<h2>{e(g["titulo"])}</h2><p><b>{g["total"]} envios</b></p>'
+                  f'<h2>{e(g["titulo"])}</h2><p><b>{g["total"]} {"envio" if g["total"] == 1 else "envios"}</b></p>'
                   f'<p><b>Origem:</b> {e(g["origem_rotulo"])}</p>'
                   f'<p><b>Onde conferir:</b> {e(g["onde_conferir"])}</p>'
                   f'<p><b>Como corrigir:</b> {e(g["como_corrigir"])}</p>')
