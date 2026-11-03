@@ -78,7 +78,8 @@ A Favorita (`carriers/favorita/adapter.py`) é o mesmo portal da Generoso e
 herda o `GenerosoAdapter` inteiro. Só mudam os atributos de conta
 (`url_base`, `prefixo_env`, `empresas`, `trava_conta`, `nome_curto`). Mexeu na
 mecânica da Generoso? Rode também `pytest tests -k favorita`. A conta da
-Favorita só tem a Ventura no "Alterar empresa", e o agendamento de coleta dela
+Favorita tem as três do grupo no "Alterar empresa" desde 03/11/2026 (antes só
+a Ventura) e troca pelo CNPJ como a Generoso; o agendamento de coleta dela
 não foi levantado (levanta `NotImplementedError`). CNPJ "nao cadastrado" na
 ponta digitada é recusa na Generoso, mas na Favorita não
 (`cota_sem_cadastro`): o robô digita o CEP e, se for CEP geral de cidade,
@@ -118,8 +119,8 @@ robô digita o CEP da cotação no lado livre (`_endereco_pelo_cep`) e segue.
 ### "Não se aplica", conferência e alertas
 
 - `StatusCotacao.NAO_SE_APLICA`: regra fixa da transportadora que exclui a
-  carga (Jadlog só CIF, Translovato só saindo da Ventura, conta da Favorita
-  só com a Ventura). Nasce em `recusa_por_validacao` quando todos os erros têm
+  carga (Jadlog só CIF, Translovato só saindo da Ventura, Generoso/Favorita
+  com a ponta travada fora do grupo). Nasce em `recusa_por_validacao` quando todos os erros têm
   `nao_se_aplica=True`. Não abre navegador e fica fora do aproveitamento
   (`core/painel.categoria` → "nao_aplica", `resumo_semana`). CNPJ novo da
   Ventura na Translovato entra em `CNPJS_REMETENTE_ACEITOS`.

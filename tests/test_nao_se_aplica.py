@@ -63,8 +63,8 @@ def test_translovato_cota_a_filial_que_ela_atende():
     assert [e.nao_se_aplica for e in translovato.validar(montar(remetente=matriz))] == [True]
 
 
-def test_favorita_com_alianca_nao_se_aplica():
-    erros = FavoritaAdapter().validar(montar(remetente=ALIANCA))
+def test_favorita_fora_do_grupo_nao_se_aplica():
+    erros = FavoritaAdapter().validar(montar(remetente=FORNECEDOR))
     assert recusa_por_validacao("favorita", erros).status is \
         StatusCotacao.NAO_SE_APLICA
 

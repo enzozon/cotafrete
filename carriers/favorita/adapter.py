@@ -10,11 +10,11 @@ Por isso a Favorita não tem mecânica própria: herda tudo de GenerosoAdapter
 e troca só o que é da conta. Se um dia o portal dela divergir, é aqui que o
 método sobrescrito entra — não numa cópia das 1.200 linhas.
 
-A diferença que importa: o "Alterar empresa" da conta da Favorita só tem a
-VENTURA (o outro item é "Adicionar empresa"). Aliança e União não existem
-lá, então elas não contam como "grupo": uma cotação com a Aliança na ponta
-travada é barrada por `ponta_travada_sem_o_grupo`, em vez de sair com o
-endereço da Ventura no lugar.
+Até 03/11/2026 o "Alterar empresa" da conta da Favorita só tinha a
+VENTURA, e cotação com a Aliança ou a União na ponta travada saía "não se
+aplica" (cotação #594). A conta ganhou as duas: agora o robô troca a empresa
+pelo CNPJ, igual à Generoso (`_escolher_empresa`, herdado). CNPJ de fora do
+grupo na ponta travada continua barrado por `ponta_travada_sem_o_grupo`.
 """
 
 from __future__ import annotations
@@ -25,10 +25,13 @@ from decimal import Decimal
 from carriers.generoso.adapter import GenerosoAdapter
 from carriers.generoso.mapping import Empresa
 
-# Como o menu da conta escreve, medido no recon. O CNPJ é o que manda.
+# Como o menu da conta escreve (print de 03/11/2026). O CNPJ é o que manda:
+# o nome só aparece nas frases para o vendedor.
 EMPRESAS = (
     Empresa("08.310.365/0001-24",
             "Ventura Comercio Varejista de Tecnologia Ltda"),
+    Empresa("05.954.058/0001-98", "Alianca Comercio de Tecnologias Ltda"),
+    Empresa("20.837.281/0001-49", "Uniao Info Ltda - me"),
 )
 
 
