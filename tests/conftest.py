@@ -24,9 +24,11 @@ import pytest
 # Numa máquina em UTC (CI, container) as conversões de `Date:` de e-mail
 # davam 3 h de diferença e o teste falhava sem defeito no código. Fixa o fuso
 # de produção antes de qualquer import. `tzset` só existe fora do Windows; lá
-# a máquina de desenvolvimento já está em Brasília.
-os.environ["TZ"] = "America/Sao_Paulo"
+# a máquina já está em Brasília e o TZ não pode entrar no ambiente: o C
+# runtime não entende "America/Sao_Paulo" e os processos do xdist, que herdam
+# o ambiente, passavam a ler a hora como UTC.
 if hasattr(time, "tzset"):
+    os.environ["TZ"] = "America/Sao_Paulo"
     time.tzset()
 
 # A Della Volpe só é automática com DV_AUTOMATICA_DESDE no .env — e o .env é
