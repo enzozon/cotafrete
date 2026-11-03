@@ -187,6 +187,19 @@ ficam em `davs/entrada/<id>.xlsx` e `davs/pdf/` (fora do git).
   a linha `FRETE CIF, PRAZO DE ENTREGA 30 DIAS` abaixo das observações (exige o
   prazo da B32). A descrição vai para o `#dsObsItem_<cdItem>` do item no HSE,
   que só existe depois do Incluir; se não gravar, o DAV sai e o relatório avisa.
+  Planilha do modelo anterior (A38 = "ITEM 1", sem a linha "Frete") ignora a B38.
+- Local de entrega (B30): texto do endereço ou só o número dele ("2" casa com a
+  opção "2 - ..."). Sem endereço correspondente, o erro lista os do cliente.
+- Conferência com o HSE antes do Gerar (`orcamento/conferencia.py`,
+  `processador.conferir`): ao enviar, o rascunho nasce `conferencia="conferindo"`
+  e uma fila própria (uma thread, uma vaga de `VAGA_NAVEGADOR`, até 120 s) roda a
+  simulação num `HseSoLeitura`, que aborta todo POST de gravação. O resultado
+  (`ok`, `erros`, `nao_conferido`) e o JSON do que o HSE achou ficam em
+  `dav.conferencia` / `dav.conferencia_relatorio`. Com `erros` o Gerar some e o
+  POST de gerar é recusado; `nao_conferido` (HSE lento, fora ou servidor
+  reiniciado) só avisa e libera. Preço acima de 2x a tabela é aviso amarelo.
+  Rascunho antigo (`conferencia` nula) segue o fluxo de antes. A geração confere
+  tudo de novo antes de salvar.
 - O modelo tem 3 cópias que precisam ficar iguais: esta, o `public/PLANILHA
   BASE.xlsx` + `public/vendor/template_planilha_base.js` (base64) do Maestro e
   a pasta pública `\\SERVIDOR2\Publico\ENZO\ORCAMENTO`. Grave o modelo pelo XML
