@@ -326,6 +326,12 @@ CREATE TABLE IF NOT EXISTS dav (
     terminado_em  TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_dav_hash ON dav(usuario, hash_planilha);
+CREATE TABLE IF NOT EXISTS dav_correcao (
+    origem_id INTEGER NOT NULL REFERENCES dav(id),
+    destino_id INTEGER NOT NULL REFERENCES dav(id),
+    PRIMARY KEY (origem_id, destino_id)
+);
+CREATE INDEX IF NOT EXISTS idx_dav_correcao_destino ON dav_correcao(destino_id);
 """
 
 CAMPOS_CARGA = (
@@ -1092,6 +1098,35 @@ class Banco:
                 f"UPDATE dav SET {', '.join(f'{c} = ?' for c in campos)}"
                 " WHERE id = ?", (*campos.values(), dav_id))
 
+    def dav_rejeitar(self, usuario: str, arquivo: str, motivos: list[str]) -> int:
+        with closing(self._conectar()) as con, con:
+            return int(con.execute(
+                "INSERT INTO dav (usuario, arquivo, hash_planilha, estado, erro, criado_em)"
+                " VALUES (?, ?, '', 'rejeitado', ?, ?)",
+                (usuario, Path(arquivo).name, "\n".join(motivos),
+                 datetime.now().isoformat(timespec="seconds"))).lastrowid)
+
+    def dav_vincular_correcao(self, origem_id: int, destino_id: int, usuario: str) -> None:
+        from orcamento.diagnostico import diagnostico
+        with closing(self._conectar()) as con, con:
+            con.execute("BEGIN IMMEDIATE")
+            linhas = {r["id"]: dict(r) for r in con.execute(
+                "SELECT * FROM dav WHERE id IN (?, ?) AND usuario = ?",
+                (origem_id, destino_id, usuario))}
+            origem = linhas.get(origem_id)
+            if (len(linhas) != 2 or origem is None
+                    or origem["estado"] not in ("erro", "rejeitado")
+                    or diagnostico(origem, administrador=False)["salvamento"] == "incerto"):
+                raise ValueError("Origem de correção indisponível para este usuário.")
+            ciclo = con.execute(
+                "WITH RECURSIVE cadeia(id) AS (SELECT ? UNION "
+                " SELECT c.destino_id FROM dav_correcao c JOIN cadeia a ON c.origem_id = a.id)"
+                " SELECT 1 FROM cadeia WHERE id = ?", (destino_id, origem_id)).fetchone()
+            if ciclo:
+                raise ValueError("Uma correção não pode criar um ciclo.")
+            con.execute("INSERT OR IGNORE INTO dav_correcao (origem_id, destino_id) VALUES (?, ?)",
+                        (origem_id, destino_id))
+
     def dav(self, dav_id: int, usuario: str | None) -> dict | None:
         """`usuario=None` é o administrador: vê o de qualquer um."""
         sql, args = "SELECT * FROM dav WHERE id = ?", [dav_id]
@@ -1115,7 +1150,8 @@ class Banco:
         with closing(self._conectar()) as con, con:
             r = con.execute(
                 "SELECT * FROM dav WHERE usuario = ? AND hash_planilha = ?"
-                " AND estado IN ('fila', 'gerando', 'pronto', 'incerto')"
+                " AND (estado IN ('fila', 'gerando', 'pronto', 'incerto')"
+                " OR (estado = 'erro' AND COALESCE(numero, '') <> ''))"
                 " ORDER BY id DESC LIMIT 1", (usuario, hash_planilha)).fetchone()
             return dict(r) if r else None
 

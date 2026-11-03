@@ -1752,6 +1752,42 @@ def cabecalho(titulo: str, *, tarja: str = "", sub: str = "",
             + "</header>")
 
 
+CSS_DAV = """
+.dav{--dav-gap:20px}.dav h1{letter-spacing:-.035em}.dav .cab-pagina{margin-bottom:28px}
+.dav-grid{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(240px,1fr);gap:var(--dav-gap);align-items:start}
+.dav .dav-card{padding:24px;margin:0 0 22px;min-width:0;background:var(--papel);border:1px solid var(--borda);border-radius:12px}
+.dav-card h2{margin:0 0 16px}.dav-card p{margin:8px 0;color:var(--tinta2)}
+.dav-steps{display:flex;gap:12px;margin:20px 0 24px;font-size:12px;color:var(--fraco)}
+.dav-steps span{flex:1;border-bottom:2px solid var(--borda);padding-bottom:9px}.dav-steps .atual{border-color:var(--realce);color:var(--realce)}
+.dav-upload{padding:28px 20px;background:var(--cova);border:1px dashed var(--borda-forte);border-radius:9px}
+.dav-upload label{display:block;font-weight:650;margin-bottom:12px}.dav-upload input{width:100%;min-width:0}.dav-upload p{font-size:13px}
+.dav-acoes{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:20px}.dav-acoes a,.dav-acoes button{margin:0}
+.dav-note{font-size:12px;color:var(--fraco);line-height:1.6}.dav-lista{margin:0;padding:0;list-style:none}.dav-lista li{padding:14px 0;border-bottom:1px solid var(--borda)}
+.dav-lista li:last-child{border:0}.dav-lista b{display:block}.dav-lista p{font-size:13px}
+.dav-filtros{display:flex;align-items:end;gap:12px;flex-wrap:wrap;margin:20px 0}.dav-filtros label{display:flex;flex-direction:column;gap:6px;font-size:12px;color:var(--fraco)}
+.dav-filtros input,.dav-filtros select{min-height:42px;margin:0;max-width:100%;font:inherit}.dav-filtros .dav-busca{flex:1;min-width:160px}
+.dav-table{overflow-x:auto}.dav table{width:100%;border-collapse:collapse}.dav th{text-align:left;font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:var(--fraco)}
+.dav td,.dav th{padding:16px 12px;vertical-align:top;border-bottom:1px solid var(--borda)}.dav td:first-child,.dav th:first-child{padding-left:0}.dav td small{display:block;margin-top:5px;color:var(--fraco);font-size:12px}
+.dav td{font-size:13px;overflow-wrap:anywhere}.dav td.dav-resultado{min-width:210px;max-width:330px}.dav td:last-child{white-space:nowrap}.dav td .dav-motivo{white-space:pre-line;margin-top:8px;max-height:6em;overflow:auto;color:var(--tom-erro)}
+.dav-selo{display:inline-flex;gap:7px;align-items:center;font-size:12px;font-weight:650;padding:4px 9px;border-radius:5px;color:var(--tom-neutro);background:var(--tom-neutro-fraco)}
+.dav-selo.ok{color:var(--tom-ok);background:var(--tom-ok-fraco)}.dav-selo.erro{color:var(--tom-erro);background:var(--tom-erro-fraco)}.dav-selo.atencao{color:var(--tom-atencao);background:var(--tom-atencao-fraco)}.dav-selo.marca{color:var(--tom-marca);background:var(--tom-marca-fraco)}
+.dav-resultado-box{padding:24px;border-left:3px solid var(--tom-marca);background:var(--tom-marca-fraco);border-radius:0 10px 10px 0;margin:22px 0}
+.dav-resultado-box.erro{border-color:var(--tom-erro);background:var(--tom-erro-fraco)}.dav-resultado-box.ok{border-color:var(--tom-ok);background:var(--tom-ok-fraco)}.dav-resultado-box.atencao{border-color:var(--tom-atencao);background:var(--tom-atencao-fraco)}
+.dav-resultado-box h2{margin:12px 0;font-size:24px}.dav-resultado-box p{white-space:pre-line;overflow-wrap:anywhere}
+.dav-aviso{padding:16px 20px;border:1px solid var(--atencao-borda);background:var(--atencao-fraco);border-radius:8px;margin:18px 0}.dav-aviso p{margin:7px 0 0}
+.dav-dados{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px;margin:20px 0}.dav-dados dt{font-size:11px;color:var(--fraco);text-transform:uppercase;letter-spacing:.05em}.dav-dados dd{margin:5px 0 0;overflow-wrap:anywhere;font-weight:600}
+.dav details{border-top:1px solid var(--borda);padding-top:16px;margin-top:20px}.dav summary{color:var(--realce);cursor:pointer}.dav pre{white-space:pre-wrap;overflow-wrap:anywhere;background:var(--cova);padding:18px;border-radius:8px;font:12px/1.7 var(--fonte-num);max-height:460px;overflow:auto}
+.dav-paginacao{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-top:20px;font-size:12px}.dav-atencao{display:flex;gap:14px;align-items:center;justify-content:space-between;padding:14px 0;border-bottom:1px solid var(--borda)}
+.dav-atencao:last-child{border:0}.dav-atencao a{white-space:nowrap}.dav-pulso{display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:12px;color:var(--fraco);margin:16px 0}.dav-pulso button{font-size:12px;padding:7px 10px;margin:0}
+.dav-mudou{animation:dav-realce .7s ease-out}@keyframes dav-realce{from{box-shadow:inset 3px 0 var(--realce-claro)}to{box-shadow:inset 0 0 transparent}}
+.dav .dav-entrada{animation:dav-entrada .22s ease-out}@keyframes dav-entrada{from{opacity:.4;transform:translateY(5px)}to{opacity:1;transform:none}}
+.dav-vazio{padding:24px 0;color:var(--fraco)}.dav-progress{height:4px;background:var(--borda);border-radius:4px;margin:15px 0}.dav-progress span{display:block;width:35%;height:100%;background:var(--realce)}
+@media(max-width:850px){.dav-grid{grid-template-columns:1fr}.dav-dados{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:480px){.dav .dav-card{padding:17px}.dav-dados{grid-template-columns:1fr}.dav-filtros label{flex:1;min-width:120px}.dav-filtros .dav-busca{flex-basis:100%}.dav-steps{gap:6px;font-size:11px}.dav-upload{padding:20px 12px}.dav-resultado-box{padding:18px}.dav th,.dav td{padding:13px 9px}.dav-atencao{flex-wrap:wrap}}
+@media(prefers-reduced-motion:reduce){.dav .dav-entrada,.dav .dav-mudou{animation:none}.dav *{scroll-behavior:auto;transition:none!important}}
+"""
+
+
 def pagina(titulo: str, corpo: str, usuario: str | None = None) -> str:
     quem = ""
     if usuario:
