@@ -305,3 +305,32 @@ def test_senha_curta_nao_estraga_o_json_gravado(banco, tmp_path, monkeypatch, se
     assert all(senha not in t for t in textos)
     assert conf.itens[0].preco_tabela == Decimal("150.00") and conf.itens[0].valor_unit == Decimal("150.00")
     assert conf.itens[0].codigo == "123" and conf.erros == ("erro ***",)
+
+
+def test_conferencia_e_gerar_rodam_ao_mesmo_tempo_sem_se_bloquear(banco, tmp_path):
+    from orcamento.fila import FilaDav
+    from orcamento.processador import Resultado
+
+    conferindo, gerando = threading.Event(), threading.Event()
+    viu = {}
+
+    def conferir_lento(p):   # só termina se o Gerar rodar enquanto ela está aberta
+        conferindo.set()
+        viu["conferencia"] = gerando.wait(2)
+        return _conf("ok")
+
+    def gerar_lento(planilha, pasta_pdf):
+        gerando.set()
+        viu["gerar"] = conferindo.wait(2)
+        return Resultado("pronto", "123", None, "rel", "Cliente X")
+
+    conf, dav = _rascunho(banco), _rascunho(banco, estado="fila", conferencia=None)
+    fila_dav = FilaDav(banco, tmp_path, gerar_lento)
+    FilaConferencia(banco, tmp_path, executar=conferir_lento).enfileirar(conf)
+    fila_dav.enfileirar(dav)
+    limite = time.monotonic() + 5
+    while (banco.dav(conf, None)["conferencia"] == "conferindo" or fila_dav.em_curso) \
+            and time.monotonic() < limite:
+        time.sleep(0.02)
+    assert viu == {"conferencia": True, "gerar": True}
+    assert banco.dav(conf, None)["conferencia"] == "ok" and banco.dav(dav, None)["estado"] == "pronto"
