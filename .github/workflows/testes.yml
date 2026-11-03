@@ -1,5 +1,3 @@
-# Roda a suíte a cada push e PR. Nada aqui fala com transportadora, ME, HSE
-# ou e-mail de verdade: os testes usam fixtures e falsos (ver tests/conftest.py).
 name: testes
 
 on:
@@ -10,34 +8,37 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: testes-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  suite:
-    # A VM de produção roda Python 3.14.
-    runs-on: ubuntu-latest
+  # Mesmo sistema e Python da VM (Windows, 3.14): alguns testes só rodam no Windows.
+  cotafrete:
+    runs-on: windows-latest
     timeout-minutes: 40
     steps:
+      - run: tzutil /s "E. South America Standard Time"  # fuso da VM
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.14"
-      - name: Dependências
-        run: |
-          python -m pip install -r requirements.txt selenium
-          python -m playwright install --with-deps chromium
-      # xvfb: Generoso, Favorita e Della Volpe só funcionam com janela visível.
-      - name: Testes
-        run: xvfb-run -a python -m pytest tests -q
+          cache: pip
+      - run: pip install -r requirements.txt selenium  # selenium: robô da HSE (cruzar_nf)
+      - run: python -m playwright install chromium
+      - run: python -m pytest tests -q
 
-  cruzar_nf_py38:
-    # cruzar_nf/ roda no Windows Server 2012 R2, preso no Python 3.8.
-    runs-on: ubuntu-latest
+  # cruzar_nf roda no Server 2012 R2, que só tem Python 3.8.
+  cruzar-nf-py38:
+    runs-on: windows-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.8"
-      - name: Dependências do serviço de NF
-        run: python -m pip install pytest openpyxl python-dotenv selenium
-      - name: Testes do cruzar_nf em Python 3.8
-        run: python -m pytest -q $(grep -l "cruzar_nf" tests/test_*.py)
+      - run: pip install openpyxl python-dotenv pytest
+      - run: >
+          python -m pytest -q
+          tests/test_cruzar_nf.py tests/test_conferir.py tests/test_nf_planilha.py
+          tests/test_painel_nf.py tests/test_planilha_portal.py tests/test_sync_planilha_portal.py

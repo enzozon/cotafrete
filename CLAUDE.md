@@ -11,4 +11,6 @@ Regras:
 - Não leia arquivos de dados inteiros (PEDIDOS.json, vendas_hse.json, logs,
   tests/fixtures). Filtre o trecho que importa.
 - Mudou uma parte descrita no mapa? Atualize o mapa no mesmo PR.
-- Testes: `python -m pytest tests -q` (ou `-k <assunto>`).
+- Testes: `python -m pytest tests -q` (ou `-k <assunto>`). A CI
+  (`.github/workflows/testes.yml`) roda tudo em Windows/3.14 e o `cruzar_nf`
+  em 3.8; o merge na `main` só libera com ela verde.

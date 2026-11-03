@@ -623,6 +623,9 @@ class DellavolpeAdapter:
             if loc.evaluate("el => el.tagName") == "SELECT":
                 if "cidade" in rotulo.lower():
                     self._esperar_opcoes(page, loc)
+                    opcoes = loc.evaluate(
+                        "el => [...el.options].map(o => o.label)")
+                    valor = m.opcao_da_cidade(valor, opcoes) or valor
                 try:
                     # UF vai como sigla ("ES") mas a option exibe "Espírito
                     # Santo": casa por value, não por label.

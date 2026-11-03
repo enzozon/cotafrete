@@ -21,6 +21,7 @@ trabalhos: **cotar o frete**, **responder cotações dos portais** e
 |---|---|---|---|
 | **Cotafrete** | este repo, `web/` + `core/` + `carriers/` | um formulário e cotação em várias transportadoras | VM Windows 10 no servidor, `cotafrete.ventura.inf.br` |
 | **Mercado Eletrônico** | este repo, `mercado_eletronico/` + `web/me_ui.py` | lê cotações do ME, calcula impostos e prazos, preenche rascunho | VM, junto do Cotafrete |
+| **Gerar DAV** | este repo, `orcamento/` + `web/dav_ui.py` | vendedor envia a PLANILHA-BASE v3, confere, e o robô gera o orçamento (DAV) no HSE; PDF e histórico por vendedor | VM, junto do Cotafrete |
 | **Serviço de NF** | este repo, `cruzar_nf/` | busca NFs no ERP HSE e preenche nos pedidos do Maestro | SERVIDOR2 (Server 2012 R2) |
 | **Cadastro de pedidos** | `cruzar_nf/cadastro_pedidos.py` | leva a planilha dos estagiários para o PEDIDOS.json | SERVIDOR2, a cada 10 min |
 | **Portal Maestro** | `allan-max/portaismaestro` (`server.js` + `public/*.html`) | painel web com socket.io, onde ficam os robôs dos portais, a fila, os pedidos e a planilha Vale | pm2 "Site-Maestro" + Cloudflare Tunnel, `maestro.ventura.inf.br` |
@@ -81,7 +82,13 @@ Favorita só tem a Ventura no "Alterar empresa", e o agendamento de coleta dela
 não foi levantado (levanta `NotImplementedError`). CNPJ "nao cadastrado" na
 ponta digitada é recusa na Generoso, mas na Favorita não
 (`cota_sem_cadastro`): o robô digita o CEP e, se for CEP geral de cidade,
-completa rua e bairro pela Receita (`core/cnpj.endereco`).
+completa rua e bairro pela Receita (`core/cnpj.endereco`). Cliente
+cadastrado com bairro "." e campo travado (#466) é recusa
+(`recusa_cadastro_sem_bairro`), não erro: só a transportadora corrige.
+
+A Della Volpe escolhe a cidade sem diferenciar maiúscula nem acento
+(`mapping.opcao_da_cidade`, e o mesmo no bookmarklet): o site lista "Santa
+Bárbara d'Oeste", e o texto exato derrubava a cotação (#472).
 
 "Ainda não atendemos essa origem" (embaixo do CEP) pode aparecer só **depois**
 do Próximo: `_conferir_cobertura` roda antes e depois dele. Na Favorita a
@@ -172,6 +179,33 @@ juntas. O `monitorar.py` se atualiza sozinho.
   pelo histórico no banco (1 h, depois 4 h, para na 3ª falha) e cedem a vez
   enquanto houver frete em curso (`retentativa.fretes_em_curso`).
 - Guia completo: `docs/MERCADO_ELETRONICO.md`.
+
+---
+
+## 3b. Gerar DAV: nunca gerar duas vezes
+
+Código em `orcamento/` (leitura da planilha `planilha.py`, robô do HSE,
+`fila.py`) e a tela em `web/dav_ui.py` (`/dav`; lista do admin em `/adm/dav`).
+O estado fica na tabela `dav` do `cotafrete.db`; a planilha enviada e os PDFs
+ficam em `davs/entrada/<id>.xlsx` e `davs/pdf/` (fora do git).
+
+- A mesma planilha (hash) do mesmo vendedor não gera outro orçamento: a tela
+  diz "já gerou o orçamento N". Servidor reiniciado com DAV "gerando" vira
+  "confira no HSE", nunca roda de novo sozinho.
+- O HSE é produção. Só o `DAV_DRY_RUN=0` salva de verdade.
+- `.env` do Cotafrete: `HSE_USUARIO`, `HSE_SENHA`, `HSE_CLIENT_ID`,
+  `DAV_DRY_RUN`, `DAV_HEADLESS`, `IA`, `IA_MODELO`, `ANTHROPIC_API_KEY`.
+  Senha e chave nunca em log, banco, relatório ou tela.
+- Modelo v3 (`orcamento/modelo/PLANILHA-BASE-v3.xlsx`): FRETE na B38 (lista
+  CIF/FOB na aba LISTAS, coluna H) e DESCRIÇÃO NO DAV na coluna R. O frete vira
+  a linha `FRETE CIF, PRAZO DE ENTREGA 30 DIAS` abaixo das observações (exige o
+  prazo da B32). A descrição vai para o `#dsObsItem_<cdItem>` do item no HSE,
+  que só existe depois do Incluir; se não gravar, o DAV sai e o relatório avisa.
+- O modelo tem 3 cópias que precisam ficar iguais: esta, o `public/PLANILHA
+  BASE.xlsx` + `public/vendor/template_planilha_base.js` (base64) do Maestro e
+  a pasta pública `\\SERVIDOR2\Publico\ENZO\ORCAMENTO`. Grave o modelo pelo XML
+  (o openpyxl apaga as listas suspensas x14) e mantenha a aba protegida com as
+  células de digitação desbloqueadas.
 
 ---
 

@@ -50,3 +50,4 @@ PEDIDOS*.json
 comparar.json
 RELATORIO_NF.*
 !cruzar_nf/exemplo/*
+davs/

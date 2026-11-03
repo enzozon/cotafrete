@@ -117,3 +117,22 @@ def test_cliente_nao_cadastrado_vira_recusa_e_nao_repete(tmp_path, monkeypatch):
     assert res.erro is None, "recusa não é erro; o cartão lê isso"
     assert "41.747.639/0001-12" in (res.motivo_recusa or "")
     assert not vale_repetir(res), "repetir daria o mesmo não, custando uma vaga"
+
+
+# ------------------------- cadastro com bairro "." (Favorita, cotação #466)
+@pytest.mark.parametrize("bairro, vazio", [
+    (".", True), ("", True), (" - ", True), ("Centro", False)])
+def test_bairro_de_cadastro_antigo_conta_como_vazio(bairro, vazio):
+    """O cadastro da CARBOGRAFITE na Favorita tem Bairro "." e o campo vem
+    travado: o site responde "Bairro é obrigatório" e a etapa não avança."""
+    assert m.bairro_vazio(bairro) is vazio
+
+
+def test_recusa_de_cadastro_sem_bairro_diz_o_que_fazer():
+    frase = m.recusa_cadastro_sem_bairro("36.427.615/0001-46", "origem",
+                                         "Favorita")
+    assert "36.427.615/0001-46" in frase
+    assert "bairro" in frase.lower()
+    assert "Favorita" in frase
+    for tecniques in ("RuntimeError", "None"):
+        assert tecniques not in frase

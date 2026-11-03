@@ -389,6 +389,15 @@ def test_ocupado_conta_o_que_esta_rodando():
     assert cliente.get("/_ocupado").json() == {"em_curso": 0}
 
 
+def test_ocupado_soma_a_fila_do_dav(monkeypatch):
+    from fastapi.testclient import TestClient
+
+    import web.app as modulo
+
+    monkeypatch.setattr(modulo.FilaDav, "em_curso", 2)
+    assert TestClient(modulo.app).get("/_ocupado").json() == {"em_curso": 2}
+
+
 def test_ocupado_desconta_mesmo_quando_o_trabalho_quebra():
     import web.app as modulo
 

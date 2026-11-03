@@ -108,6 +108,27 @@ def recusa_coleta_sem_cadastro(cnpj: str,
         f"com outra transportadora.")
 
 
+def bairro_vazio(bairro: str) -> bool:
+    """"." e "-" contam como vazio: é o que cadastro antigo guarda no lugar
+    do bairro, e o site responde "Bairro é obrigatório" (cotação #466)."""
+    return not (bairro or "").strip(" .-")
+
+
+def recusa_cadastro_sem_bairro(cnpj: str, lado: str,
+                               transportadora: str = "Generoso") -> str:
+    """O cliente É cadastrado, mas sem bairro, e o campo vem TRAVADO.
+
+    Medido na Favorita em 22/10/2026, cotação #466: CARBOGRAFITE com Bairro
+    "." e o campo desabilitado. O robô não tem como corrigir; repetir três
+    vezes dava o mesmo "a etapa do destino não avançou"."""
+    return (
+        f"O cadastro do CNPJ de {lado} {cnpj} na {transportadora} está sem "
+        f"bairro, e o site não deixa corrigir na cotação. Peça a correção "
+        f"do endereço à {transportadora} (\"Solicitar alteração\" no portal "
+        f"ou WhatsApp, no botão aqui embaixo), ou cote com outra "
+        f"transportadora.")
+
+
 # Aviso vermelho embaixo do campo de CEP quando a praça está fora da malha.
 # NÃO aparece em _erros_da_tela (o filtro lá só pega "obrigat/inválid/erro")
 # — por isso 4 das 6 cotações reais que caíram no genérico "a etapa do
