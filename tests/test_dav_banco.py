@@ -27,6 +27,12 @@ def test_criar_e_ler_pelo_dono(banco):
     assert d["criado_em"]
 
 
+def test_criar_ja_com_conferencia_no_mesmo_insert(banco):
+    assert banco.dav(banco.dav_criar("ana", "a.xlsx", "h1", "X"), "ana")["conferencia"] is None
+    i = banco.dav_criar("ana", "b.xlsx", "h2", "X", conferencia="conferindo")
+    assert banco.dav(i, "ana")["conferencia"] == "conferindo"
+
+
 def test_outro_usuario_nao_ve_e_admin_ve(banco):
     i = _novo(banco)
     assert banco.dav(i, "outro") is None

@@ -454,11 +454,11 @@ def conferir(planilha: UploadFile = File(...),
                 if origem:
                     banco.dav_vincular_correcao(origem, antigo["id"], usuario)
                 return _ja_gerou(usuario, antigo)
-            dav_id = banco.dav_criar(usuario, nome, hash_, o.cliente)
+            # já nasce "conferindo": a fila só grava em "conferindo"
+            dav_id = banco.dav_criar(usuario, nome, hash_, o.cliente, conferencia="conferindo")
             if origem:
                 banco.dav_vincular_correcao(origem, dav_id, usuario)
             temp.replace(FILA.planilha(dav_id))
-            banco.dav_atualizar(dav_id, conferencia="conferindo")   # antes: a fila só grava em "conferindo"
         FILA_CONFERENCIA.enfileirar(dav_id)
         return _html("Conferir DAV", _resumo(o, dav_id, banco.dav(dav_id, usuario)), usuario)
     finally:

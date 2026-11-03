@@ -1095,13 +1095,13 @@ class Banco:
                      "confira no HSE antes de gerar de novo.")
 
     def dav_criar(self, usuario: str, arquivo: str, hash_planilha: str,
-                  cliente: str) -> int:
+                  cliente: str, conferencia: str | None = None) -> int:
         with closing(self._conectar()) as con, con:
             return int(con.execute(
                 "INSERT INTO dav (usuario, arquivo, hash_planilha, estado,"
-                " cliente, criado_em) VALUES (?, ?, ?, 'rascunho', ?, ?)",
+                " cliente, criado_em, conferencia) VALUES (?, ?, ?, 'rascunho', ?, ?, ?)",
                 (usuario, arquivo, hash_planilha, cliente,
-                 datetime.now().isoformat(timespec="seconds"))).lastrowid)
+                 datetime.now().isoformat(timespec="seconds"), conferencia)).lastrowid)
 
     def dav_atualizar(self, dav_id: int, **campos) -> None:
         if not campos:

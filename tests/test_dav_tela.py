@@ -407,6 +407,19 @@ def test_nao_conferido_avisa_e_libera_gerar(cli, app_web, tmp_path):
     assert r.text.count(SEM_HSE) == 1 and "/dav/1/gerar" in r.text
 
 
+def test_rascunho_nasce_conferindo_sem_janela_nula(cli, app_web, tmp_path, monkeypatch):
+    vistos = []
+    criar_original = app_web.banco.dav_criar
+
+    def espiar(*a, **kw):
+        i = criar_original(*a, **kw)
+        vistos.append(app_web.banco.dav(i, None)["conferencia"])
+        return i
+    monkeypatch.setattr(app_web.banco, "dav_criar", espiar)
+    enviar(cli, planilha(tmp_path))
+    assert vistos == ["conferindo"]
+
+
 def test_nao_conferido_sem_relatorio_avisa_e_libera_gerar(cli, app_web, tmp_path):
     enviar(cli, planilha(tmp_path))
     app_web.banco.dav_atualizar(1, conferencia="nao_conferido", conferencia_relatorio=None)
