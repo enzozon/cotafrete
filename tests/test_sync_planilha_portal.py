@@ -528,3 +528,44 @@ def test_pendente_diz_a_linha_e_o_lado_a_corrigir(c):
     pendente = c.rodar()['pendentes'][0]
     assert (pendente['linha'], pendente['lado']) == (2, 'excel')
     assert 'Data inválida' in pendente['erro']
+
+
+def _trocar_no_xml(c, de, para):
+    original = c.xlsx.read_bytes()
+    parte = parte_da_aba(original, 'PEDIDOS')
+    with zipfile.ZipFile(io.BytesIO(original)) as z:
+        xml = z.read(parte).decode('utf-8')
+    assert de in xml
+    xml = xml.replace(de, para, 1)
+    saida = io.BytesIO()
+    with zipfile.ZipFile(io.BytesIO(original)) as zin, zipfile.ZipFile(saida, 'w') as zout:
+        for info in zin.infolist():
+            zout.writestr(info, xml if info.filename == parte else zin.read(info.filename))
+    c.xlsx.write_bytes(saida.getvalue())
+
+
+def test_linha_so_formatada_com_spans_curto_recebe_pedido_novo(c):
+    # Planilha real (linha 593): linha vazia só com borda e spans="1:12"; o e-mail vai na M.
+    c.rodar()
+    w = openpyxl.load_workbook(c.xlsx)
+    for col in 'ABCDEFGHIJKL':
+        w['PEDIDOS']['%s3' % col].font = Font(bold=True)
+    w.save(c.xlsx)
+    w.close()
+    _trocar_no_xml(c, '<row r="3"', '<row r="3" spans="1:12"')
+    c.salvar_portal([pedido(), pedido(2)])
+    assert not c.rodar().get('erro')
+    assert c.valor('C3') == 2 and c.valor('M3') == 'ana@vale.com'
+
+
+def test_linha_vazia_sem_celulas_recebe_pedido_novo(c):
+    # <row .../> sem células vira <row ...>...</row> ao receber o pedido.
+    c.rodar()
+    w = openpyxl.load_workbook(c.xlsx)
+    w['PEDIDOS']['A4'].font = Font(bold=True)
+    w.save(c.xlsx)
+    w.close()
+    _trocar_no_xml(c, '<row r="4"', '<row r="3" spans="1:1" ht="20" customHeight="1"/><row r="4"')
+    c.salvar_portal([pedido(), pedido(2)])
+    assert not c.rodar().get('erro')
+    assert c.valor('C3') == 2 and c.valor('M3') == 'ana@vale.com'

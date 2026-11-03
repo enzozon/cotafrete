@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import io
 import zipfile
+from contextlib import closing
 from datetime import date
 from decimal import Decimal
 
@@ -397,7 +398,7 @@ def test_envio_que_morreu_no_meio_volta_a_oferecer_o_formulario(
     cid = app_web.banco.salvar_cotacao("enzo", CARGA)
     app_web.banco.reservar_envio(cid, "dellavolpe", resposta_em="email")
     velho = (datetime.now() - timedelta(hours=1)).isoformat(timespec="seconds")
-    with app_web.banco._conectar() as con:
+    with closing(app_web.banco._conectar()) as con, con:
         con.execute("UPDATE resultado SET pedido_em = ?", (velho,))
 
     html = _so_texto(cliente.get(f"/cotacao/{cid}").text)

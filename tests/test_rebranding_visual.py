@@ -19,9 +19,10 @@ jeito:
 3. **O foco aparece.** Percorre a tela pelo Tab e exige contorno visível no
    que recebeu foco.
 
-De quebra grava os prints em docs/rebranding/ — as mesmas telas, nas duas
-larguras. É por isso que ele roda com dado SINTÉTICO montado aqui: nenhuma
-cotação real, nenhum CNPJ de cliente, nenhum print de transportadora.
+Os prints de docs/rebranding/ saíram daqui (levavam ~1 min por rodada) e
+viraram scripts/gerar_prints_rebranding.py, que reusa o servidor e as telas
+deste arquivo. É por isso que ele roda com dado SINTÉTICO montado aqui:
+nenhuma cotação real, nenhum CNPJ de cliente, nenhum print de transportadora.
 
     pytest tests/test_rebranding_visual.py
 
@@ -34,6 +35,7 @@ from __future__ import annotations
 from core import sessao as sessao_senha
 
 import threading
+from contextlib import contextmanager
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -71,15 +73,21 @@ CARGA = {
 
 @pytest.fixture(scope="module")
 def servidor(tmp_path_factory):
+    with subir_servidor(tmp_path_factory.mktemp("visual")) as base_e_id:
+        yield base_e_id
+
+
+@contextmanager
+def subir_servidor(pasta: Path):
     """A aplicação de verdade, num banco descartável, numa porta livre.
 
     Uvicorn numa thread e não num processo: o banco é trocado por
     `monkeypatch` dentro do processo, e um subprocesso abriria o banco real.
+    Fora de fixture porque scripts/gerar_prints_rebranding.py também usa.
     """
     import uvicorn
     from web import app as modulo
 
-    pasta = tmp_path_factory.mktemp("visual")
     banco = Banco(pasta / "visual.db")
     modulo.banco = banco
     modulo.adm.banco = banco
@@ -268,27 +276,3 @@ def test_o_foco_do_teclado_e_visivel_no_formulario(servidor, navegador):
     ctx.close()
 
     assert not sem_anel, f"foco invisível em: {sem_anel}"
-
-
-@pytest.mark.parametrize("perfil,largura,altura", LARGURAS)
-def test_grava_os_prints_da_documentacao(servidor, navegador, perfil, largura,
-                                         altura):
-    """Os prints de docs/rebranding/. Não é bem um teste — é o artefato que o
-    IMPLEMENTACAO.md referencia, e deixá-lo aqui garante que ele é sempre
-    gerado a partir das telas que os testes acima acabaram de aprovar, e não
-    de uma versão antiga que alguém esqueceu de regravar."""
-    base, cid = servidor
-    PRINTS.mkdir(parents=True, exist_ok=True)
-    for nome, url in _telas(base, cid):
-        ctx = _abrir(navegador, url, largura, altura,
-                     adm=nome.startswith(("painel", "login-adm")))
-        pagina = ctx.new_page()
-        pagina.goto(url, wait_until="networkidle")
-        assert pagina.url == url, f"Tela {nome} redirecionou para {pagina.url}"
-        # A entrada em cascata dos cartões é `both`: sem esperar, o print sai
-        # com metade da tela ainda transparente.
-        pagina.wait_for_timeout(900)
-        destino = PRINTS / f"{nome}-{perfil}.png"
-        pagina.screenshot(path=str(destino), full_page=True)
-        ctx.close()
-        assert destino.exists() and destino.stat().st_size > 0

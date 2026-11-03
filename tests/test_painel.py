@@ -8,6 +8,7 @@ manda o Enzo cobrar a transportadora errada."""
 
 from __future__ import annotations
 
+from contextlib import closing
 from datetime import datetime, timedelta
 from decimal import Decimal
 
@@ -51,7 +52,7 @@ def test_interrompido_fica_fora_do_aproveitamento(db):
     db.salvar_resultado(cid, "camilo", status="cotado")
     db.salvar_resultado(cid, "jadlog", status="interrompido")
 
-    with db._conectar() as con:
+    with closing(db._conectar()) as con, con:
         linhas = {l["transportadora"]: l
                   for l in painel.saude_das_transportadoras(con, dias=30)}
 
@@ -72,7 +73,7 @@ def test_desconhecido_vai_para_o_fim_da_ordenacao(db):
     sem_dados = db.salvar_cotacao("enzo", CARGA)
     db.salvar_resultado(sem_dados, "generoso", status="interrompido")
 
-    with db._conectar() as con:
+    with closing(db._conectar()) as con, con:
         ordem = [l["transportadora"]
                  for l in painel.saude_das_transportadoras(con, dias=30)]
 
@@ -86,7 +87,7 @@ def test_aguardando_retorno_conta_como_sucesso_na_coluna(db):
     cid = db.salvar_cotacao("enzo", CARGA)
     db.salvar_resultado(cid, "dellavolpe", status="aguardando_retorno")
 
-    with db._conectar() as con:
+    with closing(db._conectar()) as con, con:
         linha = painel.saude_das_transportadoras(con, dias=30)[0]
 
     assert linha["sucesso"] == 1
@@ -100,7 +101,7 @@ def test_aproveitamento_conta_recusa_no_denominador(db):
     cid2 = db.salvar_cotacao("enzo", CARGA)
     db.salvar_resultado(cid2, "camilo", status="recusado")
 
-    with db._conectar() as con:
+    with closing(db._conectar()) as con, con:
         linha = painel.saude_das_transportadoras(con, dias=30)[0]
 
     assert linha["sucesso"] == 1 and linha["recusa"] == 1
@@ -115,7 +116,7 @@ def test_resumo_conta_cotacao_que_ficou_sem_nenhum_preco(db):
     db.salvar_resultado(ruim, "camilo", status="erro")
     db.salvar_resultado(ruim, "jadlog", status="recusado")
 
-    with db._conectar() as con:
+    with closing(db._conectar()) as con, con:
         r = painel.resumo_do_dia(con)
 
     assert r["cotacoes"] == 2
@@ -125,7 +126,7 @@ def test_resumo_conta_cotacao_que_ficou_sem_nenhum_preco(db):
 
 def test_banco_vazio_nao_quebra(db):
     """Pasta nova, primeiro dia. A tela precisa abrir mesmo assim."""
-    with db._conectar() as con:
+    with closing(db._conectar()) as con, con:
         assert painel.saude_das_transportadoras(con, dias=30) == []
         assert painel.resumo_do_dia(con)["cotacoes"] == 0
 
@@ -138,7 +139,7 @@ def test_historico_traz_cotacao_de_todos_os_usuarios(db):
     b = db.salvar_cotacao("leandro", CARGA)
     db.salvar_resultado(b, "camilo", status="cotado", valor=Decimal("90.00"))
 
-    with db._conectar() as con:
+    with closing(db._conectar()) as con, con:
         linhas = painel.historico(con)
 
     assert {l["usuario"] for l in linhas} == {"enzo", "leandro"}
@@ -149,7 +150,7 @@ def test_historico_mostra_o_melhor_preco_de_cada_cotacao(db):
     db.salvar_resultado(cid, "camilo", status="cotado", valor=Decimal("150.00"))
     db.salvar_resultado(cid, "generoso", status="cotado", valor=Decimal("90.50"))
 
-    with db._conectar() as con:
+    with closing(db._conectar()) as con, con:
         assert painel.historico(con)[0]["melhor_preco"] == Decimal("90.50")
 
 
@@ -158,7 +159,7 @@ def test_historico_sem_preco_nenhum_devolve_none_e_nao_zero(db):
     cid = db.salvar_cotacao("enzo", CARGA)
     db.salvar_resultado(cid, "camilo", status="erro", erro="deu ruim")
 
-    with db._conectar() as con:
+    with closing(db._conectar()) as con, con:
         assert painel.historico(con)[0]["melhor_preco"] is None
 
 
@@ -166,7 +167,7 @@ def test_historico_filtra_por_usuario(db):
     db.salvar_cotacao("enzo", CARGA)
     db.salvar_cotacao("leandro", CARGA)
 
-    with db._conectar() as con:
+    with closing(db._conectar()) as con, con:
         linhas = painel.historico(con, usuario="leandro")
 
     assert [l["usuario"] for l in linhas] == ["leandro"]
@@ -179,7 +180,7 @@ def test_historico_filtra_so_as_que_tiveram_falha(db):
     ruim = db.salvar_cotacao("enzo", CARGA)
     db.salvar_resultado(ruim, "jadlog", status="erro", erro="timeout")
 
-    with db._conectar() as con:
+    with closing(db._conectar()) as con, con:
         linhas = painel.historico(con, so_com_falha=True)
 
     assert [l["id"] for l in linhas] == [ruim]
@@ -189,7 +190,7 @@ def test_historico_vem_do_mais_novo_para_o_mais_velho(db):
     primeiro = db.salvar_cotacao("enzo", CARGA)
     segundo = db.salvar_cotacao("enzo", CARGA)
 
-    with db._conectar() as con:
+    with closing(db._conectar()) as con, con:
         assert [l["id"] for l in painel.historico(con)] == [segundo, primeiro]
 
 
@@ -203,7 +204,7 @@ def test_historico_so_com_falha_nao_perde_falha_antiga_pro_limite(db):
     db.salvar_cotacao("enzo", CARGA)
     db.salvar_cotacao("enzo", CARGA)
 
-    with db._conectar() as con:
+    with closing(db._conectar()) as con, con:
         linhas = painel.historico(con, so_com_falha=True, limite=2)
 
     assert [l["id"] for l in linhas] == [antiga_com_falha]
@@ -214,7 +215,7 @@ def test_historico_so_com_falha_nao_perde_falha_antiga_pro_limite(db):
 def _backdatar(db, cotacao_id: int, quando: datetime) -> None:
     """`salvar_cotacao` sempre carimba agora. Para testar janela de tempo, a
     data precisa ser empurrada na marra."""
-    with db._conectar() as con:
+    with closing(db._conectar()) as con, con:
         con.execute("UPDATE cotacao SET criado_em = ? WHERE id = ?",
                     (quando.isoformat(timespec="seconds"), cotacao_id))
 
@@ -229,7 +230,7 @@ def test_unidade_muda_com_o_tamanho_da_janela():
 
 
 def test_serie_de_sete_dias_traz_sete_baldes(db):
-    with db._conectar() as con:
+    with closing(db._conectar()) as con, con:
         serie = painel.serie_por_periodo(con, dias=7)
 
     assert serie["unidade"] == "dia"
@@ -237,7 +238,7 @@ def test_serie_de_sete_dias_traz_sete_baldes(db):
 
 
 def test_serie_de_vinte_e_quatro_horas_traz_vinte_e_quatro_baldes(db):
-    with db._conectar() as con:
+    with closing(db._conectar()) as con, con:
         serie = painel.serie_por_periodo(con, dias=1)
 
     assert serie["unidade"] == "hora"
@@ -252,7 +253,7 @@ def test_dia_sem_cotacao_aparece_zerado_e_nao_some(db):
     _backdatar(db, antiga, datetime.now() - timedelta(days=3))
     db.salvar_cotacao("enzo", CARGA)
 
-    with db._conectar() as con:
+    with closing(db._conectar()) as con, con:
         pontos = painel.serie_por_periodo(con, dias=7)["pontos"]
 
     assert [p["cotacoes"] for p in pontos] == [0, 0, 0, 1, 0, 0, 1]
@@ -261,7 +262,7 @@ def test_dia_sem_cotacao_aparece_zerado_e_nao_some(db):
 def test_a_janela_de_dias_comeca_na_meia_noite(db):
     """Alinhar o primeiro balde não é detalhe: começando as 14h37, ele
     cobriria 23 minutos e apareceria como uma queda que nunca aconteceu."""
-    with db._conectar() as con:
+    with closing(db._conectar()) as con, con:
         pontos = painel.serie_por_periodo(con, dias=7)["pontos"]
 
     esperado = (datetime.now() - timedelta(days=6)).strftime("%Y-%m-%d")
@@ -280,7 +281,7 @@ def test_com_preco_conta_so_quem_virou_valor(db):
     esperando = db.salvar_cotacao("enzo", CARGA)
     db.salvar_resultado(esperando, "dellavolpe", status="aguardando_retorno")
 
-    with db._conectar() as con:
+    with closing(db._conectar()) as con, con:
         hoje = painel.serie_por_periodo(con, dias=7)["pontos"][-1]
 
     assert hoje["cotacoes"] == 3
@@ -294,7 +295,7 @@ def test_duas_transportadoras_com_preco_contam_uma_cotacao_so(db):
     db.salvar_resultado(cid, "camilo", status="cotado", valor=Decimal("10"))
     db.salvar_resultado(cid, "jadlog", status="cotado", valor=Decimal("20"))
 
-    with db._conectar() as con:
+    with closing(db._conectar()) as con, con:
         hoje = painel.serie_por_periodo(con, dias=7)["pontos"][-1]
 
     assert hoje["cotacoes"] == 1
@@ -307,7 +308,7 @@ def test_periodo_tudo_comeca_na_cotacao_mais_antiga_e_nao_em_dez_anos(db):
     antiga = db.salvar_cotacao("enzo", CARGA)
     _backdatar(db, antiga, datetime.now() - timedelta(days=70))
 
-    with db._conectar() as con:
+    with closing(db._conectar()) as con, con:
         serie = painel.serie_por_periodo(con, dias=3650)
 
     assert serie["unidade"] == "mes"
@@ -317,7 +318,7 @@ def test_periodo_tudo_comeca_na_cotacao_mais_antiga_e_nao_em_dez_anos(db):
 def test_banco_vazio_ainda_desenha_a_janela(db):
     """Pasta nova, primeiro dia. O gráfico mostra a semana zerada, e não um
     vazio que pareceria defeito."""
-    with db._conectar() as con:
+    with closing(db._conectar()) as con, con:
         pontos = painel.serie_por_periodo(con, dias=7)["pontos"]
 
     assert len(pontos) == 7
@@ -329,7 +330,7 @@ def test_por_usuario_vem_do_mais_ativo_para_o_menos(db):
         db.salvar_cotacao("leandro", CARGA)
     db.salvar_cotacao("enzo", CARGA)
 
-    with db._conectar() as con:
+    with closing(db._conectar()) as con, con:
         linhas = painel.por_usuario(con, dias=30)
 
     assert linhas == [{"usuario": "leandro", "cotacoes": 3},
@@ -342,7 +343,7 @@ def test_por_usuario_desempata_por_nome(db):
     db.salvar_cotacao("zeca", CARGA)
     db.salvar_cotacao("ana", CARGA)
 
-    with db._conectar() as con:
+    with closing(db._conectar()) as con, con:
         nomes = [l["usuario"] for l in painel.por_usuario(con, dias=30)]
 
     assert nomes == ["ana", "zeca"]
@@ -353,7 +354,7 @@ def test_por_usuario_respeita_a_janela(db):
     _backdatar(db, velha, datetime.now() - timedelta(days=40))
     db.salvar_cotacao("atual", CARGA)
 
-    with db._conectar() as con:
+    with closing(db._conectar()) as con, con:
         nomes = [l["usuario"] for l in painel.por_usuario(con, dias=30)]
 
     assert nomes == ["atual"]
@@ -369,7 +370,7 @@ def test_cotacao_abre_a_de_outro_usuario(db):
     db.salvar_resultado(cid, "camilo", status="cotado",
                         valor=Decimal("123.45"), prazo="3 dias")
 
-    with db._conectar() as con:
+    with closing(db._conectar()) as con, con:
         c = painel.cotacao(con, cid)
 
     assert c["usuario"] == "leandro"
@@ -386,7 +387,7 @@ def test_o_isolamento_do_vendedor_continua_de_pe(db):
 
 
 def test_cotacao_que_nao_existe_devolve_none(db):
-    with db._conectar() as con:
+    with closing(db._conectar()) as con, con:
         assert painel.cotacao(con, 4242) is None
 
 
@@ -396,7 +397,7 @@ def test_cotacao_devolve_dinheiro_como_decimal(db):
     formatação de um número."""
     cid = db.salvar_cotacao("enzo", CARGA)
 
-    with db._conectar() as con:
+    with closing(db._conectar()) as con, con:
         c = painel.cotacao(con, cid)
 
     assert c["valor_nf"] == Decimal("1000")
@@ -409,7 +410,7 @@ def test_cotacao_traz_os_whatsapps_abertos(db):
     cid = db.salvar_cotacao("enzo", CARGA)
     db.marcar_whatsapp_aberto(cid, "movvi", "enzo")
 
-    with db._conectar() as con:
+    with closing(db._conectar()) as con, con:
         c = painel.cotacao(con, cid)
 
     assert [w["transportadora"] for w in c["whatsapp"]] == ["movvi"]
@@ -432,7 +433,7 @@ def test_tres_falhas_seguidas_viram_alerta(db):
     sempre foram problema de verdade."""
     _falhas(db, 3)
 
-    with db._conectar() as con:
+    with closing(db._conectar()) as con, con:
         alertas = painel.falhas_seguidas(con, dias=30)
 
     assert [a["transportadora"] for a in alertas] == ["jadlog"]
@@ -442,7 +443,7 @@ def test_tres_falhas_seguidas_viram_alerta(db):
 def test_duas_falhas_seguidas_nao_alertam(db):
     _falhas(db, 2)
 
-    with db._conectar() as con:
+    with closing(db._conectar()) as con, con:
         assert painel.falhas_seguidas(con, dias=30) == []
 
 
@@ -452,7 +453,7 @@ def test_sucesso_depois_das_falhas_zera_a_contagem(db):
     _falhas(db, 4)
     _com(db, "jadlog", "cotado")
 
-    with db._conectar() as con:
+    with closing(db._conectar()) as con, con:
         assert painel.falhas_seguidas(con, dias=30) == []
 
 
@@ -462,7 +463,7 @@ def test_recusa_tambem_zera_a_contagem(db):
     _falhas(db, 3)
     _com(db, "jadlog", "recusado", "peso acima de 120 kg")
 
-    with db._conectar() as con:
+    with closing(db._conectar()) as con, con:
         assert painel.falhas_seguidas(con, dias=30) == []
 
 
@@ -474,7 +475,7 @@ def test_interrompida_no_meio_nao_zera_nem_conta(db):
     _com(db, "jadlog", "interrompido")
     _falhas(db, 1)
 
-    with db._conectar() as con:
+    with closing(db._conectar()) as con, con:
         alertas = painel.falhas_seguidas(con, dias=30)
 
     assert alertas[0]["quantas"] == 3
@@ -486,7 +487,7 @@ def test_o_alerta_traz_os_numeros_das_cotacoes_e_o_ultimo_erro(db):
     ids = _falhas(db, 3)
     ultima = _com(db, "jadlog", "erro", "senha recusada")
 
-    with db._conectar() as con:
+    with closing(db._conectar()) as con, con:
         alerta = painel.falhas_seguidas(con, dias=30)[0]
 
     assert alerta["ids"][0] == ultima
@@ -498,7 +499,7 @@ def test_alertas_vem_do_pior_para_o_menos_pior(db):
     _falhas(db, 5, "jadlog")
     _falhas(db, 3, "generoso")
 
-    with db._conectar() as con:
+    with closing(db._conectar()) as con, con:
         alertas = painel.falhas_seguidas(con, dias=30)
 
     assert [a["transportadora"] for a in alertas] == ["jadlog", "generoso"]
@@ -512,7 +513,7 @@ def test_falha_fora_da_janela_nao_entra_na_contagem(db):
         _backdatar(db, cid, datetime.now() - timedelta(days=40))
     _falhas(db, 3)
 
-    with db._conectar() as con:
+    with closing(db._conectar()) as con, con:
         assert painel.falhas_seguidas(con, dias=30)[0]["quantas"] == 3
 
 
@@ -523,7 +524,7 @@ def test_rotas_agrupa_pela_cidade_e_conta(db):
         db.salvar_cotacao("enzo", CARGA)
     db.salvar_cotacao("enzo", {**CARGA, "cidade_destino": "Curitiba"})
 
-    with db._conectar() as con:
+    with closing(db._conectar()) as con, con:
         linhas = painel.rotas(con, dias=30)
 
     assert linhas[0] == {"rota": "Vila Velha -> São Paulo", "cotacoes": 3}
@@ -536,7 +537,7 @@ def test_rota_sem_cidade_cai_no_cep_e_nao_num_grupo_vazio(db):
     db.salvar_cotacao("enzo", {**CARGA, "cidade_origem": "",
                                "cidade_destino": ""})
 
-    with db._conectar() as con:
+    with closing(db._conectar()) as con, con:
         assert painel.rotas(con, dias=30)[0]["rota"] == \
             "29105770 -> 01310100"
 
@@ -570,19 +571,19 @@ def test_duracao_negativa_tambem_e_desconhecida():
 
 def test_versao_do_painel_muda_quando_entra_cotacao(db):
     """E o caso do pedido: cotacao nova tem que aparecer sozinha na tela."""
-    with db._conectar() as con:
+    with closing(db._conectar()) as con, con:
         antes = painel.versao_do_painel(con)
     db.salvar_cotacao("enzo", CARGA)
-    with db._conectar() as con:
+    with closing(db._conectar()) as con, con:
         assert painel.versao_do_painel(con) != antes
 
 
 def test_versao_do_painel_muda_quando_transportadora_responde(db):
     cid = db.salvar_cotacao("enzo", CARGA)
-    with db._conectar() as con:
+    with closing(db._conectar()) as con, con:
         antes = painel.versao_do_painel(con)
     db.salvar_resultado(cid, "camilo", status="cotado", valor=Decimal("99.90"))
-    with db._conectar() as con:
+    with closing(db._conectar()) as con, con:
         assert painel.versao_do_painel(con) != antes
 
 
@@ -591,7 +592,7 @@ def test_versao_do_painel_nao_muda_com_o_banco_parado(db):
     cada cinco segundos debaixo do cursor de quem esta lendo."""
     db.salvar_resultado(db.salvar_cotacao("enzo", CARGA), "camilo",
                         status="cotado", valor=Decimal("99.90"))
-    with db._conectar() as con:
+    with closing(db._conectar()) as con, con:
         assert painel.versao_do_painel(con) == painel.versao_do_painel(con)
 
 
@@ -602,13 +603,13 @@ def test_versao_do_painel_percebe_resposta_que_sobrescreve_interrompido(db):
     assinatura o painel nunca mostraria essa resposta."""
     cid = db.salvar_cotacao("enzo", CARGA)
     db.salvar_resultado(cid, "camilo", status="interrompido")
-    with db._conectar() as con:
+    with closing(db._conectar()) as con, con:
         antes = painel.versao_do_painel(con)
 
     db.salvar_resultado(cid, "camilo", status="cotado", valor=Decimal("77.00"),
                         respondido_em="2026-09-04T10:00:00")
 
-    with db._conectar() as con:
+    with closing(db._conectar()) as con, con:
         assert painel.versao_do_painel(con) != antes
 
 
@@ -618,13 +619,13 @@ def test_versao_da_cotacao_muda_quando_o_status_muda_sem_mexer_na_contagem(db):
     Contando linhas, a tela ficaria mostrando o erro para sempre."""
     cid = db.salvar_cotacao("enzo", CARGA)
     db.salvar_resultado(cid, "generoso", status="erro", erro="TimeoutError")
-    with db._conectar() as con:
+    with closing(db._conectar()) as con, con:
         antes = painel.versao_da_cotacao(con, cid)
 
     db.salvar_resultado(cid, "generoso", status="cotado",
                         valor=Decimal("150.00"))
 
-    with db._conectar() as con:
+    with closing(db._conectar()) as con, con:
         assert painel.versao_da_cotacao(con, cid) != antes
 
 
@@ -633,12 +634,12 @@ def test_versao_da_cotacao_ignora_o_que_acontece_em_outra(db):
     redesenharia inteira toda vez que qualquer vendedor cotasse."""
     minha = db.salvar_cotacao("enzo", CARGA)
     outra = db.salvar_cotacao("leandro", CARGA)
-    with db._conectar() as con:
+    with closing(db._conectar()) as con, con:
         antes = painel.versao_da_cotacao(con, minha)
 
     db.salvar_resultado(outra, "jadlog", status="cotado", valor=Decimal("10"))
 
-    with db._conectar() as con:
+    with closing(db._conectar()) as con, con:
         assert painel.versao_da_cotacao(con, minha) == antes
 
 
@@ -646,7 +647,7 @@ def test_versao_da_cotacao_sem_resposta_nenhuma_nao_estoura(db):
     """A cotacao acabou de nascer: a tela abre antes de qualquer
     transportadora responder, e e justamente essa a que fica olhando."""
     cid = db.salvar_cotacao("enzo", CARGA)
-    with db._conectar() as con:
+    with closing(db._conectar()) as con, con:
         assert isinstance(painel.versao_da_cotacao(con, cid), str)
 
 
@@ -662,7 +663,7 @@ def test_mesmo_erro_3x_em_24h_vira_alerta_mesmo_com_sucesso_no_meio(db):
                                  f"exceeded.\nCall log: {i}")
         cid = db.salvar_cotacao("enzo", CARGA)
         db.salvar_resultado(cid, "generoso", status="cotado", valor="10")
-    with db._conectar() as con:
+    with closing(db._conectar()) as con, con:
         assert painel.falhas_seguidas(con) == []
         [alerta] = painel.falhas_repetidas(con)
     assert alerta["transportadora"] == "generoso" and alerta["quantas"] == 3
@@ -672,7 +673,7 @@ def test_erros_diferentes_nao_se_somam(db):
     for erro in ("TimeoutError: x", "RuntimeError: y", "NameError: z"):
         cid = db.salvar_cotacao("enzo", CARGA)
         db.salvar_resultado(cid, "generoso", status="erro", erro=erro)
-    with db._conectar() as con:
+    with closing(db._conectar()) as con, con:
         assert painel.falhas_repetidas(con) == []
 
 

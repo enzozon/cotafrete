@@ -7,6 +7,7 @@ dar para reabrir e comparar depois.
 
 from __future__ import annotations
 
+from contextlib import closing
 from decimal import Decimal
 
 import pytest
@@ -191,7 +192,7 @@ def _envelhecer(db, cotacao_id: int) -> None:
 
     velha = (datetime.now() - timedelta(seconds=ESPERA_MAXIMA_S + 60)
              ).isoformat(timespec="seconds")
-    with db._conectar() as con:
+    with closing(db._conectar()) as con, con:
         con.execute("UPDATE cotacao SET criado_em = ? WHERE id = ?",
                     (velha, cotacao_id))
 

@@ -212,7 +212,12 @@ async def pedir_orcamento(request: Request) -> str:
     faltando = sorted(k for k in OBRIGATORIOS if not str(recebido.get(k, "")).strip())
     if faltando:
         return f"<h1>Erro</h1><p>Campos vazios: {', '.join(faltando)}</p>"
-    return "<h1>Obrigado!</h1><p>Sua mensagem foi enviada com sucesso.</p>"
+    # A confirmação como o Contact Form 7 do site a escreve (medida em
+    # 13/08/2026, ver dellavolpe/mapping.normalizar_resposta). Sem esta div o
+    # adapter esperava o tempo limite inteiro por ela a cada envio de teste.
+    return ('<div class="wpcf7-response-output" aria-hidden="true">'
+            "Agradecemos a sua mensagem. Em breve retornaremos seu contato."
+            "</div>")
 
 
 @app.get("/ultimo-envio")

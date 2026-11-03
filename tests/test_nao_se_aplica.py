@@ -9,6 +9,7 @@ de ninguém — a Favorita aparecia com 10%, metade disso por regra de conta.
 
 from __future__ import annotations
 
+from contextlib import closing
 from datetime import date
 from decimal import Decimal
 
@@ -75,7 +76,7 @@ def test_fica_fora_do_aproveitamento_e_dos_alertas(tmp_path):
         db.salvar_resultado(cid, "favorita", status="nao_se_aplica")
     cid = db.salvar_cotacao("enzo", CARGA)
     db.salvar_resultado(cid, "favorita", status="cotado", valor=Decimal("10"))
-    with db._conectar() as con:
+    with closing(db._conectar()) as con, con:
         linha = painel.saude_das_transportadoras(con, dias=30)[0]
         semana = resumo_semana.fatos(con, date.today())
     assert painel.categoria("nao_se_aplica") == "nao_aplica"
