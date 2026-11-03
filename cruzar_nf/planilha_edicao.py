@@ -213,6 +213,10 @@ def conferir(antes, depois, esperadas, partes, acrescentadas, ultima=None):
         ra = {int(m.group(1)): m.group(0) for m in NP.ROW_RE.finditer(x)}
         rd = {int(m.group(1)): m.group(0) for m in NP.ROW_RE.finditer(y)}
         def limpar(linha):
+            # spans é só dica de leitura; editar_aba o amplia ao gravar além dele
+            # e abre <row .../> vazia em <row ...></row>.
+            linha = re.sub(r'^(<row\b[^>]*?)\s+spans="[^"]*"', r'\1', linha)
+            linha = re.sub(r'^(<row\b[^>]*?)\s*/>$', r'\1></row>', linha)
             return NP.CELL_RE.sub(lambda m: '' if NP.REF_RE.search(m.group(0)).group(0)[3:-1]
                                   in esperadas else m.group(0), linha)
         if len(rd) != len(ra) + acrescentadas:
