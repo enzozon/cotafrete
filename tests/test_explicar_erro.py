@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from contextlib import closing
 
 import pytest
 
@@ -73,7 +74,7 @@ def test_cartao_mostra_a_frase_guardada_antes_do_texto_tecnico(monkeypatch, tmp_
     from core.banco import Banco
     from web import app as app_web
     monkeypatch.setattr(app_web, "banco", Banco(tmp_path / "t.db"))
-    with app_web.banco._conectar() as con:
+    with closing(app_web.banco._conectar()) as con, con:
         ex._criar_tabela(con)
         con.execute("INSERT OR REPLACE INTO erro_explicado VALUES (?, ?, NULL, '2026-10-09')",
                     (ex.chave("camilo", TIMEOUT), "Frase da IA."))
