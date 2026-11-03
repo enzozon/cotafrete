@@ -95,3 +95,46 @@ def test_posicao_usa_toda_fila(banco):
     with closing(banco._conectar()) as con:
         assert posicao_na_fila(con, i) == 55
     assert consulta(banco, estado="erro")["resumo"]["em_andamento"] == 55
+
+
+def test_ocorrencias_completas_filtradas_antes_da_paginacao(banco):
+    ids = {novo(banco, "erro", erro="Local de entrega não encontrado") for _ in range(30)}
+    novo(banco, "erro", usuario="bia", erro="HSE fora do ar")
+    dados = consulta(banco, vendedor="ana", estado="erro", categoria="endereco", pagina=2)
+    assert len(dados["linhas"]) == 5
+    assert len(dados["ocorrencias"]) == 1
+    grupo = dados["ocorrencias"][0]
+    assert grupo["tipo"] == "falha" and grupo["total"] == 30
+    assert {d["id"] for d in grupo["envios"]} == ids
+    assert grupo["onde_conferir"] and grupo["como_corrigir"]
+    assert consulta(banco, busca="inexistente")["ocorrencias"] == []
+
+
+def test_ocorrencias_distinguem_conferencia_rejeicao_confirmacao_e_aviso(banco):
+    from orcamento.processador import Conferencia
+    novo(banco, "erro", erro="Local de entrega não encontrado")
+    novo(banco, "rejeitado", erro="Formato inválido")
+    conf = Conferencia(estado="erros", relatorio="", cliente="", endereco="", vendedor="",
+                      itens=(), avisos=(), erros=("Item 3: quantidade inválida",))
+    novo(banco, "rascunho", conferencia="erros", conferencia_relatorio=conf.para_json())
+    novo(banco, "erro", numero="16410", erro="Local de entrega não encontrado")
+    novo(banco, "erro", erro="Salvar foi clicado; não reenvie a planilha")
+    novo(banco, "pronto", relatorio="Cliente com pendência financeira DF123", numero="16411")
+    novo(banco, "pronto")
+    grupos = consulta(banco)["ocorrencias"]
+    tipos = {g["tipo"] for g in grupos}
+    assert tipos == {"falha", "rejeitado", "conferencia", "confirmacao", "aviso_financeiro"}
+    assert sum(g["total"] for g in grupos) == 6
+    assert sum(g["total"] for g in grupos if g["tipo"] == "confirmacao") == 2
+    for g in grupos:
+        if g["tipo"] == "confirmacao":
+            assert "HSE" in g["como_corrigir"]
+
+
+def test_ocorrencias_vendedor_nao_expoem_detalhes_tecnicos_ou_outro_usuario(banco):
+    meu = novo(banco, "erro", erro="Falha desconhecida SEGREDO-TECNICO")
+    novo(banco, "erro", usuario="bia", erro="HSE fora do ar")
+    grupos = consulta(banco, usuario="ana")["ocorrencias"]
+    assert [d["id"] for g in grupos for d in g["envios"]] == [meu]
+    assert "SEGREDO-TECNICO" not in str(grupos)
+    assert "SEGREDO-TECNICO" in str(consulta(banco, vendedor="ana")["ocorrencias"])

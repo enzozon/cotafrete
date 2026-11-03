@@ -72,6 +72,34 @@ def grupos(dados: dict, filtros: dict) -> str:
     return linhas or '<p class="dav-vazio">Nenhuma falha registrada neste recorte.</p>'
 
 
+def resumo_erros(dados: dict, filtros: dict) -> str:
+    total = sum(g["total"] for g in dados["ocorrencias"])
+    link = dav_ui.url_dav("/adm/dav/erros", filtros, pagina=1)
+    return (f'<div class="dav-resumo-erros"><p><b>{total} envios com ocorrências</b></p>'
+            f'<a href="{e(link)}">Resumo de erros e avisos →</a></div>')
+
+
+def ocorrencias(dados: dict, filtros: dict) -> str:
+    rotulos = {"falha": "Falha de criação", "rejeitado": "Planilha rejeitada",
+               "conferencia": "Conferência inválida", "confirmacao": "Resultado sem confirmação",
+               "aviso_financeiro": "Criado com aviso financeiro", "aviso": "Criado com aviso"}
+    corpo = ""
+    for g in dados["ocorrencias"]:
+        corpo += (f'<section class="cartao dav-card dav-guia-erro" data-tipo="{e(g["tipo"])}"><p class="dav-note">{e(rotulos[g["tipo"]])}</p>'
+                  f'<h2>{e(g["titulo"])}</h2><p><b>{g["total"]} envios</b></p>'
+                  f'<p><b>Origem:</b> {e(g["origem_rotulo"])}</p>'
+                  f'<p><b>Onde conferir:</b> {e(g["onde_conferir"])}</p>'
+                  f'<p><b>Como corrigir:</b> {e(g["como_corrigir"])}</p>')
+        for d in g["envios"]:
+            link = dav_ui.url_dav(f'/adm/dav/{d["id"]}', filtros)
+            corpo += (f'<details id="dav-ocorrencia-{d["id"]}"><summary><a href="{e(link)}">'
+                      f'#{d["id"]} · {e(d["cliente"] or d["arquivo"])}</a> · {e(d["usuario"])}'
+                      f' · {e(d["criado_em"].replace("T", " ")[:16])}</summary>'
+                      f'<pre>{e(d["detalhes"] or "Nenhum detalhe técnico disponível.")}</pre></details>')
+        corpo += '</section>'
+    return corpo or '<p class="dav-vazio">Nenhuma ocorrência neste recorte.</p>'
+
+
 def resumo_principal(con) -> str:
     r = painel_dav.consultar(con, usuario=None, dias=1, agora=dav_ui.agora())["resumo"]
     itens = ""
@@ -97,12 +125,11 @@ def painel(cookie: str | None = Cookie(None, alias=adm.COOKIE_ADM), dias: int = 
     filtros = _filtros(dias, estado, vendedor, busca, pagina, categoria)
     with closing(adm.banco._conectar()) as con:
         dados = painel_dav.consultar(con, usuario=None, agora=dav_ui.agora(), **filtros)
-    corpo = cabecalho("Orçamentos DAV", tarja="Administração · Controle da operação",
-                     sub="Acompanhe a criação, encontre falhas e entenda o próximo passo.", acoes=ui.BOTAO_TEMA)
+    corpo = cabecalho("Orçamentos DAV", tarja="Administração", acoes=ui.BOTAO_TEMA)
     corpo += dav_ui.barra_pulso('/adm/dav/agora') + f'<div id="dav-indicadores">{indicadores(dados)}</div>'
     corpo += (f'<div class="dav-grid"><section class="cartao dav-card"><h2>Precisa de atenção</h2><div id="dav-atencao">{atencao(dados, filtros)}</div></section>'
-              f'<section class="cartao dav-card"><h2>Motivos das falhas</h2><div id="dav-grupos">{grupos(dados, filtros)}</div></section></div>'
-              '<section class="cartao dav-card"><h2>Atividade dos vendedores</h2>'
+              f'<section class="cartao dav-card"><h2>Erros e avisos</h2><div id="dav-grupos">{resumo_erros(dados, filtros)}{grupos(dados, filtros)}</div></section></div>'
+              '<section class="cartao dav-card"><h2>Histórico de envios</h2>'
               + dav_ui.filtros_dav(dados, filtros, administrador=True)
               + f'<div id="dav-historico">{dav_ui.historico_dav(dados, filtros, administrador=True)}</div></section>')
     return _html("Orçamentos DAV", corpo)
@@ -116,9 +143,38 @@ def ao_vivo(cookie: str | None = Cookie(None, alias=adm.COOKIE_ADM), dias: int =
     with closing(adm.banco._conectar()) as con:
         dados = painel_dav.consultar(con, usuario=None, agora=dav_ui.agora(), **filtros)
     fragmentos = {"dav-indicadores": indicadores(dados), "dav-atencao": atencao(dados, filtros),
-                  "dav-grupos": grupos(dados, filtros),
+                  "dav-grupos": resumo_erros(dados, filtros) + grupos(dados, filtros),
                   "dav-historico": dav_ui.historico_dav(dados, filtros, administrador=True)}
     return dav_ui.resposta_pulso(fragmentos, v, contexto=dados["periodo"]["inicio"] + str(filtros))
+
+
+@router.get("/erros", response_class=HTMLResponse)
+def erros(cookie: str | None = Cookie(None, alias=adm.COOKIE_ADM), dias: int = 1, estado: str = "",
+          vendedor: str = "", busca: str = "", pagina: int = 1, categoria: str = ""):
+    porta = _porta(cookie)
+    if porta:
+        return porta
+    filtros = _filtros(dias, estado, vendedor, busca, pagina, categoria)
+    with closing(adm.banco._conectar()) as con:
+        dados = painel_dav.consultar(con, usuario=None, agora=dav_ui.agora(), **filtros)
+    retorno = dav_ui.url_dav("/adm/dav", filtros)
+    corpo = cabecalho("Erros e avisos DAV", tarja="Administração", acoes=ui.BOTAO_TEMA)
+    corpo += (f'<p><a href="{e(retorno)}">← Orçamentos DAV</a></p>'
+              + dav_ui.filtros_dav(dados, filtros, administrador=True, base="/adm/dav/erros")
+              + dav_ui.barra_pulso('/adm/dav/erros/agora')
+              + f'<div id="dav-ocorrencias">{ocorrencias(dados, filtros)}</div>')
+    return _html("Erros e avisos DAV", corpo)
+
+
+@router.get("/erros/agora")
+def erros_agora(cookie: str | None = Cookie(None, alias=adm.COOKIE_ADM), dias: int = 1, estado: str = "",
+                vendedor: str = "", busca: str = "", pagina: int = 1, categoria: str = "", v: str = ""):
+    _porta(cookie, api=True)
+    filtros = _filtros(dias, estado, vendedor, busca, pagina, categoria)
+    with closing(adm.banco._conectar()) as con:
+        dados = painel_dav.consultar(con, usuario=None, agora=dav_ui.agora(), **filtros)
+    return dav_ui.resposta_pulso({"dav-ocorrencias": ocorrencias(dados, filtros)}, v,
+                                contexto=dados["periodo"]["inicio"] + str(filtros))
 
 
 @router.get("/{dav_id}/agora")
