@@ -26,11 +26,15 @@ def _origem(mensagens: list[str], rejeitado: bool) -> dict:
             continue
         t = _normal(mensagem).strip().removeprefix("erro: ").removeprefix("falha durante a criacao no hse: ")
         origem, referencias = "desconhecida", []
-        if any(s in t for s in ("hse esta fora", "hse fora do ar", "hse recusou o login", "hse sem login",
-                                 "robo do hse sem login", "login recusado (confira hse_usuario/hse_senha)")):
+        if re.match(r"^(?:o )?(?:hse esta fora|hse fora do ar|hse recusou o login|hse sem login|"
+                    r"robo do hse sem login|login recusado \(confira hse_usuario/hse_senha)", t):
             origem = "acesso_hse"
-        elif any(s in t for s in ("tela ficou com qtd/preco", "nao consegui manter forma", "tela abriu na filial")):
+        elif re.match(r"^(?:item \d+: tela ficou com qtd/preco |nao consegui manter forma '|"
+                      r"tela abriu na filial \d+, esperado \d+)", t):
             origem = "automacao"
+        elif (t.startswith("nao foi possivel abrir a planilha:") or
+              (rejeitado and t in ("envie um arquivo .xlsx (a planilha-base v3).", "o arquivo passa de 5 mb."))):
+            origem = "planilha"
         elif t.startswith("cliente sem endereco cadastrado no hse"):
             origem, referencias = "cadastro_hse", ["B30"]
         elif t.startswith("local de entrega"):
@@ -43,17 +47,25 @@ def _origem(mensagens: list[str], rejeitado: bool) -> dict:
             item = re.match(r"item (\d+):\s*(.*)", t)
             if item and 1 <= int(item[1]) <= 24:
                 detalhe = item[2]
-                for padrao, coluna in ((r"\bquantidade\b", "B"),
-                        (r"\b(valor unitario|valor de venda unitario|preco)\b", "J"),
-                        (r"\bcodigo\b", "K"), (r"\bncm\b", "L"), (r"\borigem\b", "M"),
-                        (r"\bicms\b", "N"), (r"\bgrupo\b", "P"), (r"descricao no dav", "R")):
-                    if re.search(padrao, detalhe):
-                        referencias.append(f"{coluna}{int(item[1]) + 1}")
-                if referencias and any(s in detalhe for s in ("invalido", "invalida", "deve", "sem ",
+                # O campo vem antes do valor interpolado; palavras dentro do valor não são estrutura.
+                for padrao, coluna in ((r"^quantidade (?:invalido|invalida|deve)", "B"),
+                        (r"^(?:valor unitario|valor de venda unitario|preco) ", "J"),
+                        (r"^codigo ", "K"), (r"^ncm ", "L"), (r"^origem (?:invalido|invalida|deve)", "M"),
+                        (r"^icms (?:invalido|invalida|deve)", "N"), (r"^grupo ", "P"),
+                        (r"^descricao no dav com \d+ caracteres", "R")):
+                    if re.match(padrao, detalhe):
+                        referencias = [f"{coluna}{int(item[1]) + 1}"]
+                        break
+                faltantes = re.match(r"^produto novo sem ((?:ncm|custo|grupo|marca)(?:, (?:ncm|custo|grupo|marca))*)", detalhe)
+                if faltantes:
+                    referencias = [f"{coluna}{int(item[1]) + 1}" for campo, coluna in (("ncm", "L"), ("grupo", "P"))
+                                   if campo in faltantes[1].split(", ")]
+                estrutura = re.sub(r"^valor unitario \(coluna j\) ", "valor unitario ", detalhe).partition(" (")[0]
+                if referencias and any(s in estrutura for s in ("invalido", "invalida", "deve", "sem ",
                         "abaixo do minimo", "caracteres", "nao encontrado", "nao existe", "inativo",
                         "preencha")):
                     origem = "planilha"
-                    if any(s in detalhe for s in ("nao encontrado", "nao existe", "inativo")):
+                    if any(s in estrutura for s in ("nao encontrado", "nao existe", "inativo")):
                         origem, comparar = "desconhecida", True
                 else:
                     referencias = []

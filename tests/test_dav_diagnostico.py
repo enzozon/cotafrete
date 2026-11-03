@@ -260,3 +260,27 @@ def test_conferencia_com_decimal_invalido_e_tratada_como_desconhecida():
              '"valor_unit":"1","por":""}]}')
     d = diagnostico(registro("rascunho", conferencia="erros", conferencia_relatorio=texto), administrador=False)
     assert d["origem"] == "desconhecida"
+
+
+@pytest.mark.parametrize("valor", ["preço NCM GRUPO", "tela ficou com qtd/preço", "hse fora do ar",
+                                    "d'Água NCM", '"GRUPO" preço', "não encontrado", "inativo"])
+def test_valor_invalido_nao_inventa_outros_campos_ou_causa(valor):
+    from orcamento.diagnostico import diagnostico
+    d = diagnostico(registro(erro=f"Item 3: quantidade inválido(a) ({valor!r})"), administrador=False)
+    assert d["origem"] == "planilha"
+    assert d["campos"] == ["B4"]
+
+
+@pytest.mark.parametrize("erro", ["não foi possível abrir a planilha: File is not a zip file",
+                                "Envie um arquivo .xlsx (a PLANILHA-BASE v3).", "O arquivo passa de 5 MB."])
+def test_rejeicao_de_arquivo_conhecida_e_planilha(erro):
+    from orcamento.diagnostico import diagnostico
+    d = diagnostico(registro("rejeitado", erro=erro), administrador=False)
+    assert d["origem"] == "planilha" and d["campos"] == []
+
+
+def test_produto_novo_com_faltantes_nao_interpreta_descricao_como_campos():
+    from orcamento.diagnostico import diagnostico
+    erro = "Item 3: produto novo sem NCM, GRUPO (não encontrado no HSE pela descrição 'preço ICMS')"
+    d = diagnostico(registro(erro=erro), administrador=False)
+    assert d["origem"] == "planilha" and d["campos"] == ["L4", "P4"]
