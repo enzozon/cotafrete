@@ -106,9 +106,12 @@ async def _vida(_app):
     # estava gerando vira "confira no HSE" (orcamento/fila.py).
     try:
         FILA_DAV.retomar()
-        FILA_CONFERENCIA.retomar()
     except Exception as exc:  # noqa: BLE001 — banco travado no boot não derruba o servidor
         print(f"[cotafrete] Fila do DAV: retomar falhou ({exc!r}); o servidor sobe assim mesmo.")
+    try:
+        FILA_CONFERENCIA.retomar()
+    except Exception as exc:  # noqa: BLE001
+        print(f"[cotafrete] Fila da conferência: retomar falhou ({exc!r}); o servidor sobe assim mesmo.")
     if VIGIA_ME is None:
         me_ui.LOG_CHEGADAS = Path(__file__).resolve().parent.parent / "log" / "me_chegadas.txt"
         VIGIA_ME = me_ui.iniciar_vigia()

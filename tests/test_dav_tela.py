@@ -439,3 +439,36 @@ def test_tabela_mostra_preco_de_tabela_e_da_planilha(cli, tmp_path):
     for esperado in ("Código HSE", "Descrição no HSE", "Tabela", "Planilha", "R$ 10,00", "R$ 12,50",
                      "Descricao HSE", "6303 - TANGARA", "Rua Tal, 10"):
         assert esperado in t
+
+
+def _rascunho_com_erros(cli, app_web, tmp_path):
+    CONFERENCIA["resultado"] = _conferencia_ok(estado="erros", erros=("Item 1: ruim",))
+    enviar(cli, planilha(tmp_path))
+    return 1
+
+
+def test_corrigir_rascunho_com_erros_vincula_sem_500(cli, app_web, tmp_path):
+    origem = _rascunho_com_erros(cli, app_web, tmp_path)
+    CONFERENCIA["resultado"] = _conferencia_ok()
+    r = cli.post("/dav/conferir", data={"origem": origem},
+                 files={"planilha": ("c.xlsx", planilha(tmp_path, {"B26": "outra"}, "c.xlsx").read_bytes())})
+    assert r.status_code == 200
+    from contextlib import closing
+    with closing(app_web.banco._conectar()) as con:
+        assert con.execute("SELECT destino_id FROM dav_correcao WHERE origem_id=?", (origem,)).fetchone()[0] == 2
+
+
+def test_corrigir_rascunho_com_erros_enviando_planilha_invalida_nao_da_500(cli, app_web, tmp_path):
+    origem = _rascunho_com_erros(cli, app_web, tmp_path)
+    r = cli.post("/dav/conferir", data={"origem": origem}, files={"planilha": ("a.xls", b"x")})
+    assert r.status_code == 200
+    from contextlib import closing
+    with closing(app_web.banco._conectar()) as con:
+        assert con.execute("SELECT COUNT(*) FROM dav_correcao WHERE origem_id=?", (origem,)).fetchone()[0] == 1
+
+
+def test_erros_com_json_ilegivel_explica_por_que_nao_ha_gerar(cli, app_web, tmp_path):
+    enviar(cli, planilha(tmp_path))
+    app_web.banco.dav_atualizar(1, conferencia="erros", conferencia_relatorio="{quebrado")
+    t = cli.get("/dav/1/conferir").text
+    assert "Não consegui ler o resultado da conferência" in t and "/gerar" not in t

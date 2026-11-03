@@ -383,6 +383,11 @@ def _data(valor: str | None) -> date | None:
         return None
 
 
+def origem_corrigivel(d: dict) -> bool:
+    """Envio que o vendedor pode corrigir com uma nova planilha."""
+    return d["estado"] in ("erro", "rejeitado") or (d["estado"] == "rascunho" and d.get("conferencia") == "erros")
+
+
 class Banco:
     def __init__(self, caminho: Path | str = CAMINHO_PADRAO) -> None:
         self.caminho = Path(caminho)
@@ -1124,7 +1129,7 @@ class Banco:
                 (origem_id, destino_id, usuario))}
             origem = linhas.get(origem_id)
             if (len(linhas) != 2 or origem is None
-                    or origem["estado"] not in ("erro", "rejeitado")
+                    or not origem_corrigivel(origem)
                     or diagnostico(origem, administrador=False)["salvamento"] == "incerto"):
                 raise ValueError("Origem de correção indisponível para este usuário.")
             ciclo = con.execute(

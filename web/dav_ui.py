@@ -21,7 +21,7 @@ from urllib.parse import urlencode
 from fastapi import APIRouter, Cookie, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
 
-from core.banco import Banco
+from core.banco import Banco, origem_corrigivel
 from core import painel_dav
 from orcamento.fila import FilaDav
 from orcamento.conferencia import FilaConferencia
@@ -307,6 +307,9 @@ def _conferencia_de(d: dict | None) -> tuple[str | None, Conferencia | None]:
         return estado, None
 
 
+ILEGIVEL = "Não consegui ler o resultado da conferência; envie a planilha de novo."
+
+
 def _bloco_hse(conf: Conferencia | None) -> str:
     if conf is None or not (conf.cliente or conf.endereco or conf.vendedor):
         return ""
@@ -358,6 +361,8 @@ def _resumo(o, dav_id: int, d: dict | None = None) -> str:
                      for a in _filtrar(list(o.avisos) + (list(conf.avisos) if conf else [])))
     if conf:
         avisos += "".join(f'<div class="alerta">{e(a)}</div>' for a in _filtrar(conf.erros))
+    elif estado == "erros":
+        avisos += f'<div class="alerta">{e(ILEGIVEL)}</div>'
     prazo = o.prazo_dias if o.prazo_dias is not None else ""
     if estado == "erros":
         acao = (f'<div class="dav-acoes"><a class="botao2" href="/dav?origem={dav_id}">Enviar planilha corrigida →</a>'
@@ -445,8 +450,7 @@ def _validar_origem(usuario: str, origem: int | None) -> None:
     d = banco.dav(origem, usuario)
     if d is None:
         raise HTTPException(404)
-    corrigivel = d["estado"] in ("erro", "rejeitado") or (d["estado"] == "rascunho" and d.get("conferencia") == "erros")
-    if not corrigivel or diagnostico(d, administrador=False)["salvamento"] == "incerto":
+    if not origem_corrigivel(d) or diagnostico(d, administrador=False)["salvamento"] == "incerto":
         raise HTTPException(409, "Confira o resultado no HSE antes de reenviar.")
 
 
