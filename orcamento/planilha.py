@@ -241,7 +241,8 @@ def ler_planilha(path: Path) -> Orcamento:
             erros.append(f"Forma de pagamento (B34) desconhecida ({forma!r})")
         forma = codigo
 
-    frete = normalizar(ws["B38"].value) or None
+    # Só o modelo com a linha "Frete" (A38) tem o FRETE na B38; no anterior ela é a linha "ITEM 1".
+    frete = (normalizar(ws["B38"].value) or None) if normalizar(ws["A38"].value) == "FRETE" else None
     if frete and frete not in FRETES:
         erros.append(f"FRETE (B38) deve ser CIF ou FOB ({ws['B38'].value!r})")
     elif frete and not prazo:
