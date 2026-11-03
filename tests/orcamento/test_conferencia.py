@@ -220,3 +220,13 @@ def test_thread_real_segue_depois_de_tarefa_que_quebra(banco, tmp_path, monkeypa
             break
         time.sleep(0.05)
     assert real(a, None)["conferencia"] == "conferindo" and _gravado(banco, b)[0] == "ok"
+
+
+def test_conferencia_gravada_nao_leva_a_senha(banco, tmp_path, monkeypatch):
+    monkeypatch.setenv("HSE_SENHA", "s3gredo")
+    i = _rascunho(banco)
+    vazada = Conferencia("erros", "tela disse s3gredo", "", "", "", (), (), ("erro com s3gredo",))
+    _fila(banco, tmp_path, lambda p: vazada).enfileirar(i)
+    assert "s3gredo" not in banco.dav(i, None)["conferencia_relatorio"]
+    estado, conf = _gravado(banco, i)
+    assert estado == "erros" and conf.erros == ("erro com ***",)

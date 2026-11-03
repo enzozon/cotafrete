@@ -76,7 +76,7 @@ class FilaConferencia:
             log.warning("Fila da conferência: %s mudou durante a conferência, não gravado", dav_id)
             return
         no_banco(self.banco.dav_atualizar, dav_id, conferencia=conf.estado,
-                 conferencia_relatorio=conf.para_json())
+                 conferencia_relatorio=_sem_segredo(conf.para_json()))
 
     def _com_limite(self, planilha: Path) -> Conferencia:
         """Roda o executor numa thread auxiliar; passou do tempo, abandona-a
