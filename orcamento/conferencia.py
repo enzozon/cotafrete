@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Callable
 
 from core.banco import Banco
-from orcamento.fila import _sem_segredo
+from orcamento.fila import _sem_segredo, no_banco
 from orcamento.processador import Conferencia, HseIndisponivel, conferir
 
 log = logging.getLogger(__name__)
@@ -66,17 +66,17 @@ class FilaConferencia:
             tarefa = self._tarefas.get()
             try:
                 tarefa()
-            except Exception:   # nunca derruba a thread
-                log.exception("Fila da conferência: tarefa quebrou")
+            except Exception as e:   # nunca derruba a thread; sem traceback (pode ter a senha)
+                log.error("Fila da conferência: tarefa quebrou: %s", _sem_segredo(str(e)) or type(e).__name__)
 
     def _conferir(self, dav_id: int) -> None:
         conf = self._com_limite(self.pasta / "entrada" / f"{dav_id}.xlsx")
-        linha = self.banco.dav(dav_id, None)
+        linha = no_banco(self.banco.dav, dav_id, None)
         if linha is None or linha["estado"] != "rascunho" or linha["conferencia"] != "conferindo":
             log.warning("Fila da conferência: %s mudou durante a conferência, não gravado", dav_id)
             return
-        self.banco.dav_atualizar(dav_id, conferencia=conf.estado,
-                                 conferencia_relatorio=conf.para_json())
+        no_banco(self.banco.dav_atualizar, dav_id, conferencia=conf.estado,
+                 conferencia_relatorio=conf.para_json())
 
     def _com_limite(self, planilha: Path) -> Conferencia:
         """Roda o executor numa thread auxiliar; passou do tempo, abandona-a
@@ -97,10 +97,11 @@ class FilaConferencia:
             return _nao_conferido(SEM_HSE)
         if erro:
             e = erro[0]
-            if not isinstance(e, HseIndisponivel):
-                log.error("Fila da conferência: %s quebrou", planilha.name, exc_info=e)
-            return _nao_conferido(SEM_HSE if isinstance(e, HseIndisponivel)
-                                  else _sem_segredo(str(e) or type(e).__name__))
+            if isinstance(e, HseIndisponivel):
+                return _nao_conferido(SEM_HSE)
+            motivo = _sem_segredo(str(e)) or type(e).__name__
+            log.error("Fila da conferência: %s quebrou: %s", planilha.name, motivo)
+            return _nao_conferido(motivo)
         return saida[0]
 
     def _executar_no_hse(self, planilha: Path) -> Conferencia:

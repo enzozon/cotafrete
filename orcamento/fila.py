@@ -48,6 +48,17 @@ def _sem_segredo(texto: str | None) -> str | None:
     return texto
 
 
+def no_banco(chamada, *args, **kw):
+    """O sqlite trava às vezes ("database is locked"): tenta de novo."""
+    for tentativa in range(TENTATIVAS_BANCO):
+        try:
+            return chamada(*args, **kw)
+        except sqlite3.OperationalError:
+            if tentativa == TENTATIVAS_BANCO - 1:
+                raise
+            time.sleep(ESPERA_BANCO_S)
+
+
 class FilaDav:
     def __init__(self, banco: Banco, pasta: Path,
                  executar: Callable[[Path, Path], Resultado] | None = None,
@@ -104,15 +115,7 @@ class FilaDav:
             except Exception:   # nunca derruba a thread
                 log.exception("Fila do DAV: tarefa quebrou")
 
-    def _no_banco(self, chamada, *args, **kw):
-        """O sqlite trava às vezes ("database is locked"): tenta de novo."""
-        for tentativa in range(TENTATIVAS_BANCO):
-            try:
-                return chamada(*args, **kw)
-            except sqlite3.OperationalError:
-                if tentativa == TENTATIVAS_BANCO - 1:
-                    raise
-                time.sleep(ESPERA_BANCO_S)
+    _no_banco = staticmethod(no_banco)
 
     def _rodar(self, dav_id: int) -> None:
         with self._trava:
