@@ -191,6 +191,12 @@ def test_frete_invalido(tmp_path):
     assert "FRETE (B38)" in erros(tmp_path, "valida", {"B32": 5, "B38": "CFI"})
 
 
+def test_modelo_antigo_sem_linha_do_frete_ignora_b38(tmp_path):
+    # DAVs 54, 57 e 59 (30/10/2026): no modelo anterior a linha 38 é "ITEM 1" e a B38 traz o produto
+    orc = ler(tmp_path, "valida", {"A38": "ITEM 1", "B38": "Mousepad", "B32": None})
+    assert orc.frete is None
+
+
 def test_prazo_zero_sem_frete_continua_valido(tmp_path):
     assert ler(tmp_path, "valida", {"B32": 0}).prazo_dias == 0
 
