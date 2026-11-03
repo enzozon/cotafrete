@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import os
 import threading
 
 import pytest
@@ -409,3 +410,63 @@ def test_agendado_usa_a_janela_padrao(tmp_path):
     sio, agenda, _, _ = montar(tmp_path, pedidos, [venda(10, 1, 15)])
     agenda.tarefas[0]()
     assert sio.ultimo("retorno_sync_nf")["resultado"]["origem"] == "agendado" and pedidos[0][CAMPO] == "15"
+
+
+# -- datas no futuro, trava alheia, temporário único ----------------------------
+
+def test_data_final_no_futuro_e_recusada(tmp_path):
+    """Um ano digitado errado (2062) ia para a cobertura e, dali em diante,
+    toda janela padrão começava depois de hoje: a sincronização parava de
+    vez até alguém editar o sync_nf.json à mão."""
+    with pytest.raises(ValueError, match="futuro"):
+        sync.janela(tmp_path, "01/10/2026", "21/10/2062", hoje=D(2026, 10, 21))
+
+
+def test_cobertura_futura_ja_gravada_nao_trava_a_janela(tmp_path):
+    (tmp_path / sync.ARQ_ESTADO).write_text(json.dumps({"cobertura": [["01/01/2025", "21/10/2062"]]}))
+    assert sync.janela(tmp_path, hoje=D(2026, 10, 21)) == (D(2026, 10, 11), D(2026, 10, 21))
+
+
+def test_dono_antigo_nao_apaga_a_trava_de_quem_entrou_depois(tmp_path):
+    """Rodada que passou do prazo perde a trava para outra; ao terminar, ela
+    apagava a trava da nova e deixava uma terceira entrar junto."""
+    import os
+    import time
+    arq = tmp_path / sync.ARQ_TRAVA
+    with sync.trava(tmp_path, "rodada A"):
+        antigo = time.time() - sync.TRAVA_VALIDADE_S - 60
+        os.utime(str(arq), (antigo, antigo))
+        entrou_b = threading.Event()
+        sair_b = threading.Event()
+
+        def rodada_b():
+            with sync.trava(tmp_path, "rodada B"):
+                entrou_b.set()
+                sair_b.wait(5)
+
+        t = threading.Thread(target=rodada_b)
+        t.start()
+        assert entrou_b.wait(5)
+    assert arq.exists() and "rodada B" in arq.read_text(encoding="utf-8")
+    sair_b.set()
+    t.join(5)
+    assert not arq.exists()
+
+
+def test_gravar_json_usa_temporario_exclusivo(tmp_path, monkeypatch):
+    """Dois escritores do mesmo arquivo dividiam o mesmo <nome>.tmp."""
+    import importlib
+    cruzar = importlib.import_module("cruzar_nf.cruzar")
+    usados = []
+    real = os.replace
+
+    def espiar(origem, destino):
+        usados.append(str(origem))
+        return real(origem, destino)
+
+    monkeypatch.setattr(cruzar.os, "replace", espiar)
+    cruzar.gravar_json(tmp_path / "a.json", {"x": 1})
+    cruzar.gravar_json(tmp_path / "a.json", {"x": 2})
+    assert len(set(usados)) == 2
+    assert json.loads((tmp_path / "a.json").read_text(encoding="utf-8")) == {"x": 2}
+    assert [p.name for p in tmp_path.iterdir()] == ["a.json"]

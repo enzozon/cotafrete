@@ -18,6 +18,8 @@ def entrar(cliente, app_web, nome: str = "enzo"):
     Cria a conta (o `vendedor()` recusa sessão de conta que não existe) e
     assina o cookie com o segredo do banco que o teste montou."""
     app_web.banco.criar_conta(nome)
+    # Sessão só vale para conta com senha definida (vendedor()).
+    app_web.banco.definir_senha(nome, sessao.hash_senha("senha-de-teste"))
     cliente.cookies.set(
         app_web.COOKIE, sessao.assinar(nome, app_web.banco.segredo_sessao()))
     return cliente

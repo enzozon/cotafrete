@@ -138,7 +138,9 @@ def _valor(v: Any) -> Optional[float]:
     if isinstance(v, (int, float)):
         return round(float(v), 2)
     texto = str(v or "").strip()
-    if "," in texto:
+    if "," in texto and "." in texto and texto.rfind(".") > texto.rfind(","):
+        texto = texto.replace(",", "")                          # 3,961.46 (americano)
+    elif "," in texto:
         texto = texto.replace(".", "").replace(",", ".")
     try:
         return round(float(texto), 2)
@@ -176,8 +178,19 @@ def correspondentes(linha: Dict[str, Any], pedidos: List[Dict[str, Any]]) -> Lis
     return achados
 
 
+def _gemeo(linha: Dict[str, Any], p: Dict[str, Any]) -> bool:
+    """PEDIDO e RFQ preenchidos dos dois lados e diferentes: é outro pedido,
+    mesmo com a mesma CIDADE+VALOR e o mesmo produto."""
+    return all(a and b and a != b for a, b in (
+        (_norm(_campo(linha, nome)), _norm(_campo(p, nome))) for nome in ("PEDIDO", "NMR DA RFQ")))
+
+
 def no_portal(linha: Dict[str, Any], pedidos: List[Dict[str, Any]]) -> bool:
-    return bool(correspondentes(linha, pedidos))
+    """Para o CADASTRO, gêmeo não conta como já cadastrado. Casar os dois por
+    CIDADE+VALOR punha o pedido novo nos vistos e ele nunca entrava no portal,
+    sem aviso. A sincronização (sync_planilha_portal) continua usando
+    `correspondentes` e mostra o gêmeo sem par como ambíguo."""
+    return any(not _gemeo(linha, pedidos[i]) for i in correspondentes(linha, pedidos))
 
 
 # -- estado --------------------------------------------------------------------

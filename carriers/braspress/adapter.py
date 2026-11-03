@@ -149,8 +149,16 @@ class BraspressAdapter:
         #373377732 — ver carriers.braspress.mapping."""
         html = str(raw or "")
 
+        # Recusa ANTES do sucesso (mapa, 2.3): preço na tela junto de um
+        # aviso de recusa é fantasma.
+        recusa = ler_recusa(html)
+        if recusa:
+            return ResultadoCotacao(
+                self.slug, StatusCotacao.RECUSADO, raw_response=html[-2000:],
+                motivo_recusa=f"A Braspress não cotou: {recusa}")
+
         sucesso = ler_sucesso(html)
-        if sucesso is not None:
+        if sucesso is not None and sucesso.valor_frete is not None:
             return ResultadoCotacao(
                 transportadora=self.slug,
                 status=StatusCotacao.COTADO,
@@ -158,16 +166,13 @@ class BraspressAdapter:
                 valor_frete=sucesso.valor_frete,
                 prazo_dias=sucesso.prazo_dias,
                 raw_response=html[-2000:],
-                erro=(None if sucesso.valor_frete is not None else
-                      "A Braspress disse sucesso mas a tela não trouxe o "
-                      "valor do frete."),
             )
-
-        recusa = ler_recusa(html)
-        if recusa:
+        if sucesso is not None:
+            # Sucesso sem valor contava como cotado no painel e não era
+            # repetido; sem preço não há cotação.
             return ResultadoCotacao(
-                self.slug, StatusCotacao.RECUSADO, raw_response=html[-2000:],
-                motivo_recusa=f"A Braspress não cotou: {recusa}")
+                self.slug, StatusCotacao.ERRO, raw_response=html[-2000:],
+                erro="A Braspress disse sucesso mas a tela não trouxe o valor do frete.")
 
         return ResultadoCotacao(
             self.slug, StatusCotacao.ERRO, raw_response=html[-2000:],

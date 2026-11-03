@@ -81,3 +81,30 @@ def test_recusa_vazia_quando_nao_ha_alert_danger():
     convenção Bootstrap. O que este teste trava é só o caminho feliz: uma
     tela SEM `.alert-danger` não pode inventar uma recusa."""
     assert m.ler_recusa(FIXTURE_RESULTADO) is None
+
+
+# ---------------------------------------------- recusa antes do preço
+def test_preco_atras_de_uma_recusa_e_recusa():
+    """Regra do mapa (2.3): o preço que aparece junto de um aviso de recusa
+    é fantasma. A Braspress conferia o sucesso primeiro."""
+    from carriers.braspress.adapter import BraspressAdapter
+    from core.models import StatusCotacao
+    sucesso = FIXTURE_RESULTADO
+    html = sucesso + '<div class="alert alert-danger">Cidade de destino não atendida</div>'
+    r = BraspressAdapter().normalizar_resposta(html)
+    assert r.status == StatusCotacao.RECUSADO and "não atendida" in r.motivo_recusa
+
+
+def test_sucesso_sem_valor_nao_conta_como_cotado():
+    from carriers.braspress.adapter import BraspressAdapter
+    from core.models import StatusCotacao
+    r = BraspressAdapter().normalizar_resposta('<div class="alert alert-success">Cotação ok</div>')
+    assert r.status == StatusCotacao.ERRO and r.erro
+
+
+def test_sucesso_real_continua_cotado():
+    from carriers.braspress.adapter import BraspressAdapter
+    from core.models import StatusCotacao
+    html = FIXTURE_RESULTADO
+    r = BraspressAdapter().normalizar_resposta(html)
+    assert r.status == StatusCotacao.COTADO and r.valor_frete

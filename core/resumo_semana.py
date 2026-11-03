@@ -33,7 +33,9 @@ def fatos(con: sqlite3.Connection, hoje: date, nome_de=lambda s: s) -> dict:
             " FROM resultado r JOIN cotacao c ON c.id = r.cotacao_id"
             " WHERE c.criado_em >= ? AND c.criado_em < ?"
             # "Não se aplica" não é pedido: a transportadora nem foi consultada.
-            " AND r.status != 'nao_se_aplica'"
+            # "Interrompido" é nosso (o servidor reiniciou): fica fora, como no
+            # aproveitamento do painel (core/painel.NOSSA).
+            " AND r.status NOT IN ('nao_se_aplica', 'interrompido')"
             " GROUP BY 1, 2", (inicio.isoformat(), anterior.isoformat(), fim)):
         por.setdefault(t, {})["esta" if esta else "antes"] = (com or 0, total)
 

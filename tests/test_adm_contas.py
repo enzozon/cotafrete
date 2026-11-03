@@ -186,3 +186,20 @@ def test_a_tela_lista_quem_tem_conta(chefe, app_web):
 
     assert "maria" in corpo and "joao" in corpo
     assert "convite aberto" in corpo
+
+
+# ------------------------------------------------- nome com apóstrofo
+def test_nome_com_apostrofo_nao_quebra_a_confirmacao_de_remover(chefe, app_web):
+    """"Joana D'Arc" ia cru para dentro de confirm('...'): o html.escape vira
+    &#x27;, que o navegador desfaz antes de rodar o JavaScript. O apóstrofo
+    fechava a string, o onsubmit dava erro de sintaxe e o formulário seguia
+    SEM perguntar, removendo a conta no primeiro clique."""
+    import html
+    import json
+    import re
+
+    app_web.banco.criar_conta("Joana D'Arc")
+    tela = chefe.get("/adm/contas").text
+    js = html.unescape(re.search(r'onsubmit="([^"]*)"', tela).group(1))
+    literal = re.fullmatch(r"return confirm\((.*)\)", js).group(1)
+    assert "Joana D'Arc" in json.loads(literal)

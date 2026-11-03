@@ -109,3 +109,27 @@ def test_preco_menor_nao_e_achado_dentro_de_um_maior():
     with pytest.raises(ValueError):
         validar({"texto": "camilo: R$ 199,00\njadlog: R$ 199,00"})
     assert validar({"texto": "camilo: R$ 99,00\njadlog: R$ 199,00"})
+
+
+def test_precos_trocados_na_mesma_linha_sao_recusados():
+    """Nome e preço na mesma linha não bastam quando a linha cita duas
+    transportadoras: os dois preços certos com os nomes trocados passavam."""
+    with pytest.raises(ValueError):
+        _valida("camilo: R$ 1.399,64 e braspress: R$ 208,89")
+
+
+def test_prazo_de_outra_transportadora_e_recusado():
+    """O prazo de 2 dias é da Braspress; na linha da Camilo é inventado.
+    (3 volumes: com 2, o "2" seria também a quantidade da carga.)"""
+    c = C | {"quantidade": 3}
+    with pytest.raises(ValueError, match="camilo"):
+        rc._validador(c, rc.opcoes(c))({"texto": "camilo: R$ 208,89, prazo de 2 dias\nbraspress: R$ 1.399,64"})
+
+
+def test_texto_padrao_continua_valido():
+    ops = rc.opcoes(C)
+    assert _valida(rc.texto_padrao(C, ops))
+
+
+def test_linha_so_com_nomes_das_transportadoras_passa():
+    assert _valida("camilo: R$ 208,89\nbraspress: R$ 1.399,64\ncamilo e braspress atendem a rota.")

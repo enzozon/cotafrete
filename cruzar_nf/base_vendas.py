@@ -96,7 +96,18 @@ class BaseVendas:
         return self.cobertura[-1][1] if self.cobertura else None
 
     def mesclar(self, vendas: List[Dict[str, Any]], de: _dt.date, ate: _dt.date) -> Dict[str, int]:
-        """Junta uma exportação do período [de, ate]. Devolve a estatística."""
+        """Junta uma exportação do período [de, ate]. Devolve a estatística.
+
+        Exportação vazia num período em que a base já tem vendas é recusada:
+        é sinal de exportação que falhou, e apagar a janela inteira tiraria da
+        base NFs que pedidos ainda vão procurar."""
+        if not vendas:
+            emissoes = (data_br(campo(x, "Emissão")) for x in self.vendas.values())
+            na_janela = sum(1 for e in emissoes if e and de <= e <= ate)
+            if na_janela:
+                raise ValueError(
+                    f"A exportação do HSE de {de:%d/%m/%Y} a {ate:%d/%m/%Y} veio vazia, mas a base "
+                    f"tem {na_janela} vendas nesse período. Nada foi apagado; exporte de novo.")
         novas = alteradas = 0
         chaves_novas = set()
         for v in vendas:
