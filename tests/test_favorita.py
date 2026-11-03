@@ -57,10 +57,10 @@ def test_alianca_e_uniao_trocam_a_empresa_da_conta():
     uniao = Parte(cnpj="20.837.281/0001-49")
     a = FavoritaAdapter()
     assert a.validar(montar(remetente=ALIANCA)) == []
-    assert empresa_alvo(montar(remetente=ALIANCA), a.empresas).cnpj == ALIANCA.cnpj
+    assert empresa_alvo(montar(remetente=ALIANCA), a.empresas) is a.empresas[1]
     fob = montar(destinatario=uniao, tipo_frete=TipoFrete.FOB)
     assert a.validar(fob) == []
-    assert empresa_alvo(fob, a.empresas).cnpj == uniao.cnpj
+    assert empresa_alvo(fob, a.empresas) is a.empresas[2]
 
 
 def test_fora_do_grupo_na_ponta_travada_ainda_barra():
