@@ -43,7 +43,8 @@ vendedor fica com medo de reenviar algo que não foi gravado.
    chamada de gravação ao HSE (o mesmo padrão de `HseSoLeitura` da simulação em
    massa). Assim, um clique que escape não chega a gravar nada.
 4. O resultado vai para o DAV: `conferencia` vira `ok`, `erros` ou
-   `nao_conferido`, e `conferencia_relatorio` guarda o relatório da simulação.
+   `nao_conferido`, e `conferencia_relatorio` guarda em JSON o relatório da simulação
+   e o que o HSE encontrou (cliente, endereço, vendedor, itens, avisos e erros).
 5. A tela de conferência mostra:
    - cliente (código e razão social), endereço de entrega completo e vendedor;
    - para cada item: código, descrição no HSE, preço da tabela e preço da planilha;
