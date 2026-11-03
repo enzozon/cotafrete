@@ -14,6 +14,7 @@ Quem testa o plano B religa com `monkeypatch.setattr(proposta_ia, "LIGADA", True
 from __future__ import annotations
 
 import os
+import re
 import threading
 
 import pytest
@@ -71,3 +72,40 @@ def _nenhum_vigia_real_sobrando():
         _ja_acusados.update(t.ident for t in vivos)
         pytest.fail(f"o teste deixou rodando {[t.name for t in vivos]}: suba o uvicorn "
                     "com lifespan=\"off\" (ver tests/conftest.py)", pytrace=False)
+
+
+# Marcação `navegador`: todo teste de arquivo que abre Chromium (playwright) ou
+# sobe uvicorn. São ~30 arquivos e ~2/3 do tempo da suíte. No dia a dia,
+# `pytest tests -m "not navegador"`; a CI roda tudo. Pelo IMPORT e não por
+# lista de arquivos: um teste de navegador novo cai na marcação sozinho, e um
+# arquivo que só cita "sync_playwright" num texto (test_generoso_fora_de_area)
+# não cai.
+_USA_NAVEGADOR = re.compile(
+    r"^\s*(from playwright|import playwright|import uvicorn)"
+    r"|importorskip\(\s*[\"']playwright", re.M)
+
+
+def pytest_configure(config):
+    config.addinivalue_line(
+        "markers", "navegador: abre Chromium ou sobe uvicorn (lento; marcado "
+        "sozinho pelo tests/conftest.py)")
+    # Em paralelo (-n), o web/app.py faz Banco() ao ser importado na coleta,
+    # nos 4 processos ao mesmo tempo. Numa máquina sem cotafrete.db (a CI)
+    # os quatro criam o mesmo arquivo juntos e caem em "database is locked".
+    # O processo controlador cria antes de os outros nascerem. Só com xdist:
+    # o job do Python 3.8 não importa o core.
+    if getattr(config.option, "numprocesses", None) and \
+            not os.environ.get("PYTEST_XDIST_WORKER"):
+        from core.banco import Banco
+        Banco()
+
+
+def pytest_collection_modifyitems(config, items):
+    lidos = {}
+    for item in items:
+        caminho = item.path
+        if caminho not in lidos:
+            lidos[caminho] = bool(_USA_NAVEGADOR.search(
+                caminho.read_text(encoding="utf-8")))
+        if lidos[caminho]:
+            item.add_marker(pytest.mark.navegador)

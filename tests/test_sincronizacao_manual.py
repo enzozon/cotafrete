@@ -40,7 +40,8 @@ def montar_nf(tmp_path, vendas, falhar=False):
     sio = Sio()
     h = registrar(sio, {"caminho_banco_dados": str(cen.dados), "caminho_pedidos": str(cen.pedidos),
                         "caminho_planilha": str(cen.xlsx), "caminho_backups": str(tmp_path / "bk")},
-                  Log(), manager=ArquivoPedidosConcorrente(str(cen.pedidos)), exportar=exportar, em_thread=False)
+                  Log(), manager=ArquivoPedidosConcorrente(str(cen.pedidos), espera_verificacao=0),
+                  exportar=exportar, em_thread=False)
     return cen, sio, h
 
 

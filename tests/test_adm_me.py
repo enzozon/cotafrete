@@ -8,6 +8,7 @@ registrada, o filtro que filtra — e a porta (mesma senha do /adm).
 from __future__ import annotations
 
 import json
+from contextlib import closing
 from datetime import datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
@@ -83,7 +84,7 @@ def test_leitura_boa_e_ruim_ficam_gravadas(monkeypatch, banco):
     me_ui.atualizar(["ventura"])
     _quebrar(monkeypatch)
     me_ui.atualizar(["ventura"])
-    with banco._conectar() as con:
+    with closing(banco._conectar()) as con, con:
         linhas = [dict(r) for r in con.execute("SELECT * FROM me_varredura ORDER BY id")]
     assert [l["ok"] for l in linhas] == [1, 0]
     assert linhas[0]["cotacoes"] == 2 and "TimeoutError" in linhas[1]["erro"]
@@ -94,7 +95,7 @@ def test_leitura_falhando_seguido_vira_alerta_critico(monkeypatch, banco, client
     _quebrar(monkeypatch)
     for _ in range(3):
         me_ui.atualizar(["uniao"])
-    with banco._conectar() as con:
+    with closing(banco._conectar()) as con, con:
         (l,) = [x for x in pm.leitura_por_conta(con, ("uniao",))]
         alertas = pm.atencao(con, AGORA, ("ventura", "uniao"))
     assert l["falhas_seguidas"] == 3 and l["ultima_ok"]["cotacoes"] == 1
@@ -110,7 +111,7 @@ def test_leitura_que_volta_limpa_o_alerta(monkeypatch, banco):
     me_ui.atualizar(["uniao"])
     monkeypatch.setattr(me_ui, "FONTE", _lista)
     me_ui.atualizar(["uniao"])
-    with banco._conectar() as con:
+    with closing(banco._conectar()) as con, con:
         assert not any("Leitura" in a["titulo"] for a in pm.atencao(con, AGORA, ("uniao",)))
 
 
@@ -157,7 +158,7 @@ def _cenario(banco, monkeypatch):
 def test_painel_mostra_numeros_alertas_e_quem_salvou(monkeypatch, banco, cliente):
     _cenario(banco, monkeypatch)
     html = cliente.get("/adm/me").text
-    with banco._conectar() as con:
+    with closing(banco._conectar()) as con, con:
         r = pm.resumo(con, AGORA)
     assert (r["salvas"], r["erros"]) == (1, 1)
     assert "Robô falhou — 23052403 · UNIÃO" in html
@@ -171,7 +172,7 @@ def test_salva_esquecida_perto_do_prazo_vira_critico(monkeypatch, banco):
     _cenario(banco, monkeypatch)
     # 23049227 fecha 25/09 21:00: a 10 h do prazo, salva e não enviada
     perto = datetime(2026, 9, 25, 11, 0)
-    with banco._conectar() as con:
+    with closing(banco._conectar()) as con, con:
         alertas = pm.atencao(con, perto, ("ventura", "uniao"))
     salva = [a for a in alertas if "23049227" in a["titulo"]]
     assert salva and salva[0]["nivel"] == "critico" and "NÃO enviada" in salva[0]["titulo"]
@@ -242,7 +243,7 @@ def test_cartao_da_ia_mostra_quem_respondeu_e_quem_esta_no_limite(monkeypatch, b
     me_ui.carregar_itens(cid)
     me_ui.rodar_revisao(cid, "leandro")
 
-    with banco._conectar() as con:
+    with closing(banco._conectar()) as con, con:
         (m1, m2) = pm.ia_modelos(con, 30)
     assert (m1["modelo"], m1["estado"], m1["falhas"]) == ("groq:melhor", "castigo", 1)
     assert (m2["modelo"], m2["estado"], m2["respostas"]) == ("openrouter:reserva:free", "livre", 1)
@@ -259,7 +260,7 @@ def test_cartao_da_ia_mostra_quem_respondeu_e_quem_esta_no_limite(monkeypatch, b
 def test_cota_da_ia_conta_so_desde_a_meia_noite_utc(banco, monkeypatch):
     monkeypatch.setenv("IA_LIMITE_OPENROUTER", "1000")
     inicio = pm._inicio_do_dia_utc()
-    with banco._conectar() as con:
+    with closing(banco._conectar()) as con, con:
         for quando, modelo in (("2000-01-01T00:00:00", "openrouter:a"), (inicio, "openrouter:a"),
                                (inicio, "openrouter:b"), (inicio, "groq:x"), (inicio, "groq:x"),
                                (inicio, "groq:y")):

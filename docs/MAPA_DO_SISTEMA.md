@@ -89,6 +89,10 @@ cadastrado com bairro "." e campo travado (#466) é recusa
 A Della Volpe escolhe a cidade sem diferenciar maiúscula nem acento
 (`mapping.opcao_da_cidade`, e o mesmo no bookmarklet): o site lista "Santa
 Bárbara d'Oeste", e o texto exato derrubava a cotação (#472).
+Os `<select>` dela vão por `select_option(valor)`, que casa value **ou**
+label de uma vez. `label=` com `value=` no `except` esperava o tempo limite
+(45s) a cada UF, porque a UF vai como sigla e o site mostra o nome: ~90s
+parados em toda cotação até 03/11/2026.
 
 "Ainda não atendemos essa origem" (embaixo do CEP) pode aparecer só **depois**
 do Próximo: `_conferir_cobertura` roda antes e depois dele. Na Favorita a
@@ -357,3 +361,25 @@ interessa.
 Depois de mexer: `python -m pytest tests -k dav -q`, regressão de
 `tests/orcamento/test_fila.py` e conferência visual claro/escuro e celular.
 Arquivos produtivos e robô HSE não são necessários para esses testes.
+
+## 8. Testes: rápido no dia a dia, inteiro em segundo plano
+
+`tests/conftest.py` marca `navegador` sozinho todo teste de arquivo que
+importa playwright ou uvicorn (31 arquivos, ~435 testes, dois terços do
+tempo). A marcação é pelo import: teste novo de navegador cai nela sem
+decorar nada.
+
+- **Dia a dia:** `python -m pytest tests -q -m "not navegador"`. Mexeu numa
+  transportadora: isso e `python -m pytest tests -q -k <slug>`, que inclui
+  os testes de navegador dela.
+- **Suíte inteira:** sempre em segundo plano e nunca dividida. Em paralelo:
+  `-n 4` (pytest-xdist), que é como a CI roda. Em série é o padrão local.
+- **Espera fixa do site** (`wait_for_timeout`, `ESPERA_*`): no teste, troque a
+  constante por `monkeypatch` (ver `ESPERA_AJAX_TESTE_MS` em
+  `tests/test_translovato_cnpj.py`). Produção não muda.
+- **Teste esperando tempo limite** costuma ser defeito do adapter, não do
+  teste: foi assim que a UF da Della Volpe apareceu (seção 2).
+- **Banco nos testes:** `with closing(banco._conectar()) as con, con:`, como
+  o `core/banco.py`. Sem o `closing` o arquivo fica aberto.
+- **Prints de `docs/rebranding/`:** `python scripts/gerar_prints_rebranding.py`,
+  fora da suíte e da CI.

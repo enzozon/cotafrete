@@ -9,6 +9,7 @@ prévia, o robô recebendo os itens certos — e nenhum botão de enviar.
 from __future__ import annotations
 
 import json
+from contextlib import closing
 from datetime import datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
@@ -480,7 +481,7 @@ def test_falha_do_robo_antigo_nao_conta(cliente, monkeypatch):
     monkeypatch.setattr(me_ui, "LEITOR", lambda c, n: (_ for _ in ()).throw(TimeoutError()))
     cliente.post("/me/atualizar")
     cid = _id(23039029)
-    with me_ui.banco._conectar() as con:
+    with closing(me_ui.banco._conectar()) as con, con:
         con.execute("DELETE FROM me_historico WHERE evento = ?", (me_ui.EVENTO_ERRO_LEITURA,))
     for _ in range(5):
         me_ui.banco.me_registrar(cid, me_ui.EVENTO_ERRO_LEITURA,

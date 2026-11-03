@@ -9,6 +9,7 @@ Roda por file:// — não sobe servidor e não toca a rede.
 
 from __future__ import annotations
 
+import time
 from decimal import Decimal
 from pathlib import Path
 
@@ -181,6 +182,25 @@ def test_servico_e_preenchido_antes_do_tipo_de_veiculo(adapter, page):
     assert visivel.locator('[name="servico"]').input_value() == "Lotação/Dedicado-FTL"
     assert (visivel.locator('[name="tipo-veiculo"]').input_value()
             == req.veiculo_desejado)
+
+
+# ------------------ UF por sigla esperava o tempo limite inteiro antes de casar
+def test_uf_por_sigla_nao_espera_o_tempo_limite(adapter, page):
+    """A UF vai como sigla ("ES") e o site mostra "Espírito Santo".
+
+    `select_option(label="ES")` não falha na hora: espera a opção com esse
+    texto aparecer até o tempo limite da página e só então o adapter tentava
+    por value. Em produção o tempo limite é 45s e são duas UFs por cotação:
+    ~90s parados em toda cotação da Della Volpe (achado em 03/11/2026 medindo
+    a suíte, que perdia 8s por UF)."""
+    page.set_default_timeout(30_000)
+    inicio = time.monotonic()
+
+    adapter._preencher(page, {"Selecione o estado de origem": "ES"})
+
+    assert time.monotonic() - inicio < 10
+    assert (page.locator('#form-fracionado [name="estado_origem"]').input_value()
+            == "ES")
 
 
 # --------------------------- BUG 6: espera fixa de 1200ms é race condition

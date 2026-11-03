@@ -626,12 +626,12 @@ class DellavolpeAdapter:
                     opcoes = loc.evaluate(
                         "el => [...el.options].map(o => o.label)")
                     valor = m.opcao_da_cidade(valor, opcoes) or valor
-                try:
-                    # UF vai como sigla ("ES") mas a option exibe "Espírito
-                    # Santo": casa por value, não por label.
-                    loc.select_option(label=valor)
-                except Exception:
-                    loc.select_option(value=valor)
+                # UF vai como sigla ("ES") mas a option exibe "Espírito
+                # Santo"; a cidade vai pelo texto. O valor posicional casa por
+                # value OU por label de uma vez. Antes era label= com value=
+                # no except: o label= esperava o tempo limite inteiro (45s)
+                # antes de falhar, duas vezes por cotação.
+                loc.select_option(valor)
             else:
                 loc.fill(valor)
 

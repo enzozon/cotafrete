@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import io
 import zipfile
+from contextlib import closing
 from datetime import datetime, timedelta
 from decimal import Decimal
 
@@ -201,7 +202,7 @@ def test_a_ficha_da_carga_e_a_mesma_do_vendedor(cliente):
 
 def test_o_tempo_de_resposta_aparece_quando_ha_hora_guardada(cliente):
     cid = adm.banco.salvar_cotacao("enzo", CARGA)
-    with adm.banco._conectar() as con:
+    with closing(adm.banco._conectar()) as con, con:
         criado = con.execute("SELECT criado_em FROM cotacao WHERE id = ?",
                              (cid,)).fetchone()[0]
     respondeu = datetime.fromisoformat(criado) + timedelta(seconds=25)

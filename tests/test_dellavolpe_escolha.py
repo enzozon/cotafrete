@@ -18,6 +18,7 @@ O que estes testes travam:
 from __future__ import annotations
 
 import re
+from contextlib import closing
 from datetime import datetime, timedelta
 from decimal import Decimal
 
@@ -132,7 +133,7 @@ def test_esperando_a_escolha_nunca_vira_sem_retorno(app_web, cliente,
                                                     com_caixa):
     cid = _cotacao(app_web)
     velho = (datetime.now() - timedelta(hours=3)).isoformat(timespec="seconds")
-    with app_web.banco._conectar() as con:
+    with closing(app_web.banco._conectar()) as con, con:
         con.execute("UPDATE cotacao SET criado_em = ?", (velho,))
 
     html = cliente.get(f"/cotacao/{cid}").text
@@ -146,7 +147,7 @@ def test_nem_e_carimbada_como_interrompida(app_web):
     sistema foi fechado no meio"."""
     cid = _cotacao(app_web)
     velho = (datetime.now() - timedelta(hours=3)).isoformat(timespec="seconds")
-    with app_web.banco._conectar() as con:
+    with closing(app_web.banco._conectar()) as con, con:
         con.execute("UPDATE cotacao SET criado_em = ?", (velho,))
 
     app_web.banco.marcar_interrompidas(
@@ -385,7 +386,7 @@ def test_a_escolha_sobrevive_ao_resultado_final(app_web, com_caixa):
 def test_enviando_que_o_processo_levou_junto_vira_interrompido(app_web):
     cid = _enviando(app_web, "tela")
     velho = (datetime.now() - timedelta(hours=1)).isoformat(timespec="seconds")
-    with app_web.banco._conectar() as con:
+    with closing(app_web.banco._conectar()) as con, con:
         con.execute("UPDATE resultado SET pedido_em = ?", (velho,))
 
     app_web.banco.marcar_interrompidas({})

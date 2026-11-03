@@ -19,6 +19,7 @@ do cliente.
 
 from __future__ import annotations
 
+from contextlib import closing
 from datetime import datetime, timedelta
 from decimal import Decimal
 from email.message import EmailMessage
@@ -59,7 +60,7 @@ def pedir(banco, *, resposta_em="tela", minutos_atras=5, usuario="enzo",
     banco.reservar_envio(cid, "dellavolpe", resposta_em=resposta_em)
     quando = (datetime.now() - timedelta(minutes=minutos_atras)
               ).isoformat(timespec="seconds")
-    with banco._conectar() as con:
+    with closing(banco._conectar()) as con, con:
         con.execute("UPDATE resultado SET pedido_em = ? WHERE cotacao_id = ?",
                     (quando, cid))
     banco.salvar_resultado(cid, "dellavolpe", status="aguardando_retorno")

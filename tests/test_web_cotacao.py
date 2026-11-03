@@ -13,6 +13,7 @@ existe uma transportadora pendente.
 from __future__ import annotations
 
 import re
+from contextlib import closing
 
 from datetime import datetime, timedelta
 
@@ -85,7 +86,7 @@ def _criar(app_web, *, criado_em: str | None = None,
         carga = {**carga, "transportadoras": transportadoras}
     cotacao_id = app_web.banco.salvar_cotacao("enzo", carga)
     if criado_em:
-        with app_web.banco._conectar() as con:
+        with closing(app_web.banco._conectar()) as con, con:
             con.execute("UPDATE cotacao SET criado_em = ? WHERE id = ?",
                         (criado_em, cotacao_id))
     return cotacao_id
@@ -846,7 +847,7 @@ def test_a_tela_nao_promete_mais_um_cnpj_fixo_na_generoso(app_web, cliente):
     from decimal import Decimal
 
     cotacao_id = _criar(app_web)
-    with app_web.banco._conectar() as con:
+    with closing(app_web.banco._conectar()) as con, con:
         con.execute("UPDATE cotacao SET cnpj_remetente = ?, tipo_frete = 'cif'"
                     " WHERE id = ?", ("20.837.281/0001-49", cotacao_id))
     app_web.banco.salvar_resultado(cotacao_id, "generoso", status="cotado",
