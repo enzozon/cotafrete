@@ -323,7 +323,9 @@ CREATE TABLE IF NOT EXISTS dav (
     erro          TEXT,
     criado_em     TEXT NOT NULL,
     iniciado_em   TEXT,
-    terminado_em  TEXT
+    terminado_em  TEXT,
+    conferencia   TEXT,
+    conferencia_relatorio TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_dav_hash ON dav(usuario, hash_planilha);
 CREATE TABLE IF NOT EXISTS dav_correcao (
@@ -333,6 +335,8 @@ CREATE TABLE IF NOT EXISTS dav_correcao (
 );
 CREATE INDEX IF NOT EXISTS idx_dav_correcao_destino ON dav_correcao(destino_id);
 """
+
+CAMPOS_DAV_NOVOS = ("conferencia", "conferencia_relatorio")
 
 CAMPOS_CARGA = (
     "cep_origem", "cep_destino", "cidade_origem", "uf_origem",
@@ -415,6 +419,11 @@ class Banco:
         for coluna in CAMPOS_ME_ITEM_NOVOS:
             if coluna not in existentes:
                 con.execute(f"ALTER TABLE me_item ADD COLUMN {coluna} TEXT")
+
+        existentes = {r["name"] for r in con.execute("PRAGMA table_info(dav)")}
+        for coluna in CAMPOS_DAV_NOVOS:
+            if coluna not in existentes:
+                con.execute(f"ALTER TABLE dav ADD COLUMN {coluna} TEXT")
 
         # UMA linha por transportadora por cotação. Sem esta regra o banco
         # aceitava duas, e a tela desenhava as duas: foi assim que a #50
@@ -1076,7 +1085,7 @@ class Banco:
 
     # ---------------------------------------------------------------- DAV
     CAMPOS_DAV = ("estado", "numero", "cliente", "relatorio", "pdf", "erro",
-                  "iniciado_em", "terminado_em")
+                  "iniciado_em", "terminado_em", *CAMPOS_DAV_NOVOS)
     DAV_REINICIOU = ("O servidor reiniciou durante o DAV: "
                      "confira no HSE antes de gerar de novo.")
 
@@ -1165,6 +1174,18 @@ class Banco:
                 " WHERE estado = 'gerando'", (self.DAV_REINICIOU, agora))
             return [r["id"] for r in con.execute(
                 "SELECT id FROM dav WHERE estado = 'fila' ORDER BY id")]
+
+    def dav_conferencia_interromper(self) -> list[int]:
+        """Na partida: rascunho que estava `conferindo` vira `nao_conferido`
+        (a conferência não retoma sozinha); devolve os ids afetados."""
+        with closing(self._conectar()) as con, con:
+            ids = [r["id"] for r in con.execute(
+                "SELECT id FROM dav WHERE estado = 'rascunho'"
+                " AND conferencia = 'conferindo' ORDER BY id")]
+            con.execute(
+                "UPDATE dav SET conferencia = 'nao_conferido'"
+                " WHERE estado = 'rascunho' AND conferencia = 'conferindo'")
+            return ids
 
     @staticmethod
     def _me_conferir(campos: dict, validos: tuple[str, ...]) -> None:
