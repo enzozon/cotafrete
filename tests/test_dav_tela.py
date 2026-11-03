@@ -345,3 +345,9 @@ def test_deduplicacao_na_confirmacao_resolve_origem_do_rascunho(cli, app_web, tm
     assert "16410" in r.text and len(DISPARADOS) == 1
     with closing(app_web.banco._conectar()) as con:
         assert resolvidas(con, [origem], "ana") == {origem: 3}
+
+
+def test_resumo_mostra_observacoes_com_frete_e_descricao_dos_itens(cli, tmp_path):
+    r = enviar(cli, planilha(tmp_path, {"B26": "Obs <b>", "B32": 30, "B38": "CIF", "R2": "Cor preta"}))
+    assert "Obs &lt;b&gt;<br>FRETE CIF, PRAZO DE ENTREGA 30 DIAS" in r.text
+    assert "<th>Descrição</th>" in r.text and "<td>Cor preta</td>" in r.text

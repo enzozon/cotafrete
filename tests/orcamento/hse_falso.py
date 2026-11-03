@@ -22,6 +22,8 @@ class HseFalso:
         self.rascunho: str | None = None
         self.avisos: list[str] = []
         self.avisos_ao_montar: list[str] = []  # o que o HSE "mostra" ao montar o orçamento
+        self.notas: list[str] = []
+        self.notas_ao_montar: list[str] = []  # descrições de item que "não gravaram"
         self._prox_codigo = 90000
 
     def _registrar(self, nome, *args):
@@ -73,6 +75,7 @@ class HseFalso:
 
     def montar_orcamento(self, orc, cliente, itens, incluir: bool) -> None:
         self.avisos = list(self.avisos_ao_montar)
+        self.notas = list(self.notas_ao_montar)
         if incluir:
             self.rascunho = "77777"
         self._registrar("montar_orcamento", cliente.codigo, [(i.numero, p and p.codigo) for i, p in itens], incluir)

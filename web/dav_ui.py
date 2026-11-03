@@ -25,7 +25,7 @@ from core.banco import Banco
 from core import painel_dav
 from orcamento.fila import FilaDav
 from orcamento.diagnostico import diagnostico
-from orcamento.planilha import ErroPlanilha, ler_planilha
+from orcamento.planilha import ErroPlanilha, ler_planilha, observacoes_hse
 from web import adm
 from web.layout import BOTAO_TEMA, CSS_DAV, cabecalho, e, pagina
 
@@ -287,7 +287,8 @@ def _resumo(o, dav_id: int) -> str:
         f"<tr><td>{i.numero}</td><td>{e(i.produto)}</td><td>{e(i.quantidade)}</td>"
         f"<td>{e(i.valor_unit)}</td><td>"
         f"{e(i.codigo) if i.codigo else 'procurar pela descrição / cadastrar se não existir'}"
-        "</td></tr>" for i in o.itens)
+        f"</td><td>{e(i.descricao)}</td></tr>" for i in o.itens)
+    obs = "<br>".join(e(linha) for linha in observacoes_hse(o).split("\n"))  # o mesmo texto que vai ao HSE
     avisos = "".join(f'<div class="aviso">{e(a)}</div>' for a in o.avisos)
     prazo = o.prazo_dias if o.prazo_dias is not None else ""
     return cabecalho("Conferir orçamento", tarja=f"DAV · Envio #{dav_id}",
@@ -301,9 +302,9 @@ def _resumo(o, dav_id: int) -> str:
 <dt>Pagamento</dt><dd>{e(o.forma_pg or '')} {e(o.parcelamento or '')}</dd>
 </div><div>
 <dt>Prazo (dias)</dt><dd>{e(prazo)}</dd>
-</div><div><dt>OC</dt><dd>{e(o.ordem_compra or '')}</dd></div><div><dt>Observações</dt><dd>{e(o.observacoes)}</dd></div></dl>
+</div><div><dt>OC</dt><dd>{e(o.ordem_compra or '')}</dd></div><div><dt>Observações</dt><dd>{obs}</dd></div></dl>
 <div class="dav-table">
-<table><thead><tr><th>#</th><th>Produto</th><th>Qtd</th><th>Valor unit.</th><th>Código HSE</th></tr></thead>
+<table><thead><tr><th>#</th><th>Produto</th><th>Qtd</th><th>Valor unit.</th><th>Código HSE</th><th>Descrição</th></tr></thead>
 <tbody>{itens}</tbody></table></div>
 <form method="post" action="/dav/{dav_id}/gerar" data-dav-envio class="dav-acoes"><button type="submit">Confirmar e gerar DAV →</button><a href="/dav">Voltar ao envio</a></form></section>"""
 
