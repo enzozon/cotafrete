@@ -11,7 +11,7 @@ from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import Page, sync_playwright
 
 from orcamento.config import Config
-from orcamento.planilha import Item, Orcamento, normalizar
+from orcamento.planilha import Item, Orcamento, normalizar, observacoes_hse
 from orcamento.processador import Cliente, HseIndisponivel, Produto, SalvoIncerto
 
 log = logging.getLogger("robo")
@@ -103,6 +103,7 @@ class Hse:
         self.cfg = cfg
         self.rascunho: str | None = None
         self.avisos: list[str] = []  # avisos do HSE fechados pelo robô (vão para o relatório)
+        self.notas: list[str] = []  # descrições de item que não gravaram (vão para o relatório)
         self._pw = self._browser = self._ctx = None
         self._filial: int | None = None
         self._buscas: dict[str, Page] = {}
@@ -290,6 +291,7 @@ class Hse:
         self._garantir_filial(orc.filial)
         self.rascunho = None
         self.avisos = []
+        self.notas = []
         page = self._pedido = self._abrir("vendaAlt.php")
         if page.input_value("#cdFilial") != str(orc.filial):
             raise ErroHse(f"tela abriu na filial {page.input_value('#cdFilial')}, esperado {orc.filial}")
@@ -350,8 +352,8 @@ class Hse:
                           previsao.strftime("%d/%m/%Y"))
         if orc.ordem_compra:
             page.fill("#rfOrdemCompra", orc.ordem_compra)
-        if orc.observacoes:
-            page.fill("#txObservacao", orc.observacoes)
+        if obs := observacoes_hse(orc):
+            page.fill("#txObservacao", obs)
 
     def _pagamento(self, page: Page, orc: Orcamento) -> None:
         """rfFormaPg recarrega cdCondPg via AJAX (listarCondPg): espera antes de escolher o parcelamento."""
@@ -409,6 +411,7 @@ class Hse:
                 page.dblclick("#selected_dsProduto")  # limpa a seleção para o próximo item
             return
         antes = page.locator("td.cellDelete").count()
+        linhas = set(page.eval_on_selector_all("tr[id^=trItem_]", "ts => ts.map(t => t.id)"))
         self._fechar_aviso(page)
         try:
             with page.expect_response(lambda r: "vendaItem.php" in r.url and r.request.method == "POST"
@@ -429,6 +432,32 @@ class Hse:
             raise ErroHse(recusa_do_incluir(item.numero, produto.codigo, item.valor_unit,
                                             resp.value.text())) from None
         log.info("Item %s incluído; rascunho %s", produto.codigo, cd)
+        if item.descricao:
+            self._gravar_descricao(page, item, linhas)
+
+    def _gravar_descricao(self, page: Page, item: Item, antes: set[str]) -> None:
+        """A caixa #dsObsItem_<cdItem> só existe depois do Incluir; o onblur chama salvarObsItem (vendaItem.php).
+
+        Visto no DAV 16354 em 29/10/2026. Se não gravar, o DAV segue e o relatório avisa."""
+        try:
+            novas = set(page.eval_on_selector_all("tr[id^=trItem_]", "ts => ts.map(t => t.id)")) - antes
+            if len(novas) != 1:
+                raise ErroHse(f"{len(novas)} linha(s) nova(s) na tabela")
+            cd = novas.pop().split("_")[1]
+            campo = f"#dsObsItem_{cd}"
+            page.click(f"#trItem_{cd} button[onclick^='abreObsItem']")
+            page.fill(campo, item.descricao)
+            with page.expect_response(lambda r: "vendaItem.php" in r.url and r.request.method == "POST"
+                                      and "acao=salvarObsItem" in (r.request.post_data or "")) as resp:
+                page.locator(campo).blur()
+            if not resp.value.ok:
+                raise ErroHse("o HSE respondeu com erro")
+            if " ".join(page.inner_text(f"#divObsItem_{cd}").split()) != " ".join(item.descricao.split()):
+                raise ErroHse("o texto não apareceu na linha do item")
+        except (PlaywrightError, ErroHse) as e:
+            motivo = str(e).splitlines()[0][:120]
+            log.warning("Item %s: descrição não gravada (%s)", item.numero, motivo)
+            self.notas.append(f"Item {item.numero}: descrição não gravada no HSE ({motivo}); confira no DAV")
 
     @staticmethod
     def _cd_pedido(page: Page) -> str:

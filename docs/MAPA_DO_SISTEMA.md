@@ -178,6 +178,16 @@ ficam em `davs/entrada/<id>.xlsx` e `davs/pdf/` (fora do git).
 - `.env` do Cotafrete: `HSE_USUARIO`, `HSE_SENHA`, `HSE_CLIENT_ID`,
   `DAV_DRY_RUN`, `DAV_HEADLESS`, `IA`, `IA_MODELO`, `ANTHROPIC_API_KEY`.
   Senha e chave nunca em log, banco, relatório ou tela.
+- Modelo v3 (`orcamento/modelo/PLANILHA-BASE-v3.xlsx`): FRETE na B38 (lista
+  CIF/FOB na aba LISTAS, coluna H) e DESCRIÇÃO NO DAV na coluna R. O frete vira
+  a linha `FRETE CIF, PRAZO DE ENTREGA 30 DIAS` abaixo das observações (exige o
+  prazo da B32). A descrição vai para o `#dsObsItem_<cdItem>` do item no HSE,
+  que só existe depois do Incluir; se não gravar, o DAV sai e o relatório avisa.
+- O modelo tem 3 cópias que precisam ficar iguais: esta, o `public/PLANILHA
+  BASE.xlsx` + `public/vendor/template_planilha_base.js` (base64) do Maestro e
+  a pasta pública `\\SERVIDOR2\Publico\ENZO\ORCAMENTO`. Grave o modelo pelo XML
+  (o openpyxl apaga as listas suspensas x14) e mantenha a aba protegida com as
+  células de digitação desbloqueadas.
 
 ---
 

@@ -214,3 +214,9 @@ def test_retomar_que_falha_nao_impede_o_servidor_de_subir(app_web, monkeypatch):
     monkeypatch.setattr(app_web, "INGESTOR", None)
     with TestClient(app_web.app) as c:
         assert c.get("/login").status_code == 200
+
+
+def test_resumo_mostra_observacoes_com_frete_e_descricao_dos_itens(cli, tmp_path):
+    r = enviar(cli, planilha(tmp_path, {"B26": "Obs <b>", "B32": 30, "B38": "CIF", "R2": "Cor preta"}))
+    assert "Obs &lt;b&gt;<br>FRETE CIF, PRAZO DE ENTREGA 30 DIAS" in r.text
+    assert "<th>Descrição</th>" in r.text and "<td>Cor preta</td>" in r.text
