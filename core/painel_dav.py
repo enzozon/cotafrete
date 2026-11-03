@@ -59,10 +59,12 @@ def _ocorrencias(linhas: list[dict], diags: dict, *, administrador: bool) -> lis
         motivo = diag["motivo"]
         if tipo in ("aviso_financeiro", "aviso"):
             motivo = "DAV criado com aviso financeiro." if tipo == "aviso_financeiro" else "DAV criado com aviso do HSE."
-        chave = (tipo, diag["categoria"], diag.get("origem", "desconhecida"), motivo)
+        chave = (tipo, diag["categoria"], diag.get("origem", "desconhecida"), motivo,
+                 tuple(sorted(diag.get("campos", []))), diag.get("onde_conferir"), diag.get("como_corrigir"))
         if chave not in grupos:
             grupos[chave] = dict(tipo=tipo, categoria=diag["categoria"], titulo=motivo,
                 origem=diag.get("origem", "desconhecida"),
+                campos=diag.get("campos", []),
                 origem_rotulo=diag.get("origem_rotulo", "Origem não identificada"),
                 onde_conferir=diag.get("onde_conferir") or "Confira os detalhes do envio e o HSE.",
                 como_corrigir=diag.get("como_corrigir") or diag["orientacao"], total=0, envios=[])

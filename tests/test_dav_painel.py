@@ -138,3 +138,23 @@ def test_ocorrencias_vendedor_nao_expoem_detalhes_tecnicos_ou_outro_usuario(banc
     assert [d["id"] for g in grupos for d in g["envios"]] == [meu]
     assert "SEGREDO-TECNICO" not in str(grupos)
     assert "SEGREDO-TECNICO" in str(consulta(banco, vendedor="ana")["ocorrencias"])
+
+
+def test_ocorrencias_conferencia_preservam_campos_e_orientacao_por_causa(banco):
+    from orcamento.processador import Conferencia
+    ids = set()
+    for erros in (("Item 3: quantidade inválida",), ("Cliente (B31) é obrigatório",),
+                  ("Item 3: quantidade inválida",),
+                  ("Item 3: quantidade inválida", "Cliente (B31) é obrigatório")):
+        conf = Conferencia(estado="erros", relatorio="", cliente="", endereco="", vendedor="",
+                          itens=(), avisos=(), erros=erros)
+        ids.add(novo(banco, "rascunho", conferencia="erros", conferencia_relatorio=conf.para_json()))
+    grupos = consulta(banco)["ocorrencias"]
+    assert len(grupos) == 3
+    assert {frozenset(g["campos"]): g["total"] for g in grupos} == {
+        frozenset(["B4"]): 2, frozenset(["B31"]): 1, frozenset(["B4", "B31"]): 1}
+    envios = [d["id"] for g in grupos for d in g["envios"]]
+    assert len(envios) == len(set(envios)) == 4 and set(envios) == ids
+    for grupo in grupos:
+        assert all(campo in grupo["onde_conferir"] for campo in grupo["campos"])
+        assert "Corrija os campos indicados" in grupo["como_corrigir"]
