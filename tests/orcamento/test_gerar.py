@@ -166,3 +166,17 @@ def test_dry_run_mostra_a_descricao_que_seria_gravada(tmp_path):
     p = criar(tmp_path, {"R2": "Cor preta"}, "orc.xlsx")
     r = gerar(p, cfg(tmp_path, dry_run=True), HseFalso(), tmp_path / "pdfs")
     assert "Item 1: [DRY_RUN] descrição no DAV: Cor preta" in r.relatorio
+
+
+def test_erro_da_tela_do_hse_na_simulacao_e_erro_de_validacao_nao_inesperado(tmp_path):
+    from orcamento.processador import ErroHse
+
+    class LocalNaoCasa(HseFalso):
+        def montar_orcamento(self, *a, **kw):
+            raise ErroHse("Local de entrega 'Rio de Janeiro': 2 endereço(s) do cliente contêm esse texto")
+    p = criar(tmp_path, None, "orc.xlsx")
+    r = gerar(p, cfg(tmp_path, dry_run=True), LocalNaoCasa(), tmp_path / "pdfs")
+    assert r.estado == "erro"
+    assert "inesperado" not in r.relatorio
+    assert "ERRO na validação com o HSE" in r.relatorio
+    assert "Local de entrega 'Rio de Janeiro'" in r.relatorio

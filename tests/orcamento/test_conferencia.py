@@ -1,0 +1,336 @@
+"""Fila de conferência (orcamento/conferencia.py): simula o DAV no HSE só leitura."""
+
+from __future__ import annotations
+
+import sqlite3
+import threading
+import time
+from decimal import Decimal
+
+import pytest
+
+from core.banco import Banco
+from orcamento.conferencia import SEM_LOGIN, FilaConferencia
+from orcamento.config import Config
+from orcamento.processador import SEM_HSE, Conferencia, HseIndisponivel, ItemConferido
+
+
+@pytest.fixture
+def banco(tmp_path):
+    return Banco(tmp_path / "t.db")
+
+
+def _rascunho(banco, estado="rascunho", conferencia="conferindo"):
+    i = banco.dav_criar("ana", "plan.xlsx", f"h{time.monotonic_ns()}", "Cliente X")
+    banco.dav_atualizar(i, estado=estado, conferencia=conferencia)
+    return i
+
+
+def _conf(estado="ok", cliente="6303 - TANGARA", erros=()):
+    return Conferencia(estado, f"relatorio {cliente}", cliente, "", "", (), (), tuple(erros))
+
+
+def _fila(banco, tmp_path, executar, **kw):
+    return FilaConferencia(banco, tmp_path, executar=executar, disparar=lambda t: t(), **kw)
+
+
+def _gravado(banco, i):
+    linha = banco.dav(i, None)
+    return linha["conferencia"], Conferencia.de_json(linha["conferencia_relatorio"])
+
+
+def test_ok_grava_estado_e_json(banco, tmp_path):
+    i = _rascunho(banco)
+    _fila(banco, tmp_path, lambda p: _conf("ok")).enfileirar(i)
+    estado, conf = _gravado(banco, i)
+    assert estado == "ok" and conf.cliente == "6303 - TANGARA"
+
+
+def test_erros_grava_erros(banco, tmp_path):
+    i = _rascunho(banco)
+    _fila(banco, tmp_path, lambda p: _conf("erros", erros=["Item 1 sem estoque"])).enfileirar(i)
+    estado, conf = _gravado(banco, i)
+    assert estado == "erros" and conf.erros == ("Item 1 sem estoque",)
+
+
+def test_excecao_vira_nao_conferido_sem_senha(banco, tmp_path, monkeypatch):
+    monkeypatch.setenv("HSE_SENHA", "s3gredo")
+    i = _rascunho(banco)
+
+    def executar(p):
+        raise RuntimeError("falhou com s3gredo no meio")
+
+    _fila(banco, tmp_path, executar).enfileirar(i)
+    estado, conf = _gravado(banco, i)
+    assert estado == "nao_conferido" and conf.estado == "nao_conferido"
+    assert "s3gredo" not in conf.relatorio and "***" in conf.relatorio
+
+
+def test_tempo_estourado_vira_nao_conferido(banco, tmp_path):
+    i = _rascunho(banco)
+
+    def lento(p):
+        time.sleep(0.3)
+        return _conf("ok")
+
+    _fila(banco, tmp_path, lento, limite_s=0.05).enfileirar(i)
+    estado, conf = _gravado(banco, i)
+    assert estado == "nao_conferido" and conf.relatorio == SEM_HSE
+    time.sleep(0.4)   # o resultado atrasado não pode aparecer depois
+    assert _gravado(banco, i)[0] == "nao_conferido"
+
+
+def test_resultado_atrasado_nao_sobrescreve(banco, tmp_path):
+    i = _rascunho(banco)
+
+    def executar(p):   # enquanto conferia, o DAV saiu de rascunho/conferindo
+        banco.dav_atualizar(i, estado="fila", conferencia=None)
+        return _conf("ok")
+
+    _fila(banco, tmp_path, executar).enfileirar(i)
+    linha = banco.dav(i, None)
+    assert linha["estado"] == "fila" and linha["conferencia"] is None
+    assert not linha["conferencia_relatorio"]
+
+
+def test_duas_planilhas_do_mesmo_vendedor_cada_uma_no_seu_dav(banco, tmp_path):
+    a, b = _rascunho(banco), _rascunho(banco)
+    vistas = []
+
+    def executar(p):
+        vistas.append(p)
+        return _conf("ok", cliente=f"cliente do {p.stem}")
+
+    fila = _fila(banco, tmp_path, executar)
+    fila.enfileirar(a)
+    fila.enfileirar(b)
+    assert vistas == [tmp_path / "entrada" / f"{a}.xlsx", tmp_path / "entrada" / f"{b}.xlsx"]
+    assert _gravado(banco, a)[1].cliente == f"cliente do {a}"
+    assert _gravado(banco, b)[1].cliente == f"cliente do {b}"
+
+
+def test_retomar_marca_nao_conferido(banco, tmp_path):
+    i = _rascunho(banco)
+    _fila(banco, tmp_path, lambda p: _conf()).retomar()
+    assert banco.dav(i, None)["conferencia"] == "nao_conferido"
+
+
+def test_banco_travado_tenta_de_novo_e_grava(banco, tmp_path, monkeypatch):
+    monkeypatch.setattr("orcamento.fila.ESPERA_BANCO_S", 0)
+    i = _rascunho(banco)
+    real, falhas = banco.dav_atualizar, []
+
+    def trava_uma_vez(*a, **kw):
+        if not falhas:
+            falhas.append(1)
+            raise sqlite3.OperationalError("database is locked")
+        return real(*a, **kw)
+
+    monkeypatch.setattr(banco, "dav_atualizar", trava_uma_vez)
+    _fila(banco, tmp_path, lambda p: _conf("ok")).enfileirar(i)
+    assert falhas and _gravado(banco, i)[0] == "ok"
+
+
+def test_log_nao_vaza_senha(banco, tmp_path, monkeypatch, caplog):
+    monkeypatch.setenv("HSE_SENHA", "s3gredo")
+    i = _rascunho(banco)
+
+    def executar(p):
+        raise Exception("login com s3gredo falhou")
+
+    _fila(banco, tmp_path, executar).enfileirar(i)
+    assert "s3gredo" not in caplog.text and caplog.text
+
+
+def _config():
+    return Config(usuario="u", senha="s", client_id="ventura", dry_run=False, headless=True)
+
+
+def test_executor_padrao_forca_dry_run_e_pasta_programa(banco, tmp_path, monkeypatch):
+    visto = {}
+
+    class HseFalso:
+        bloqueados: list = []
+
+        def __init__(self, cfg):
+            visto["hse_cfg"] = cfg
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    def conferir_falso(planilha, cfg, hse):
+        visto.update(cfg=cfg, hse=hse)
+        return _conf("ok")
+
+    monkeypatch.setattr("orcamento.config.config_do_ambiente", _config)
+    monkeypatch.setattr("orcamento.hse.HseSoLeitura", HseFalso)
+    monkeypatch.setattr("orcamento.conferencia.conferir", conferir_falso)
+    i = _rascunho(banco)
+    FilaConferencia(banco, tmp_path, disparar=lambda t: t()).enfileirar(i)
+    assert visto["cfg"].dry_run is True and visto["cfg"].pasta_programa == tmp_path
+    assert visto["hse_cfg"] is visto["cfg"] and isinstance(visto["hse"], HseFalso)
+    assert _gravado(banco, i)[0] == "ok"
+
+
+def test_gravacao_bloqueada_vira_nao_conferido_e_loga_sem_senha(banco, tmp_path, monkeypatch, caplog):
+    monkeypatch.setenv("HSE_SENHA", "s3gredo")
+
+    class HseQueTentouGravar:
+        def __init__(self, cfg):
+            self.bloqueados = ["vendaAlt.php acao=salvarObsItem&s=s3gredo"]
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    monkeypatch.setattr("orcamento.config.config_do_ambiente", _config)
+    monkeypatch.setattr("orcamento.hse.HseSoLeitura", HseQueTentouGravar)
+    monkeypatch.setattr("orcamento.conferencia.conferir", lambda p, cfg, hse: _conf("ok"))
+    i = _rascunho(banco)
+    FilaConferencia(banco, tmp_path, disparar=lambda t: t()).enfileirar(i)
+    estado, conf = _gravado(banco, i)
+    assert estado == "nao_conferido" and conf.relatorio == SEM_HSE
+    assert "salvarObsItem" in caplog.text and "s3gredo" not in caplog.text
+    assert "Traceback" not in caplog.text
+
+
+def test_sem_vaga_no_tempo_nunca_abre_o_navegador(banco, tmp_path, monkeypatch):
+    vaga = threading.Semaphore(1)
+    vaga.acquire()   # frete/Gerar ocupando a única vaga
+    abertos = []
+
+    class Registra:
+        bloqueados: list = []
+
+        def __init__(self, cfg):
+            abertos.append(cfg)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    monkeypatch.setattr("core.retentativa.VAGA_NAVEGADOR", vaga)
+    monkeypatch.setattr("orcamento.config.config_do_ambiente", _config)
+    monkeypatch.setattr("orcamento.hse.HseSoLeitura", Registra)
+    monkeypatch.setattr("orcamento.conferencia.conferir", lambda p, cfg, hse: _conf("ok"))
+    i = _rascunho(banco)
+    FilaConferencia(banco, tmp_path, disparar=lambda t: t(), limite_s=0.05).enfileirar(i)
+    assert _gravado(banco, i)[1].relatorio == SEM_HSE
+    vaga.release()   # a vaga abre depois que a fila desistiu
+    for t in [t for t in threading.enumerate() if t.name == "conferencia-hse"]:
+        t.join(2)
+    assert abertos == []
+    assert vaga.acquire(blocking=False)   # a vaga não ficou presa
+
+
+def test_hse_indisponivel_vira_nao_conferido(banco, tmp_path, monkeypatch):
+    def hse_fora(cfg):
+        raise HseIndisponivel("fora do ar")
+
+    monkeypatch.setattr("orcamento.config.config_do_ambiente", _config)
+    monkeypatch.setattr("orcamento.hse.HseSoLeitura", hse_fora)
+    i = _rascunho(banco)
+    FilaConferencia(banco, tmp_path, disparar=lambda t: t()).enfileirar(i)
+    estado, conf = _gravado(banco, i)
+    assert estado == "nao_conferido" and conf.relatorio == SEM_HSE
+
+
+def test_sem_login_vira_nao_conferido(banco, tmp_path, monkeypatch):
+    def sem_login():
+        raise ValueError("Faltam no .env: HSE_USUARIO")
+
+    monkeypatch.setattr("orcamento.config.config_do_ambiente", sem_login)
+    i = _rascunho(banco)
+    FilaConferencia(banco, tmp_path, disparar=lambda t: t()).enfileirar(i)
+    estado, conf = _gravado(banco, i)
+    assert estado == "nao_conferido" and conf.relatorio == SEM_LOGIN
+
+
+def test_thread_real_segue_depois_de_tarefa_que_quebra(banco, tmp_path, monkeypatch):
+    a, b = _rascunho(banco), _rascunho(banco)
+    pronto = threading.Event()
+    real = banco.dav
+
+    def dav_quebra_no_a(dav_id, usuario):   # quebra fora de _com_limite: cai no except do _consumir
+        if dav_id == a:
+            raise RuntimeError("quebrou")
+        return real(dav_id, usuario)
+
+    monkeypatch.setattr(banco, "dav", dav_quebra_no_a)
+
+    def executar(p):
+        pronto.set()
+        return _conf("ok")
+
+    fila = FilaConferencia(banco, tmp_path, executar=executar)
+    fila.enfileirar(a)
+    fila.enfileirar(b)
+    assert pronto.wait(2)
+    for _ in range(40):   # a gravação vem logo depois do executor
+        if banco.dav(b, None)["conferencia"] == "ok":
+            break
+        time.sleep(0.05)
+    assert real(a, None)["conferencia"] == "conferindo" and _gravado(banco, b)[0] == "ok"
+
+
+def test_conferencia_gravada_nao_leva_a_senha(banco, tmp_path, monkeypatch):
+    monkeypatch.setenv("HSE_SENHA", "s3gredo")
+    i = _rascunho(banco)
+    vazada = Conferencia("erros", "tela disse s3gredo", "", "", "", (), (), ("erro com s3gredo",))
+    _fila(banco, tmp_path, lambda p: vazada).enfileirar(i)
+    assert "s3gredo" not in banco.dav(i, None)["conferencia_relatorio"]
+    estado, conf = _gravado(banco, i)
+    assert estado == "erros" and conf.erros == ("erro com ***",)
+
+
+@pytest.mark.parametrize("senha", ["1", "s"])
+def test_senha_curta_nao_estraga_o_json_gravado(banco, tmp_path, monkeypatch, senha):
+    monkeypatch.setenv("HSE_SENHA", senha)
+    item = ItemConferido(1, "123", f"parafuso {senha}x", Decimal("150.00"), Decimal("150.00"), "codigo")
+    vazada = Conferencia("erros", f"tela disse {senha}", "1 - CLIENTE", "rua 1", "vendedor",
+                         (item,), (f"aviso {senha}",), (f"erro {senha}",))
+    i = _rascunho(banco)
+    _fila(banco, tmp_path, lambda p: vazada).enfileirar(i)
+    estado, conf = _gravado(banco, i)
+    assert estado == "erros"
+    textos = [conf.relatorio, conf.cliente, conf.endereco, conf.vendedor, *conf.avisos, *conf.erros,
+              conf.itens[0].descricao]
+    assert all(senha not in t for t in textos)
+    assert conf.itens[0].preco_tabela == Decimal("150.00") and conf.itens[0].valor_unit == Decimal("150.00")
+    assert conf.itens[0].codigo == "123" and conf.erros == ("erro ***",)
+
+
+def test_conferencia_e_gerar_rodam_ao_mesmo_tempo_sem_se_bloquear(banco, tmp_path):
+    from orcamento.fila import FilaDav
+    from orcamento.processador import Resultado
+
+    conferindo, gerando = threading.Event(), threading.Event()
+    viu = {}
+
+    def conferir_lento(p):   # só termina se o Gerar rodar enquanto ela está aberta
+        conferindo.set()
+        viu["conferencia"] = gerando.wait(2)
+        return _conf("ok")
+
+    def gerar_lento(planilha, pasta_pdf):
+        gerando.set()
+        viu["gerar"] = conferindo.wait(2)
+        return Resultado("pronto", "123", None, "rel", "Cliente X")
+
+    conf, dav = _rascunho(banco), _rascunho(banco, estado="fila", conferencia=None)
+    fila_dav = FilaDav(banco, tmp_path, gerar_lento)
+    FilaConferencia(banco, tmp_path, executar=conferir_lento).enfileirar(conf)
+    fila_dav.enfileirar(dav)
+    limite = time.monotonic() + 5
+    while (banco.dav(conf, None)["conferencia"] == "conferindo" or fila_dav.em_curso) \
+            and time.monotonic() < limite:
+        time.sleep(0.02)
+    assert viu == {"conferencia": True, "gerar": True}
+    assert banco.dav(conf, None)["conferencia"] == "ok" and banco.dav(dav, None)["estado"] == "pronto"

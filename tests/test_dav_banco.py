@@ -27,6 +27,12 @@ def test_criar_e_ler_pelo_dono(banco):
     assert d["criado_em"]
 
 
+def test_criar_ja_com_conferencia_no_mesmo_insert(banco):
+    assert banco.dav(banco.dav_criar("ana", "a.xlsx", "h1", "X"), "ana")["conferencia"] is None
+    i = banco.dav_criar("ana", "b.xlsx", "h2", "X", conferencia="conferindo")
+    assert banco.dav(i, "ana")["conferencia"] == "conferindo"
+
+
 def test_outro_usuario_nao_ve_e_admin_ve(banco):
     i = _novo(banco)
     assert banco.dav(i, "outro") is None
@@ -134,3 +140,41 @@ def test_migracao_antiga_repetida_preserva_dav(banco):
     b = novo.dav_rejeitar("ana", "reenvio.xls", ["formato"])
     novo.dav_vincular_correcao(i, b, "ana")
     assert novo.dav(i, "ana")["estado"] == "erro"
+
+
+def test_banco_antigo_ganha_colunas_da_conferencia(tmp_path):
+    import sqlite3
+    caminho = tmp_path / "antigo.db"
+    con = sqlite3.connect(caminho)
+    con.execute("CREATE TABLE dav (id INTEGER PRIMARY KEY AUTOINCREMENT,"
+                " usuario TEXT NOT NULL, arquivo TEXT NOT NULL,"
+                " hash_planilha TEXT NOT NULL, estado TEXT NOT NULL,"
+                " numero TEXT, cliente TEXT, relatorio TEXT, pdf TEXT,"
+                " erro TEXT, criado_em TEXT NOT NULL, iniciado_em TEXT,"
+                " terminado_em TEXT)")
+    con.commit()
+    con.close()
+    Banco(caminho)
+    con = sqlite3.connect(caminho)
+    colunas = {r[1] for r in con.execute("PRAGMA table_info(dav)")}
+    con.close()
+    assert {"conferencia", "conferencia_relatorio"} <= colunas
+
+
+def test_dav_atualizar_aceita_conferencia(banco):
+    i = _novo(banco)
+    banco.dav_atualizar(i, conferencia="conferindo",
+                        conferencia_relatorio="ok")
+    d = banco.dav(i, "ana")
+    assert d["conferencia"] == "conferindo"
+    assert d["conferencia_relatorio"] == "ok"
+
+
+def test_conferencia_interrompida_vira_nao_conferido(banco):
+    r = _novo(banco, "ana", "a")
+    f = _novo(banco, "ana", "b", "fila")
+    banco.dav_atualizar(r, conferencia="conferindo")
+    banco.dav_atualizar(f, conferencia="conferindo")
+    assert banco.dav_conferencia_interromper() == [r]
+    assert banco.dav(r, "ana")["conferencia"] == "nao_conferido"
+    assert banco.dav(f, "ana")["conferencia"] == "conferindo"

@@ -40,7 +40,8 @@ def diagnostico(dav: dict, *, administrador: bool) -> dict:
     incerto = (estado == "incerto" or (estado == "erro" and bool(dav.get("numero")))
                or (estado == "erro" and salvo))
     salvamento = ("confirmado" if estado == "pronto" else "incerto" if incerto else
-                  "nao_criado" if simulacao or "orcamento nao criado" in resultado or estado == "rejeitado" else "desconhecido")
+                  "nao_criado" if simulacao or "orcamento nao criado" in resultado or "nada foi criado" in resultado
+                                  or estado == "rejeitado" else "desconhecido")
     categoria, etapa = "desconhecido", None
     motivo = "Motivo não identificado; consulte os detalhes disponíveis ou o responsável pelo robô."
     orientacao = "Consulte o responsável pelo robô antes de reenviar se houver dúvida sobre o salvamento."
@@ -56,6 +57,8 @@ def diagnostico(dav: dict, *, administrador: bool) -> dict:
         categoria, etapa = "planilha", "Validação da planilha"
         motivo = "A planilha não foi aceita e não foi enviada ao HSE."
         orientacao = "Use a PLANILHA-BASE v3 em .xlsx, até 5 MB, corrija os dados e confira novamente."
+    if salvamento == "nao_criado" and categoria == "desconhecido" and not simulacao:
+        orientacao = "Nada foi criado no HSE. Corrija a planilha e envie de novo."
     if categoria == "desconhecido" and erros_robo:
         motivo = "; ".join(erros_robo)
     if salvamento == "incerto":

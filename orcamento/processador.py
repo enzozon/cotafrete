@@ -7,7 +7,7 @@ import os
 import re
 import time
 from contextlib import contextmanager
-from dataclasses import dataclass, replace
+from dataclasses import asdict, dataclass, replace
 from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
@@ -57,6 +57,10 @@ class Resultado:
 
 class HseIndisponivel(Exception):
     """Rede/login/HSE fora do ar: a planilha fica para o próximo ciclo."""
+
+
+class ErroHse(Exception):
+    """A tela do HSE recusou algo (vendedor/grupo/endereço inexistente etc.)."""
 
 
 class SalvoIncerto(Exception):
@@ -482,12 +486,127 @@ def gerar(path: Path, cfg: Config, hse: HseApi, pasta_pdf: Path,
     except HseIndisponivel as e:
         log.warning("HSE indisponível ao processar %s: %s", path.name, e)
         return pronto("adiado")
+    except ErroHse as e:  # a tela recusou um dado da planilha (ex.: local de entrega): não é falha do robô
+        rel.erro(str(e))
+        return pronto("erro", "ERRO na validação com o HSE (nada foi criado)")
     except Exception as e:  # noqa: BLE001 — antes de qualquer criação: só reporta
         log.exception("Falha inesperada em %s", path.name)
         rel.erro(_resumo(e))
         return pronto("erro", "ERRO inesperado (nada foi criado no HSE)")
 
     return _executar_real(orc, cliente, resolucoes, hse, rel, pasta_pdf, ao_salvar)
+
+
+# --- conferência (simula o DAV no HSE sem incluir nem salvar nada) -------------
+
+PRECO_ACIMA_TABELA = Decimal("2")  # valor unitário acima de 2x a tabela: provável código errado
+SEM_HSE = "Não consegui conferir com o HSE agora; o robô confere de novo ao gerar."
+
+
+@dataclass(frozen=True)
+class ItemConferido:
+    numero: int
+    codigo: str            # "" para produto novo
+    descricao: str         # descrição no HSE ("" para novo)
+    preco_tabela: Decimal | None
+    valor_unit: Decimal
+    por: str               # "codigo" | "descricao" | "novo" | "" (com erro)
+
+
+@dataclass(frozen=True)
+class Conferencia:
+    estado: str            # "ok" | "erros" | "nao_conferido"
+    relatorio: str
+    cliente: str           # "6303 - TANGARA ..." ou ""
+    endereco: str
+    vendedor: str
+    itens: tuple[ItemConferido, ...]
+    avisos: tuple[str, ...]
+    erros: tuple[str, ...]
+
+    def para_json(self) -> str:
+        return json.dumps(asdict(self), default=str, ensure_ascii=False)
+
+    @staticmethod
+    def de_json(texto: str) -> "Conferencia":
+        d = json.loads(texto)
+        itens = tuple(ItemConferido(**{**i, "preco_tabela": None if i["preco_tabela"] is None
+                                       else Decimal(i["preco_tabela"]),
+                                       "valor_unit": Decimal(i["valor_unit"])}) for i in d.pop("itens"))
+        return Conferencia(**{**d, "itens": itens, "avisos": tuple(d["avisos"]), "erros": tuple(d["erros"])})
+
+
+def _sem_segredo(texto: str | None) -> str | None:
+    for chave in ("HSE_SENHA", "ANTHROPIC_API_KEY"):
+        segredo = (os.environ.get(chave) or "").strip()
+        if segredo and texto:
+            texto = texto.replace(segredo, "***")
+    return texto
+
+
+def aviso_preco_acima(r: Resolucao) -> str | None:
+    p = r.produto
+    if r.erro or p is None or p.preco is None or r.item.valor_unit <= p.preco * PRECO_ACIMA_TABELA:
+        return None
+    razao = f"{r.item.valor_unit / p.preco:.1f}".replace(".", ",")
+    return (f"Item {r.item.numero}: {moeda(r.item.valor_unit)} está {razao}× acima da tabela "
+            f"({moeda(p.preco)}) do código {p.codigo} – {p.descricao}; confira se o código está certo")
+
+
+def _aviso_descricao(r: Resolucao) -> str | None:
+    if r.erro or r.por != "descricao":
+        return None
+    return (f"Item {r.item.numero}: produto achado pela descrição, não pelo código: "
+            f"{r.produto.codigo} – {r.produto.descricao}; confira se é o produto certo")
+
+
+def _item_conferido(r: Resolucao) -> ItemConferido:
+    p = r.produto
+    return ItemConferido(r.item.numero, p.codigo if p else "", p.descricao if p else "",
+                         p.preco if p else None, r.item.valor_unit, "" if r.erro else r.por)
+
+
+def conferir(path: Path, cfg: Config, hse: HseApi) -> Conferencia:
+    """Simula o DAV no HSE (dry-run) e devolve o que foi encontrado. Nunca inclui nem salva."""
+    cfg = replace(cfg, dry_run=True)
+    rel = Relatorio(path.name, True)
+    cliente, orc, resolucoes, avisos = None, None, [], []
+
+    def pronto(estado: str) -> Conferencia:
+        texto = rel.texto()
+        erros = tuple(l[len("ERRO: "):] for l in texto.splitlines() if l.startswith("ERRO: "))
+        infos = tuple(l for l in texto.splitlines() if l.startswith("O HSE avisou:"))
+        endereco = ("" if orc is None else getattr(hse, "endereco", "") if orc.local_entrega
+                    else "Cadastral do cliente (B30 vazia)")
+        return Conferencia(estado, texto, _nome_cliente(cliente), endereco, orc.vendedor if orc else "",
+                           tuple(_item_conferido(r) for r in resolucoes), tuple(avisos) + infos, erros)
+
+    try:
+        orc = ler_planilha(path)
+    except ErroPlanilha as e:
+        for erro in e.erros:
+            rel.erro(erro)
+        return pronto("erros")
+    avisos.extend(orc.avisos)
+    try:
+        cliente, resolucoes = validar_online(orc, hse, rel, ajudantes(cfg))
+        _listar_itens(rel, resolucoes, True)
+        avisos.extend(a for r in resolucoes for a in (aviso_preco_acima(r), _aviso_descricao(r)) if a)
+        if not rel.tem_erro:
+            try:
+                _executar_dry(orc, cliente, resolucoes, hse, rel)
+            except HseIndisponivel:
+                raise
+            except Exception as e:  # noqa: BLE001 — ErroHse e falhas da tela: viram erro da conferência
+                log.warning("Conferência de %s recusada pela tela: %s", path.name, _sem_segredo(str(e)))
+                rel.erro(_resumo(e))
+    except HseIndisponivel as e:
+        log.warning("HSE indisponível ao conferir %s: %s", path.name, _sem_segredo(str(e)))
+        return pronto("erros" if rel.tem_erro else "nao_conferido")
+    except Exception as e:  # noqa: BLE001
+        log.error("Falha inesperada ao conferir %s: %s", path.name, _sem_segredo(str(e)) or type(e).__name__)
+        rel.erro(_resumo(e))
+    return pronto("erros" if rel.tem_erro else "ok")
 
 
 def processar_arquivo(path: Path, cfg: Config, hse: HseApi) -> str:

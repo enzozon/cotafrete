@@ -20,6 +20,7 @@ class HseFalso:
         self.indisponivel_em = set(indisponivel_em)
         self.chamadas: list[tuple] = []
         self.rascunho: str | None = None
+        self.endereco = ""
         self.avisos: list[str] = []
         self.avisos_ao_montar: list[str] = []  # o que o HSE "mostra" ao montar o orçamento
         self.notas: list[str] = []

@@ -73,6 +73,7 @@ def consultar(con, *, usuario: str | None, dias: int, agora: datetime,
               "inesperados": sum(n for e, n in contagem.items() if e not in ESTADOS)}
     grupos = Counter(diags[d["id"]]["categoria"] for d in linhas if d["estado"] == "erro")
     atencao = [d for d in linhas if d["estado"] in ("incerto", "rejeitado") or
+               (d["estado"] == "rascunho" and d.get("conferencia") == "erros") or
                (d["estado"] == "erro" and diags[d["id"]]["salvamento"] == "incerto")]
     if estado == "com_aviso":
         linhas = [d for d in criados if diags[d["id"]]["tem_aviso"] is True]

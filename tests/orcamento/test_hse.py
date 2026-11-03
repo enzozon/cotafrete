@@ -275,3 +275,99 @@ def test_busca_longa_cola_o_texto_e_digita_so_a_ultima_letra():
     pagina = _Busca()
     Hse._autocomplete(pagina, "dsProduto", "A" * 544)
     assert pagina.feito == [("fill", "#dsProduto", "A" * 543), ("type", "#dsProduto", "A")]
+
+
+
+def test_local_de_entrega_pelo_numero_do_endereco():
+    # PETROBRAS (29/10/2026): o CEP não aparece na lista do HSE e "Rio de Janeiro" casava com os 2 endereços
+    from orcamento.hse import enderecos_do_local
+    opcoes = [("101", "1 - Cadastral - RUA FRANCISCO DE S E MELO, 2, CORDOVIL, RIO DE JANEIRO/RJ"),
+              ("102", "2 - Entrega - RUA CARLOS SEIDL, 188, CAJU, RIO DE JANEIRO/RJ")]
+    assert enderecos_do_local("2", opcoes) == ["102"]  # o número da lista, não o "2" da rua do endereço 1
+    assert enderecos_do_local(" 1 ", opcoes) == ["101"]
+    assert enderecos_do_local("2 - Entrega", opcoes) == ["102"]
+    assert enderecos_do_local("20931902", opcoes) == []
+    assert enderecos_do_local("Rio de Janeiro", opcoes) == ["101", "102"]
+
+
+class _BuscaLenta(_Busca):
+    """A 1ª espera pela resposta estoura o tempo (HSE lento); as seguintes respondem."""
+
+    def __init__(self, falhas):
+        super().__init__()
+        self.falhas = falhas
+
+    def expect_response(self, pred):
+        if self.falhas:
+            self.falhas -= 1
+            raise PlaywrightError("Timeout 30000ms exceeded while waiting for event \"response\"")
+        return super().expect_response(pred)
+
+
+def test_busca_tenta_de_novo_quando_o_hse_demora():
+    # davs__20 (simulação de 29/10/2026): um timeout na busca do cliente virava "HSE fora do ar"
+    pagina = _BuscaLenta(falhas=1)
+    assert Hse._autocomplete(pagina, "dsProduto", "A" * 544) == []
+    assert pagina.feito.count(("fill", "#dsProduto", "A" * 543)) == 2
+
+
+def test_busca_que_estoura_duas_vezes_desiste():
+    with pytest.raises(PlaywrightError):
+        Hse._autocomplete(_BuscaLenta(falhas=2), "dsProduto", "A" * 544)
+
+
+def _route(metodo, corpo, url="https://hse/vendaAlt.php"):
+    chamadas = []
+    return SimpleNamespace(
+        request=SimpleNamespace(method=metodo, post_data=corpo, url=url),
+        abort=lambda: chamadas.append("abort"),
+        continue_=lambda: chamadas.append("continue"),
+        chamadas=chamadas)
+
+
+def test_guarda_aborta_post_de_gravacao():
+    from orcamento.hse import guarda_gravacao
+    bloqueados: list[str] = []
+    route = _route("POST", "acao=salvarObsItem&x=1")
+    guarda_gravacao(route, bloqueados)
+    assert route.chamadas == ["abort"]
+    assert bloqueados == ["vendaAlt.php acao=salvarObsItem&x=1"]
+
+
+def test_guarda_deixa_passar_leitura():
+    from orcamento.hse import guarda_gravacao
+    bloqueados: list[str] = []
+    leitura = _route("POST", "acao=listar")
+    get = _route("GET", None)
+    guarda_gravacao(leitura, bloqueados)
+    guarda_gravacao(get, bloqueados)
+    assert leitura.chamadas == get.chamadas == ["continue"]
+    assert bloqueados == []
+
+
+def test_endereco_fica_com_a_opcao_escolhida():
+    opcoes = [["101", "1 - Cadastral - RUA A, 2, RIO DE JANEIRO/RJ"],
+              ["102", "2 - Entrega - RUA X, 188, CAJU, RIO DE JANEIRO/RJ"]]
+    pagina = SimpleNamespace(eval_on_selector_all=lambda *a: opcoes, evaluate=lambda *a: None)
+    hse = Hse.__new__(Hse)
+    hse.endereco = ""
+    orc = SimpleNamespace(local_entrega="2", forma_pg=None, parcelamento=None, prazo_dias=None,
+                          ordem_compra=None, observacoes=None, frete=None)
+    hse._preencher_cabecalho(pagina, orc)
+    assert hse.endereco == "2 - Entrega - RUA X, 188, CAJU, RIO DE JANEIRO/RJ"
+
+
+def test_hse_so_leitura_instala_a_guarda_depois_do_login(monkeypatch):
+    from orcamento.hse import HseSoLeitura
+    rotas = []
+    monkeypatch.setattr(Hse, "_login_passos", lambda self, filial: setattr(
+        self, "_ctx", SimpleNamespace(route=lambda padrao, fn: rotas.append((padrao, fn)))))
+    hse = HseSoLeitura(SimpleNamespace())
+    hse._login_passos(1)
+    assert [p for p, _ in rotas] == ["**/*"] and hse.bloqueados == []
+    guarda = rotas[0][1]
+    gravacao, leitura = _route("POST", "acao=salvarObsItem"), _route("POST", "acao=listar")
+    guarda(gravacao)
+    guarda(leitura)
+    assert gravacao.chamadas == ["abort"] and leitura.chamadas == ["continue"]
+    assert hse.bloqueados == ["vendaAlt.php acao=salvarObsItem"]

@@ -66,3 +66,38 @@ def test_duas_sessoes_nao_elevam_rota_vendedor(cli, admin, app_web):
     cli.cookies.set(adm.COOKIE_ADM, adm.token_de("s3nha"))
     assert cli.get(f"/dav/{i}").status_code == 404
     assert admin.get(f"/dav/{i}").status_code == 303
+
+
+def _conf(**kw):
+    from orcamento.processador import Conferencia
+    base = dict(estado="erros", relatorio="REL <i>x</i> completo", cliente="", endereco="", vendedor="",
+                itens=(), avisos=("Cliente com pendência financeira DF15653",), erros=("Preço <b>errado</b>",))
+    return Conferencia(**{**base, **kw})
+
+
+def test_admin_ve_conferencia_completa_com_financeiro(admin, app_web):
+    i = app_web.banco.dav_criar("bia", "a.xlsx", "a", "Cliente A")
+    app_web.banco.dav_atualizar(i, conferencia="erros", conferencia_relatorio=_conf().para_json())
+    t = admin.get(f"/adm/dav/{i}").text
+    assert "Conferência com o HSE" in t and "DF15653" in t
+    assert "Preço &lt;b&gt;errado&lt;/b&gt;" in t and "REL &lt;i&gt;x&lt;/i&gt; completo" in t
+    assert "<b>errado</b>" not in t
+
+
+def test_admin_conferencia_json_quebrado_nao_derruba(admin, app_web):
+    i = app_web.banco.dav_criar("bia", "a.xlsx", "a", "Cliente A")
+    app_web.banco.dav_atualizar(i, conferencia="erros", conferencia_relatorio="{quebrado")
+    r = admin.get(f"/adm/dav/{i}")
+    assert r.status_code == 200 and "Conferência com o HSE" in r.text
+
+
+def test_rascunho_com_erros_na_conferencia_aparece_em_atencao(admin, app_web):
+    i = app_web.banco.dav_criar("bia", "a.xlsx", "a", "Cliente Rasc")
+    app_web.banco.dav_atualizar(i, conferencia="erros", conferencia_relatorio=_conf().para_json())
+    ok = app_web.banco.dav_criar("bia", "b.xlsx", "b", "Cliente Ok")
+    app_web.banco.dav_atualizar(ok, conferencia="ok")
+    t = admin.get("/adm/dav").text
+    assert f"#{i} " in t.split('id="dav-atencao"')[1].split("</section>")[0]
+    assert f"#{ok} " not in t.split('id="dav-atencao"')[1].split("</section>")[0]
+    linha = t.split(f'data-dav="{i}"')[1].split("</tr>")[0]
+    assert "Com erros" in linha and "Conferindo" not in linha

@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import inspect
 import logging
-import os
 import queue
 import sqlite3
 import threading
@@ -24,7 +23,7 @@ from pathlib import Path
 from typing import Callable
 
 from core.banco import Banco
-from orcamento.processador import HseIndisponivel, Resultado
+from orcamento.processador import HseIndisponivel, Resultado, _sem_segredo
 
 log = logging.getLogger(__name__)
 
@@ -40,12 +39,15 @@ def _agora() -> str:
     return datetime.now().isoformat(timespec="seconds")
 
 
-def _sem_segredo(texto: str | None) -> str | None:
-    for chave in ("HSE_SENHA", "ANTHROPIC_API_KEY"):
-        segredo = (os.environ.get(chave) or "").strip()
-        if segredo and texto:
-            texto = texto.replace(segredo, "***")
-    return texto
+def no_banco(chamada, *args, **kw):
+    """O sqlite trava às vezes ("database is locked"): tenta de novo."""
+    for tentativa in range(TENTATIVAS_BANCO):
+        try:
+            return chamada(*args, **kw)
+        except sqlite3.OperationalError:
+            if tentativa == TENTATIVAS_BANCO - 1:
+                raise
+            time.sleep(ESPERA_BANCO_S)
 
 
 class FilaDav:
@@ -104,15 +106,7 @@ class FilaDav:
             except Exception:   # nunca derruba a thread
                 log.exception("Fila do DAV: tarefa quebrou")
 
-    def _no_banco(self, chamada, *args, **kw):
-        """O sqlite trava às vezes ("database is locked"): tenta de novo."""
-        for tentativa in range(TENTATIVAS_BANCO):
-            try:
-                return chamada(*args, **kw)
-            except sqlite3.OperationalError:
-                if tentativa == TENTATIVAS_BANCO - 1:
-                    raise
-                time.sleep(ESPERA_BANCO_S)
+    _no_banco = staticmethod(no_banco)
 
     def _rodar(self, dav_id: int) -> None:
         with self._trava:
