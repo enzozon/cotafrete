@@ -11,6 +11,12 @@ Regras:
 - Não leia arquivos de dados inteiros (PEDIDOS.json, vendas_hse.json, logs,
   tests/fixtures). Filtre o trecho que importa.
 - Mudou uma parte descrita no mapa? Atualize o mapa no mesmo PR.
-- Testes: `python -m pytest tests -q` (ou `-k <assunto>`). A CI
-  (`.github/workflows/testes.yml`) roda tudo em Windows/3.14 e o `cruzar_nf`
-  em 3.8; o merge na `main` só libera com ela verde.
+- Testes no dia a dia: `python -m pytest tests -q -m "not navegador"`.
+  Mexeu numa transportadora: isso e `-k <transportadora>`. A marcação
+  `navegador` (playwright/uvicorn) é automática, pelo `tests/conftest.py`.
+- Suíte completa (`python -m pytest tests -q`): sempre em segundo plano
+  (run_in_background), nunca dividida em partes. Leva mais que os 10 min do
+  comando em primeiro plano.
+- Em paralelo: `pip install pytest-xdist` e `python -m pytest tests -q -n 4`.
+  A CI (`.github/workflows/testes.yml`) roda assim em Windows/3.14, e o
+  `cruzar_nf` em série no 3.8; o merge na `main` só libera com ela verde.
