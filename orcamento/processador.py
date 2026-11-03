@@ -500,6 +500,7 @@ def gerar(path: Path, cfg: Config, hse: HseApi, pasta_pdf: Path,
 # --- conferência (simula o DAV no HSE sem incluir nem salvar nada) -------------
 
 PRECO_ACIMA_TABELA = Decimal("2")  # valor unitário acima de 2x a tabela: provável código errado
+SEM_HSE = "Não consegui conferir com o HSE agora; o robô confere de novo ao gerar."
 
 
 @dataclass(frozen=True)
@@ -601,7 +602,7 @@ def conferir(path: Path, cfg: Config, hse: HseApi) -> Conferencia:
                 rel.erro(_resumo(e))
     except HseIndisponivel as e:
         log.warning("HSE indisponível ao conferir %s: %s", path.name, _sem_segredo(str(e)))
-        return pronto("nao_conferido")
+        return pronto("erros" if rel.tem_erro else "nao_conferido")
     except Exception as e:  # noqa: BLE001
         log.error("Falha inesperada ao conferir %s: %s", path.name, _sem_segredo(str(e)) or type(e).__name__)
         rel.erro(_resumo(e))

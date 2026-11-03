@@ -114,6 +114,13 @@ def test_hse_indisponivel_vira_nao_conferido(tmp_path):
     assert c.estado == "nao_conferido" and c.erros == ()
 
 
+def test_hse_indisponivel_depois_de_um_erro_fica_erros(tmp_path):
+    hse = HseFalso(indisponivel_em={"buscar_produtos"})
+    c = conferir(criar(tmp_path, {"B31": 99999}, "o.xlsx"), cfg(tmp_path), hse)
+    assert "buscar_produtos" in hse.nomes()
+    assert c.estado == "erros" and c.erros
+
+
 def test_conferir_nunca_inclui_nem_salva(tmp_path):
     hse = HseFalso()
     conferir(criar(tmp_path, None, "o.xlsx"), cfg(tmp_path), hse)
