@@ -78,14 +78,18 @@ def texto_padrao(c: dict, ops: list[dict]) -> str:
         return ""
     linhas = [f"Olá! Segue a cotação de frete de {_rota(c)} ({_carga(c)}):", ""]
     for o in ops:
-        partes = [f"{o['transportadora']}: {o['preco']}"]
-        if o["prazo"]:
-            partes.append(f"prazo de {o['prazo']}")
-        if o["validade"]:
-            partes.append(f"válido até {o['validade']}")
-        linhas.append("• " + ", ".join(partes))
+        linhas.append(_linha_da_opcao(o))
     linhas += ["", "Fico à disposição para fechar o envio."]
     return "\n".join(linhas)
+
+
+def _linha_da_opcao(o: dict) -> str:
+    partes = [f"{o['transportadora']}: {o['preco']}"]
+    if o["prazo"]:
+        partes.append(f"prazo de {o['prazo']}")
+    if o["validade"]:
+        partes.append(f"válido até {o['validade']}")
+    return "• " + ", ".join(partes)
 
 
 def _numeros(texto: str) -> set[str]:
@@ -102,6 +106,7 @@ def _tem_preco(linha: str, preco: str) -> bool:
 
 def _validador(c: dict, ops: list[dict]):
     permitidos = _numeros(texto_padrao(c, ops))
+    gerais = _numeros(f"{_rota(c)} {_carga(c)}")
 
     def validar(dados) -> str:
         texto = str((dados or {}).get("texto") or "").strip()
@@ -118,6 +123,22 @@ def _validador(c: dict, ops: list[dict]):
         inventados = _numeros(texto) - permitidos
         if inventados:
             raise ValueError(f"números que não estão na cotação: {sorted(inventados)[:5]}")
+        # Cada linha que cita uma transportadora fala só dela e só com os
+        # números dela (preço, prazo, validade) ou os gerais da rota e da
+        # carga. Sem isto, "camilo: R$ 1.399,64 e braspress: R$ 208,89"
+        # passava, e o prazo de uma ia parar na outra.
+        for linha in linhas:
+            citadas = [o for o in ops if o["transportadora"] in linha]
+            if len(citadas) > 1 and _numeros(linha) - gerais:
+                # Só nomes ("camilo e braspress atendem") pode; com número, não.
+                raise ValueError("preço trocado: uma linha cita mais de uma transportadora "
+                                 f"({', '.join(o['transportadora'] for o in citadas[:3])})")
+            if len(citadas) == 1:
+                dela = gerais | _numeros(_linha_da_opcao(citadas[0]))
+                estranhos = _numeros(linha) - dela
+                if estranhos:
+                    raise ValueError(f"números trocados na linha de {citadas[0]['transportadora']}: "
+                                     f"{sorted(estranhos)[:5]}")
         return texto
     return validar
 

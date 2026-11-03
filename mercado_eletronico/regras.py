@@ -94,6 +94,24 @@ def nao_atendemos(empresa: str | None) -> bool:
     return any(re.search(rf"\b{c}\b", nome) for c in CLIENTES_NAO_ATENDIDOS)
 
 
+_RE_CIF_FOB = re.compile(r"\b(CIF|FOB)\b", re.IGNORECASE)
+_RE_NEGACAO = re.compile(r"\b(nao|exceto|sem|nunca|nem)\b[^.;,\n]{0,25}$", re.IGNORECASE)
+
+
+def _frete_do_aviso(aviso: str) -> str | None:
+    """O CIF/FOB que o aviso PEDE, ou None se ele não decide.
+
+    Antes valia o primeiro CIF/FOB perto de "frete": "Frete: não aceitamos
+    FOB, somente CIF" dava FOB. Agora sigla negada ("não", "exceto"...) não
+    conta, e aviso que deixa as duas de pé não decide."""
+    if not _RE_FRETE_AVISO.search(aviso or ""):
+        return None
+    texto = _sem_acento(aviso)
+    pedidas = {m.group(1).upper() for m in _RE_CIF_FOB.finditer(texto)
+               if not _RE_NEGACAO.search(texto[:m.start()])}
+    return pedidas.pop() if len(pedidas) == 1 else None
+
+
 def tipo_frete(avisos: list[str], empresa: str | None,
                formulario: str = "") -> tuple[str, str]:
     """("CIF" | "FOB", de onde veio) — o motivo aparece na tela.
@@ -101,8 +119,8 @@ def tipo_frete(avisos: list[str], empresa: str | None,
     Ordem: aviso do comprador, o formulário pedindo preço CIF, o cliente,
     e só então o padrão FOB."""
     for aviso in avisos or []:
-        if m := _RE_FRETE_AVISO.search(aviso):
-            return m.group(1).upper(), f"aviso do comprador: \"{aviso}\""
+        if frete := _frete_do_aviso(aviso):
+            return frete, f"aviso do comprador: \"{aviso}\""
     if formulario == "CIF":
         return "CIF", "o formulário do comprador pede \"Preço a Prazo CIF\""
     nome = _sem_acento(empresa or "")
@@ -164,6 +182,14 @@ def ler_decimal(texto: str | None) -> Decimal | None:
         return Decimal(t)
     except InvalidOperation:
         return None
+
+
+def _milhar_sem_virgula(texto: str | None) -> bool:
+    """`"1.234"`, `"12.500.000"`: ponto seguido de grupos de 3 dígitos e sem
+    vírgula. É o jeito brasileiro de escrever milhar, mas ler_decimal o lê
+    como ponto decimal."""
+    t = str(texto or "").strip().replace(" ", "")
+    return "," not in t and re.fullmatch(r"\d{1,3}(\.\d{3})+", t) is not None
 
 
 def normalizar_ncm(texto: str) -> str:
@@ -338,6 +364,13 @@ def validar_item(item: EntradaItem, hoje: date) -> Resultado:
     preco = ler_decimal(item.preco)
     if preco is None or preco <= 0:
         r.erros.append(f"{n}: preço inválido ({item.preco!r}).")
+    elif _milhar_sem_virgula(item.preco):
+        # "1.234" é 1234 ou 1,234? ler_decimal lê 1,234 e o ME recebia "1,23".
+        r.erros.append(f"{n}: preço ambíguo ({item.preco!r}). Use vírgula nos "
+                       f"centavos: \"1.234,00\" ou \"1,23\".")
+    elif preco != preco.quantize(Decimal("0.01")):
+        # O ME guarda 2 casas: "0,004" virava "0,00" sem erro.
+        r.erros.append(f"{n}: preço com mais de 2 casas ({item.preco!r}).")
 
     if len(normalizar_ncm(item.ncm)) != 8:
         r.erros.append(f"{n}: NCM precisa ter 8 dígitos ({item.ncm!r}).")

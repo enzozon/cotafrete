@@ -8,6 +8,8 @@ entrega e total — e que o contador de itens prontos anda.
 
 from __future__ import annotations
 
+from core import sessao as sessao_senha
+
 import socket
 import threading
 import time
@@ -39,6 +41,7 @@ def servidor(tmp_path, monkeypatch):
                          empresa="EDP - Outsourcing")
     me_ui.carregar_itens(cid)
     banco.criar_conta("enzo")
+    banco.definir_senha("enzo", sessao_senha.hash_senha("senha-de-teste"))  # sessão só vale com senha
 
     with socket.socket() as s:
         s.bind(("127.0.0.1", 0))

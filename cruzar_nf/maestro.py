@@ -275,6 +275,7 @@ def registrar(sio: Any, config: Dict[str, Any], logger: Any, manager: Any = None
     # -- Sincronização manual (botões do dashboard do admin; docs/sincronizacao no portal) ---------------
     execucao_planilha = _Execucao()
     ARQ_MANUAL = "sincronizacao_manual.json"   # último resultado de cada botão (a falha na planilha não fica em outro lugar)
+    trava_manual = threading.Lock()   # os dois botões podem terminar juntos: sem ela um resultado apagava o outro
 
     def _nf_completo(progresso: Callable[[str], None]) -> str:
         """HSE -> portal e, se deu certo, portal -> coluna N da planilha. Mesma janela da rodada agendada.
@@ -344,10 +345,11 @@ def registrar(sio: Any, config: Dict[str, Any], logger: Any, manager: Any = None
     def _guardar_manual(servico: str, sucesso: bool, texto: str) -> None:
         arq = os.path.join(_pasta(), ARQ_MANUAL)
         try:
-            atual = _ler_manual()
-            atual[servico] = {"em": sync.agora_iso(), "nivel": "ok" if sucesso else "erro", "resumo": texto,
-                              "detalhe": {"origem": "portal"}}
-            gravar_json(arq, atual)
+            with trava_manual:
+                atual = _ler_manual()
+                atual[servico] = {"em": sync.agora_iso(), "nivel": "ok" if sucesso else "erro", "resumo": texto,
+                                  "detalhe": {"origem": "portal"}}
+                gravar_json(arq, atual)
         except Exception as e:   # é só para o cartão; não muda o resultado do botão
             logger.error(f"[{servico}] resultado não guardado para o cartão: {e}")
 

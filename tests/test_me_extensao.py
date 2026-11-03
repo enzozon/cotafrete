@@ -8,6 +8,8 @@ verdade, com o ME respondido localmente.
 
 from __future__ import annotations
 
+from core import sessao as sessao_senha
+
 import io
 import json
 import socket
@@ -109,6 +111,7 @@ def servidor(tmp_path, monkeypatch):
     monkeypatch.setattr(me_extensao, "SESSAO_ME", lambda conta: FALSOS)
     cid = banco.me_criar("edp_alianca", 23083602, status="pendente", empresa="EDP - Outsourcing")
     banco.criar_conta("enzo")
+    banco.definir_senha("enzo", sessao_senha.hash_senha("senha-de-teste"))  # sessão só vale com senha
     with socket.socket() as s:
         s.bind(("127.0.0.1", 0))
         porta = s.getsockname()[1]
@@ -133,10 +136,14 @@ def test_clicar_abre_o_me_ja_com_a_sessao_da_conta_certa(servidor, tmp_path):
     with sync_playwright() as p:
         # O ME de verdade fica inalcançável: a aba que a extensão abre escapa do
         # ctx.route, então o nome nem resolve e o teste não sai da máquina.
+        # --no-proxy-server: atrás de um proxy (HTTPS_PROXY no ambiente), quem
+        # resolve o nome é o proxy e a regra acima não vale; a aba chegava ao
+        # ME real, que redirecionava ao login e o teste falhava.
         ctx = p.chromium.launch_persistent_context(
             str(tmp_path / "perfil"), channel="chromium", headless=True,
             args=[f"--disable-extensions-except={ext}", f"--load-extension={ext}",
-                  "--host-resolver-rules=MAP www.me.com.br ~NOTFOUND"])
+                  "--host-resolver-rules=MAP www.me.com.br ~NOTFOUND",
+                  "--no-proxy-server"])
         sw = ctx.service_workers[0] if ctx.service_workers else ctx.wait_for_event("serviceworker")
         assert sw.url.split("/")[2] == sessao_me.EXTENSAO_ID       # identidade fixa
         # O vendedor estava logado em OUTRA conta.
