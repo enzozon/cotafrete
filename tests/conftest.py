@@ -89,6 +89,15 @@ def pytest_configure(config):
     config.addinivalue_line(
         "markers", "navegador: abre Chromium ou sobe uvicorn (lento; marcado "
         "sozinho pelo tests/conftest.py)")
+    # Em paralelo (-n), o web/app.py faz Banco() ao ser importado na coleta,
+    # nos 4 processos ao mesmo tempo. Numa máquina sem cotafrete.db (a CI)
+    # os quatro criam o mesmo arquivo juntos e caem em "database is locked".
+    # O processo controlador cria antes de os outros nascerem. Só com xdist:
+    # o job do Python 3.8 não importa o core.
+    if getattr(config.option, "numprocesses", None) and \
+            not os.environ.get("PYTEST_XDIST_WORKER"):
+        from core.banco import Banco
+        Banco()
 
 
 def pytest_collection_modifyitems(config, items):
