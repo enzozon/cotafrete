@@ -5,7 +5,11 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient
 
+from decimal import Decimal
+
 from core.banco import Banco
+from orcamento.conferencia import SEM_HSE, FilaConferencia
+from orcamento.processador import Conferencia, ItemConferido
 from orcamento.fila import FilaDav
 from tests.apoio import entrar
 from tests.orcamento.planilhas.gerar import criar
@@ -18,6 +22,10 @@ def app_web(tmp_path, monkeypatch):
     banco = Banco(tmp_path / "teste.db")
     fila = FilaDav(banco, tmp_path / "davs", disparar=lambda t: DISPARADOS.append(t))
     DISPARADOS.clear()
+    CONFERENCIA["resultado"] = _conferencia_ok()
+    conferencia = FilaConferencia(banco, tmp_path / "davs", executar=lambda _p: CONFERENCIA["resultado"],
+                                  disparar=lambda t: t())
+    monkeypatch.setattr(dav_ui, "FILA_CONFERENCIA", conferencia, raising=False)
     monkeypatch.setattr(modulo, "banco", banco)
     monkeypatch.setattr(modulo, "FILA_DAV", fila)
     monkeypatch.setattr(dav_ui, "banco", banco)
@@ -27,6 +35,15 @@ def app_web(tmp_path, monkeypatch):
 
 
 DISPARADOS: list = []
+CONFERENCIA: dict = {}
+
+
+def _conferencia_ok(**campos):
+    base = dict(estado="ok", relatorio="", cliente="6303 - TANGARA", endereco="Rua Tal, 10",
+                vendedor="ANA", itens=(ItemConferido(1, "C1", "Descricao HSE", Decimal("10.00"),
+                                                     Decimal("12.50"), "codigo"),),
+                avisos=(), erros=())
+    return Conferencia(**{**base, **campos})
 
 
 @pytest.fixture
@@ -365,3 +382,60 @@ def test_detalhe_vendedor_mostra_o_erro_do_robo_sem_o_financeiro(cli, app_web):
     assert "Item 8: valor unitário R$ 407,19 abaixo do mínimo R$ 16.022,50" in t
     for segredo in ("DE15635", "27/09/2026"):
         assert segredo not in t
+
+
+def test_conferencia_com_erros_esconde_gerar_e_mostra_corrigir(cli, app_web, tmp_path):
+    CONFERENCIA["resultado"] = _conferencia_ok(estado="erros", erros=("Item 1: código <x> não existe",))
+    r = enviar(cli, planilha(tmp_path))
+    assert "/gerar" not in r.text
+    assert 'class="alerta"' in r.text and "Item 1: código &lt;x&gt; não existe" in r.text
+    assert "/dav?origem=1" in r.text
+    assert cli.get("/dav?origem=1").status_code == 200
+
+
+def test_conferindo_atualiza_sozinho_e_nao_tem_gerar(cli, app_web, tmp_path):
+    enviar(cli, planilha(tmp_path))
+    app_web.banco.dav_atualizar(1, conferencia="conferindo")
+    t = cli.get("/dav/1/conferir").text
+    assert '<meta http-equiv="refresh" content="5;url=/dav/1/conferir">' in t
+    assert "Conferindo com o HSE" in t and "/gerar" not in t
+
+
+def test_nao_conferido_avisa_e_libera_gerar(cli, app_web, tmp_path):
+    CONFERENCIA["resultado"] = Conferencia("nao_conferido", "", "", "", "", (), (SEM_HSE,), ())
+    r = enviar(cli, planilha(tmp_path))
+    assert SEM_HSE in r.text and "/dav/1/gerar" in r.text
+
+
+@pytest.mark.parametrize("estado", ["conferindo", "erros"])
+def test_gerar_recusado_com_conferencia_em_andamento_ou_com_erros(cli, app_web, tmp_path, estado):
+    enviar(cli, planilha(tmp_path))
+    app_web.banco.dav_atualizar(1, conferencia=estado)
+    r = cli.post("/dav/1/gerar")
+    assert (r.status_code, r.headers["location"]) == (303, "/dav/1/conferir")
+    assert app_web.banco.dav(1, "ana")["estado"] == "rascunho" and not DISPARADOS
+
+
+def test_rascunho_antigo_sem_conferencia_continua_gerando(cli, app_web, tmp_path):
+    enviar(cli, planilha(tmp_path))
+    app_web.banco.dav_atualizar(1, conferencia=None)
+    t = cli.get("/dav/1/conferir").text
+    assert "/dav/1/gerar" in t and "Cliente no HSE" not in t
+    assert cli.post("/dav/1/gerar").headers["location"] == "/dav/1"
+    assert len(DISPARADOS) == 1
+
+
+def test_aviso_financeiro_da_conferencia_nao_aparece_ao_vendedor(cli, app_web, tmp_path):
+    fin = "Cliente com pendência financeira: título DF15653 vencido"
+    CONFERENCIA["resultado"] = _conferencia_ok(avisos=(fin, fin, "Outro aviso <b>"), estado="ok")
+    t = enviar(cli, planilha(tmp_path)).text
+    assert "DF15653" not in t
+    assert t.count("Aviso financeiro: consulte o financeiro.") == 1
+    assert "Outro aviso &lt;b&gt;" in t
+
+
+def test_tabela_mostra_preco_de_tabela_e_da_planilha(cli, tmp_path):
+    t = enviar(cli, planilha(tmp_path)).text
+    for esperado in ("Código HSE", "Descrição no HSE", "Tabela", "Planilha", "R$ 10,00", "R$ 12,50",
+                     "Descricao HSE", "6303 - TANGARA", "Rua Tal, 10"):
+        assert esperado in t

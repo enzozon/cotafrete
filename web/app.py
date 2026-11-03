@@ -64,6 +64,7 @@ from core import conferencia, selecao
 from core.aceite import rotulo_validade, vencida
 from carriers.generoso.mapping import Agendamento, validar_agendamento
 from core.banco import Banco
+from orcamento.conferencia import FilaConferencia
 from orcamento.fila import FilaDav
 from core.evidencias import limpar_antigas, montar_zip_de_prints
 from core.retentativa import (
@@ -105,6 +106,7 @@ async def _vida(_app):
     # estava gerando vira "confira no HSE" (orcamento/fila.py).
     try:
         FILA_DAV.retomar()
+        FILA_CONFERENCIA.retomar()
     except Exception as exc:  # noqa: BLE001 — banco travado no boot não derruba o servidor
         print(f"[cotafrete] Fila do DAV: retomar falhou ({exc!r}); o servidor sobe assim mesmo.")
     if VIGIA_ME is None:
@@ -133,6 +135,7 @@ app = FastAPI(title="Cotafrete — Ventura", lifespan=_vida)
 banco = Banco()
 # Fila do Gerar DAV: a thread só nasce no primeiro DAV (nada sobe no import).
 FILA_DAV = FilaDav(banco, Path("davs"))
+FILA_CONFERENCIA = FilaConferencia(banco, Path("davs"))
 
 # Faxina dos prints velhos (>30 dias) a cada início do servidor — não há
 # scheduler no projeto, e reiniciar já é rotina (ver core/evidencias.py).
@@ -152,6 +155,7 @@ app.include_router(adm_dav.router)
 me_ui.banco = banco
 dav_ui.banco = banco
 dav_ui.FILA = FILA_DAV
+dav_ui.FILA_CONFERENCIA = FILA_CONFERENCIA
 # Cada chamada à IA (core/ia.py) fica registrada no banco para o /adm/me
 # mostrar quem respondeu. Lambda, e não o método: os testes trocam `banco`.
 ia.REGISTRO = lambda **kw: banco.ia_registrar(**kw)

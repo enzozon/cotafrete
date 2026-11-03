@@ -24,7 +24,10 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from core.banco import Banco
 from core import painel_dav
 from orcamento.fila import FilaDav
-from orcamento.diagnostico import diagnostico
+from orcamento.conferencia import FilaConferencia
+from orcamento.diagnostico import _financeiro, diagnostico
+from orcamento.processador import Conferencia
+from orcamento.relatorio import moeda
 from orcamento.planilha import ErroPlanilha, ler_planilha, observacoes_hse
 from web import adm
 from web.layout import BOTAO_TEMA, CSS_DAV, cabecalho, e, pagina
@@ -32,6 +35,8 @@ from web.layout import BOTAO_TEMA, CSS_DAV, cabecalho, e, pagina
 banco: Banco | None = None
 vendedor: Callable[[str | None], str | None] | None = None
 FILA: FilaDav | None = None
+FILA_CONFERENCIA: FilaConferencia | None = None
+AVISO_FINANCEIRO = "Aviso financeiro: consulte o financeiro."
 COOKIE = "cotafrete_usuario"
 agora = datetime.now
 
@@ -282,18 +287,86 @@ def modelo(usuario: str | None = Depends(_quem)):
     return FileResponse(MODELO, filename=MODELO.name)
 
 
-def _resumo(o, dav_id: int) -> str:
-    itens = "".join(
-        f"<tr><td>{i.numero}</td><td>{e(i.produto)}</td><td>{e(i.quantidade)}</td>"
-        f"<td>{e(i.valor_unit)}</td><td>"
-        f"{e(i.codigo) if i.codigo else 'procurar pela descrição / cadastrar se não existir'}"
-        f"</td><td>{e(i.descricao)}</td></tr>" for i in o.itens)
+def _filtrar(textos) -> list[str]:
+    """O vendedor não vê detalhe financeiro: vira um aviso único (sem repetir)."""
+    saida: list[str] = []
+    for t in textos:
+        t = AVISO_FINANCEIRO if _financeiro(t) else t
+        if t not in saida:
+            saida.append(t)
+    return saida
+
+
+def _conferencia_de(d: dict | None) -> tuple[str | None, Conferencia | None]:
+    estado = (d or {}).get("conferencia")
+    if estado not in ("ok", "erros", "nao_conferido") or not d.get("conferencia_relatorio"):
+        return estado, None
+    try:
+        return estado, Conferencia.de_json(d["conferencia_relatorio"])
+    except Exception:
+        return estado, None
+
+
+def _bloco_hse(conf: Conferencia | None) -> str:
+    if conf is None or not (conf.cliente or conf.endereco or conf.vendedor):
+        return ""
+    return ('<dl class="dav-dados"><div><dt>Cliente no HSE</dt><dd>%s</dd></div>'
+            '<div><dt>Endereço no HSE</dt><dd>%s</dd></div>'
+            '<div><dt>Vendedor no HSE</dt><dd>%s</dd></div></dl>'
+            % (e(conf.cliente), e(conf.endereco), e(conf.vendedor)))
+
+
+def _tabela_itens(o, conf: Conferencia | None) -> str:
+    if conf is None or not conf.itens:
+        linhas = "".join(
+            f"<tr><td>{i.numero}</td><td>{e(i.produto)}</td><td>{e(i.quantidade)}</td>"
+            f"<td>{e(i.valor_unit)}</td><td>"
+            f"{e(i.codigo) if i.codigo else 'procurar pela descrição / cadastrar se não existir'}"
+            f"</td><td>{e(i.descricao)}</td></tr>" for i in o.itens)
+        cab = "<th>#</th><th>Produto</th><th>Qtd</th><th>Valor unit.</th><th>Código HSE</th><th>Descrição</th>"
+    else:
+        achados = {i.numero: i for i in conf.itens}
+        linhas = ""
+        for i in o.itens:
+            h = achados.get(i.numero)
+            if h:
+                codigo, desc_hse = h.codigo or "novo", h.descricao
+                tabela = moeda(h.preco_tabela) if h.preco_tabela is not None else "—"
+                plan = moeda(h.valor_unit)
+            else:
+                codigo, desc_hse, tabela, plan = "", "", "—", i.valor_unit
+            linhas += (f"<tr><td>{i.numero}</td><td>{e(i.produto)}</td><td>{e(i.quantidade)}</td>"
+                       f"<td>{e(i.descricao)}</td><td>{e(codigo)}</td><td>{e(desc_hse)}</td>"
+                       f"<td>{e(tabela)}</td><td>{e(plan)}</td></tr>")
+        cab = ("<th>#</th><th>Produto</th><th>Qtd</th><th>Descrição</th><th>Código HSE</th>"
+               "<th>Descrição no HSE</th><th>Tabela</th><th>Planilha</th>")
+    return f'<div class="dav-table"><table><thead><tr>{cab}</tr></thead><tbody>{linhas}</tbody></table></div>'
+
+
+def _resumo(o, dav_id: int, d: dict | None = None) -> str:
+    estado, conf = _conferencia_de(d)
+    cabeca = cabecalho("Conferir orçamento", tarja=f"DAV · Envio #{dav_id}",
+                       sub="Revise os dados. O orçamento só será enviado ao HSE quando você confirmar.")
+    passos = ('<div class="dav-steps"><span>1 · Enviar planilha</span><span class="atual">2 · Conferir</span>'
+              '<span>3 · Gerar DAV</span></div>')
+    if estado == "conferindo":
+        return (f'<meta http-equiv="refresh" content="5;url=/dav/{dav_id}/conferir">' + cabeca
+                + f'<section class="cartao dav-card dav-entrada">{passos}<p role="status">Conferindo com o HSE…</p>'
+                '<div class="dav-acoes"><a href="/dav">Voltar ao envio</a></div></section>')
     obs = "<br>".join(e(linha) for linha in observacoes_hse(o).split("\n"))  # o mesmo texto que vai ao HSE
-    avisos = "".join(f'<div class="aviso">{e(a)}</div>' for a in o.avisos)
+    avisos = "".join(f'<div class="aviso">{e(a)}</div>'
+                     for a in _filtrar(list(o.avisos) + (list(conf.avisos) if conf else [])))
+    if conf:
+        avisos += "".join(f'<div class="alerta">{e(a)}</div>' for a in _filtrar(conf.erros))
     prazo = o.prazo_dias if o.prazo_dias is not None else ""
-    return cabecalho("Conferir orçamento", tarja=f"DAV · Envio #{dav_id}",
-                     sub="Revise os dados. O orçamento só será enviado ao HSE quando você confirmar.") + f"""
-<section class="cartao dav-card dav-entrada"><div class="dav-steps"><span>1 · Enviar planilha</span><span class="atual">2 · Conferir</span><span>3 · Gerar DAV</span></div>{avisos}
+    if estado == "erros":
+        acao = (f'<div class="dav-acoes"><a class="botao2" href="/dav?origem={dav_id}">Enviar planilha corrigida →</a>'
+                '<a href="/dav">Voltar ao envio</a></div>')
+    else:
+        acao = (f'<form method="post" action="/dav/{dav_id}/gerar" data-dav-envio class="dav-acoes">'
+                '<button type="submit">Confirmar e gerar DAV →</button><a href="/dav">Voltar ao envio</a></form>')
+    return cabeca + f"""
+<section class="cartao dav-card dav-entrada">{passos}{avisos}{_bloco_hse(conf)}
 <dl class="dav-dados"><div><dt>Cliente</dt><dd>{e(o.cliente)}</dd></div><div><dt>Vendedor</dt><dd>{e(o.vendedor)}</dd></div>
 <div><dt>Local de entrega</dt><dd>{e(o.local_entrega or 'Não informado')}</dd></div>
 <div>
@@ -303,10 +376,8 @@ def _resumo(o, dav_id: int) -> str:
 </div><div>
 <dt>Prazo (dias)</dt><dd>{e(prazo)}</dd>
 </div><div><dt>OC</dt><dd>{e(o.ordem_compra or '')}</dd></div><div><dt>Observações</dt><dd>{obs}</dd></div></dl>
-<div class="dav-table">
-<table><thead><tr><th>#</th><th>Produto</th><th>Qtd</th><th>Valor unit.</th><th>Código HSE</th><th>Descrição</th></tr></thead>
-<tbody>{itens}</tbody></table></div>
-<form method="post" action="/dav/{dav_id}/gerar" data-dav-envio class="dav-acoes"><button type="submit">Confirmar e gerar DAV →</button><a href="/dav">Voltar ao envio</a></form></section>"""
+{_tabela_itens(o, conf)}
+{acao}</section>"""
 
 
 @router.get("/{dav_id}/conferir", response_class=HTMLResponse)
@@ -322,7 +393,7 @@ def reconferir(dav_id: int, usuario: str | None = Depends(_quem)):
         orcamento = ler_planilha(FILA.planilha(dav_id))
     except Exception:
         return _erro(usuario, "A planilha da conferência não está disponível ou está inválida. Envie o arquivo corrigido.")
-    return _html("Conferir DAV", _resumo(orcamento, dav_id), usuario)
+    return _html("Conferir DAV", _resumo(orcamento, dav_id, d), usuario)
 
 
 @router.post("/conferir", response_class=HTMLResponse)
@@ -361,7 +432,9 @@ def conferir(planilha: UploadFile = File(...),
             if origem:
                 banco.dav_vincular_correcao(origem, dav_id, usuario)
             temp.replace(FILA.planilha(dav_id))
-        return _html("Conferir DAV", _resumo(o, dav_id), usuario)
+            banco.dav_atualizar(dav_id, conferencia="conferindo")   # antes: a fila só grava em "conferindo"
+        FILA_CONFERENCIA.enfileirar(dav_id)
+        return _html("Conferir DAV", _resumo(o, dav_id, banco.dav(dav_id, usuario)), usuario)
     finally:
         temp.unlink(missing_ok=True)
 
@@ -372,7 +445,8 @@ def _validar_origem(usuario: str, origem: int | None) -> None:
     d = banco.dav(origem, usuario)
     if d is None:
         raise HTTPException(404)
-    if d["estado"] not in ("erro", "rejeitado") or diagnostico(d, administrador=False)["salvamento"] == "incerto":
+    corrigivel = d["estado"] in ("erro", "rejeitado") or (d["estado"] == "rascunho" and d.get("conferencia") == "erros")
+    if not corrigivel or diagnostico(d, administrador=False)["salvamento"] == "incerto":
         raise HTTPException(409, "Confira o resultado no HSE antes de reenviar.")
 
 
@@ -399,6 +473,8 @@ def gerar(dav_id: int, usuario: str | None = Depends(_quem)):
             raise HTTPException(404)
         if d["estado"] != "rascunho":
             return RedirectResponse(f"/dav/{dav_id}", status_code=303)
+        if d.get("conferencia") in ("conferindo", "erros"):
+            return RedirectResponse(f"/dav/{dav_id}/conferir", status_code=303)
         antigo = banco.dav_ja_gerado(usuario, d["hash_planilha"])
         if antigo:
             with closing(banco._conectar()) as con:
