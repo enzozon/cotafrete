@@ -10,9 +10,9 @@ from decimal import Decimal
 import pytest
 
 from core.banco import Banco
-from orcamento.conferencia import SEM_HSE, SEM_LOGIN, FilaConferencia
+from orcamento.conferencia import SEM_LOGIN, FilaConferencia
 from orcamento.config import Config
-from orcamento.processador import Conferencia, HseIndisponivel, ItemConferido
+from orcamento.processador import SEM_HSE, Conferencia, HseIndisponivel, ItemConferido
 
 
 @pytest.fixture
@@ -150,11 +150,13 @@ def test_executor_padrao_forca_dry_run_e_pasta_programa(banco, tmp_path, monkeyp
     visto = {}
 
     class HseFalso:
+        bloqueados: list = []
+
         def __init__(self, cfg):
             visto["hse_cfg"] = cfg
 
         def __enter__(self):
-            return "hse"
+            return self
 
         def __exit__(self, *a):
             return False
@@ -169,8 +171,63 @@ def test_executor_padrao_forca_dry_run_e_pasta_programa(banco, tmp_path, monkeyp
     i = _rascunho(banco)
     FilaConferencia(banco, tmp_path, disparar=lambda t: t()).enfileirar(i)
     assert visto["cfg"].dry_run is True and visto["cfg"].pasta_programa == tmp_path
-    assert visto["hse_cfg"] is visto["cfg"] and visto["hse"] == "hse"
+    assert visto["hse_cfg"] is visto["cfg"] and isinstance(visto["hse"], HseFalso)
     assert _gravado(banco, i)[0] == "ok"
+
+
+def test_gravacao_bloqueada_vira_nao_conferido_e_loga_sem_senha(banco, tmp_path, monkeypatch, caplog):
+    monkeypatch.setenv("HSE_SENHA", "s3gredo")
+
+    class HseQueTentouGravar:
+        def __init__(self, cfg):
+            self.bloqueados = ["vendaAlt.php acao=salvarObsItem&s=s3gredo"]
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    monkeypatch.setattr("orcamento.config.config_do_ambiente", _config)
+    monkeypatch.setattr("orcamento.hse.HseSoLeitura", HseQueTentouGravar)
+    monkeypatch.setattr("orcamento.conferencia.conferir", lambda p, cfg, hse: _conf("ok"))
+    i = _rascunho(banco)
+    FilaConferencia(banco, tmp_path, disparar=lambda t: t()).enfileirar(i)
+    estado, conf = _gravado(banco, i)
+    assert estado == "nao_conferido" and conf.relatorio == SEM_HSE
+    assert "salvarObsItem" in caplog.text and "s3gredo" not in caplog.text
+    assert "Traceback" not in caplog.text
+
+
+def test_sem_vaga_no_tempo_nunca_abre_o_navegador(banco, tmp_path, monkeypatch):
+    vaga = threading.Semaphore(1)
+    vaga.acquire()   # frete/Gerar ocupando a única vaga
+    abertos = []
+
+    class Registra:
+        bloqueados: list = []
+
+        def __init__(self, cfg):
+            abertos.append(cfg)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    monkeypatch.setattr("core.retentativa.VAGA_NAVEGADOR", vaga)
+    monkeypatch.setattr("orcamento.config.config_do_ambiente", _config)
+    monkeypatch.setattr("orcamento.hse.HseSoLeitura", Registra)
+    monkeypatch.setattr("orcamento.conferencia.conferir", lambda p, cfg, hse: _conf("ok"))
+    i = _rascunho(banco)
+    FilaConferencia(banco, tmp_path, disparar=lambda t: t(), limite_s=0.05).enfileirar(i)
+    assert _gravado(banco, i)[1].relatorio == SEM_HSE
+    vaga.release()   # a vaga abre depois que a fila desistiu
+    for t in [t for t in threading.enumerate() if t.name == "conferencia-hse"]:
+        t.join(2)
+    assert abertos == []
+    assert vaga.acquire(blocking=False)   # a vaga não ficou presa
 
 
 def test_hse_indisponivel_vira_nao_conferido(banco, tmp_path, monkeypatch):

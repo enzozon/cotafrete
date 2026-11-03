@@ -47,6 +47,7 @@ class FilaConferencia:
         self.banco = banco
         self.pasta = Path(pasta)
         self._executar = executar or self._executar_no_hse
+        self._padrao = executar is None   # só o executor padrão recebe o aviso de desistência
         self._disparar = disparar or self._na_thread
         self._limite_s = limite_s
         self._trava = threading.Lock()
@@ -90,10 +91,14 @@ class FilaConferencia:
         (daemon): o resultado dela nunca é gravado."""
         saida: list[Conferencia] = []
         erro: list[Exception] = []
+        desistiu = threading.Event()   # o executor padrão não abre o navegador depois disto
 
         def rodar() -> None:
             try:
-                saida.append(self._executar(planilha))
+                if self._padrao:
+                    saida.append(self._executar_no_hse(planilha, desistiu))
+                else:
+                    saida.append(self._executar(planilha))
             except Exception as e:
                 erro.append(e)
 
@@ -101,6 +106,7 @@ class FilaConferencia:
         aux.start()
         aux.join(self._limite_s)
         if aux.is_alive():
+            desistiu.set()
             return _nao_conferido(SEM_HSE)
         if erro:
             e = erro[0]
@@ -111,7 +117,7 @@ class FilaConferencia:
             return _nao_conferido(motivo)
         return saida[0]
 
-    def _executar_no_hse(self, planilha: Path) -> Conferencia:
+    def _executar_no_hse(self, planilha: Path, desistiu: threading.Event | None = None) -> Conferencia:
         # Import aqui: o playwright só carrega quando uma conferência roda de verdade.
         from core.retentativa import VAGA_NAVEGADOR
         from orcamento.config import config_do_ambiente
@@ -122,5 +128,20 @@ class FilaConferencia:
         except ValueError:
             return _nao_conferido(SEM_LOGIN)
         cfg = replace(cfg, dry_run=True, pasta_programa=self.pasta)
-        with VAGA_NAVEGADOR, HseSoLeitura(cfg) as hse:
-            return conferir(planilha, cfg, hse)
+        # A vaga só é esperada dentro do limite: depois dele a fila já desistiu e
+        # abrir uma sessão do HSE só roubaria a vaga do frete / Gerar.
+        if not VAGA_NAVEGADOR.acquire(timeout=self._limite_s):
+            return _nao_conferido(SEM_HSE)
+        try:
+            if desistiu is not None and desistiu.is_set():
+                return _nao_conferido(SEM_HSE)
+            with HseSoLeitura(cfg) as hse:
+                conf = conferir(planilha, cfg, hse)
+                bloqueados = list(hse.bloqueados)
+        finally:
+            VAGA_NAVEGADOR.release()
+        if bloqueados:   # a guarda segurou uma gravação: a simulação não é confiável
+            log.error("Fila da conferência: %s tentou gravar no HSE (bloqueado): %s",
+                      planilha.name, _sem_segredo("; ".join(bloqueados)))
+            return _nao_conferido(SEM_HSE)
+        return conf
