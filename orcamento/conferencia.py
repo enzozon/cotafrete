@@ -28,6 +28,14 @@ SEM_HSE = "Não consegui conferir com o HSE agora; o robô confere de novo ao ge
 SEM_LOGIN = "Robô do HSE sem login configurado no servidor."
 
 
+def _limpa(conf: Conferencia) -> Conferencia:
+    """Cópia com a senha tirada de cada texto; o JSON gravado nunca é tocado."""
+    s = _sem_segredo
+    return replace(conf, relatorio=s(conf.relatorio), cliente=s(conf.cliente), endereco=s(conf.endereco),
+                   vendedor=s(conf.vendedor), avisos=tuple(map(s, conf.avisos)), erros=tuple(map(s, conf.erros)),
+                   itens=tuple(replace(i, descricao=s(i.descricao)) for i in conf.itens))
+
+
 def _nao_conferido(motivo: str) -> Conferencia:
     return Conferencia("nao_conferido", motivo, "", "", "", (), (SEM_HSE,), ())
 
@@ -76,7 +84,7 @@ class FilaConferencia:
             log.warning("Fila da conferência: %s mudou durante a conferência, não gravado", dav_id)
             return
         no_banco(self.banco.dav_atualizar, dav_id, conferencia=conf.estado,
-                 conferencia_relatorio=_sem_segredo(conf.para_json()))
+                 conferencia_relatorio=_limpa(conf).para_json())
 
     def _com_limite(self, planilha: Path) -> Conferencia:
         """Roda o executor numa thread auxiliar; passou do tempo, abandona-a

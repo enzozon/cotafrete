@@ -600,7 +600,7 @@ def conferir(path: Path, cfg: Config, hse: HseApi) -> Conferencia:
                 log.warning("Conferência de %s recusada pela tela: %s", path.name, _sem_segredo(str(e)))
                 rel.erro(_resumo(e))
     except HseIndisponivel as e:
-        log.warning("HSE indisponível ao conferir %s: %s", path.name, e)
+        log.warning("HSE indisponível ao conferir %s: %s", path.name, _sem_segredo(str(e)))
         return pronto("nao_conferido")
     except Exception as e:  # noqa: BLE001
         log.error("Falha inesperada ao conferir %s: %s", path.name, _sem_segredo(str(e)) or type(e).__name__)

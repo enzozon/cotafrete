@@ -5,13 +5,14 @@ from __future__ import annotations
 import sqlite3
 import threading
 import time
+from decimal import Decimal
 
 import pytest
 
 from core.banco import Banco
 from orcamento.conferencia import SEM_HSE, SEM_LOGIN, FilaConferencia
 from orcamento.config import Config
-from orcamento.processador import Conferencia, HseIndisponivel
+from orcamento.processador import Conferencia, HseIndisponivel, ItemConferido
 
 
 @pytest.fixture
@@ -230,3 +231,20 @@ def test_conferencia_gravada_nao_leva_a_senha(banco, tmp_path, monkeypatch):
     assert "s3gredo" not in banco.dav(i, None)["conferencia_relatorio"]
     estado, conf = _gravado(banco, i)
     assert estado == "erros" and conf.erros == ("erro com ***",)
+
+
+@pytest.mark.parametrize("senha", ["1", "s"])
+def test_senha_curta_nao_estraga_o_json_gravado(banco, tmp_path, monkeypatch, senha):
+    monkeypatch.setenv("HSE_SENHA", senha)
+    item = ItemConferido(1, "123", f"parafuso {senha}x", Decimal("150.00"), Decimal("150.00"), "codigo")
+    vazada = Conferencia("erros", f"tela disse {senha}", "1 - CLIENTE", "rua 1", "vendedor",
+                         (item,), (f"aviso {senha}",), (f"erro {senha}",))
+    i = _rascunho(banco)
+    _fila(banco, tmp_path, lambda p: vazada).enfileirar(i)
+    estado, conf = _gravado(banco, i)
+    assert estado == "erros"
+    textos = [conf.relatorio, conf.cliente, conf.endereco, conf.vendedor, *conf.avisos, *conf.erros,
+              conf.itens[0].descricao]
+    assert all(senha not in t for t in textos)
+    assert conf.itens[0].preco_tabela == Decimal("150.00") and conf.itens[0].valor_unit == Decimal("150.00")
+    assert conf.itens[0].codigo == "123" and conf.erros == ("erro ***",)

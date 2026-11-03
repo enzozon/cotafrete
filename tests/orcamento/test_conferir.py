@@ -3,7 +3,7 @@ from pathlib import Path
 
 from orcamento.config import Config
 from orcamento.planilha import Item
-from orcamento.processador import (Cliente, Conferencia, ErroHse, Produto, Resolucao, aviso_preco_acima,
+from orcamento.processador import (Cliente, Conferencia, ErroHse, HseIndisponivel, Produto, Resolucao, aviso_preco_acima,
                                    conferir, conferir_desconto)
 from tests.orcamento.hse_falso import HseFalso
 from tests.orcamento.planilhas.gerar import VARIANTES, criar
@@ -145,10 +145,13 @@ def test_log_da_conferencia_nao_vaza_senha(tmp_path, monkeypatch, caplog):
         def buscar_produtos(self, termo):
             if self.onde == "busca":
                 raise Exception("busca falhou com s3gredo")
+            if self.onde == "fora":
+                raise HseIndisponivel("login falhou com s3gredo")
             return super().buscar_produtos(termo)
 
-    for onde in ("tela", "busca"):
+    for onde in ("tela", "busca", "fora"):
         caplog.clear()
         p = criar(tmp_path, None, f"{onde}.xlsx")
         conferir(p, cfg(tmp_path), Quebra(onde, produtos=[_produto("150")]))
         assert "falhou" in caplog.text and "s3gredo" not in caplog.text
+        assert "Traceback" not in caplog.text
