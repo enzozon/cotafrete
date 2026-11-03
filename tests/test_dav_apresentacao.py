@@ -51,5 +51,15 @@ def test_detalhe_orienta_planilha_e_copia_tem_contexto(cli, app_web):
     s = BeautifulSoup(cli.get(f"/dav/{i}").text, "html.parser")
     assert s.select_one('.dav-orientacao')
     assert 'B4' in s.select_one('.dav-orientacao').get_text()
+    assert 'Quantidade do item 3' in s.select_one('.dav-orientacao').get_text()
+    assert 'maior que zero' in s.select_one('.dav-orientacao').get_text()
     copia = s.select_one('#dav-diagnostico').get_text()
     assert f'Envio #{i}' in copia and 'Horário' in copia and 'Etapa' in copia
+
+
+def test_falha_automacao_nao_pede_planilha_corrigida(cli, app_web):
+    i = app_web.banco.dav_criar('ana', 'a.xlsx', 'x', 'Cliente A')
+    app_web.banco.dav_atualizar(i, estado='erro', erro='Item 1: tela ficou com qtd/preço diferente do esperado')
+    s = BeautifulSoup(cli.get(f'/dav/{i}').text, 'html.parser')
+    assert 'Enzo, Allan ou Lucas' in s.get_text()
+    assert not s.select(f'a[href="/dav?origem={i}"]')

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import sqlite3
 import threading
 import uuid
@@ -211,12 +212,17 @@ def tempo_dav(d: dict, *, instante: datetime | None = None) -> str:
 
 def bloco_orientacao(d: dict, *, administrador: bool = False) -> str:
     diag = diagnostico(d, administrador=administrador)
-    campos = ", ".join(diag.get("campos", []))
+    referencias = diag.get("campos", [])
+    quantidades = [c for c in referencias if re.fullmatch(r"B(?:[2-9]|1\d|2[0-5])", c)]
+    campos = ", ".join(f"Quantidade do item {int(c[1:])-1} ({c})" if c in quantidades else c for c in referencias)
+    correcao = diag.get("como_corrigir", diag["orientacao"])
+    if quantidades and diag.get("origem") == "planilha":
+        correcao += " A quantidade deve ser um número maior que zero nos itens indicados."
     return ('<section class="dav-orientacao" aria-label="Orientação sobre o erro">'
             f'<h3>{e(diag.get("origem_rotulo", "Causa não identificada"))}</h3>'
             f'<p><b>Onde conferir:</b> {e(diag.get("onde_conferir", "Consulte os detalhes do envio."))}</p>'
             + (f'<p class="dav-celulas"><b>Células:</b> {e(campos)}</p>' if campos else "")
-            + f'<p><b>Como corrigir:</b> {e(diag.get("como_corrigir", diag["orientacao"]))}</p></section>')
+            + f'<p><b>Como corrigir:</b> {e(correcao)}</p></section>')
 
 
 def tabela_davs(linhas: list[dict], com_vendedor: bool = False, *, administrador: bool = False,
@@ -652,7 +658,8 @@ def detalhe_dav(dav: dict, *, administrador: bool, retorno: str) -> str:
     if incerto:
         motivo = "O orçamento pode já existir no HSE; confira antes de reenviar."
     acoes = (f'<a class="botao2" href="{base}/{d["id"]}/pdf">Baixar PDF ↓</a>' if d.get("pdf") else "")
-    if not administrador and d["estado"] in ("erro", "rejeitado") and not incerto:
+    if (not administrador and d["estado"] in ("erro", "rejeitado") and not incerto
+            and diag.get("origem") not in ("automacao", "acesso_hse")):
         acoes += f'<a class="botao2" href="/dav?origem={d["id"]}">Enviar planilha corrigida →</a>'
     if not administrador and d["estado"] == "rascunho":
         acoes += f'<a class="botao2" href="/dav/{d["id"]}/conferir">Conferir antes de gerar →</a>'
