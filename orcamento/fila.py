@@ -24,7 +24,7 @@ from pathlib import Path
 from typing import Callable
 
 from core.banco import Banco
-from orcamento.processador import HseIndisponivel, Resultado
+from orcamento.processador import HseIndisponivel, Resultado, _sem_segredo
 
 log = logging.getLogger(__name__)
 
@@ -38,14 +38,6 @@ ESPERA_BANCO_S = 0.5
 
 def _agora() -> str:
     return datetime.now().isoformat(timespec="seconds")
-
-
-def _sem_segredo(texto: str | None) -> str | None:
-    for chave in ("HSE_SENHA", "ANTHROPIC_API_KEY"):
-        segredo = (os.environ.get(chave) or "").strip()
-        if segredo and texto:
-            texto = texto.replace(segredo, "***")
-    return texto
 
 
 def no_banco(chamada, *args, **kw):

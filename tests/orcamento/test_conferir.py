@@ -127,3 +127,28 @@ def test_conferencia_ida_e_volta_json(tmp_path):
     c = conferir(criar(tmp_path, None, "o.xlsx"), cfg(tmp_path), hse)
     assert c.itens and c.avisos
     assert Conferencia.de_json(c.para_json()) == c
+
+
+def test_log_da_conferencia_nao_vaza_senha(tmp_path, monkeypatch, caplog):
+    monkeypatch.setenv("HSE_SENHA", "s3gredo")
+
+    class Quebra(HseFalso):
+        def __init__(self, onde, **kw):
+            super().__init__(**kw)
+            self.onde = onde
+
+        def montar_orcamento(self, *a, **kw):
+            if self.onde == "tela":
+                raise Exception("tela falhou com s3gredo")
+            return super().montar_orcamento(*a, **kw)
+
+        def buscar_produtos(self, termo):
+            if self.onde == "busca":
+                raise Exception("busca falhou com s3gredo")
+            return super().buscar_produtos(termo)
+
+    for onde in ("tela", "busca"):
+        caplog.clear()
+        p = criar(tmp_path, None, f"{onde}.xlsx")
+        conferir(p, cfg(tmp_path), Quebra(onde, produtos=[_produto("150")]))
+        assert "falhou" in caplog.text and "s3gredo" not in caplog.text

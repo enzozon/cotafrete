@@ -535,6 +535,14 @@ class Conferencia:
         return Conferencia(**{**d, "itens": itens, "avisos": tuple(d["avisos"]), "erros": tuple(d["erros"])})
 
 
+def _sem_segredo(texto: str | None) -> str | None:
+    for chave in ("HSE_SENHA", "ANTHROPIC_API_KEY"):
+        segredo = (os.environ.get(chave) or "").strip()
+        if segredo and texto:
+            texto = texto.replace(segredo, "***")
+    return texto
+
+
 def aviso_preco_acima(r: Resolucao) -> str | None:
     p = r.produto
     if r.erro or p is None or p.preco is None or r.item.valor_unit <= p.preco * PRECO_ACIMA_TABELA:
@@ -589,13 +597,13 @@ def conferir(path: Path, cfg: Config, hse: HseApi) -> Conferencia:
             except HseIndisponivel:
                 raise
             except Exception as e:  # noqa: BLE001 — ErroHse e falhas da tela: viram erro da conferência
-                log.warning("Conferência de %s recusada pela tela: %s", path.name, e)
+                log.warning("Conferência de %s recusada pela tela: %s", path.name, _sem_segredo(str(e)))
                 rel.erro(_resumo(e))
     except HseIndisponivel as e:
         log.warning("HSE indisponível ao conferir %s: %s", path.name, e)
         return pronto("nao_conferido")
     except Exception as e:  # noqa: BLE001
-        log.exception("Falha inesperada ao conferir %s", path.name)
+        log.error("Falha inesperada ao conferir %s: %s", path.name, _sem_segredo(str(e)) or type(e).__name__)
         rel.erro(_resumo(e))
     return pronto("erros" if rel.tem_erro else "ok")
 

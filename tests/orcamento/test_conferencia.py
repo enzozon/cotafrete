@@ -195,13 +195,19 @@ def test_sem_login_vira_nao_conferido(banco, tmp_path, monkeypatch):
     assert estado == "nao_conferido" and conf.relatorio == SEM_LOGIN
 
 
-def test_thread_real_segue_depois_de_tarefa_que_quebra(banco, tmp_path):
+def test_thread_real_segue_depois_de_tarefa_que_quebra(banco, tmp_path, monkeypatch):
     a, b = _rascunho(banco), _rascunho(banco)
     pronto = threading.Event()
+    real = banco.dav
+
+    def dav_quebra_no_a(dav_id, usuario):   # quebra fora de _com_limite: cai no except do _consumir
+        if dav_id == a:
+            raise RuntimeError("quebrou")
+        return real(dav_id, usuario)
+
+    monkeypatch.setattr(banco, "dav", dav_quebra_no_a)
 
     def executar(p):
-        if p.stem == str(a):
-            raise RuntimeError("quebrou")
         pronto.set()
         return _conf("ok")
 
@@ -213,4 +219,4 @@ def test_thread_real_segue_depois_de_tarefa_que_quebra(banco, tmp_path):
         if banco.dav(b, None)["conferencia"] == "ok":
             break
         time.sleep(0.05)
-    assert _gravado(banco, a)[0] == "nao_conferido" and _gravado(banco, b)[0] == "ok"
+    assert real(a, None)["conferencia"] == "conferindo" and _gravado(banco, b)[0] == "ok"
