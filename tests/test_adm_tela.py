@@ -91,7 +91,7 @@ def test_ao_vivo_devolve_fragmentos_e_nao_a_pagina(cliente):
     inteira, o JavaScript recolocaria uma página dentro dela mesma."""
     dados = cliente.get("/adm/agora").json()
 
-    assert set(dados) == {"v", "faixa", "tabela"}
+    assert set(dados) == {"v", "faixa", "tabela", "dav"}
     for pedaco in (dados["faixa"], dados["tabela"]):
         assert "<!doctype" not in pedaco.lower()
         assert "<html" not in pedaco.lower()

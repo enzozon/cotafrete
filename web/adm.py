@@ -436,8 +436,10 @@ def agora(adm: str | None = Cookie(None, alias=COOKIE_ADM),
         return RedirectResponse("/adm/entrar", status_code=303)
 
     dias = _periodo_valido(dias)
+    from web import adm_dav
     with closing(banco._conectar()) as con:
-        versao = contas.versao_do_painel(con)
+        dav_versao, dav_html = adm_dav.pulso_principal(con)
+        versao = contas.versao_do_painel(con) + ":" + dav_versao
         # A comparacao vem ANTES de montar qualquer HTML: no caso comum nada
         # mudou, e o trabalho que nao se faz e o que deixa isto barato o
         # bastante para rodar de cinco em cinco segundos.
@@ -448,7 +450,7 @@ def agora(adm: str | None = Cookie(None, alias=COOKIE_ADM),
                                   so_com_falha=bool(falhas))
 
     return JSONResponse({"v": versao, "faixa": _faixa(resumo),
-                         "tabela": _historico(linhas)})
+                         "tabela": _historico(linhas), "dav": dav_html}, headers={"Cache-Control": "no-store"})
 
 
 # Fica FORA do f-string do corpo: chave de JavaScript dentro de f-string
@@ -584,6 +586,8 @@ async function pulsar() {
     versao = d.v;
     trocarFaixa(d.faixa);
     trocarTabela(d.tabela);
+    const dav = document.getElementById('dav-principal');
+    if (dav && d.dav !== undefined && dav.innerHTML !== d.dav) dav.innerHTML = d.dav;
   } catch (erro) {
     // Rede caiu: normal, a próxima volta tenta de novo, e encher o console
     // a cada 5s num Wi-Fi instável não ajuda ninguém. `fetch` levanta
@@ -702,17 +706,6 @@ def gerar_resumo_ia(adm: str | None = Cookie(None, alias=COOKIE_ADM)):
     return RedirectResponse("/adm#resumo", status_code=303)
 
 
-@router.get("/dav", response_class=HTMLResponse)
-def todos_os_davs(adm: str | None = Cookie(None, alias=COOKIE_ADM)):
-    _exigir_montado()
-    if not autorizado(adm):
-        return RedirectResponse("/adm/entrar", status_code=303)
-    from web.dav_ui import tabela_davs   # tardio: dav_ui importa este módulo
-    from web.layout import pagina
-    return HTMLResponse(pagina("Gerar DAV — todos", "<h1>Gerar DAV: todos os vendedores</h1>"
-                               + tabela_davs(banco.davs(None, 200), com_vendedor=True)))
-
-
 @router.get("", response_class=HTMLResponse)
 def painel(adm: str | None = Cookie(None, alias=COOKIE_ADM),
            dias: int = 30, quem: str = "", falhas: int = 0, resumo_ia: str = ""):
@@ -723,9 +716,11 @@ def painel(adm: str | None = Cookie(None, alias=COOKIE_ADM),
     dias = _periodo_valido(dias)
     so_falhas = bool(falhas)
 
+    from web import adm_dav
     with closing(banco._conectar()) as con:
+        dav_versao, dav_resumo = adm_dav.pulso_principal(con)
         resumo = contas.resumo_do_dia(con)
-        versao = contas.versao_do_painel(con)
+        versao = contas.versao_do_painel(con) + ":" + dav_versao
         saude = contas.saude_das_transportadoras(con, dias=dias)
         serie = contas.serie_por_periodo(con, dias=dias)
         vendedores = contas.por_usuario(con, dias=dias,
@@ -778,6 +773,8 @@ def painel(adm: str | None = Cookie(None, alias=COOKIE_ADM),
                    + ui.alertas_repetidas(repetidas, transportadoras.nome_de),
                    nota="falhas seguidas, ou o mesmo erro 3× em 24 h",
                    classe="c12", atraso=0.02) if avisos or repetidas else "")
+        + ui.cartao("Orçamentos DAV · Hoje", f'<div id="dav-principal">{dav_resumo}</div>', ident="dav-painel",
+                    nota="criação de orçamentos no HSE", classe="c12", atraso=0.03)
         + ui.cartao("Resumo do dia", resumo_html, ident="resumo",
                     nota="erros de hoje em português simples", classe="c12", atraso=0.04)
         + ui.cartao("Resumo da semana", ui.resumo_da_semana(semana),
