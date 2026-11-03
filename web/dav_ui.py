@@ -319,6 +319,24 @@ def _bloco_hse(conf: Conferencia | None) -> str:
             % (e(conf.cliente), e(conf.endereco), e(conf.vendedor)))
 
 
+def _conferencia_admin(d: dict) -> str:
+    """Visão do admin: estado, erros, avisos (sem filtro financeiro) e relatório completo."""
+    estado = d.get("conferencia")
+    if not estado:
+        return ""
+    corpo = f'<section class="cartao dav-card" id="dav-conferencia"><h2>Conferência com o HSE</h2><p>Estado: <b>{e(estado)}</b></p>'
+    if d.get("conferencia_relatorio"):
+        try:
+            conf = Conferencia.de_json(d["conferencia_relatorio"])
+        except Exception:
+            return corpo + "<p>Não foi possível ler o resultado salvo da conferência.</p></section>"
+        for titulo, textos in (("Erros", conf.erros), ("Avisos", conf.avisos)):
+            if textos:
+                corpo += f'<h3>{titulo}</h3><ul class="dav-lista">' + "".join(f"<li>{e(t)}</li>" for t in textos) + "</ul>"
+        corpo += _bloco_hse(conf) + f"<pre>{e(conf.relatorio)}</pre>"
+    return corpo + "</section>"
+
+
 def _tabela_itens(o, conf: Conferencia | None) -> str:
     if conf is None or not conf.itens:
         linhas = "".join(
@@ -600,6 +618,8 @@ def detalhe_dav(dav: dict, *, administrador: bool, retorno: str) -> str:
     if d["id"] in resolvida:
         destino = resolvida[d["id"]]
         corpo += f'<p>✓ Resolvida por novo envio <a href="{base}/{destino}">#{destino}</a>. O resultado desta tentativa foi preservado.</p>'
+    if administrador:
+        corpo += _conferencia_admin(d)
     corpo += (f'<details id="dav-relatorio"><summary>{"Relatório original e informações técnicas" if administrador else "Detalhes disponíveis ao vendedor"}</summary>'
               f'<pre>{e(diag["relatorio_visivel"] or "Nenhum relatório disponível.")}</pre></details>'
               f'<details id="dav-copia"><summary>Copiar diagnóstico</summary><pre id="dav-diagnostico">{e(diag["diagnostico_copiavel"])}</pre>'
