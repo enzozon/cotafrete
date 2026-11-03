@@ -111,3 +111,34 @@ def test_incerto_antigo_orienta_pelo_dia_da_execucao():
     assert "30/10/2026" in d["orientacao"] and "de hoje" not in d["orientacao"]
     sem_data = diagnostico(registro("incerto", criado_em="invalida"), administrador=False)
     assert "de hoje" not in sem_data["orientacao"]
+
+
+def test_vendedor_ve_o_erro_do_robo_para_corrigir_a_planilha():
+    # DAV 28 e DAV 24 (29/10/2026): com "Motivo não identificado" o vendedor não teria como corrigir sozinho
+    from orcamento.diagnostico import diagnostico
+    desconto = ("Item 8: valor unitário R$ 407,19 abaixo do mínimo R$ 16.022,50 "
+                "(preço de tabela R$ 18.850,00, desconto máximo 15%)")
+    d = diagnostico(registro(relatorio=relatorio(desconto)), administrador=False)
+    assert desconto in d["motivo"] and desconto in d["relatorio_visivel"]
+    vendedor = "Vendedor 'MICHELI' não encontrado no HSE (use o nome exato da lista)"
+    assert vendedor in diagnostico(registro(relatorio=relatorio(vendedor)), administrador=False)["relatorio_visivel"]
+
+
+def test_vendedor_ve_os_enderecos_do_cliente_no_erro_de_local():
+    # DAV 33: a lista de endereços (e a dica do número) é o que permite corrigir a B30
+    from orcamento.diagnostico import diagnostico
+    erro = ("falha durante a criação no HSE: Local de entrega 'São luis MA': 0 endereço(s) do cliente contém esse "
+            "texto (1 - Cadastral - AV DOS PORTUGUESES, S/N, ITAQUI, SÃO LUÍS/MA)")
+    d = diagnostico(registro(relatorio=relatorio(erro)), administrador=False)
+    assert d["categoria"] == "endereco"
+    assert "AV DOS PORTUGUESES" in d["relatorio_visivel"]
+
+
+def test_linha_de_erro_financeira_ou_continuacao_nao_aparece_ao_vendedor():
+    from orcamento.diagnostico import diagnostico
+    texto = relatorio("Pendência Cliente bloqueado DF15653 Venc: 27/09/2026") \
+        + "\nERRO: Item 2: produto novo sem GRUPO\ncontinuação privada DF15654 valor 99,90 vencimento 01/10/2026"
+    d = diagnostico(registro(relatorio=texto), administrador=False)
+    assert "Item 2: produto novo sem GRUPO" in d["relatorio_visivel"]
+    for segredo in ("DF15653", "27/09/2026", "DF15654", "99,90"):
+        assert segredo not in str(d)

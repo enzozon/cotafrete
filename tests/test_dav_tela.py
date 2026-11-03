@@ -351,3 +351,17 @@ def test_resumo_mostra_observacoes_com_frete_e_descricao_dos_itens(cli, tmp_path
     r = enviar(cli, planilha(tmp_path, {"B26": "Obs <b>", "B32": 30, "B38": "CIF", "R2": "Cor preta"}))
     assert "Obs &lt;b&gt;<br>FRETE CIF, PRAZO DE ENTREGA 30 DIAS" in r.text
     assert "<th>Descrição</th>" in r.text and "<td>Cor preta</td>" in r.text
+
+
+def test_detalhe_vendedor_mostra_o_erro_do_robo_sem_o_financeiro(cli, app_web):
+    # DAV 28 (29/10/2026): o vendedor corrigiu o código do item 8 lendo esse erro
+    i = app_web.banco.dav_criar("ana", "a.xlsx", "a", "Cliente")
+    app_web.banco.dav_atualizar(i, estado="erro", relatorio=(
+        "Robô de Orçamentos HSE\nModo: REAL\nResultado: ERRO na validação com o HSE (nada foi criado)\nItens:\n\n"
+        "Detalhes:\nO HSE avisou: Pendência Cliente bloqueado. Consultar o setor financeiro DE15635 Venc: 27/09/2026\n\n"
+        "Erros:\nERRO: Item 8: valor unitário R$ 407,19 abaixo do mínimo R$ 16.022,50 "
+        "(preço de tabela R$ 18.850,00, desconto máximo 15%)"))
+    t = cli.get(f"/dav/{i}").text
+    assert "Item 8: valor unitário R$ 407,19 abaixo do mínimo R$ 16.022,50" in t
+    for segredo in ("DE15635", "27/09/2026"):
+        assert segredo not in t

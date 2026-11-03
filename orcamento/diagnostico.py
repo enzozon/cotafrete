@@ -25,6 +25,10 @@ def diagnostico(dav: dict, *, administrador: bool) -> dict:
     texto = _normal(original)
     erros_rel = rel.partition("\nErros:\n")[2]
     falha = _normal(erro + "\n" + erros_rel)
+    # Só as linhas "ERRO:" que o próprio robô escreve: é com elas que o vendedor corrige a planilha
+    # (desconto, vendedor, endereços). Continuações e trechos financeiros ficam para o administrador.
+    erros_robo = [linha[6:].strip() for linha in erros_rel.splitlines()
+                  if linha.startswith("ERRO: ") and not _financeiro(linha)]
     financeiro = _financeiro(original)
     completo = all(t in rel for t in ("Robô de Orçamentos HSE", "\nResultado:", "\nItens:"))
     aviso = True if financeiro or "o hse avisou:" in texto else (False if completo else None)
@@ -52,6 +56,8 @@ def diagnostico(dav: dict, *, administrador: bool) -> dict:
         categoria, etapa = "planilha", "Validação da planilha"
         motivo = "A planilha não foi aceita e não foi enviada ao HSE."
         orientacao = "Use a PLANILHA-BASE v3 em .xlsx, até 5 MB, corrija os dados e confira novamente."
+    if categoria == "desconhecido" and erros_robo:
+        motivo = "; ".join(erros_robo)
     if salvamento == "incerto":
         motivo = "O orçamento pode já existir no HSE; a conclusão não foi confirmada."
         try:
@@ -75,7 +81,10 @@ def diagnostico(dav: dict, *, administrador: bool) -> dict:
     itens = [linha for linha in trecho_itens.splitlines()
              if re.fullmatch(r"Item \d+: usou produto existente \d+ - .+ \((pelo código informado|encontrado pela descrição)\)", linha)
              and not _financeiro(linha)]
-    permitido = "\n".join(filter(None, (titulo, "\n".join(itens), motivo if estado in ("erro", "incerto", "rejeitado") else "",
+    mostrar_erros = estado in ("erro", "incerto", "rejeitado")
+    erros_extra = [e for e in erros_robo if e != motivo] if mostrar_erros else []
+    permitido = "\n".join(filter(None, (titulo, "\n".join(itens), motivo if mostrar_erros else "",
+                                       "\n".join(erros_extra),
                                        orientacao if incerto else "",
                                        "Aviso financeiro: consulte o financeiro." if financeiro else "",
                                        "Detalhes técnicos adicionais disponíveis ao administrador." if original else "")))
