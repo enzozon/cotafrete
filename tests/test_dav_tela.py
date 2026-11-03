@@ -8,8 +8,8 @@ from fastapi.testclient import TestClient
 from decimal import Decimal
 
 from core.banco import Banco
-from orcamento.conferencia import SEM_HSE, FilaConferencia
-from orcamento.processador import Conferencia, ItemConferido
+from orcamento.conferencia import FilaConferencia
+from orcamento.processador import SEM_HSE, Conferencia, ItemConferido
 from orcamento.fila import FilaDav
 from tests.apoio import entrar
 from tests.orcamento.planilhas.gerar import criar
@@ -404,7 +404,25 @@ def test_conferindo_atualiza_sozinho_e_nao_tem_gerar(cli, app_web, tmp_path):
 def test_nao_conferido_avisa_e_libera_gerar(cli, app_web, tmp_path):
     CONFERENCIA["resultado"] = Conferencia("nao_conferido", "", "", "", "", (), (SEM_HSE,), ())
     r = enviar(cli, planilha(tmp_path))
-    assert SEM_HSE in r.text and "/dav/1/gerar" in r.text
+    assert r.text.count(SEM_HSE) == 1 and "/dav/1/gerar" in r.text
+
+
+def test_nao_conferido_sem_relatorio_avisa_e_libera_gerar(cli, app_web, tmp_path):
+    enviar(cli, planilha(tmp_path))
+    app_web.banco.dav_atualizar(1, conferencia="nao_conferido", conferencia_relatorio=None)
+    t = cli.get("/dav/1/conferir").text
+    assert t.count(SEM_HSE) == 1 and "/dav/1/gerar" in t
+
+
+def test_rascunho_com_erros_aparece_com_erros_no_historico(cli, app_web, tmp_path):
+    CONFERENCIA["resultado"] = _conferencia_ok(estado="erros", erros=("Item 1: x",))
+    enviar(cli, planilha(tmp_path))
+    CONFERENCIA["resultado"] = _conferencia_ok()
+    enviar(cli, planilha(tmp_path, {"B36": "OC-2"}, "b.xlsx"))
+    app_web.banco.dav_atualizar(2, conferencia="conferindo")
+    for linha, esperado, outro in ((1, "Com erros", "Conferindo"), (2, "Conferindo", "Com erros")):
+        selo = cli.get("/dav").text.split(f'data-dav="{linha}"')[1].split("</tr>")[0]
+        assert esperado in selo and outro not in selo
 
 
 @pytest.mark.parametrize("estado", ["conferindo", "erros"])

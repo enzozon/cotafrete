@@ -19,12 +19,11 @@ from typing import Callable
 
 from core.banco import Banco
 from orcamento.fila import _sem_segredo, no_banco
-from orcamento.processador import Conferencia, HseIndisponivel, conferir
+from orcamento.processador import SEM_HSE, Conferencia, HseIndisponivel, conferir
 
 log = logging.getLogger(__name__)
 
 LIMITE_CONFERENCIA_S = 120
-SEM_HSE = "Não consegui conferir com o HSE agora; o robô confere de novo ao gerar."
 SEM_LOGIN = "Robô do HSE sem login configurado no servidor."
 
 

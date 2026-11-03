@@ -99,3 +99,5 @@ def test_rascunho_com_erros_na_conferencia_aparece_em_atencao(admin, app_web):
     t = admin.get("/adm/dav").text
     assert f"#{i} " in t.split('id="dav-atencao"')[1].split("</section>")[0]
     assert f"#{ok} " not in t.split('id="dav-atencao"')[1].split("</section>")[0]
+    linha = t.split(f'data-dav="{i}"')[1].split("</tr>")[0]
+    assert "Com erros" in linha and "Conferindo" not in linha

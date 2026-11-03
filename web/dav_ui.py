@@ -26,7 +26,7 @@ from core import painel_dav
 from orcamento.fila import FilaDav
 from orcamento.conferencia import FilaConferencia
 from orcamento.diagnostico import _financeiro, diagnostico
-from orcamento.processador import Conferencia
+from orcamento.processador import SEM_HSE, Conferencia
 from orcamento.relatorio import moeda
 from orcamento.planilha import ErroPlanilha, ler_planilha, observacoes_hse
 from web import adm
@@ -166,6 +166,8 @@ def _selo(d: dict) -> str:
     texto = "Confira no HSE" if incerto else ESTADOS.get(estado, estado)
     if estado == "pronto" and diag["tem_aviso"]:
         tom, texto = "atencao", "Criado com aviso"
+    if estado == "rascunho" and d.get("conferencia") == "erros":
+        tom, texto = "erro", "Com erros"
     simbolo = {"ok": "✓", "erro": "×", "atencao": "!", "marca": "◷"}.get(tom, "·")
     return f'<span class="dav-selo {tom}">{simbolo} {e(texto)}</span>'
 
@@ -376,7 +378,8 @@ def _resumo(o, dav_id: int, d: dict | None = None) -> str:
                 '<div class="dav-acoes"><a href="/dav">Voltar ao envio</a></div></section>')
     obs = "<br>".join(e(linha) for linha in observacoes_hse(o).split("\n"))  # o mesmo texto que vai ao HSE
     avisos = "".join(f'<div class="aviso">{e(a)}</div>'
-                     for a in _filtrar(list(o.avisos) + (list(conf.avisos) if conf else [])))
+                     for a in _filtrar(list(o.avisos) + (list(conf.avisos) if conf else [])
+                                       + ([SEM_HSE] if estado == "nao_conferido" else [])))
     if conf:
         avisos += "".join(f'<div class="alerta">{e(a)}</div>' for a in _filtrar(conf.erros))
     elif estado == "erros":
