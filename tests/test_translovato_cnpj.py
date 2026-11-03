@@ -25,8 +25,20 @@ from __future__ import annotations
 
 import pytest
 
+from carriers.translovato import adapter as modulo_adapter
 from carriers.translovato import mapping as m
 from carriers.translovato.adapter import SemTabela, TranslovatoAdapter
+
+# A espera fixa depois de cada ajax é 2,5s em produção (ESPERA_AJAX_MS), quatro
+# por cotação: 15s de teste parado olhando um formulário de mentira que
+# responde na hora. Aqui ela é curta; a janela mortal lá embaixo é medida a
+# partir dela, então o cenário de produção continua o mesmo.
+ESPERA_AJAX_TESTE_MS = 500
+
+
+@pytest.fixture(autouse=True)
+def _espera_ajax_curta(monkeypatch):
+    monkeypatch.setattr(modulo_adapter, "ESPERA_AJAX_MS", ESPERA_AJAX_TESTE_MS)
 
 CNPJ_FORNECEDOR = "41.747.639/0001-12"      # o da #56
 
@@ -208,8 +220,10 @@ def test_sem_alerta_o_preenchimento_segue_normal(navegador):
 # exigia `visible` para enxergá-lo. Resultado: passa batido, o clique seguinte
 # bate no overlay, e o Playwright fica 45 segundos tentando.
 #
-# 2700 cai no meio dessa janela de propósito.
-ATRASO_NA_JANELA_MORTAL = 2_700
+# Em produção, 2700 cai no meio dessa janela. Aqui a espera é a curta
+# (ESPERA_AJAX_TESTE_MS), e o atraso é o mesmo ponto da janela: 200ms antes de
+# o adapter olhar, 300ms antes de o `visible` chegar.
+ATRASO_NA_JANELA_MORTAL = ESPERA_AJAX_TESTE_MS + 200
 
 
 def test_alerta_sem_a_classe_visible_ainda_assim_e_fechado(navegador):
