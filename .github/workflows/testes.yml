@@ -21,9 +21,11 @@ jobs:
         with:
           python-version: "3.14"
           cache: pip
-      - run: pip install -r requirements.txt selenium  # selenium: robô da HSE (cruzar_nf)
+      # selenium: robô da HSE (cruzar_nf). pytest-xdist: o -n 4 abaixo.
+      - run: pip install -r requirements.txt selenium pytest-xdist
       - run: python -m playwright install chromium
-      - run: python -m pytest tests -q
+      # 4 processos = 4 vCPU do windows-latest. No PC do Enzo o padrão é em série.
+      - run: python -m pytest tests -q -n 4
 
   # cruzar_nf roda no Server 2012 R2, que só tem Python 3.8.
   cruzar-nf-py38:
