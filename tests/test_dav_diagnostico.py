@@ -142,3 +142,16 @@ def test_linha_de_erro_financeira_ou_continuacao_nao_aparece_ao_vendedor():
     assert "Item 2: produto novo sem GRUPO" in d["relatorio_visivel"]
     for segredo in ("DF15653", "27/09/2026", "DF15654", "99,90"):
         assert segredo not in str(d)
+
+
+def test_validacao_sem_criacao_orienta_corrigir_e_reenviar():
+    # DAV 49 (30/10/2026): nada foi criado; mandar "consultar o responsável" assustava o vendedor
+    from orcamento.diagnostico import diagnostico
+    rel = ("Robô de Orçamentos HSE\nArquivo: b.xlsx\nData: 30/10/2026 11:39\nModo: REAL\n"
+           "Resultado: ERRO na validação com o HSE (nada foi criado)\n\nItens:\n"
+           "\nErros:\nERRO: Item 1: valor unitário R$ 3,41 abaixo do mínimo R$ 10,35 "
+           "(preço de tabela R$ 12,18, desconto máximo 15%)")
+    d = diagnostico(dict(estado="erro", erro="", relatorio=rel), administrador=False)
+    assert d["salvamento"] == "nao_criado"
+    assert d["orientacao"] == "Nada foi criado no HSE. Corrija a planilha e envie de novo."
+    assert "responsável" not in d["relatorio_visivel"]
