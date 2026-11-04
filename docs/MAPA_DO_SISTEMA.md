@@ -388,8 +388,12 @@ interessa.
   Ausência de informação de aviso não equivale a zero avisos.
   `ocorrencias` agrupa o recorte filtrado completo antes da paginação,
   separando falha, rejeição, conferência inválida, confirmação e avisos.
-  Células e orientação fazem parte da assinatura do grupo; não orientar todos
-  pela primeira ocorrência quando os campos afetados são diferentes.
+  O grupo é a causa (tipo, origem, motivo, orientação); as células ficam em
+  cada envio, não em "Onde conferir". Erro já resolvido por novo envio pronto
+  sai das ocorrências (`corrigidas` conta quantos). O cartão do painel ADM
+  soma as mesmas ocorrências por origem, para os números baterem com o resumo.
+  Sem linha ERRO: do robô, o motivo vem da origem reconhecida (nunca do texto
+  livre do erro). No detalhe, a orientação fica dentro da caixa do resultado.
   Espera e duração na UI vêm das datas reais (Brasília), omitidas se inválidas
   ou negativas. A cópia para suporte inclui contexto do envio sem ampliar a
   exposição do relatório ao vendedor.

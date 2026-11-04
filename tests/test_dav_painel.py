@@ -150,11 +150,20 @@ def test_ocorrencias_conferencia_preservam_campos_e_orientacao_por_causa(banco):
                           itens=(), avisos=(), erros=erros)
         ids.add(novo(banco, "rascunho", conferencia="erros", conferencia_relatorio=conf.para_json()))
     grupos = consulta(banco)["ocorrencias"]
-    assert len(grupos) == 3
-    assert {frozenset(g["campos"]): g["total"] for g in grupos} == {
-        frozenset(["B4"]): 2, frozenset(["B31"]): 1, frozenset(["B4", "B31"]): 1}
-    envios = [d["id"] for g in grupos for d in g["envios"]]
+    # Mesma causa = um cartão; as células diferentes ficam em cada envio.
+    assert len(grupos) == 1 and grupos[0]["total"] == 4
+    assert sorted(tuple(d["campos"]) for d in grupos[0]["envios"]) == sorted(
+        [("B4",), ("B31",), ("B4",), ("B4", "B31")])
+    envios = [d["id"] for d in grupos[0]["envios"]]
     assert len(envios) == len(set(envios)) == 4 and set(envios) == ids
-    for grupo in grupos:
-        assert all(campo in grupo["onde_conferir"] for campo in grupo["campos"])
-        assert "Corrija os campos indicados" in grupo["como_corrigir"]
+    assert "Corrija os campos indicados" in grupos[0]["como_corrigir"]
+
+
+def test_ocorrencias_ignoram_erro_ja_resolvido(banco):
+    a = novo(banco, "erro", erro="Local de entrega não encontrado")
+    b = novo(banco, "pronto")
+    banco.dav_vincular_correcao(a, b, "ana")
+    solta = novo(banco, "erro", erro="Local de entrega não encontrado")
+    dados = consulta(banco)
+    assert [d["id"] for g in dados["ocorrencias"] for d in g["envios"]] == [solta]
+    assert dados["corrigidas"] == 1

@@ -649,7 +649,8 @@ def detalhe_dav(dav: dict, *, administrador: bool, retorno: str) -> str:
     corpo = cabecalho(diag["titulo"], tarja=f"Orçamentos DAV · Envio #{d['id']}",
                        sub=e(d["arquivo"]), acoes=f'<a class="botao2" href="{e(retorno)}">← Voltar ao histórico</a>'
                        + (BOTAO_TEMA if administrador else ""))
-    motivo = diag["motivo"] if d["estado"] in ("erro", "incerto", "rejeitado") else {
+    com_erros = d["estado"] == "rascunho" and d.get("conferencia") == "erros"
+    motivo = diag["motivo"] if d["estado"] in ("erro", "incerto", "rejeitado") or com_erros else {
         "pronto": "O orçamento foi salvo no HSE. Consulte o documento disponível abaixo.",
         "fila": "Seu orçamento está aguardando a vez de execução.",
         "gerando": "O robô está trabalhando no HSE. Você pode acompanhar por esta tela.",
@@ -667,19 +668,15 @@ def detalhe_dav(dav: dict, *, administrador: bool, retorno: str) -> str:
     if d.get("numero"):
         corpo += f'<h2>Orçamento {e(d["numero"])}</h2>'
     corpo += f'<p>{e(motivo)}</p>'
-    if d["estado"] in ("erro", "incerto", "rejeitado"):
-        orientacao = diag["orientacao"]
-        if incerto and d.get("numero"):
-            orientacao = orientacao[:1].lower() + orientacao[1:]
-        corpo += f'<p><b>Próximo passo:</b> {e(orientacao)}</p>'
+    if d["estado"] in ("erro", "incerto", "rejeitado") or (d["estado"] == "rascunho" and d.get("conferencia") == "erros"):
+        # Uma caixa só: a orientação por origem já traz o próximo passo.
+        corpo += bloco_orientacao(d, administrador=administrador)
     if d["estado"] == "fila":
         with closing(banco._conectar()) as con:
             posicao = painel_dav.posicao_na_fila(con, d["id"])
         if posicao is not None:
             corpo += f'<p>Posição na fila: {posicao}</p>'
     corpo += f'<div class="dav-acoes">{acoes}</div></section>'
-    if d["estado"] in ("erro", "incerto", "rejeitado") or (d["estado"] == "rascunho" and d.get("conferencia") == "erros"):
-        corpo += bloco_orientacao(d, administrador=administrador)
     if diag["aviso_financeiro"]:
         corpo += '<aside class="dav-aviso"><b>! Aviso financeiro do HSE</b><p>Consulte o financeiro sobre a pendência do cliente. Esse aviso é independente do resultado da criação.</p></aside>'
     elif diag["tem_aviso"]:
@@ -690,7 +687,7 @@ def detalhe_dav(dav: dict, *, administrador: bool, retorno: str) -> str:
              ("Etapa conhecida", diag["etapa"] or "Não informada")]
     tempo = tempo_dav(d)
     if tempo:
-        dados.append(("Tempo", tempo))
+        dados.append(("Tempo", tempo.removeprefix("Duração: ")))
     corpo += '<section class="cartao dav-card"><h2>Dados do orçamento</h2><dl class="dav-dados">'
     corpo += "".join(f'<div><dt>{e(k)}</dt><dd>{e(v)}</dd></div>' for k, v in dados) + '</dl>'
     if diag["itens"]:
@@ -711,7 +708,8 @@ def detalhe_dav(dav: dict, *, administrador: bool, retorno: str) -> str:
     if d["estado"] in ("erro", "incerto", "rejeitado") or d.get("conferencia") == "erros":
         resumo_copia += (f'\nOrigem: {diag.get("origem_rotulo", "Não identificada")}\n'
                          f'Onde conferir: {diag.get("onde_conferir", "")}\n'
-                         f'Como corrigir: {diag.get("como_corrigir", diag["orientacao"])}')
+                         + (f'Células: {", ".join(diag["campos"])}\n' if diag.get("campos") else "")
+                         + f'Como corrigir: {diag.get("como_corrigir", diag["orientacao"])}')
     corpo += (f'<details id="dav-relatorio"><summary>{"Relatório original e informações técnicas" if administrador else "Detalhes disponíveis ao vendedor"}</summary>'
               f'<pre>{e(diag["relatorio_visivel"] or "Nenhum relatório disponível.")}</pre></details>'
               f'<details id="dav-copia"><summary>Copiar resumo para suporte</summary><pre id="dav-diagnostico">{e(resumo_copia)}</pre>'

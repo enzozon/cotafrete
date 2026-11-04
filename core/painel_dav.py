@@ -59,12 +59,12 @@ def _ocorrencias(linhas: list[dict], diags: dict, *, administrador: bool) -> lis
         motivo = diag["motivo"]
         if tipo in ("aviso_financeiro", "aviso"):
             motivo = "DAV criado com aviso financeiro." if tipo == "aviso_financeiro" else "DAV criado com aviso do HSE."
-        chave = (tipo, diag["categoria"], diag.get("origem", "desconhecida"), motivo,
-                 tuple(sorted(diag.get("campos", []))), diag.get("onde_conferir"), diag.get("como_corrigir"))
+        # Agrupa pela causa; as células ficam por envio, senão cada planilha vira um cartão.
+        chave = (tipo, diag.get("origem", "desconhecida"), motivo, diag.get("onde_conferir"),
+                 diag.get("como_corrigir"))
         if chave not in grupos:
             grupos[chave] = dict(tipo=tipo, categoria=diag["categoria"], titulo=motivo,
                 origem=diag.get("origem", "desconhecida"),
-                campos=diag.get("campos", []),
                 origem_rotulo=diag.get("origem_rotulo", "Origem não identificada"),
                 onde_conferir=diag.get("onde_conferir") or "Confira os detalhes do envio e o HSE.",
                 como_corrigir=diag.get("como_corrigir") or diag["orientacao"], total=0, envios=[])
@@ -78,6 +78,7 @@ def _ocorrencias(linhas: list[dict], diags: dict, *, administrador: bool) -> lis
         if administrador and tipo == "conferencia" and d.get("conferencia_relatorio"):
             tecnico += "\n" + d["conferencia_relatorio"]
         grupo["envios"].append(dict(id=d["id"], usuario=d["usuario"], cliente=d.get("cliente"),
+            campos=diag.get("campos", []),
             arquivo=d.get("arquivo"), criado_em=d["criado_em"], detalhes=tecnico))
     return sorted(grupos.values(), key=lambda g: -g["total"])
 
@@ -121,7 +122,9 @@ def consultar(con, *, usuario: str | None, dias: int, agora: datetime,
         linhas = [d for d in linhas if d["estado"] == estado]
     if categoria:
         linhas = [d for d in linhas if diags[d["id"]]["categoria"] == categoria]
-    ocorrencias = _ocorrencias(linhas, diags, administrador=usuario is None)
+    corrigidas = resolvidas(con, [d["id"] for d in linhas if d["estado"] in ("erro", "rejeitado", "rascunho")], usuario)
+    ocorrencias = _ocorrencias([d for d in linhas if d["id"] not in corrigidas], diags,
+                               administrador=usuario is None)
     total = len(linhas)
     paginas = max(1, math.ceil(total / 25))
     pagina = min(max(1, pagina), paginas)
@@ -131,7 +134,7 @@ def consultar(con, *, usuario: str | None, dias: int, agora: datetime,
         d["resolvida_por"] = resolucao.get(d["id"])
     vendedores = ([r[0] for r in con.execute("SELECT DISTINCT usuario FROM dav ORDER BY usuario")]
                   if usuario is None else [])
-    return {"resumo": resumo, "atencao": atencao, "grupos": dict(grupos), "ocorrencias": ocorrencias,
+    return {"resumo": resumo, "atencao": atencao, "grupos": dict(grupos), "ocorrencias": ocorrencias, "corrigidas": len(corrigidas),
             "linhas": pagina_linhas, "total": total, "pagina": pagina, "paginas": paginas,
             "vendedores": vendedores, "periodo": {"dias": dias, "inicio": inicio.isoformat(),
                                                       "fim": agora.isoformat()}}

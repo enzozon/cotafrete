@@ -90,18 +90,18 @@ def _origem(mensagens: list[str], rejeitado: bool) -> dict:
                          "Peça a correção do cadastro no HSE e confira novamente a planilha."),
         "acesso_hse": ("Acesso ao HSE", "Disponibilidade e login do HSE",
                        "Peça a Enzo, Allan ou Lucas para conferir o acesso ao HSE, informando o número do envio."),
-        "automacao": ("Falha reconhecida da automação", "Etapa da automação registrada neste envio",
+        "automacao": ("Falha reconhecida da automação", "Detalhes técnicos deste envio",
                       "Procure Enzo, Allan ou Lucas, levando o número do envio."),
         "desconhecida": ("Causa não identificada", "Detalhes do envio e resultado no HSE",
                          "Procure Enzo, Allan ou Lucas, levando o número do envio; confira o resultado no HSE antes de reenviar."),
     }[origem]
+    if origem == "planilha" and rejeitado and not campos:
+        como = "Envie a PLANILHA-BASE v3 em .xlsx, com até 5 MB."
     if comparar:
         if origem == "desconhecida":
             rotulo = "Conferir planilha e cadastro HSE"
         onde = "Compare a planilha com o cadastro correspondente no HSE"
         como = "Compare os campos indicados com o cadastro no HSE e corrija o dado divergente antes de conferir novamente."
-    if campos:
-        onde += ": " + ", ".join(campos)
     return dict(origem=origem, origem_rotulo=rotulo, onde_conferir=onde, como_corrigir=como, campos=campos)
 
 
@@ -155,6 +155,15 @@ def diagnostico(dav: dict, *, administrador: bool) -> dict:
     if categoria == "desconhecido" and erros_robo:
         motivo = "; ".join(erros_robo)
     novos = _origem(erro.splitlines() + erros_robo + erros_conferencia, estado == "rejeitado")
+    if categoria == "desconhecido" and not erros_robo and estado in ("erro", "rejeitado"):
+        # Motivo pela origem reconhecida; nunca o texto livre do erro (allowlist do vendedor).
+        motivo = {"automacao": "A automação falhou ao preencher o HSE; a planilha não indica erro.",
+                  "cadastro_hse": "O cliente está sem endereço cadastrado no HSE.",
+                  "planilha": "A planilha tem dados que precisam de correção.",
+                  }.get(novos["origem"], "Um dado da planilha não confere com o cadastro do HSE."
+                        if novos["campos"] else motivo)
+        if novos["origem"] != "desconhecida" or novos["campos"]:
+            orientacao = novos["como_corrigir"]
     if salvamento == "nao_criado" and categoria == "desconhecido" and not simulacao:
         orientacao = ("Nada foi criado no HSE. Corrija a planilha e envie de novo."
                       if novos["origem"] == "planilha" else novos["como_corrigir"])

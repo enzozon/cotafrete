@@ -1,6 +1,7 @@
 """Gestão de orçamentos DAV, somente leitura e atrás da porta administrativa."""
 from __future__ import annotations
 
+from collections import Counter
 from contextlib import closing
 import hashlib
 
@@ -63,20 +64,24 @@ def atencao(dados: dict, filtros: dict) -> str:
 
 
 def grupos(dados: dict, filtros: dict) -> str:
-    rotulos = {"endereco": "Local de entrega", "acesso_hse": "Acesso ao HSE",
-               "planilha": "Validação da planilha", "desconhecido": "Motivo não classificado"}
-    linhas = ""
-    for categoria, n in sorted(dados["grupos"].items(), key=lambda x: -x[1]):
-        link = dav_ui.url_dav("/adm/dav", filtros, estado="erro", categoria=categoria, pagina=1)
-        linhas += f'<div class="dav-atencao"><span>{e(rotulos.get(categoria, categoria))}</span><a href="{e(link)}">{n} falha(s) →</a></div>'
-    return linhas or '<p class="dav-vazio">Nenhuma falha registrada neste recorte.</p>'
+    """Mesma classificação por origem da tela /adm/dav/erros, para os números baterem."""
+    contagem = Counter()
+    for g in dados["ocorrencias"]:
+        contagem[g["origem_rotulo"]] += g["total"]
+    link = dav_ui.url_dav("/adm/dav/erros", filtros, pagina=1)
+    linhas = "".join(f'<div class="dav-atencao"><span>{e(rotulo)}</span><a href="{e(link)}">{n} →</a></div>'
+                     for rotulo, n in contagem.most_common())
+    return linhas or '<p class="dav-vazio">Nenhuma ocorrência pendente neste recorte.</p>'
 
 
 def resumo_erros(dados: dict, filtros: dict) -> str:
     total = sum(g["total"] for g in dados["ocorrencias"])
     link = dav_ui.url_dav("/adm/dav/erros", filtros, pagina=1)
-    return (f'<div class="dav-resumo-erros"><p><b>{total} envios com ocorrências</b></p>'
-            f'<a href="{e(link)}">Resumo de erros e avisos →</a></div>')
+    corrigidas = dados.get("corrigidas", 0)
+    nota = (f'<p class="dav-note">{corrigidas} já {"resolvido" if corrigidas == 1 else "resolvidos"} '
+            'por novo envio, fora da contagem.</p>' if corrigidas else "")
+    return (f'<div class="dav-resumo-erros"><p><b>{total} {"envio pendente" if total == 1 else "envios pendentes"}</b></p>'
+            f'{nota}<a href="{e(link)}">Resumo de erros e avisos →</a></div>')
 
 
 def ocorrencias(dados: dict, filtros: dict) -> str:
@@ -94,7 +99,9 @@ def ocorrencias(dados: dict, filtros: dict) -> str:
             link = dav_ui.url_dav(f'/adm/dav/{d["id"]}', filtros)
             corpo += (f'<details id="dav-ocorrencia-{d["id"]}"><summary><a href="{e(link)}">'
                       f'#{d["id"]} · {e(d["cliente"] or d["arquivo"])}</a> · {e(d["usuario"])}'
-                      f' · {e(d["criado_em"].replace("T", " ")[:16])}</summary>'
+                      f' · {e(d["criado_em"].replace("T", " ")[:16])}'
+                      + (f' · <b>Células:</b> {e(", ".join(d["campos"]))}' if d.get("campos") else "")
+                      + '</summary>'
                       f'<pre>{e(d["detalhes"] or "Nenhum detalhe técnico disponível.")}</pre></details>')
         corpo += '</section>'
     return corpo or '<p class="dav-vazio">Nenhuma ocorrência neste recorte.</p>'

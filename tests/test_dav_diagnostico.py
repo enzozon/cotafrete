@@ -186,7 +186,8 @@ def test_todos_os_erros_recebem_celula_sem_duplicar():
     d = diagnostico(registro(erro="\n".join(erros)), administrador=False)
     assert d["origem"] == "planilha"
     assert d["campos"] == ["B4", "L4", "B31"]
-    assert all(c in d["onde_conferir"] for c in d["campos"])
+    # As células aparecem numa linha própria; repetir em "Onde conferir" duplicava a tela.
+    assert not any(c in d["onde_conferir"] for c in d["campos"])
 
 
 @pytest.mark.parametrize("estado,extras", [("incerto", {}), ("erro", {"numero": "16410"}),
@@ -218,7 +219,7 @@ def test_erros_da_conferencia_no_rascunho():
     d = diagnostico(registro("rascunho", conferencia="erros", conferencia_relatorio=conf.para_json()), administrador=False)
     assert d["origem"] == "planilha" and d["campos"] == ["B4"]
     assert d["categoria"] == "planilha"
-    assert "B4" in d["onde_conferir"]
+    assert d["onde_conferir"] == "PLANILHA-BASE v3"
 
 
 @pytest.mark.parametrize("texto", ["invalido", "null", "{}", "[]"])
@@ -284,3 +285,21 @@ def test_produto_novo_com_faltantes_nao_interpreta_descricao_como_campos():
     erro = "Item 3: produto novo sem NCM, GRUPO (não encontrado no HSE pela descrição 'preço ICMS')"
     d = diagnostico(registro(erro=erro), administrador=False)
     assert d["origem"] == "planilha" and d["campos"] == ["L4", "P4"]
+
+
+@pytest.mark.parametrize("erro,motivo", [
+    ("Item 3: tela ficou com qtd/preco diferente do enviado", "A automação falhou"),
+    ("Cliente 1212 não encontrado no HSE", "não confere com o cadastro do HSE"),
+    ("Item 2: código XPTO não encontrado no HSE", "não confere com o cadastro do HSE")])
+def test_motivo_segue_origem_reconhecida(erro, motivo):
+    from orcamento.diagnostico import diagnostico
+    d = diagnostico(registro(erro=erro), administrador=False)
+    assert motivo in d["motivo"] and "não identificado" not in d["motivo"]
+    assert d["orientacao"] == d["como_corrigir"]
+    assert "XPTO" not in d["motivo"] and "1212" not in d["motivo"]
+
+
+def test_rejeicao_de_formato_nao_pede_campos_inexistentes():
+    from orcamento.diagnostico import diagnostico
+    d = diagnostico(registro("rejeitado", erro="Envie um arquivo .xlsx (a planilha-base v3)."), administrador=False)
+    assert d["campos"] == [] and ".xlsx" in d["como_corrigir"] and "campos indicados" not in d["como_corrigir"]
