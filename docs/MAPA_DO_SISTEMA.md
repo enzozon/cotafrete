@@ -226,6 +226,31 @@ ficam em `davs/entrada/<id>.xlsx` e `davs/pdf/` (fora do git).
   reiniciado) só avisa e libera. Preço acima de 2x a tabela é aviso amarelo.
   Rascunho antigo (`conferencia` nula) segue o fluxo de antes. A geração confere
   tudo de novo antes de salvar.
+- Diagnóstico do DAV (`orcamento/agente.py`, `provas.py`, `fila_diagnostico.py`):
+  quando um envio vira `erro`, `incerto`, `rejeitado` ou rascunho com
+  conferência `erros`, a fila própria (uma thread, uma por vez) junta as
+  provas e a IA explica a culpa (vendedor, planilha, robô, HSE...), a causa e a
+  ação. Dispara sozinho ao terminar a fila do DAV ou da conferência, ou pelo
+  botão do admin. O resultado fica nas colunas novas `dav.diagnostico` (JSON)
+  e `dav.diagnostico_estado` (`pendente`, `feito`, `falhou`); pendente é
+  retomado ao subir o servidor.
+  - Rotas do admin: `POST /adm/dav/{id}/diagnosticar` (roda de novo),
+    `POST /adm/dav/{id}/corrigir` (aprova as correções e cria um envio novo do
+    mesmo vendedor, para conferir), `GET /adm/dav/{id}/hse/{nome}` (print ou
+    resposta do HSE gravados para o envio) e `GET /adm/dav/{id}/planilha`.
+  - Pastas em `davs/`: `prints_hse/` (print da tela quando o robô falha) e
+    `respostas_hse/` (resposta inteira do HSE a cada gravação), fora do git.
+  - Custo: mesmo teto e mesmo `davs/ia_uso.csv` da IA do produto novo
+    (`IA_LIMITE_DIA_USD`). Chegou ao limite, o diagnóstico sai sem IA e diz o
+    motivo.
+  - Segurança: o HSE só é aberto em leitura (`HseSoLeitura` aborta todo POST;
+    se algo tentar gravar, o diagnóstico falha com alarme). Se o HSE não
+    responde, os pedidos ficam "não verificados". Quem decide `criados_no_hse`
+    é o código (`provas.coletar`), nunca a IA. As correções passam por lista
+    branca: só B30, B31, B33, K2:K25 e O2:O25; preço, quantidade, custo e NCM
+    nunca. Corrigir só cria um envio para conferir: nunca gera no HSE.
+  - Avaliação com envios reais (dados fora do git):
+    `python scripts/avaliar_agente.py <pasta_dados> [--ia arquivo|api]`.
 - O modelo tem 3 cópias que precisam ficar iguais: esta, o `public/PLANILHA
   BASE.xlsx` + `public/vendor/template_planilha_base.js` (base64) do Maestro e
   a pasta pública `\\SERVIDOR2\Publico\ENZO\ORCAMENTO`. Grave o modelo pelo XML
