@@ -41,7 +41,11 @@ Regras:
 - Nunca proponha mudança de preço, quantidade, custo ou NCM. Correções só nas células B30, B31, B33, K2:K25 e O2:O25.
 - Se criados_no_hse tiver números, a ação deve dizer para não reenviar e conferir esses orçamentos no HSE.
 - Se criados_no_hse for "nao_verificado", diga que não deu para verificar o HSE.
-- Copie em criados_no_hse os números recebidos; a evidência cita a mensagem ou o dado que prova a causa."""
+- Copie em criados_no_hse os números recebidos; a evidência cita a mensagem ou o dado que prova a causa.
+- produtos_criados lista produtos cadastrados que continuam no HSE; diga isso na ação (não recadastrar).
+- Produto novo sem código (coluna K) e sem NCM/GRUPO/MARCA, ou descrição não encontrada no HSE → planilha: preencher o código HSE na coluna K ou os campos do produto novo.
+- Cliente não encontrado: se cliente_b31.cnpj_valido for false → planilha (CNPJ digitado errado); se for true → cadastro_hse (cliente ainda não cadastrado no HSE).
+- Se envio_anterior mostrar que o robô juntou itens ('cadastrado no item N') ou cadastrou o produto que agora é recusado por preço, a culpa é robo e a ação é corrigir o produto no HSE, não o preço."""
 
 _STR = {"type": "string"}
 ESQUEMA = {

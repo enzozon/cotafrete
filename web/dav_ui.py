@@ -787,7 +787,11 @@ def cartao_diagnostico(d: dict) -> str:
     linhas = [("De quem é", CULPAS.get(j.get("culpa"), "Não identificado")), ("Causa", j.get("causa")),
               ("O que fazer", j.get("acao")), ("Prova", j.get("evidencia")),
               ("Confiança", {"alta": "alta", "media": "média", "baixa": "baixa"}.get(j.get("confianca"), "baixa")),
-              ("Ficou no HSE", ficou), ("Custo", custo)]
+              ("Ficou no HSE", ficou)]
+    for rotulo, campo, sep in (("Produtos cadastrados", "produtos_criados", "; "), ("Rascunhos do robô", "rascunhos", ", ")):
+        if isinstance(j.get(campo), list):
+            linhas.append((rotulo, sep.join(str(x) for x in j[campo])))
+    linhas.append(("Custo", custo))
     if j.get("motivo_sem_ia"):
         linhas.append(("Sem IA", j["motivo_sem_ia"]))
     corpo = "".join(f'<div><dt>{e(k)}</dt><dd>{e(v)}</dd></div>' for k, v in linhas if v)

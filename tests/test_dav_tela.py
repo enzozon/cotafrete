@@ -613,3 +613,12 @@ def test_post_diagnosticar_exige_adm_e_enfileira(cli, app_web, tmp_path, monkeyp
     r = _adm(app_web, monkeypatch).post("/adm/dav/1/diagnosticar")
     assert r.status_code == 303 and r.headers["location"] == "/adm/dav/1" and chamadas == [1]
     assert app_web.banco.dav(1, None)["diagnostico_estado"] == "pendente"
+
+
+def test_cartao_mostra_produtos_cadastrados_e_rascunhos(cli, app_web, tmp_path, monkeypatch):
+    enviar(cli, planilha(tmp_path))
+    app_web.banco.dav_atualizar(1, estado="erro", diagnostico_estado="feito", diagnostico=_diag(
+        criados_no_hse="nao_verificado", rascunhos=[16492], produtos_criados=["76811 - terminal <i>pin</i>"]))
+    t = _adm(app_web, monkeypatch).get("/adm/dav/1").text
+    assert "Produtos cadastrados" in t and "76811 - terminal &lt;i&gt;pin&lt;/i&gt;" in t
+    assert "Rascunhos do robô" in t and "16492" in t and "Não verificado" in t

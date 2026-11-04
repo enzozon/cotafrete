@@ -111,3 +111,11 @@ def test_chamada_que_estoura_vira_falha_controlada(tmp_path):
 
 def test_sistema_fixo():
     assert agente.SISTEMA == agente.SISTEMA and "<dados>" in agente.SISTEMA
+
+
+def test_sistema_regras_da_rodada_0():
+    for trecho in ("produtos_criados lista produtos cadastrados que continuam no HSE; diga isso na ação (não recadastrar)",
+                   "Produto novo sem código (coluna K) e sem NCM/GRUPO/MARCA",
+                   "se for true → cadastro_hse (cliente ainda não cadastrado no HSE)",
+                   "a culpa é robo e a ação é corrigir o produto no HSE, não o preço"):
+        assert trecho in agente.SISTEMA
