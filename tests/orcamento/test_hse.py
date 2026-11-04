@@ -392,10 +392,6 @@ def test_aviso_informativo_nao_vira_motivo_quando_ha_erro():
 def test_so_aviso_informativo_diz_que_o_hse_nao_recusou():
     html = "<script>toastSuccess('Margem atualizada');</script>"
     assert motivo_recusa(html) == "o HSE não mostrou erro; respondeu só: Margem atualizada"
-    from orcamento.hse import resposta_tem_erro
-    assert not resposta_tem_erro(html)
-    assert resposta_tem_erro("<script>alert('Produto bloqueado')</script>")
-    assert resposta_tem_erro(RECUSA)
 
 
 def _hse_incluir(tmp_path, respostas, entrou):
@@ -408,28 +404,39 @@ def _hse_incluir(tmp_path, respostas, entrou):
     return hse, cliques, item, SimpleNamespace(codigo="76817")
 
 
-def test_incluir_so_com_aviso_repete_uma_vez_e_entra(tmp_path):
-    # DAV 91/93: o 1º Incluir só respondeu "Margem atualizada"; à mão, o 2º clique incluiu
-    hse, cliques, item, produto = _hse_incluir(tmp_path, ["<script>toastSuccess('Margem atualizada')</script>", ""],
-                                               [False, True])
-    hse._incluir_com_repeticao(None, item, produto, 0)
-    assert len(cliques) == 2
-
-
-def test_incluir_com_erro_nao_repete_e_guarda_a_resposta(tmp_path):
+def test_incluir_com_erro_guarda_a_resposta(tmp_path):
     hse, cliques, item, produto = _hse_incluir(tmp_path, [RECUSA], [False])
     with pytest.raises(Exception, match="Desconto máximo 15%"):
-        hse._incluir_com_repeticao(None, item, produto, 0)
+        hse._incluir(None, item, produto, 0)
     assert len(cliques) == 1
     assert len(list((tmp_path / "respostas_hse").glob("*_76817.html"))) == 1
 
 
-def test_incluir_que_falha_duas_vezes_diz_que_nao_houve_erro(tmp_path):
+def test_incluir_nunca_repete_o_clique(tmp_path):
+    # DAV 91/93: o HSE tinha incluído (16533/16534/16536); um 2º clique duplicaria o item
     aviso = "<script>toastSuccess('Margem atualizada')</script>"
-    hse, cliques, item, produto = _hse_incluir(tmp_path, [aviso, aviso], [False, False])
+    hse, cliques, item, produto = _hse_incluir(tmp_path, [aviso], [False])
     with pytest.raises(Exception, match="não mostrou erro; respondeu só: Margem atualizada"):
-        hse._incluir_com_repeticao(None, item, produto, 0)
-    assert len(cliques) == 2
+        hse._incluir(None, item, produto, 0)
+    assert len(cliques) == 1
+
+
+class _TelaLenta:
+    """A linha do item aparece, mas o #cdPedido só chega depois do networkidle (VM, DAV 91/93)."""
+    url = "https://app.hsesistemas.com.br/vendaAlt.php"
+
+    def wait_for_function(self, js, arg=None, timeout=None):
+        assert timeout >= 15000
+
+    def input_value(self, sel, timeout=None):
+        return "16533"
+
+
+def test_item_entrou_pela_linha_da_tabela_e_pega_o_numero_depois():
+    hse = Hse.__new__(Hse)
+    hse.rascunho = None
+    assert hse._item_entrou(_TelaLenta(), 0) is True
+    assert hse.rascunho == "16533"
 
 
 def test_erro_na_tela_do_pedido_guarda_print_com_o_numero_do_envio(tmp_path):

@@ -60,10 +60,6 @@ def _mensagens(html: str) -> list[tuple[str, str]]:
     return [(m.group(1), re.sub(r"\s*<br\s*/?>\s*", " - ", m.group(3))) for m in RE_MENSAGEM.finditer(html)]
 
 
-def resposta_tem_erro(html: str) -> bool:
-    return "erroDescontoMsg" in html or any(not f.startswith(_INFORMATIVOS) for f, _ in _mensagens(html))
-
-
 def motivo_recusa(html: str) -> str:
     """O Incluir recusado não dá erro HTTP: o motivo vem num <script> da resposta (visto no orçamento 16354)."""
     m = re.search(r"erroDescontoMsg\s*=\s*'([^']*)'", html)
@@ -455,19 +451,15 @@ class Hse:
             return
         antes = page.locator("td.cellDelete").count()
         linhas = set(page.eval_on_selector_all("tr[id^=trItem_]", "ts => ts.map(t => t.id)"))
-        self._incluir_com_repeticao(page, item, produto, antes)
+        self._incluir(page, item, produto, antes)
         log.info("Item %s incluído; rascunho %s", produto.codigo, self.rascunho)
         if item.descricao:
             self._gravar_descricao(page, item, linhas)
 
-    def _incluir_com_repeticao(self, page: Page, item: Item, produto: Produto, antes: int) -> None:
+    def _incluir(self, page: Page, item: Item, produto: Produto, antes: int) -> None:
+        # Nunca repetir o Incluir: nos DAV 91/93 o HSE incluiu (orçamentos 16533/16534/16536) e só o
+        # nº do pedido demorou a aparecer na VM; clicar de novo duplicaria o item.
         html = self._clicar_incluir(page)
-        if not self._item_entrou(page, antes) and not resposta_tem_erro(html):
-            # DAV 91/93: preço acima da tabela; o 1º Incluir só respondeu "Margem atualizada", sem erro e
-            # sem incluir. À mão, o vendedor clica de novo e entra. Nada entrou: repetir não duplica.
-            log.warning("Item %s: Incluir sem erro e sem item (%s); repito uma vez",
-                        produto.codigo, motivo_recusa(html))
-            html = self._clicar_incluir(page)
         if not self._item_entrou(page, antes):
             self._guardar_resposta(produto.codigo, html)
             raise ErroHse(recusa_do_incluir(item.numero, produto.codigo, item.valor_unit, html))
@@ -487,15 +479,18 @@ class Hse:
         return resp.value.text()
 
     def _item_entrou(self, page: Page, antes: int) -> bool:
-        # no 1º item a recusa (ex.: desconto acima do limite) nem cria o pedido;
-        # do 2º em diante o nº já existe: só a tabela mostra se o item entrou
-        if not self._cd_pedido(page):
-            return False
+        """A linha nova na tabela é a prova de que o item entrou; o nº do pedido pode chegar depois.
+
+        DAV 91/93: o robô leu o #cdPedido logo após o Incluir, achou vazio e deu "recusado" com o
+        pedido já criado no HSE. Espera a linha (até 15 s) e só então pega o nº do rascunho."""
         try:
             page.wait_for_function("n => document.querySelectorAll('td.cellDelete').length > n", arg=antes,
-                                   timeout=10000)
+                                   timeout=15000)
         except PlaywrightError:
             return False
+        cd = self._cd_pedido(page)
+        if cd:
+            self.rascunho = cd
         return True
 
     def _guardar_resposta(self, codigo: str, html: str) -> None:
