@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 from decimal import Decimal
 
 from core.banco import Banco
+from orcamento.fila_diagnostico import FilaDiagnostico
 from orcamento.conferencia import FilaConferencia
 from orcamento.processador import SEM_HSE, Conferencia, ItemConferido
 from orcamento.fila import FilaDav
@@ -26,6 +27,9 @@ def app_web(tmp_path, monkeypatch):
     conferencia = FilaConferencia(banco, tmp_path / "davs", executar=lambda _p: CONFERENCIA["resultado"],
                                   disparar=lambda t: t())
     monkeypatch.setattr(dav_ui, "FILA_CONFERENCIA", conferencia, raising=False)
+    diagnostico = FilaDiagnostico(banco, tmp_path / "davs", executar=lambda i: {"culpa": "teste"},
+                                  disparar=lambda t: t())
+    monkeypatch.setattr(dav_ui, "FILA_DIAGNOSTICO", diagnostico, raising=False)
     monkeypatch.setattr(modulo, "banco", banco)
     monkeypatch.setattr(modulo, "FILA_DAV", fila)
     monkeypatch.setattr(dav_ui, "banco", banco)
@@ -287,6 +291,12 @@ def test_correcao_deduplicada_vincula_resultado_existente(cli, app_web, tmp_path
     with closing(app_web.banco._conectar()) as con:
         assert tuple(con.execute("SELECT origem_id, destino_id FROM dav_correcao").fetchone()) == (origem, 1)
     assert app_web.banco.dav(3, None) is None and len(DISPARADOS) == 1
+
+
+def test_rejeicao_enfileira_diagnostico(cli, app_web):
+    cli.post("/dav/conferir", files={"planilha": ("a.xls", b"x")})
+    d = app_web.banco.dav(1, None)
+    assert d["estado"] == "rejeitado" and d["diagnostico_estado"] == "feito"
 
 
 def test_rejeicao_de_reenvio_tem_vinculo_e_sem_login_nao_grava(cli, app_web):

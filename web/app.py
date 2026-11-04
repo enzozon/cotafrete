@@ -65,6 +65,7 @@ from core.aceite import rotulo_validade, vencida
 from carriers.generoso.mapping import Agendamento, validar_agendamento
 from core.banco import Banco
 from orcamento.conferencia import FilaConferencia
+from orcamento.fila_diagnostico import FilaDiagnostico, deve_diagnosticar
 from orcamento.fila import FilaDav
 from core.evidencias import limpar_antigas, montar_zip_de_prints
 from core.retentativa import (
@@ -112,6 +113,10 @@ async def _vida(_app):
         FILA_CONFERENCIA.retomar()
     except Exception as exc:  # noqa: BLE001
         print(f"[cotafrete] Fila da conferência: retomar falhou ({exc!r}); o servidor sobe assim mesmo.")
+    try:
+        FILA_DIAGNOSTICO.retomar()
+    except Exception as exc:  # noqa: BLE001
+        print(f"[cotafrete] Fila do diagnóstico: retomar falhou ({exc!r}); o servidor sobe assim mesmo.")
     if VIGIA_ME is None:
         me_ui.LOG_CHEGADAS = Path(__file__).resolve().parent.parent / "log" / "me_chegadas.txt"
         VIGIA_ME = me_ui.iniciar_vigia()
@@ -137,8 +142,17 @@ async def _vida(_app):
 app = FastAPI(title="Cotafrete — Ventura", lifespan=_vida)
 banco = Banco()
 # Fila do Gerar DAV: a thread só nasce no primeiro DAV (nada sobe no import).
-FILA_DAV = FilaDav(banco, Path("davs"))
-FILA_CONFERENCIA = FilaConferencia(banco, Path("davs"))
+FILA_DIAGNOSTICO = FilaDiagnostico(banco, Path("davs"))
+
+
+def _diagnosticar_se_falhou(dav_id: int) -> None:
+    d = banco.dav(dav_id, None)
+    if d is not None and deve_diagnosticar(d):
+        FILA_DIAGNOSTICO.enfileirar(dav_id)
+
+
+FILA_DAV = FilaDav(banco, Path("davs"), ao_terminar=_diagnosticar_se_falhou)
+FILA_CONFERENCIA = FilaConferencia(banco, Path("davs"), ao_terminar=_diagnosticar_se_falhou)
 
 # Faxina dos prints velhos (>30 dias) a cada início do servidor — não há
 # scheduler no projeto, e reiniciar já é rotina (ver core/evidencias.py).
@@ -159,6 +173,7 @@ me_ui.banco = banco
 dav_ui.banco = banco
 dav_ui.FILA = FILA_DAV
 dav_ui.FILA_CONFERENCIA = FILA_CONFERENCIA
+dav_ui.FILA_DIAGNOSTICO = FILA_DIAGNOSTICO
 # Cada chamada à IA (core/ia.py) fica registrada no banco para o /adm/me
 # mostrar quem respondeu. Lambda, e não o método: os testes trocam `banco`.
 ia.REGISTRO = lambda **kw: banco.ia_registrar(**kw)

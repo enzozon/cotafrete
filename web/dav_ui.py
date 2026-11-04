@@ -39,6 +39,7 @@ banco: Banco | None = None
 vendedor: Callable[[str | None], str | None] | None = None
 FILA: FilaDav | None = None
 FILA_CONFERENCIA: FilaConferencia | None = None
+FILA_DIAGNOSTICO = None   # FilaDiagnostico; ligada por web/app.py
 AVISO_FINANCEIRO = "Aviso financeiro: consulte o financeiro."
 COOKIE = "cotafrete_usuario"
 agora = datetime.now
@@ -637,6 +638,11 @@ def _rejeitar(usuario: str, nome: str, origem: int | None, *msgs: str,
             i = banco.dav_rejeitar(usuario, nome, list(msgs))
             if origem:
                 banco.dav_vincular_correcao(origem, i, usuario)
+        if FILA_DIAGNOSTICO is not None:
+            try:
+                FILA_DIAGNOSTICO.enfileirar(i)
+            except Exception as exc:   # o diagnóstico nunca atrapalha a rejeição
+                log.error("DAV %s: não enfileirei o diagnóstico: %s", i, exc)
     except sqlite3.Error:
         return HTMLResponse(pagina("Planilha não aceita", '<h1>Planilha não aceita</h1>'
             '<p>Não foi possível registrar a rejeição. Nenhum DAV foi enviado ao HSE.</p>', usuario), status_code=503)

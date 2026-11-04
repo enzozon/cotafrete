@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Callable
 
 from core.banco import Banco
-from orcamento.fila import _sem_segredo, no_banco
+from orcamento.fila import _sem_segredo, avisar, no_banco
 from orcamento.processador import SEM_HSE, Conferencia, HseIndisponivel, conferir
 
 log = logging.getLogger(__name__)
@@ -43,7 +43,9 @@ class FilaConferencia:
     def __init__(self, banco: Banco, pasta: Path,
                  executar: Callable[[Path], Conferencia] | None = None,
                  disparar: Callable[[Callable[[], None]], None] | None = None,
-                 limite_s: float = LIMITE_CONFERENCIA_S) -> None:
+                 limite_s: float = LIMITE_CONFERENCIA_S,
+                 ao_terminar: Callable[[int], None] | None = None) -> None:
+        self._ao_terminar = ao_terminar
         self.banco = banco
         self.pasta = Path(pasta)
         self._executar = executar or self._executar_no_hse
@@ -85,6 +87,7 @@ class FilaConferencia:
             return
         no_banco(self.banco.dav_atualizar, dav_id, conferencia=conf.estado,
                  conferencia_relatorio=_limpa(conf).para_json())
+        avisar(self._ao_terminar, dav_id)
 
     def _com_limite(self, planilha: Path) -> Conferencia:
         """Roda o executor numa thread auxiliar; passou do tempo, abandona-a
