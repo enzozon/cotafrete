@@ -191,7 +191,7 @@ def test_coletar_repassa_ignorar(tmp_path):
 
 def test_coletar_compara_valor_da_planilha(tmp_path):
     _planilha(tmp_path)  # J2 = 2.5
-    assert coletar(_dav(), tmp_path, lambda *a: [_ped(1, ["76817"], "9,000000")])["criados_no_hse"] == []
+    assert coletar(_dav(), tmp_path, lambda *a: [_ped(1, ["76817"], "9,000000")])["criados_no_hse"] == NAO_VERIFICADO
     assert coletar(_dav(), tmp_path, lambda *a: [_ped(1, ["76817"], "2,500000")])["criados_no_hse"] == [1]
 
 
@@ -305,3 +305,46 @@ def test_conferencia_corrompida_vira_none():
 def test_sem_codigos_com_pedidos_do_cliente_fica_nao_verificado(tmp_path):
     p = coletar(_dav(), tmp_path, lambda *a: [_ped(16533, ["76817"])])  # sem planilha guardada
     assert p["criados_no_hse"] == NAO_VERIFICADO and "códigos" in p["motivo_nao_verificado"]
+
+
+# --- rodada de correção 1 ---
+
+def test_valor_com_tolerancia_de_um_centavo():
+    pedidos = [_ped(1, ["76817"], "2,350000")]
+    assert pedidos_do_envio(pedidos, "1061", "04/11/2026", {"76817"}, valores={"76817": "2.345"}) == [1]
+
+
+def test_preco_diferente_vira_nao_verificado_nunca_vazio(tmp_path):
+    _planilha(tmp_path)  # J2 = 2.5
+    p = coletar(_dav(), tmp_path, lambda *a: [_ped(16533, ["76817"], "9,000000")])
+    assert p["criados_no_hse"] == NAO_VERIFICADO
+    assert p["motivo_nao_verificado"] == "pedido 16533 do cliente com preço diferente; confira no HSE"
+
+
+def test_mesmo_codigo_com_dois_precos_casa_qualquer_um(tmp_path):
+    _planilha(tmp_path)
+    wb = openpyxl.load_workbook(tmp_path / "entrada" / "7.xlsx")
+    ws = wb["ORÇAMENTO"]
+    ws["A3"], ws["B3"], ws["C3"], ws["J3"], ws["K3"] = "Parafuso", 1, 1, 7.0, 76817
+    wb.save(tmp_path / "entrada" / "7.xlsx")
+    assert coletar(_dav(), tmp_path, lambda *a: [_ped(1, ["76817"], "2,500000")])["criados_no_hse"] == [1]
+    assert pedidos_do_envio([_ped(1, ["76817"], "2,500000")], "1061", "04/11/2026", {"76817"},
+                            valores={"76817": {"7", "2.5"}}) == [1]
+
+
+def test_pedido_sem_itens_do_cliente_vira_nao_verificado(tmp_path):
+    _planilha(tmp_path)
+    p = coletar(_dav(), tmp_path, lambda *a: [_ped(16533, [])])
+    assert p["criados_no_hse"] == NAO_VERIFICADO
+    assert p["motivo_nao_verificado"] == "pedido 16533 sem itens do cliente no dia"
+
+
+def test_pedido_sem_itens_ignorado_continua_vazio(tmp_path):
+    _planilha(tmp_path)
+    assert coletar(_dav(), tmp_path, lambda *a: [_ped(16533, [])], ignorar={16533})["criados_no_hse"] == []
+
+
+def test_faixa_aceita_hora_com_espaco():
+    from orcamento.provas import faixa_de_busca
+    f = faixa_de_busca([("2026-11-04 09:28:53", 16504), ("2026-11-04 16:15:30", 16541)], "2026-11-04T14:55:09")
+    assert f == faixa_de_busca(_PRONTOS, "2026-11-04 14:55:09") == range(16499, 16559)

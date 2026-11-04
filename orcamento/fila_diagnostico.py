@@ -91,6 +91,8 @@ class FilaDiagnostico:
         if dav is None:
             raise LookupError(f"DAV {dav_id} não existe")
         anterior = self.banco.dav_origem_da_correcao(dav_id)
+        numero = str(dav.get("numero") or "")
+        proprio = {int(numero)} if numero.isdigit() else set()   # outro DAV com o mesmo número não esconde o deste
         if dav["estado"] in ("erro", "incerto"):
             cfg_hse = replace(cfg, dry_run=True, pasta_programa=self.pasta)
             provas, bloqueados = None, []
@@ -100,7 +102,7 @@ class FilaDiagnostico:
                 try:
                     with HseSoLeitura(cfg_hse) as hse:
                         provas = coletar(dav, self.pasta, buscador_hse(hse, self.banco.dav_numeros_com_hora()),
-                                         ignorar=self.banco.dav_numeros_conhecidos(exceto=dav_id),
+                                         ignorar=self.banco.dav_numeros_conhecidos(exceto=dav_id) - proprio,
                                          anterior=anterior)
                         bloqueados = list(hse.bloqueados)
                 finally:

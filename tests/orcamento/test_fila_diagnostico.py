@@ -187,3 +187,35 @@ def test_numeros_com_hora_ignora_numero_sujo(banco):
         banco.dav_atualizar(i, numero=n, terminado_em="2026-11-04T10:00:00")
     assert banco.dav_numeros_com_hora() == [("2026-11-04T10:00:00", 456)]
     assert banco.dav_numeros_conhecidos(exceto=0) == {456}
+
+
+def test_executor_nao_ignora_o_proprio_numero(banco, tmp_path, monkeypatch):
+    import orcamento.agente as agente
+    import orcamento.config as config
+    import orcamento.hse as hse
+    import orcamento.provas as provas
+
+    class Hse:
+        bloqueados = []
+
+        def __init__(self, cfg):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    vistos = {}
+    monkeypatch.setattr(config, "config_do_ambiente",
+                        lambda: config.Config(usuario="u", senha="s", client_id="v", dry_run=False, headless=True))
+    monkeypatch.setattr(hse, "HseSoLeitura", Hse)
+    monkeypatch.setattr(provas, "coletar", lambda d, p, b, ignorar=frozenset(), anterior=None:
+                        vistos.update(ignorar=ignorar) or {"criados_no_hse": []})
+    monkeypatch.setattr(agente, "diagnosticar", lambda p, cfg: {})
+    outro, i = _dav(banco, "pronto"), _dav(banco, "incerto")
+    banco.dav_atualizar(outro, numero="16533")
+    banco.dav_atualizar(i, numero="16533")
+    FilaDiagnostico(banco, tmp_path, disparar=_na_hora).enfileirar(i)
+    assert vistos["ignorar"] == set()

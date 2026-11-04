@@ -17,6 +17,7 @@ NAO_VERIFICADO = "nao_verificado"
 MARGEM = 25  # pedidos para cada lado do número de referência
 ANTES = 5  # pedidos antes do último DAV conhecido anterior ao envio
 MAX_PAGINAS = 60  # teto de pedidos lidos no HSE por diagnóstico
+TOLERANCIA = Decimal("0.01")  # diferença de preço aceita entre planilha e HSE
 
 _RASCUNHO = re.compile(r"\brascunho\s+(\d{5})\b", re.I)
 _CONTINUAM = "Produtos cadastrados no HSE (continuam lá):"
@@ -29,20 +30,23 @@ def _decimal(v) -> Decimal | None:
     if "," in s:  # pt-BR do HSE: "8.300,940000"
         s = s.replace(".", "").replace(",", ".")
     try:
-        return Decimal(s).quantize(Decimal("0.01"))
+        return Decimal(s)
     except (InvalidOperation, ValueError):
         return None
 
 
 def _mesmo_valor(hse, planilha) -> bool:
-    a, b = _decimal(hse), _decimal(planilha)
-    return a is None or b is None or a == b  # ilegível não descarta: melhor sobrar pedido que sumir
+    """`planilha`: um valor ou um conjunto (mesmo código em várias linhas). Tolera 1 centavo (arredondamento)."""
+    a = _decimal(hse)
+    bs = [_decimal(b) for b in (planilha if isinstance(planilha, (set, frozenset, list, tuple)) else [planilha])]
+    # ilegível não descarta: melhor sobrar pedido que sumir
+    return a is None or any(b is None or abs(a - b) <= TOLERANCIA for b in bs)
 
 
 def pedidos_do_envio(pedidos: list[dict], cliente: str, data: str, codigos: set[str],
                      ignorar: set[int] = frozenset(), valores: dict | None = None) -> list[int]:
     """Pedidos do mesmo cliente e dia, fora de `ignorar`, com todos os itens entre os produtos do envio
-    (e, com `valores` código → valor unitário, ao mesmo preço)."""
+    (e, com `valores` código → valor unitário ou conjunto de valores, ao mesmo preço)."""
     valores = valores or {}
 
     def do_envio(i: dict) -> bool:
@@ -85,6 +89,8 @@ def faixa_de_busca(numeros: list[tuple[str, int]], quando: str, margem: int = MA
 
     `numeros` = (hora ISO, número) de todos os DAVs com número. Só um lado conhecido: ±2×margem
     em volta dele. Faixa maior que `teto`: os `teto` números mais perto do (lado de antes + 1)."""
+    quando = quando.replace(" ", "T")
+    numeros = [(h.replace(" ", "T"), n) for h, n in numeros]
     antes = max((n for h, n in numeros if h <= quando), default=None)
     depois = min((n for h, n in numeros if h >= quando), default=None)
     if antes is None and depois is None:
@@ -141,7 +147,10 @@ def _criados(dav: dict, planilha: dict | None, buscar, ignorar: set[int]) -> tup
     itens = (planilha or {}).get("itens", [])
     # produtos achados pela descrição ou cadastrados pelo robô não têm código K na planilha
     codigos = {i["codigo"] for i in itens if i["codigo"]} | set(_CODIGO_DO_ROBO.findall(relatorio))
-    valores = {i["codigo"]: i["valor"] for i in itens if i["codigo"] and i["valor"]}
+    valores: dict[str, set] = {}  # o mesmo código pode vir em várias linhas, com preços diferentes
+    for i in itens:
+        if i["codigo"] and i["valor"]:
+            valores.setdefault(i["codigo"], set()).add(i["valor"])
     try:
         dia = datetime.strptime(data, "%Y-%m-%d").strftime("%d/%m/%Y")
     except ValueError:
@@ -153,7 +162,17 @@ def _criados(dav: dict, planilha: dict | None, buscar, ignorar: set[int]) -> tup
         return NAO_VERIFICADO, f"HSE não consultado: {e}"
     if pedidos and not codigos:
         return NAO_VERIFICADO, "sem códigos de produto do envio para comparar com os pedidos do cliente"
-    achados = pedidos_do_envio(pedidos, m.group(1), dia, codigos, ignorar, valores)
+    cliente = m.group(1)
+    achados = pedidos_do_envio(pedidos, cliente, dia, codigos, ignorar, valores)
+    if not achados:  # existe pedido do cliente no dia que pode ser deste envio: "nada criado" seria um palpite
+        sem_itens = [str(p["numero"]) for p in pedidos if not p["itens"] and p["numero"] not in ignorar
+                     and p["cliente"] == cliente and p["data"] == dia]
+        if sem_itens:
+            return NAO_VERIFICADO, f"pedido {', '.join(sem_itens)} sem itens do cliente no dia"
+        outro_preco = pedidos_do_envio(pedidos, cliente, dia, codigos, ignorar)
+        if outro_preco:
+            return NAO_VERIFICADO, (f"pedido {', '.join(map(str, outro_preco))} do cliente com preço diferente;"
+                                    " confira no HSE")
     aviso = getattr(pedidos, "aviso", "")
     if aviso and not achados:  # não leu tudo: "nada criado" seria um palpite
         return NAO_VERIFICADO, aviso
