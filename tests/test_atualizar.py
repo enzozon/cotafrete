@@ -408,3 +408,51 @@ def test_ocupado_desconta_mesmo_quando_o_trabalho_quebra():
     with pytest.raises(ValueError):
         futuro.result(timeout=10)
     assert modulo.EXECUTOR.em_curso == 0
+
+
+# ------------------------------------------------------ backup do dia
+from datetime import datetime as _dt
+
+
+class BackupFalso:
+    def __init__(self, codigo=0, saida="  Copia:    X\n  Conteudo: 10 cotacoes, 0.1 MB"):
+        self.codigo, self.saida, self.chamadas = codigo, saida, 0
+
+    def __call__(self, pasta):
+        self.chamadas += 1
+        return self.codigo, self.saida
+
+
+def test_backup_roda_uma_vez_por_dia_depois_das_20h(repos):
+    _, producao = repos
+    roda = BackupFalso()
+    noite = _dt(2026, 11, 4, 20, 5)
+    assert atualizar.backup_do_dia(producao, noite, roda) == "feito"
+    assert atualizar.backup_do_dia(producao, noite.replace(hour=23), roda) == "ja_feito"
+    assert roda.chamadas == 1
+    assert "Backup do banco: OK" in _log(producao) and "10 cotacoes" in _log(producao)
+    assert atualizar.backup_do_dia(producao, _dt(2026, 11, 5, 21, 0), roda) == "feito"  # dia seguinte
+    assert roda.chamadas == 2
+
+
+def test_backup_nao_roda_de_dia(repos):
+    _, producao = repos
+    roda = BackupFalso()
+    assert atualizar.backup_do_dia(producao, _dt(2026, 11, 4, 14, 0), roda) == "cedo"
+    assert roda.chamadas == 0
+
+
+def test_backup_que_falha_vai_para_o_log_e_nao_repete_no_mesmo_dia(repos):
+    _, producao = repos
+    roda = BackupFalso(codigo=1, saida="  FALHOU: banco não encontrado")
+    noite = _dt(2026, 11, 4, 22, 0)
+    assert atualizar.backup_do_dia(producao, noite, roda) == "falhou"
+    assert "Backup do banco FALHOU" in _log(producao) and "banco não encontrado" in _log(producao)
+    assert atualizar.backup_do_dia(producao, noite.replace(minute=5), roda) == "ja_feito"  # não martela a rede a cada 5 min
+    assert roda.chamadas == 1
+
+
+def test_backup_so_na_producao(tmp_path):
+    roda = BackupFalso()
+    assert atualizar.backup_do_dia(tmp_path / "cotafrete-dev", _dt(2026, 11, 4, 21, 0), roda) == "fora_da_producao"
+    assert roda.chamadas == 0

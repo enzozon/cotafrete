@@ -70,7 +70,10 @@ O fluxo de toda mudança em produção:
 - No Cotafrete de produção, antes de reiniciar, conferir no banco se há
   cotação em `validando`, `enviando` ou `solicitacao_enviada`.
 - Backup do banco só por `Backup.bat` (`core/backup.py`). Cópia crua do `.db`
-  em WAL sai atrasada e sem dar erro.
+  em WAL sai atrasada e sem dar erro. Desde 04/11/2026 o `atualizar.py` roda
+  o backup sozinho uma vez por dia, na primeira volta depois das 20h; o
+  resultado fica em `logtualizar.log` ("Backup do banco: OK" ou "FALHOU").
+  O destino é `COTAFRETE_BACKUP_DIR`; sem ela, a cópia fica na própria VM.
 
 ## Atualização
 
