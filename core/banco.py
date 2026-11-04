@@ -1139,11 +1139,26 @@ class Banco:
                 "SELECT id FROM dav WHERE diagnostico_estado = 'pendente'"
                 " ORDER BY id")]
 
-    def dav_numeros_prontos(self) -> list[tuple[str, int]]:
+    _NUMERO_LIMPO = "numero != '' AND numero NOT GLOB '*[^0-9]*'"
+
+    def dav_numeros_com_hora(self) -> list[tuple[str, int]]:
+        """(hora, número) de todo DAV com número, de qualquer estado; hora = término ou, sem ele, início."""
         with closing(self._conectar()) as con, con:
             return [(r[0], int(r[1])) for r in con.execute(
-                "SELECT terminado_em, numero FROM dav WHERE estado = 'pronto'"
-                " AND terminado_em IS NOT NULL AND numero != '' AND numero NOT GLOB '*[^0-9]*' ORDER BY id")]
+                "SELECT COALESCE(terminado_em, iniciado_em) h, numero FROM dav"
+                f" WHERE h IS NOT NULL AND {self._NUMERO_LIMPO} ORDER BY id")]
+
+    def dav_numeros_conhecidos(self, exceto: int) -> set[int]:
+        with closing(self._conectar()) as con, con:
+            return {int(r[0]) for r in con.execute(
+                f"SELECT numero FROM dav WHERE id != ? AND {self._NUMERO_LIMPO}", (exceto,))}
+
+    def dav_origem_da_correcao(self, destino_id: int) -> dict | None:
+        """O envio que `destino_id` corrige (o mais recente, se houver mais de um)."""
+        with closing(self._conectar()) as con, con:
+            r = con.execute("SELECT a.* FROM dav_correcao c JOIN dav a ON a.id = c.origem_id"
+                            " WHERE c.destino_id = ? ORDER BY c.origem_id DESC LIMIT 1", (destino_id,)).fetchone()
+            return dict(r) if r else None
 
     def dav_rejeitar(self, usuario: str, arquivo: str, motivos: list[str]) -> int:
         with closing(self._conectar()) as con, con:

@@ -68,11 +68,67 @@ def test_retomar_pendentes(banco, tmp_path):
     assert vistos == [a] and banco.dav(b, None)["diagnostico_estado"] in (None, "")
 
 
-def test_numeros_prontos(banco):
+def test_numeros_com_hora_de_todos_os_davs_com_numero(banco):
     i = _dav(banco, "pronto")
-    banco.dav_atualizar(i, numero="123", terminado_em="2026-11-04T10:00:00")
+    banco.dav_atualizar(i, numero="123", terminado_em="2026-11-04T10:00:00", iniciado_em="2026-11-04T09:59:00")
+    j = _dav(banco, "incerto")
+    banco.dav_atualizar(j, numero="124", iniciado_em="2026-11-04T11:00:00")
     _dav(banco, "erro")
-    assert banco.dav_numeros_prontos() == [("2026-11-04T10:00:00", 123)]
+    assert banco.dav_numeros_com_hora() == [("2026-11-04T10:00:00", 123), ("2026-11-04T11:00:00", 124)]
+
+
+def test_numeros_conhecidos_menos_o_proprio(banco):
+    ids = []
+    for n in ("16402", "16553", None):
+        ids.append(_dav(banco, "pronto"))
+        banco.dav_atualizar(ids[-1], numero=n)
+    assert banco.dav_numeros_conhecidos(exceto=ids[0]) == {16553}
+
+
+def test_origem_da_correcao(banco):
+    a, b = _dav(banco, "erro"), _dav(banco, "pronto")
+    assert banco.dav_origem_da_correcao(b) is None
+    banco.dav_vincular_correcao(a, b, "ana")
+    assert banco.dav_origem_da_correcao(b)["id"] == a
+
+
+def test_executor_passa_hora_ignorar_anterior_e_copia_campos(banco, tmp_path, monkeypatch):
+    import orcamento.agente as agente
+    import orcamento.config as config
+    import orcamento.hse as hse
+    import orcamento.provas as provas
+
+    class Hse:
+        bloqueados = []
+
+        def __init__(self, cfg):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    vistos = {}
+
+    def coletar(dav, pasta, buscar, ignorar=frozenset(), anterior=None):
+        vistos.update(ignorar=ignorar, anterior=anterior and anterior["id"])
+        return {"criados_no_hse": [], "motivo_nao_verificado": "", "rascunhos": [16492],
+                "produtos_criados": ["76811 - terminal"]}
+
+    monkeypatch.setattr(config, "config_do_ambiente",
+                        lambda: config.Config(usuario="u", senha="s", client_id="v", dry_run=False, headless=True))
+    monkeypatch.setattr(hse, "HseSoLeitura", Hse)
+    monkeypatch.setattr(provas, "coletar", coletar)
+    monkeypatch.setattr(agente, "diagnosticar", lambda p, cfg: {"culpa": "robo"})
+    origem, outro, i = _dav(banco, "erro"), _dav(banco, "pronto"), _dav(banco, "erro")
+    banco.dav_atualizar(outro, numero="16402")
+    banco.dav_vincular_correcao(origem, i, "ana")
+    FilaDiagnostico(banco, tmp_path, disparar=_na_hora).enfileirar(i)
+    j = json.loads(banco.dav(i, None)["diagnostico"])
+    assert vistos == {"ignorar": {16402}, "anterior": origem}
+    assert j["rascunhos"] == [16492] and j["produtos_criados"] == ["76811 - terminal"]
 
 
 def test_fila_dav_chama_ao_terminar(banco, tmp_path):
@@ -125,8 +181,9 @@ def test_hse_indisponivel_vira_nao_verificado(banco, tmp_path, monkeypatch):
     assert "fora do ar" in j["motivo_nao_verificado"]
 
 
-def test_numeros_prontos_ignora_numero_sujo(banco):
+def test_numeros_com_hora_ignora_numero_sujo(banco):
     for n in ("123abc", "456"):
         i = _dav(banco, "pronto")
         banco.dav_atualizar(i, numero=n, terminado_em="2026-11-04T10:00:00")
-    assert banco.dav_numeros_prontos() == [("2026-11-04T10:00:00", 456)]
+    assert banco.dav_numeros_com_hora() == [("2026-11-04T10:00:00", 456)]
+    assert banco.dav_numeros_conhecidos(exceto=0) == {456}

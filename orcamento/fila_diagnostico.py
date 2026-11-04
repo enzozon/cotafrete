@@ -90,6 +90,7 @@ class FilaDiagnostico:
         dav = self.banco.dav(dav_id, None)
         if dav is None:
             raise LookupError(f"DAV {dav_id} não existe")
+        anterior = self.banco.dav_origem_da_correcao(dav_id)
         if dav["estado"] in ("erro", "incerto"):
             cfg_hse = replace(cfg, dry_run=True, pasta_programa=self.pasta)
             provas, bloqueados = None, []
@@ -98,19 +99,23 @@ class FilaDiagnostico:
                     raise TimeoutError("navegador ocupado")
                 try:
                     with HseSoLeitura(cfg_hse) as hse:
-                        provas = coletar(dav, self.pasta, buscador_hse(hse, self.banco.dav_numeros_prontos()))
+                        provas = coletar(dav, self.pasta, buscador_hse(hse, self.banco.dav_numeros_com_hora()),
+                                         ignorar=self.banco.dav_numeros_conhecidos(exceto=dav_id),
+                                         anterior=anterior)
                         bloqueados = list(hse.bloqueados)
                 finally:
                     VAGA_NAVEGADOR.release()
             except (HseIndisponivel, TimeoutError, ValueError, PlaywrightError) as e:
                 # Sem sessão no HSE o diagnóstico segue, com os pedidos "não verificados".
-                provas = coletar(dav, self.pasta, None)
+                provas = coletar(dav, self.pasta, None, anterior=anterior)
                 provas["motivo_nao_verificado"] = f"HSE indisponível: {_sem_segredo(str(e)) or type(e).__name__}"
             if bloqueados:   # a guarda segurou uma gravação: alarme de segurança, não indisponibilidade
                 raise RuntimeError("HSE bloqueou gravação na busca: " + "; ".join(bloqueados))
         else:
-            provas = coletar(dav, self.pasta, None)
+            provas = coletar(dav, self.pasta, None, anterior=anterior)
         res = diagnosticar(provas, cfg)
-        if provas.get("motivo_nao_verificado"):   # a tela mostra por que os pedidos não foram verificados
-            res["motivo_nao_verificado"] = provas["motivo_nao_verificado"]
+        # a tela mostra por que os pedidos não foram verificados e o que o robô deixou no HSE
+        for campo in ("motivo_nao_verificado", "produtos_criados", "rascunhos"):
+            if provas.get(campo):
+                res[campo] = provas[campo]
         return res
