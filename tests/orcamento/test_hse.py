@@ -492,3 +492,40 @@ def test_b30_parecida_com_dois_enderecos_nao_escolhe():
     from orcamento.hse import erro_local_entrega
     iguais = [("1", "1 - Entrega - RUA A, 1, CENTRO, ITABIRA/MG"), ("2", "2 - Entrega - RUA B, 2, CENTRO, ITABIRA/MG")]
     assert "Parece ser" not in erro_local_entrega("Itabra", iguais)
+
+
+_CRU_16541 = {"cliente": "1061", "data": "04/11/2026", "linhas": [
+    ['1', '', '', '76817', '', 'MAQUINA FONTE PLASMA', '84569000', '', '1', '1', '2,000000', 'PC',
+     '8.300,940000', '0,000000', '0,00', '8.300,940000', '16.601,880000']]}
+
+
+class _PaginaPedido:
+    def __init__(self, cru):
+        self.cru, self.fechada = cru, False
+
+    def wait_for_selector(self, sel, timeout):
+        pass
+
+    def evaluate(self, js):
+        return self.cru
+
+    def close(self):
+        self.fechada = True
+
+
+def test_ler_pedido_monta_itens():
+    from orcamento.hse import HseSoLeitura
+    pg = _PaginaPedido(_CRU_16541)
+    hse = HseSoLeitura.__new__(HseSoLeitura)
+    hse._abrir = lambda caminho: pg
+    assert hse.ler_pedido(16541) == {"numero": 16541, "cliente": "1061", "data": "04/11/2026",
+                                     "itens": [{"codigo": "76817", "qtd": "2,000000", "valor": "8.300,940000"}]}
+    assert pg.fechada
+
+
+def test_ler_pedido_inexistente_devolve_none():
+    from orcamento.hse import HseSoLeitura
+    pg = _PaginaPedido({"cliente": "", "data": "", "linhas": []})
+    hse = HseSoLeitura.__new__(HseSoLeitura)
+    hse._abrir = lambda caminho: pg
+    assert hse.ler_pedido(99999999) is None and pg.fechada

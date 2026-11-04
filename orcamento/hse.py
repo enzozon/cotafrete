@@ -782,3 +782,23 @@ class HseSoLeitura(Hse):
     def _login_passos(self, filial: int) -> None:
         super()._login_passos(filial)
         self._ctx.route("**/*", lambda route: guarda_gravacao(route, self.bloqueados))  # cada login cria um contexto novo
+
+    def ler_pedido(self, numero: int) -> dict | None:
+        """Cliente, data e itens de um pedido já gravado; None se o número não existe."""
+        page = self._abrir(f"vendaAlt.php?cdPedido={numero}")
+        try:
+            try:
+                page.wait_for_selector("tr[id^=trItem_]", timeout=5000)
+            except PlaywrightError:  # pedido sem itens (ou inexistente)
+                pass
+            cru = page.evaluate("""() => ({
+                cliente: document.querySelector('#cdCliente')?.value || '',
+                data: document.querySelector('#dtEmissao')?.value || '',
+                linhas: [...document.querySelectorAll('tr[id^=trItem_]')]
+                    .map(tr => [...tr.cells].map(c => c.innerText.trim()))})""")
+        finally:
+            page.close()
+        if not cru["cliente"]:
+            return None
+        return {"numero": numero, "cliente": cru["cliente"], "data": cru["data"],
+                "itens": [{"codigo": c[3], "qtd": c[10], "valor": c[12]} for c in cru["linhas"] if len(c) > 12]}

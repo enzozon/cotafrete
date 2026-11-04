@@ -1,5 +1,7 @@
 """Coleta de provas do diagnóstico do DAV (sem HSE)."""
 
+from pathlib import Path
+
 import openpyxl
 import pytest
 
@@ -83,3 +85,49 @@ def test_mensagens_e_print_do_envio(tmp_path):
     p = coletar(_dav(estado="pronto"), tmp_path, None)
     assert p["mensagens_hse"] == ["Margem atualizada"]
     assert p["print"].endswith("7_b.png")
+
+
+_PRONTOS = [("2026-11-04T09:28:00", 16504), ("2026-11-04T16:15:00", 16541)]
+
+
+def test_faixa_pelo_pronto_mais_proximo():
+    from orcamento.provas import faixa_de_busca
+    f = faixa_de_busca(_PRONTOS, "2026-11-04T14:55:00")
+    assert len(f) == 51 and all(n in f for n in range(16533, 16537))
+
+
+def test_faixa_sem_prontos_vazia():
+    from orcamento.provas import faixa_de_busca
+    assert len(faixa_de_busca([], "2026-11-04T14:55:00")) == 0
+
+
+def test_buscador_filtra_cliente_data_e_pula_inexistentes():
+    from orcamento.provas import buscador_hse
+
+    class Hse:
+        lidos = []
+
+        def ler_pedido(self, n):
+            self.lidos.append(n)
+            if n == 16535:
+                return None
+            return {"numero": n, "cliente": "1061" if n % 2 else "9", "data": "04/11/2026", "itens": []}
+    h = Hse()
+    achados = buscador_hse(h, _PRONTOS)("1061", "04/11/2026", 16540)
+    assert h.lidos[0] == 16515 and h.lidos[-1] == 16565  # centrado no número do próprio envio
+    assert 16535 not in [p["numero"] for p in achados] and 16537 in [p["numero"] for p in achados]
+    assert all(p["cliente"] == "1061" for p in achados)
+
+
+def test_celula_numerica_inteira_vira_texto_sem_ponto_zero():
+    from orcamento.provas import _texto
+    assert _texto(76817.0) == "76817" and _texto(2.5) == "2.5" and _texto(None) is None
+
+
+def test_data_do_envio_ilegivel_nao_derruba():
+    r = coletar(_dav(iniciado_em="04/11/2026 10:00"), Path("."), lambda *a: [])
+    assert r["criados_no_hse"] == NAO_VERIFICADO and r["motivo_nao_verificado"]
+
+
+def test_conferencia_corrompida_vira_none():
+    assert coletar(_dav(conferencia_relatorio="{quebrado"), Path("."), None)["conferencia"] is None
