@@ -1,6 +1,6 @@
 pydantic>=2.14.1
 openpyxl>=3.1.5
-playwright>=1.45
+playwright>=1.64.1
 httpx>=0.28.1
 python-dotenv>=1.2.4
 fastapi>=0.161.1
