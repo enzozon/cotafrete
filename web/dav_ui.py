@@ -28,6 +28,7 @@ from core import painel_dav
 from mercado_eletronico.painel import hora_de_brasilia
 from orcamento.fila import FilaDav
 from orcamento.conferencia import FilaConferencia
+from orcamento.agente import filtrar_correcoes
 from orcamento.diagnostico import _financeiro, diagnostico
 from orcamento.processador import SEM_HSE, Conferencia
 from orcamento.relatorio import moeda
@@ -795,7 +796,15 @@ def cartao_diagnostico(d: dict) -> str:
     if j.get("motivo_sem_ia"):
         linhas.append(("Sem IA", j["motivo_sem_ia"]))
     corpo = "".join(f'<div><dt>{e(k)}</dt><dd>{e(v)}</dd></div>' for k, v in linhas if v)
-    return f'<section class="cartao dav-card"><h2>Diagnóstico</h2><dl class="dav-dados">{corpo}</dl>{botao}</section>'
+    corrigir = ""
+    ok = filtrar_correcoes(j["correcoes"]) if isinstance(j.get("correcoes"), list) else []
+    if ok:
+        itens = "".join(f'<li><b>{e(c["celula"])}</b> = {e(c["valor"])} <small>{e(c["motivo"])}</small></li>' for c in ok)
+        corrigir = (f'<h3>Correção proposta</h3><ul>{itens}</ul>'
+                    f'<form method="post" action="/adm/dav/{int(d["id"])}/corrigir">'
+                    '<button class="botao" type="submit">Aprovar correção</button></form>')
+    return (f'<section class="cartao dav-card"><h2>Diagnóstico</h2><dl class="dav-dados">{corpo}</dl>'
+            f'{corrigir}{botao}</section>')
 
 
 def detalhe_dav(dav: dict, *, administrador: bool, retorno: str) -> str:

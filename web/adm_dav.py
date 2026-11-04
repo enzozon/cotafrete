@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 from contextlib import closing
+import json
+import uuid
 from datetime import datetime
 import hashlib
 import os
@@ -12,6 +14,8 @@ from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 
 from core import painel_dav
 from orcamento import config as cfg_dav, ia
+from orcamento.correcao import aplicar
+from orcamento.planilha import ErroPlanilha, ler_planilha
 from web import adm, dav_ui, painel_ui as ui
 from web.layout import CSS_DAV, cabecalho, e
 
@@ -257,6 +261,53 @@ def diagnosticar(dav_id: int, cookie: str | None = Cookie(None, alias=adm.COOKIE
     if dav_ui.FILA_DIAGNOSTICO is not None:   # enfileirar já grava "pendente"
         dav_ui.FILA_DIAGNOSTICO.enfileirar(dav_id)
     return RedirectResponse(f"/adm/dav/{dav_id}", status_code=303)
+
+
+@router.post("/{dav_id}/corrigir")
+def corrigir(dav_id: int, cookie: str | None = Cookie(None, alias=adm.COOKIE_ADM)):
+    """Aprova as correções da IA: cria um envio novo (do vendedor original) para conferir. Nunca gera no HSE."""
+    porta = _porta(cookie)
+    if porta:
+        return porta
+    d = adm.banco.dav(dav_id, None)
+    if d is None:
+        raise HTTPException(404)
+
+    def falha(msg: str):
+        retorno = dav_ui.url_dav("/adm/dav", _filtros())
+        return _html("Detalhe DAV", f'<p class="dav-note">{e(msg)}</p>'
+                     + dav_ui.detalhe_dav(d, administrador=True, retorno=retorno))
+    try:
+        correcoes = json.loads(d.get("diagnostico") or "{}")["correcoes"]
+    except (ValueError, KeyError, TypeError):
+        correcoes = None
+    if not isinstance(correcoes, list) or not correcoes:
+        return falha("Não há correção para aprovar.")
+    vendedor = d["usuario"]
+    pasta = dav_ui.FILA.pasta / "entrada"
+    pasta.mkdir(parents=True, exist_ok=True)
+    temp = pasta / f"{uuid.uuid4().hex}.xlsx"
+    try:
+        try:
+            if not aplicar(dav_ui.FILA.planilha(dav_id), correcoes, temp):
+                return falha("Nenhuma célula da correção é permitida.")
+            o = ler_planilha(temp)
+        except ErroPlanilha as exc:
+            return falha("A correção gerou uma planilha inválida: " + "; ".join(exc.erros))
+        except Exception:
+            return falha("Não consegui aplicar a correção: planilha original indisponível ou ilegível.")
+        hash_ = hashlib.sha256(temp.read_bytes()).hexdigest()
+        with dav_ui._TRAVA:
+            antigo = adm.banco.dav_ja_gerado(vendedor, hash_)
+            if antigo:
+                return RedirectResponse(f"/adm/dav/{antigo['id']}", status_code=303)
+            novo = adm.banco.dav_criar(vendedor, f"corrigida_{d['arquivo']}", hash_, o.cliente, conferencia="conferindo")
+            adm.banco.dav_vincular_correcao(dav_id, novo, vendedor)
+            temp.replace(dav_ui.FILA.planilha(novo))
+        dav_ui.FILA_CONFERENCIA.enfileirar(novo)
+        return RedirectResponse(f"/adm/dav/{novo}", status_code=303)
+    finally:
+        temp.unlink(missing_ok=True)
 
 
 @router.get("/{dav_id}/hse/{nome}")

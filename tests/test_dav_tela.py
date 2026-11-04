@@ -622,3 +622,37 @@ def test_cartao_mostra_produtos_cadastrados_e_rascunhos(cli, app_web, tmp_path, 
     t = _adm(app_web, monkeypatch).get("/adm/dav/1").text
     assert "Produtos cadastrados" in t and "76811 - terminal &lt;i&gt;pin&lt;/i&gt;" in t
     assert "Rascunhos do robô" in t and "16492" in t and "Não verificado" in t
+
+
+def _com_correcao(cli, app_web, tmp_path, correcoes):
+    enviar(cli, planilha(tmp_path))
+    app_web.banco.dav_atualizar(1, estado="rejeitado", diagnostico_estado="feito",
+                                diagnostico=_diag(correcoes=correcoes))
+
+
+def test_botao_aprovar_correcao_so_com_correcoes(cli, app_web, tmp_path, monkeypatch):
+    adm = _adm(app_web, monkeypatch)
+    _com_correcao(cli, app_web, tmp_path, [])
+    assert "Aprovar correção" not in adm.get("/adm/dav/1").text
+    app_web.banco.dav_atualizar(1, diagnostico=_diag(correcoes=[
+        {"celula": "J2", "valor": "1", "motivo": "x"}, {"celula": "B30", "valor": "<i>CENTRO</i>", "motivo": "bairro"}]))
+    t = adm.get("/adm/dav/1").text
+    assert "Aprovar correção" in t and "B30" in t and "&lt;i&gt;CENTRO" in t and "J2" not in t.split("Aprovar")[0].split("Diagnóstico")[-1]
+    assert "Aprovar correção" not in cli.get("/dav/1").text
+
+
+def test_post_corrigir_cria_envio_novo_do_vendedor(cli, app_web, tmp_path, monkeypatch):
+    import openpyxl
+    from web import dav_ui
+    _com_correcao(cli, app_web, tmp_path, [{"celula": "B30", "valor": "CENTRO", "motivo": "bairro"}])
+    monkeypatch.setenv("COTAFRETE_ADM_SENHA", "s3nha")
+    r = TestClient(app_web.app, follow_redirects=False).post("/adm/dav/1/corrigir")
+    assert r.status_code == 303 and "/adm/entrar" in r.headers["location"]
+    r = _adm(app_web, monkeypatch).post("/adm/dav/1/corrigir")
+    assert r.status_code == 303 and r.headers["location"] == "/adm/dav/2"
+    novo = app_web.banco.dav(2, "ana")
+    assert novo["arquivo"] == "corrigida_orc.xlsx" and novo["estado"] != "fila" and novo["estado"] == "rascunho"
+    assert novo["conferencia"] in ("conferindo", "ok")
+    assert openpyxl.load_workbook(dav_ui.FILA.planilha(2))["ORÇAMENTO"]["B30"].value == "CENTRO"
+    assert app_web.banco.dav(1, "ana")["estado"] == "rejeitado"
+    assert DISPARADOS == []
