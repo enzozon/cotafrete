@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from contextlib import closing
 import json
+import logging
 import uuid
 from datetime import datetime
 import hashlib
@@ -19,6 +20,7 @@ from orcamento.planilha import ErroPlanilha, ler_planilha
 from web import adm, dav_ui, painel_ui as ui
 from web.layout import CSS_DAV, cabecalho, e
 
+log = logging.getLogger(__name__)
 router = APIRouter(prefix="/adm/dav", include_in_schema=False)
 IA_USO = Path("davs") / "ia_uso.csv"  # a mesma pasta que o FILA_DAV usa
 
@@ -283,6 +285,11 @@ def corrigir(dav_id: int, cookie: str | None = Cookie(None, alias=adm.COOKIE_ADM
         correcoes = None
     if not isinstance(correcoes, list) or not correcoes:
         return falha("Não há correção para aprovar.")
+    if not dav_ui.corrigivel_pelo_adm(d):
+        return falha("Este envio não pode ser corrigido por aqui: confira no HSE primeiro.")
+    ja = adm.banco.dav_correcao_de(dav_id)
+    if ja:
+        return RedirectResponse(f"/adm/dav/{ja}", status_code=303)
     vendedor = d["usuario"]
     pasta = dav_ui.FILA.pasta / "entrada"
     pasta.mkdir(parents=True, exist_ok=True)
@@ -295,15 +302,20 @@ def corrigir(dav_id: int, cookie: str | None = Cookie(None, alias=adm.COOKIE_ADM
         except ErroPlanilha as exc:
             return falha("A correção gerou uma planilha inválida: " + "; ".join(exc.erros))
         except Exception:
+            log.exception("corrigir DAV %s: falha ao aplicar/ler a planilha", dav_id)
             return falha("Não consegui aplicar a correção: planilha original indisponível ou ilegível.")
         hash_ = hashlib.sha256(temp.read_bytes()).hexdigest()
         with dav_ui._TRAVA:
-            antigo = adm.banco.dav_ja_gerado(vendedor, hash_)
-            if antigo:
-                return RedirectResponse(f"/adm/dav/{antigo['id']}", status_code=303)
+            ja = adm.banco.dav_correcao_de(dav_id)
+            if ja:
+                return RedirectResponse(f"/adm/dav/{ja}", status_code=303)
             novo = adm.banco.dav_criar(vendedor, f"corrigida_{d['arquivo']}", hash_, o.cliente, conferencia="conferindo")
-            adm.banco.dav_vincular_correcao(dav_id, novo, vendedor)
             temp.replace(dav_ui.FILA.planilha(novo))
+            try:
+                adm.banco.dav_vincular_correcao(dav_id, novo, vendedor)
+            except ValueError as exc:
+                adm.banco.dav_atualizar(novo, estado="erro", erro=str(exc))
+                return falha(str(exc))
         dav_ui.FILA_CONFERENCIA.enfileirar(novo)
         return RedirectResponse(f"/adm/dav/{novo}", status_code=303)
     finally:

@@ -656,3 +656,21 @@ def test_post_corrigir_cria_envio_novo_do_vendedor(cli, app_web, tmp_path, monke
     assert openpyxl.load_workbook(dav_ui.FILA.planilha(2))["ORÇAMENTO"]["B30"].value == "CENTRO"
     assert app_web.banco.dav(1, "ana")["estado"] == "rejeitado"
     assert DISPARADOS == []
+
+
+def test_post_corrigir_duas_vezes_um_so_envio(cli, app_web, tmp_path, monkeypatch):
+    _com_correcao(cli, app_web, tmp_path, [{"celula": "B30", "valor": "CENTRO", "motivo": "x"}])
+    adm = _adm(app_web, monkeypatch)
+    assert adm.post("/adm/dav/1/corrigir").headers["location"] == "/adm/dav/2"
+    assert adm.post("/adm/dav/1/corrigir").headers["location"] == "/adm/dav/2"
+    assert app_web.banco.dav(3, "ana") is None
+
+
+def test_corrigir_envio_incerto_nao_da_500_nem_cria_orfao(cli, app_web, tmp_path, monkeypatch):
+    _com_correcao(cli, app_web, tmp_path, [{"celula": "B30", "valor": "CENTRO", "motivo": "x"}])
+    app_web.banco.dav_atualizar(1, estado="incerto", numero="55")
+    adm = _adm(app_web, monkeypatch)
+    assert "Aprovar correção" not in adm.get("/adm/dav/1").text
+    r = adm.post("/adm/dav/1/corrigir")
+    assert r.status_code == 200 and "não pode ser corrigido por aqui" in r.text
+    assert app_web.banco.dav(2, "ana") is None

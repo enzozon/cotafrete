@@ -21,3 +21,12 @@ def test_aplicar_nao_toca_formula(tmp_path):
     aplicar(origem, [{"celula": "K2", "valor": "5", "motivo": ""}], dest)
     j2 = openpyxl.load_workbook(dest)["ORÇAMENTO"]["J2"].value
     assert isinstance(j2, str) and j2.startswith("=")
+
+
+def test_corrigida_continua_legivel_com_mesmo_valor(tmp_path):
+    from orcamento.planilha import ler_planilha
+    origem = criar(tmp_path)
+    dest = tmp_path / "out.xlsx"
+    aplicar(origem, [{"celula": "B30", "valor": "CENTRO", "motivo": ""}], dest)
+    a, b = ler_planilha(origem), ler_planilha(dest)
+    assert b.itens[0].valor_unit == a.itens[0].valor_unit

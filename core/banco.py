@@ -1189,6 +1189,12 @@ class Banco:
             con.execute("INSERT OR IGNORE INTO dav_correcao (origem_id, destino_id) VALUES (?, ?)",
                         (origem_id, destino_id))
 
+    def dav_correcao_de(self, origem_id: int) -> int | None:
+        """Envio mais novo criado como correção deste, se houver."""
+        with closing(self._conectar()) as con, con:
+            r = con.execute("SELECT MAX(destino_id) FROM dav_correcao WHERE origem_id = ?", (origem_id,)).fetchone()
+            return r[0]
+
     def dav(self, dav_id: int, usuario: str | None) -> dict | None:
         """`usuario=None` é o administrador: vê o de qualquer um."""
         sql, args = "SELECT * FROM dav WHERE id = ?", [dav_id]

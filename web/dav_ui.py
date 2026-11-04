@@ -756,6 +756,11 @@ CULPAS = {"planilha": "Planilha", "cadastro_hse": "Cadastro no HSE", "robo": "Ro
           "indefinido": "Não identificado"}
 
 
+def corrigivel_pelo_adm(d: dict) -> bool:
+    """Mesma regra de `_validar_origem` / `dav_vincular_correcao`."""
+    return origem_corrigivel(d) and diagnostico(d, administrador=False)["salvamento"] != "incerto"
+
+
 def cartao_diagnostico(d: dict) -> str:
     """Cartão do agente de diagnóstico (só ADM). O texto vem de uma IA lendo dados de usuário: tudo escapado."""
     estado = d.get("diagnostico_estado")
@@ -798,7 +803,7 @@ def cartao_diagnostico(d: dict) -> str:
     corpo = "".join(f'<div><dt>{e(k)}</dt><dd>{e(v)}</dd></div>' for k, v in linhas if v)
     corrigir = ""
     ok = filtrar_correcoes(j["correcoes"]) if isinstance(j.get("correcoes"), list) else []
-    if ok:
+    if ok and corrigivel_pelo_adm(d):
         itens = "".join(f'<li><b>{e(c["celula"])}</b> = {e(c["valor"])} <small>{e(c["motivo"])}</small></li>' for c in ok)
         corrigir = (f'<h3>Correção proposta</h3><ul>{itens}</ul>'
                     f'<form method="post" action="/adm/dav/{int(d["id"])}/corrigir">'
