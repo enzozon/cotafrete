@@ -725,6 +725,25 @@ def ver(dav_id: int, usuario: str | None = Depends(_quem),
     return _html("DAV", corpo, usuario)
 
 
+def arquivos_hse(dav_id: int) -> list[Path]:
+    """Prints e respostas que o robô guardou quando o HSE falhou neste envio (só o ADM vê)."""
+    return sorted((f for pasta in ("prints_hse", "respostas_hse")
+                   for f in (FILA.pasta / pasta).glob(f"{dav_id}_*") if f.is_file()), key=lambda f: f.name)
+
+
+def _bloco_arquivos_hse(dav_id: int) -> str:
+    arquivos = arquivos_hse(dav_id)
+    if not arquivos:
+        return ""
+    corpo = ""
+    for f in arquivos:
+        url = f"/adm/dav/{dav_id}/hse/{f.name}"
+        corpo += (f'<p><a href="{e(url)}" target="_blank"><img src="{e(url)}" alt="Tela do HSE no erro" '
+                  f'style="max-width:100%;border:1px solid var(--borda)"></a><br><small>{e(f.name)}</small></p>'
+                  if f.suffix == ".png" else f'<p><a href="{e(url)}" target="_blank">Resposta do HSE: {e(f.name)}</a></p>')
+    return f'<section class="cartao dav-card"><h2>Tela do HSE no erro</h2>{corpo}</section>'
+
+
 def detalhe_dav(dav: dict, *, administrador: bool, retorno: str) -> str:
     d = dav
     diag = diagnostico(d, administrador=administrador)
@@ -765,6 +784,8 @@ def detalhe_dav(dav: dict, *, administrador: bool, retorno: str) -> str:
         if posicao is not None:
             corpo += f'<p>Posição na fila: {posicao}</p>'
     corpo += f'<div class="dav-acoes">{acoes}</div></section>'
+    if administrador:
+        corpo += _bloco_arquivos_hse(d["id"])
     if diag["tem_aviso"]:
         corpo += '<aside class="dav-aviso"><b>! Aviso do HSE</b><p>Consulte os detalhes disponíveis ou o responsável pela operação.</p></aside>'
     dados = [("Cliente", d.get("cliente") or "Cliente não identificado"), ("Vendedor", d["usuario"]),

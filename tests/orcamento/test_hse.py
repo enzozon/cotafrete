@@ -430,3 +430,29 @@ def test_incluir_que_falha_duas_vezes_diz_que_nao_houve_erro(tmp_path):
     with pytest.raises(Exception, match="não mostrou erro; respondeu só: Margem atualizada"):
         hse._incluir_com_repeticao(None, item, produto, 0)
     assert len(cliques) == 2
+
+
+def test_erro_na_tela_do_pedido_guarda_print_com_o_numero_do_envio(tmp_path):
+    from orcamento.processador import ErroHse
+    hse = Hse.__new__(Hse)
+    hse.cfg = SimpleNamespace(pasta_programa=tmp_path)
+    hse.rotulo = "91"
+    hse._pedido = SimpleNamespace(is_closed=lambda: False,
+                                  screenshot=lambda path, full_page: open(path, "wb").write(b"png"))
+
+    def falha(_filial):
+        raise ErroHse("Item 1: o HSE recusou o produto")
+    hse._garantir_filial = falha
+    with pytest.raises(ErroHse):
+        hse.montar_orcamento(SimpleNamespace(filial=1), None, [], incluir=True)
+    assert [p.name.split("_")[0] for p in (tmp_path / "prints_hse").glob("*.png")] == ["91"]
+
+
+def test_print_que_falha_nao_esconde_o_erro_original(tmp_path):
+    hse = Hse.__new__(Hse)
+    hse.cfg = SimpleNamespace(pasta_programa=tmp_path)
+    hse.rotulo = ""
+
+    def quebra(**kw):
+        raise RuntimeError("navegador fechou")
+    hse._print_erro(SimpleNamespace(is_closed=lambda: False, screenshot=quebra))  # não levanta

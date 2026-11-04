@@ -5,7 +5,7 @@ from contextlib import closing
 import hashlib
 
 from fastapi import APIRouter, Cookie, HTTPException
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 
 from core import painel_dav
 from web import adm, dav_ui, painel_ui as ui
@@ -228,3 +228,16 @@ def planilha(dav_id: int, cookie: str | None = Cookie(None, alias=adm.COOKIE_ADM
     if porta:
         return porta
     return dav_ui.planilha_enviada(dav_id, usuario=None, cookie_adm=cookie)
+
+
+@router.get("/{dav_id}/hse/{nome}")
+def arquivo_hse(dav_id: int, nome: str, cookie: str | None = Cookie(None, alias=adm.COOKIE_ADM)):
+    porta = _porta(cookie)
+    if porta:
+        return porta
+    # só nomes que o próprio robô gravou para este envio: nada de caminho vindo da URL
+    arquivo = next((f for f in dav_ui.arquivos_hse(dav_id) if f.name == nome), None)
+    if arquivo is None:
+        raise HTTPException(404)
+    tipo = "image/png" if arquivo.suffix == ".png" else "text/plain; charset=utf-8"
+    return FileResponse(arquivo, media_type=tipo, headers={"Cache-Control": "no-store"})

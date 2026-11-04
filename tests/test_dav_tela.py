@@ -530,3 +530,25 @@ def test_pronto_com_pendencia_financeira_fica_verde_sem_aviso(cli, app_web, tmp_
     t = cli.get("/dav/1").text
     assert "dav-resultado-box ok" in t and "dav-selo ok" in t
     assert "dav-selo atencao" not in t and "Aviso financeiro" not in t and "class=\"dav-aviso\"" not in t
+
+
+def test_adm_ve_print_e_resposta_do_hse_do_envio(cli, app_web, tmp_path, monkeypatch):
+    enviar(cli, planilha(tmp_path))
+    prints, respostas = tmp_path / "davs" / "prints_hse", tmp_path / "davs" / "respostas_hse"
+    prints.mkdir(parents=True), respostas.mkdir(parents=True)
+    (prints / "1_20261104-145538.png").write_bytes(b"\x89PNG")
+    (prints / "11_20261104-145538.png").write_bytes(b"outro envio")
+    (respostas / "1_20261104-145538_76817.html").write_text("<script>toastSuccess('Margem atualizada')</script>")
+    from web import adm
+    monkeypatch.setenv("COTAFRETE_ADM_SENHA", "s3nha")
+    cli_adm = TestClient(app_web.app, follow_redirects=False)
+    cli_adm.cookies.set(adm.COOKIE_ADM, adm.token_de("s3nha"))
+    t = cli_adm.get("/adm/dav/1").text
+    assert '<img src="/adm/dav/1/hse/1_20261104-145538.png"' in t and "11_2026" not in t
+    assert "/adm/dav/1/hse/1_20261104-145538_76817.html" in t
+    assert cli_adm.get("/adm/dav/1/hse/1_20261104-145538.png").content == b"\x89PNG"
+    r = cli_adm.get("/adm/dav/1/hse/1_20261104-145538_76817.html")
+    assert r.status_code == 200 and r.headers["content-type"].startswith("text/plain")
+    assert cli_adm.get("/adm/dav/1/hse/11_20261104-145538.png").status_code == 404
+    assert cli_adm.get("/adm/dav/1/hse/..%2Fteste.db").status_code == 404
+    assert "prints_hse" not in cli.get("/dav/1").text and "/hse/" not in cli.get("/dav/1").text

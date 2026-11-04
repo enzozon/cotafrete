@@ -116,6 +116,18 @@ def _rede(fn):
     return envolto
 
 
+def _print_na_falha(fn):
+    """Falhou mexendo na tela do pedido: guarda um print dela (davs/prints_hse/) antes de seguir com o erro."""
+    @functools.wraps(fn)
+    def envolto(self, *a, **kw):
+        try:
+            return fn(self, *a, **kw)
+        except Exception:
+            self._print_erro(getattr(self, "_pedido", None))
+            raise
+    return envolto
+
+
 class Hse:
     def __init__(self, cfg: Config):
         self.cfg = cfg
@@ -130,6 +142,7 @@ class Hse:
         self._vendedores: dict[str, str] | None = None
         self._orc: Orcamento | None = None
         self._listas: tuple[list[str], list[str], list[str]] | None = None
+        self.rotulo = ""  # nº do envio DAV (nome da planilha): nomeia prints e respostas guardados
 
     # --- sessão ----------------------------------------------------------------
 
@@ -312,6 +325,7 @@ class Hse:
 
     # --- orçamento ---------------------------------------------------------------
 
+    @_print_na_falha
     def montar_orcamento(self, orc: Orcamento, cliente: Cliente,
                          itens: list[tuple[Item, Produto | None]], incluir: bool) -> None:
         self._garantir_filial(orc.filial)
@@ -489,11 +503,24 @@ class Hse:
         try:
             pasta = Path(self.cfg.pasta_programa) / "respostas_hse"
             pasta.mkdir(parents=True, exist_ok=True)
-            arquivo = pasta / f"{datetime.now():%Y%m%d-%H%M%S}_{codigo}.html"
+            arquivo = pasta / f"{getattr(self, 'rotulo', '') or 'hse'}_{datetime.now():%Y%m%d-%H%M%S}_{codigo}.html"
             arquivo.write_text(html, encoding="utf-8")
             log.warning("Resposta do Incluir recusado guardada em %s", arquivo)
-        except OSError as e:
+        except Exception as e:  # noqa: BLE001 — nunca troca a recusa por um erro daqui
             log.warning("Não guardei a resposta do Incluir: %s", e)
+
+    def _print_erro(self, page: Page | None) -> None:
+        """Print da tela na hora do erro; nunca troca o erro original por um erro do print."""
+        try:
+            if page is None or page.is_closed():
+                return
+            pasta = Path(self.cfg.pasta_programa) / "prints_hse"
+            pasta.mkdir(parents=True, exist_ok=True)
+            arquivo = pasta / f"{getattr(self, 'rotulo', '') or 'hse'}_{datetime.now():%Y%m%d-%H%M%S}.png"
+            page.screenshot(path=str(arquivo), full_page=True)
+            log.warning("Print da tela do HSE no erro: %s", arquivo)
+        except Exception as e:  # noqa: BLE001
+            log.warning("Não consegui o print do erro: %s", e)
 
     def _gravar_descricao(self, page: Page, item: Item, antes: set[str]) -> None:
         """A caixa #dsObsItem_<cdItem> só existe depois do Incluir; o onblur chama salvarObsItem (vendaItem.php).
@@ -531,6 +558,7 @@ class Hse:
 
     # --- escrita (só com DRY_RUN=0 e teste autorizado) ---------------------------
 
+    @_print_na_falha
     def salvar_orcamento(self) -> str:
         # A janela fecha ao salvar e a resposta costuma vir ilegível (visto nos testes 16295/16297/16298):
         # o nº vem do rascunho e o salvamento é conferido reabrindo o pedido.
@@ -618,6 +646,9 @@ class Hse:
                 raise ErroHse(f"HSE recusou o cadastro: {dados.get('message')}")
             codigo = str(dados.get("rfProduto") or dados.get("cod_produto") or "") or self._codigo_por_descricao(item)
             log.info("Produto '%s' cadastrado com código %s", item.descricao_cadastro, codigo)
+        except Exception:
+            self._print_erro(page)
+            raise
         finally:
             page.close()
         # O HSE gera cód. de barras ao salvar (e regera se apagado); combinado: fica o que ele gerar.
