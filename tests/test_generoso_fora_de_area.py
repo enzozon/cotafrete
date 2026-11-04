@@ -58,6 +58,7 @@ def test_a_recusa_nao_fala_em_erro_de_sistema():
 
 
 # ------------------------------------- o que faz a repetição inútil parar
+@pytest.mark.navegador   # cotar() abre o Chromium antes do _entrar
 def test_cep_fora_de_area_vira_recusa_e_nao_repete(tmp_path):
     """RECUSADO, não ERRO — o que impede a retentativa de repetir três vezes
     para ouvir o mesmo "não atendemos" que a Generoso já tinha dado na

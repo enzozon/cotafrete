@@ -14,17 +14,18 @@ concurrency:
 
 jobs:
   # Mesmo sistema e Python da VM (Windows, 3.14): alguns testes só rodam no Windows.
-  # A suíte vai em duas metades ao mesmo tempo, cada uma numa máquina; elas
-  # medem quase o mesmo (~3 min cada com -n 4). A marcação `navegador` é a do
-  # tests/conftest.py, então um teste novo cai sozinho na metade certa.
+  # A suíte vai em 4 partes ao mesmo tempo, cada uma numa máquina
+  # (PARTE_DA_SUITE, ver tests/conftest.py). Por arquivo e misturando testes
+  # de navegador com os outros: separar os dois não ganhava nada, porque o
+  # navegador passa o tempo esperando e corria de graça junto com os outros.
   testes:
-    name: testes (${{ matrix.grupo }})
+    name: testes (${{ matrix.parte }}/4)
     runs-on: windows-latest
     timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
-        grupo: [navegador, not navegador]
+        parte: [1, 2, 3, 4]
     steps:
       - run: tzutil /s "E. South America Standard Time"  # fuso da VM
       - uses: actions/checkout@v7
@@ -34,13 +35,14 @@ jobs:
           cache: pip
       # selenium: robô da HSE (cruzar_nf). pytest-xdist: o -n 4 abaixo.
       - run: pip install -r requirements.txt selenium pytest-xdist
-      - if: matrix.grupo == 'navegador'
-        run: python -m playwright install chromium
+      - run: python -m playwright install chromium
       # 4 processos = 4 vCPU do windows-latest. No PC do Enzo o padrão é em série.
-      - run: python -m pytest tests -q -n 4 -m "${{ matrix.grupo }}"
+      - run: python -m pytest tests -q -n 4
+        env:
+          PARTE_DA_SUITE: ${{ matrix.parte }}/4
 
-  # É este o nome que a proteção da main exige: passa só com as duas metades
-  # verdes. `always()` porque um job pulado conta como aprovado.
+  # É este o nome que a proteção da main exige: passa só com todas as
+  # partes verdes. `always()` porque um job pulado conta como aprovado.
   cotafrete:
     needs: testes
     if: always()
