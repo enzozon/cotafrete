@@ -1,4 +1,5 @@
 """Acesso ao HSE pela tela (Playwright). Seletores levantados em docs/mapa-hse.md."""
+import difflib
 import functools
 import logging
 import re
@@ -95,6 +96,30 @@ def enderecos_do_local(local: str, opcoes: list[tuple[str, str]]) -> list[str]:
         return [v for v, t in opcoes if re.match(rf"\s*{int(local)}\s*-", t)]
     alvo = f" {_so_palavras(local)} "
     return [v for v, t in opcoes if alvo in f" {_so_palavras(t)} "]
+
+
+PARECIDO = 0.8  # "ITABRA" x "ITABIRA" dá 0,92; cidades diferentes ficam bem abaixo
+
+
+def _parecido(local: str, endereco: str) -> float:
+    """Nota do trecho do endereço mais parecido com a B30 (mesmo número de palavras)."""
+    alvo, palavras = _so_palavras(local), _so_palavras(endereco).split()
+    n = max(1, len(alvo.split()))
+    return max((difflib.SequenceMatcher(None, alvo, " ".join(palavras[i:i + n])).ratio()
+                for i in range(max(1, len(palavras) - n + 1))), default=0.0)
+
+
+def erro_local_entrega(local: str, opcoes: list[tuple[str, str]]) -> str:
+    """Erro da B30 que não escolheu um endereço só. Se nenhum contém o texto mas um é claramente
+    parecido (erro de digitação), diz qual é; nunca escolhe sozinho, porque o HSE é produção."""
+    achados = enderecos_do_local(local, opcoes)
+    msg = f"Local de entrega '{local}': {len(achados)} endereço(s) do cliente contém esse texto"
+    notas = sorted(((_parecido(local, t), t) for _, t in opcoes), reverse=True)
+    if not achados and notas and notas[0][0] >= PARECIDO and (len(notas) == 1 or notas[1][0] < notas[0][0]):
+        numero = re.match(r"\s*(\d+)", notas[0][1])
+        if numero:
+            return f"{msg}. Parece ser o {numero[1]} ({notas[0][1]}): escreva {numero[1]} na B30"
+    return f"{msg}; escreva na B30 só o número do endereço ({'; '.join(t for _, t in opcoes)})"
 
 
 def recusa_do_incluir(numero: int, codigo: str, valor: Decimal, html: str) -> str:
@@ -379,9 +404,7 @@ class Hse:
                                                "os => os.filter(o => o.value).map(o => [o.value, o.text])")
             achados = enderecos_do_local(orc.local_entrega, opcoes)
             if len(achados) != 1:
-                raise ErroHse(f"Local de entrega '{orc.local_entrega}': {len(achados)} endereço(s) do "
-                              f"cliente contém esse texto; escreva na B30 só o número do endereço "
-                              f"({'; '.join(t for _, t in opcoes)})")
+                raise ErroHse(erro_local_entrega(orc.local_entrega, opcoes))
             self._set_select_oculto(page, "#cdEndereco", achados[0])
             self.endereco = next(t for v, t in opcoes if v == achados[0])
         self._pagamento(page, orc)

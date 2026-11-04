@@ -233,7 +233,7 @@ def _completar(item: Item, hse: HseApi, ajuda: Ajudantes) -> tuple[Item, list[st
             item = replace(item, grupo=grupo)
             notas.append(f"Item {n}: grupo escolhido por IA: {grupo}")
     if not item.ncm and ajuda.ncm:
-        ncm = ajuda.ncm(item.descricao_cadastro)
+        ncm = ajuda.ncm(item.descricao_cadastro, hse.ncm_existe)
         if ncm and hse.ncm_existe(ncm):
             item = replace(item, ncm=ncm)
             notas.append(f"Item {n}: NCM sugerido por IA: {ncm} (confira antes de faturar)")

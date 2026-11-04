@@ -27,6 +27,9 @@ DIAS_UTEIS_MES = 22
 MAX_BUSCAS_WEB = 3
 # US$ por 1 milhão de tokens (entrada, saída) — tabela da Anthropic de out/2026
 PRECOS = {"claude-haiku-5-5": (0.10, 0.50)}
+PRECO_BUSCA_WEB = 10 / 1000  # US$ 10 por mil buscas: com 3 buscas, a busca custa ~100× os tokens
+# D:\CADASTRO DE PRODUTO POR GRUPO.pdf (que produtos vão em cada grupo), passado a texto
+GUIA_GRUPOS = Path(__file__).with_name("guia_grupos.txt").read_text(encoding="utf-8")
 COLUNAS = ["data", "modo", "modelo", "tokens_entrada", "tokens_saida", "custo_usd", "ok", "detalhe"]
 
 INSTRUCAO_RESUMO = (
@@ -37,7 +40,14 @@ INSTRUCAO_RESUMO = (
 )
 INSTRUCAO_GRUPO = (
     "Você classifica produtos no cadastro de um ERP. Escolha, da lista de grupos enviada, o grupo que melhor "
-    "classifica o produto. Responda SOMENTE com o nome do grupo, exatamente como está na lista."
+    "classifica o produto. Responda SOMENTE com o nome do grupo, exatamente como está na lista.\n\n"
+    "Guia de cadastro da empresa (que produtos vão em cada grupo; o nome pode diferir um pouco da lista):\n"
+    + GUIA_GRUPOS
+)
+INSTRUCAO_NCM_SEM_BUSCA = (
+    "Você conhece o NCM (Nomenclatura Comum do Mercosul, 8 dígitos) de produtos vendidos no Brasil. "
+    "Diga o NCM usado em nota fiscal para o produto enviado. Responda SOMENTE em uma linha no formato "
+    "NCM=XXXXXXXX. Se não tiver certeza, responda NCM=NAO SEI."
 )
 INSTRUCAO_NCM = (
     "Você descobre o NCM (Nomenclatura Comum do Mercosul, 8 dígitos) de produtos vendidos no Brasil. "
@@ -51,12 +61,13 @@ class Ajudantes:
     """O que a IA sabe fazer para o processador; None = desligado."""
     resumir: Callable[[str], str | None] | None = None
     grupo: Callable[[str, list[str]], str | None] | None = None
-    ncm: Callable[[str], str | None] | None = None
+    # ncm(descrição, existe): `existe(ncm)` diz se o HSE tem o NCM; o que não existe é descartado
+    ncm: Callable[[str, Callable[[str], bool]], str | None] | None = None
 
 
 # --- chamadas ------------------------------------------------------------------
 
-def _rodar_api(prompt: str, modelo: str, instrucao: str, web: bool = False) -> tuple[str, int, int]:
+def _rodar_api(prompt: str, modelo: str, instrucao: str, web: bool = False) -> tuple[str, int, int, int]:
     import anthropic  # só necessário no modo api
 
     extra = {"tools": [{"type": "web_search_20250305", "name": "web_search", "max_uses": MAX_BUSCAS_WEB}]} if web else {}
@@ -69,17 +80,37 @@ def _rodar_api(prompt: str, modelo: str, instrucao: str, web: bool = False) -> t
         raise RuntimeError("modelo recusou o pedido")
     u = resp.usage
     entrada = u.input_tokens + (u.cache_read_input_tokens or 0) + (u.cache_creation_input_tokens or 0)
-    return "".join(b.text for b in resp.content if b.type == "text"), entrada, u.output_tokens
+    buscas = getattr(u.server_tool_use, "web_search_requests", 0) or 0  # server_tool_use é None sem busca
+    return "".join(b.text for b in resp.content if b.type == "text"), entrada, u.output_tokens, buscas
 
 
-def _custo(modelo: str, entrada: int, saida: int) -> float:
+def _custo(modelo: str, entrada: int, saida: int, buscas: int = 0) -> float:
     p_in, p_out = PRECOS.get(modelo, (0.0, 0.0))
-    return (entrada * p_in + saida * p_out) / 1_000_000
+    return (entrada * p_in + saida * p_out) / 1_000_000 + buscas * PRECO_BUSCA_WEB
 
 
 def _chamar(cfg: Config, prompt: str, instrucao: str, web: bool) -> tuple[str, int, int, float]:
-    bruto, entrada, saida = _rodar_api(prompt, cfg.ia_modelo, instrucao, web)
-    return bruto, entrada, saida, _custo(cfg.ia_modelo, entrada, saida)
+    bruto, entrada, saida, *buscas = _rodar_api(prompt, cfg.ia_modelo, instrucao, web)
+    return bruto, entrada, saida, _custo(cfg.ia_modelo, entrada, saida, buscas[0] if buscas else 0)
+
+
+def gasto(caminho: Path, agora: datetime) -> tuple[float, float]:
+    """US$ gastos com IA no dia e no mês de `agora`, somados do ia_uso.csv."""
+    dia, mes = agora.strftime("%Y-%m-%d"), agora.strftime("%Y-%m")
+    hoje = no_mes = 0.0
+    try:
+        with open(caminho, encoding="utf-8-sig") as f:
+            for linha in csv.DictReader(f, delimiter=";"):
+                try:
+                    custo = float(linha.get("custo_usd") or 0)
+                except ValueError:  # linha cortada (gravação interrompida) não pode parar a IA
+                    continue
+                data = linha.get("data") or ""
+                no_mes += custo if data.startswith(mes) else 0
+                hoje += custo if data.startswith(dia) else 0
+    except FileNotFoundError:
+        pass
+    return round(hoje, 6), round(no_mes, 6)
 
 
 def _registrar(caminho: Path, modo: str, modelo: str, entrada: int, saida: int, custo: float,
@@ -111,6 +142,11 @@ def _perguntar(cfg: Config, tarefa: str, instrucao: str, prompt: str,
     if chave in cache:  # reprocessar a mesma planilha não muda o produto cadastrado
         return cache[chave]
     modo = f"{cfg.ia}:{tarefa}"
+    hoje, _ = gasto(uso, datetime.now())
+    if hoje >= cfg.ia_limite_dia:  # freio: o crédito é pequeno; amanhã volta sozinho
+        log.warning("IA (%s) parada: gasto de hoje US$ %.4f chegou ao limite do dia", modo, hoje)
+        _registrar(uso, modo, cfg.ia_modelo, 0, 0, 0.0, False, f"limite do dia (US$ {cfg.ia_limite_dia:.2f})")
+        return None
     try:
         bruto, entrada, saida, custo = _chamar(cfg, prompt, instrucao, web)
     except Exception as e:  # noqa: BLE001 — IA nunca derruba o robô
@@ -160,11 +196,17 @@ def _grupo(cfg: Config, descricao: str, grupos: list[str]) -> str | None:
     return _perguntar(cfg, "grupo", INSTRUCAO_GRUPO, prompt, validar)
 
 
-def _ncm(cfg: Config, descricao: str) -> str | None:
+def _ncm(cfg: Config, descricao: str, existe: Callable[[str], bool]) -> str | None:
+    """Primeiro de memória (~US$ 0,0001); só se não vier um NCM que o HSE tem, pesquisa na web (~US$ 0,03)."""
     def validar(bruto: str) -> tuple[str | None, str]:
         m = re.search(r"NCM\s*[=:]?\s*(\d{4})\.?(\d{2})\.?(\d{2})", bruto or "", re.I)
-        return ("".join(m.groups()), "") if m else (None, f"NCM não encontrado na resposta: {bruto[:80]!r}")
-    return _perguntar(cfg, "ncm", INSTRUCAO_NCM, f"Produto: {descricao}", validar, web=True)
+        if not m:
+            return None, f"NCM não encontrado na resposta: {bruto[:80]!r}"
+        ncm = "".join(m.groups())
+        return (ncm, "") if existe(ncm) else (None, f"NCM {ncm} não existe no HSE")
+    prompt = f"Produto: {descricao}"
+    return (_perguntar(cfg, "ncm", INSTRUCAO_NCM_SEM_BUSCA, prompt, validar)
+            or _perguntar(cfg, "ncm_web", INSTRUCAO_NCM, prompt, validar, web=True))
 
 
 def ajudantes(cfg: Config) -> Ajudantes:
@@ -174,7 +216,7 @@ def ajudantes(cfg: Config) -> Ajudantes:
         os.environ.setdefault("ANTHROPIC_API_KEY", cfg.ia_chave)
     return Ajudantes(resumir=lambda t: _resumir(cfg, t),
                      grupo=lambda d, gs: _grupo(cfg, d, gs),
-                     ncm=lambda d: _ncm(cfg, d))
+                     ncm=lambda d, existe: _ncm(cfg, d, existe))
 
 
 def resumidor(cfg: Config) -> Callable[[str], str | None] | None:

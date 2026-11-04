@@ -199,8 +199,14 @@ ficam em `davs/entrada/<id>.xlsx` e `davs/pdf/` (fora do git).
   "confira no HSE", nunca roda de novo sozinho.
 - O HSE é produção. Só o `DAV_DRY_RUN=0` salva de verdade.
 - `.env` do Cotafrete: `HSE_USUARIO`, `HSE_SENHA`, `HSE_CLIENT_ID`,
-  `DAV_DRY_RUN`, `DAV_HEADLESS`, `IA`, `IA_MODELO`, `ANTHROPIC_API_KEY`.
-  Senha e chave nunca em log, banco, relatório ou tela.
+  `DAV_DRY_RUN`, `DAV_HEADLESS`, `IA`, `IA_MODELO`, `ANTHROPIC_API_KEY`,
+  `IA_LIMITE_DIA_USD` (padrão 0,30). Senha e chave nunca em log, banco,
+  relatório ou tela.
+- IA do produto novo (`orcamento/ia.py`): NCM primeiro de memória e só com
+  busca na web (US$ 0,01 por busca, entra no custo) quando o HSE não tem o
+  NCM. GRUPO com o guia `orcamento/guia_grupos.txt` (o PDF "Cadastro de
+  produto por grupo"). Gasto do dia em `davs/ia_uso.csv`; chegou ao limite,
+  a IA para até o dia seguinte. O `/adm/dav` mostra o gasto do dia e do mês.
 - Modelo v3 (`orcamento/modelo/PLANILHA-BASE-v3.xlsx`): FRETE na B38 (lista
   CIF/FOB na aba LISTAS, coluna H) e DESCRIÇÃO NO DAV na coluna R. O frete vira
   a linha `FRETE CIF, PRAZO DE ENTREGA 30 DIAS` abaixo das observações (exige o
@@ -208,7 +214,8 @@ ficam em `davs/entrada/<id>.xlsx` e `davs/pdf/` (fora do git).
   que só existe depois do Incluir; se não gravar, o DAV sai e o relatório avisa.
   Planilha do modelo anterior (A38 = "ITEM 1", sem a linha "Frete") ignora a B38.
 - Local de entrega (B30): texto do endereço ou só o número dele ("2" casa com a
-  opção "2 - ..."). Sem endereço correspondente, o erro lista os do cliente.
+  opção "2 - ..."). Sem endereço correspondente, o erro lista os do cliente;
+  se um só for bem parecido (erro de digitação, `erro_local_entrega`), o erro diz o número dele.
 - Conferência com o HSE antes do Gerar (`orcamento/conferencia.py`,
   `processador.conferir`): ao enviar, o rascunho nasce `conferencia="conferindo"`
   e uma fila própria (uma thread, uma vaga de `VAGA_NAVEGADOR`, até 120 s) roda a

@@ -463,3 +463,32 @@ def test_print_que_falha_nao_esconde_o_erro_original(tmp_path):
     def quebra(**kw):
         raise RuntimeError("navegador fechou")
     hse._print_erro(SimpleNamespace(is_closed=lambda: False, screenshot=quebra))  # não levanta
+
+_ENDERECOS = [("8410", "1 - Cadastral - R NEIDE FERREIRA DE LACERDA, 75, GARCIA II, BARÃO DE COCAIS/MG"),
+              ("9000", "2 - Entrega - AV BRASIL, 10, CENTRO, ITABIRA/MG")]
+
+
+def test_b30_com_erro_de_digitacao_sugere_o_endereco_parecido():
+    from orcamento.hse import erro_local_entrega
+    msg = erro_local_entrega("Itabra MG", _ENDERECOS)
+    assert msg.startswith("Local de entrega 'Itabra MG': 0 endereço(s)")  # o diagnóstico depende deste começo
+    assert "Parece ser o 2 (2 - Entrega - AV BRASIL, 10, CENTRO, ITABIRA/MG): escreva 2 na B30" in msg
+    assert "Parece ser o 1" in erro_local_entrega("barao de cocas", _ENDERECOS)
+
+
+def test_b30_sem_nada_parecido_nao_sugere():
+    from orcamento.hse import erro_local_entrega
+    msg = erro_local_entrega("Vitória ES", _ENDERECOS)
+    assert "Parece ser" not in msg and "1 - Cadastral" in msg  # continua listando os endereços
+
+
+def test_b30_que_casa_com_varios_nao_sugere_um_so():
+    from orcamento.hse import erro_local_entrega
+    msg = erro_local_entrega("MG", _ENDERECOS)
+    assert msg.startswith("Local de entrega 'MG': 2 endereço(s)") and "Parece ser" not in msg
+
+
+def test_b30_parecida_com_dois_enderecos_nao_escolhe():
+    from orcamento.hse import erro_local_entrega
+    iguais = [("1", "1 - Entrega - RUA A, 1, CENTRO, ITABIRA/MG"), ("2", "2 - Entrega - RUA B, 2, CENTRO, ITABIRA/MG")]
+    assert "Parece ser" not in erro_local_entrega("Itabra", iguais)

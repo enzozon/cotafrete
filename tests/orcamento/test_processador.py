@@ -179,7 +179,7 @@ def test_produto_novo_so_com_descricao_e_custo(tmp_path, monkeypatch):
     c = cfg(tmp_path, dry_run=False)
     p = planilha(c, SO_A_B_C)
     monkeypatch.setattr(proc, "ajudantes", lambda cfg_: Ajudantes(
-        grupo=lambda desc, grupos: "ELETRODOMÉSTICOS", ncm=lambda desc: "84181000"))
+        grupo=lambda desc, grupos: "ELETRODOMÉSTICOS", ncm=lambda desc, existe: "84181000"))
     hse = HseFalso(ncms=("84181000",))
     assert processar_arquivo(p, c, hse) == "PROCESSADOS"
     t = txt(c, "PROCESSADOS")
@@ -194,7 +194,7 @@ def test_ncm_da_ia_que_nao_existe_no_hse_vira_erro(tmp_path, monkeypatch):
     c = cfg(tmp_path, dry_run=False)
     p = planilha(c, SO_A_B_C)
     monkeypatch.setattr(proc, "ajudantes", lambda cfg_: Ajudantes(
-        grupo=lambda desc, grupos: "ELETRODOMÉSTICOS", ncm=lambda desc: "99999999"))
+        grupo=lambda desc, grupos: "ELETRODOMÉSTICOS", ncm=lambda desc, existe: "99999999"))
     hse = HseFalso()
     assert processar_arquivo(p, c, hse) == "ERRO"
     t = txt(c, "ERRO")
@@ -206,7 +206,7 @@ def test_marca_ambigua_ou_ausente_continua_obrigatoria(tmp_path, monkeypatch):
     c = cfg(tmp_path, dry_run=False)
     p = planilha(c, {**SO_A_B_C, "A3": "REFRIGERADOR MIDEA OU LG XPTO99 305L"})
     monkeypatch.setattr(proc, "ajudantes", lambda cfg_: Ajudantes(
-        grupo=lambda desc, grupos: "ELETRODOMÉSTICOS", ncm=lambda desc: "84716053"))
+        grupo=lambda desc, grupos: "ELETRODOMÉSTICOS", ncm=lambda desc, existe: "84716053"))
     assert processar_arquivo(p, c, HseFalso()) == "ERRO"
     assert "sem MARCA" in txt(c, "ERRO")
 
@@ -221,7 +221,7 @@ def test_sem_custo_nao_gasta_ia(tmp_path, monkeypatch):
     chamadas = []
     p = planilha(c, {**SO_A_B_C, "C3": None, "J3": 10})
     monkeypatch.setattr(proc, "ajudantes", lambda cfg_: Ajudantes(
-        grupo=lambda d, g: chamadas.append("g"), ncm=lambda d: chamadas.append("n")))
+        grupo=lambda d, g: chamadas.append("g"), ncm=lambda d, existe: chamadas.append("n")))
     assert processar_arquivo(p, c, HseFalso()) == "ERRO"
     assert chamadas == []
 
