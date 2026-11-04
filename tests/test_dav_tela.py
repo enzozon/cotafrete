@@ -562,3 +562,54 @@ def test_adm_ve_print_e_resposta_do_hse_do_envio(cli, app_web, tmp_path, monkeyp
     assert cli_adm.get("/adm/dav/1/hse/11_20261104-145538.png").status_code == 404
     assert cli_adm.get("/adm/dav/1/hse/..%2Fteste.db").status_code == 404
     assert "prints_hse" not in cli.get("/dav/1").text and "/hse/" not in cli.get("/dav/1").text
+
+
+def _adm(app_web, monkeypatch):
+    from web import adm
+    monkeypatch.setenv("COTAFRETE_ADM_SENHA", "s3nha")
+    c = TestClient(app_web.app, follow_redirects=False)
+    c.cookies.set(adm.COOKIE_ADM, adm.token_de("s3nha"))
+    return c
+
+
+def _diag(**campos):
+    import json
+    base = dict(culpa="robo", causa="Falhou <b>x</b>", acao="Rodar de novo", evidencia="log", confianca="media",
+                criados_no_hse=[16533, 16534], custo=0.0004)
+    return json.dumps({**base, **campos})
+
+
+def test_adm_ve_cartao_diagnostico_vendedor_nao(cli, app_web, tmp_path, monkeypatch):
+    enviar(cli, planilha(tmp_path))
+    app_web.banco.dav_atualizar(1, estado="erro", diagnostico=_diag(), diagnostico_estado="feito")
+    t = _adm(app_web, monkeypatch).get("/adm/dav/1").text
+    assert "Robô" in t and "16533, 16534" in t and "Diagnosticar de novo" in t
+    assert "US$ 0,0004" in t and "média" in t and "<b>x</b>" not in t
+    v = cli.get("/dav/1").text
+    assert "Diagnosticar de novo" not in v and "16533" not in v
+
+
+def test_diagnostico_nao_verificado_nada_e_pendente(cli, app_web, tmp_path, monkeypatch):
+    enviar(cli, planilha(tmp_path))
+    adm = _adm(app_web, monkeypatch)
+    app_web.banco.dav_atualizar(1, estado="erro", diagnostico_estado="feito",
+                                diagnostico=_diag(criados_no_hse="nao_verificado", motivo_nao_verificado="HSE indisponível"))
+    assert "Não verificado (HSE indisponível)" in adm.get("/adm/dav/1").text
+    app_web.banco.dav_atualizar(1, diagnostico=_diag(criados_no_hse=[]))
+    assert "Nada criado" in adm.get("/adm/dav/1").text
+    app_web.banco.dav_atualizar(1, diagnostico_estado="pendente")
+    assert "Diagnosticando" in adm.get("/adm/dav/1").text
+
+
+def test_post_diagnosticar_exige_adm_e_enfileira(cli, app_web, tmp_path, monkeypatch):
+    enviar(cli, planilha(tmp_path))
+    monkeypatch.setenv("COTAFRETE_ADM_SENHA", "s3nha")
+    r = TestClient(app_web.app, follow_redirects=False).post("/adm/dav/1/diagnosticar")
+    assert r.status_code == 303 and "/adm/entrar" in r.headers["location"]
+    chamadas = []
+    from web import dav_ui
+    monkeypatch.setattr(dav_ui, "FILA_DIAGNOSTICO", type("F", (), {"enfileirar": lambda s, i: (
+        chamadas.append(i), app_web.banco.dav_atualizar(i, diagnostico_estado="pendente"))})())
+    r = _adm(app_web, monkeypatch).post("/adm/dav/1/diagnosticar")
+    assert r.status_code == 303 and r.headers["location"] == "/adm/dav/1" and chamadas == [1]
+    assert app_web.banco.dav(1, None)["diagnostico_estado"] == "pendente"

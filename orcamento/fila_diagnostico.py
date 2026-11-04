@@ -110,4 +110,7 @@ class FilaDiagnostico:
                 raise RuntimeError("HSE bloqueou gravação na busca: " + "; ".join(bloqueados))
         else:
             provas = coletar(dav, self.pasta, None)
-        return diagnosticar(provas, cfg)
+        res = diagnosticar(provas, cfg)
+        if provas.get("motivo_nao_verificado"):   # a tela mostra por que os pedidos não foram verificados
+            res["motivo_nao_verificado"] = provas["motivo_nao_verificado"]
+        return res

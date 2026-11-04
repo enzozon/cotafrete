@@ -750,6 +750,50 @@ def _bloco_arquivos_hse(dav_id: int) -> str:
     return f'<section class="cartao dav-card"><h2>Tela do HSE no erro</h2>{corpo}</section>'
 
 
+CULPAS = {"planilha": "Planilha", "cadastro_hse": "Cadastro no HSE", "robo": "Robô", "hse_fora": "HSE fora do ar",
+          "acesso_hse": "Acesso ao HSE", "conferencia_ok_sem_gerar": "Falta clicar em Gerar",
+          "indefinido": "Não identificado"}
+
+
+def cartao_diagnostico(d: dict) -> str:
+    """Cartão do agente de diagnóstico (só ADM). O texto vem de uma IA lendo dados de usuário: tudo escapado."""
+    estado = d.get("diagnostico_estado")
+    if not estado:
+        return ""
+    botao = (f'<form method="post" action="/adm/dav/{int(d["id"])}/diagnosticar">'
+             '<button class="botao2" type="submit">Diagnosticar de novo</button></form>')
+    if estado == "pendente":
+        return '<section class="cartao dav-card"><h2>Diagnóstico</h2><p class="dav-note">Diagnosticando…</p></section>'
+    try:
+        j = json.loads(d.get("diagnostico") or "{}")
+        j = j if isinstance(j, dict) else {}
+    except ValueError:
+        j = {}
+    if estado == "falhou":
+        return (f'<section class="cartao dav-card"><h2>Diagnóstico</h2><p>O diagnóstico falhou: '
+                f'{e(j.get("motivo") or "motivo desconhecido")}</p>{botao}</section>')
+    criados = j.get("criados_no_hse")
+    if criados == "nao_verificado":
+        motivo = j.get("motivo_nao_verificado")
+        ficou = f"Não verificado ({motivo})" if motivo else "Não verificado"
+    elif criados:
+        ficou = "Orçamentos " + ", ".join(str(n) for n in criados)
+    else:
+        ficou = "Nada criado"
+    try:
+        custo = f'US$ {float(j.get("custo") or 0):.4f}'.replace(".", ",")
+    except (TypeError, ValueError):
+        custo = "US$ 0,0000"
+    linhas = [("De quem é", CULPAS.get(j.get("culpa"), "Não identificado")), ("Causa", j.get("causa")),
+              ("O que fazer", j.get("acao")), ("Prova", j.get("evidencia")),
+              ("Confiança", {"alta": "alta", "media": "média", "baixa": "baixa"}.get(j.get("confianca"), "baixa")),
+              ("Ficou no HSE", ficou), ("Custo", custo)]
+    if j.get("motivo_sem_ia"):
+        linhas.append(("Sem IA", j["motivo_sem_ia"]))
+    corpo = "".join(f'<div><dt>{e(k)}</dt><dd>{e(v)}</dd></div>' for k, v in linhas if v)
+    return f'<section class="cartao dav-card"><h2>Diagnóstico</h2><dl class="dav-dados">{corpo}</dl>{botao}</section>'
+
+
 def detalhe_dav(dav: dict, *, administrador: bool, retorno: str) -> str:
     d = dav
     diag = diagnostico(d, administrador=administrador)
@@ -791,7 +835,7 @@ def detalhe_dav(dav: dict, *, administrador: bool, retorno: str) -> str:
             corpo += f'<p>Posição na fila: {posicao}</p>'
     corpo += f'<div class="dav-acoes">{acoes}</div></section>'
     if administrador:
-        corpo += _bloco_arquivos_hse(d["id"])
+        corpo += cartao_diagnostico(d) + _bloco_arquivos_hse(d["id"])
     if diag["tem_aviso"]:
         corpo += '<aside class="dav-aviso"><b>! Aviso do HSE</b><p>Consulte os detalhes disponíveis ou o responsável pela operação.</p></aside>'
     dados = [("Cliente", d.get("cliente") or "Cliente não identificado"), ("Vendedor", d["usuario"]),

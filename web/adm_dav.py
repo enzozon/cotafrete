@@ -214,7 +214,7 @@ def detalhe_agora(dav_id: int, cookie: str | None = Cookie(None, alias=adm.COOKI
         raise HTTPException(404)
     retorno = dav_ui.url_dav("/adm/dav", _filtros(dias, estado, vendedor, busca, pagina, categoria))
     return dav_ui.resposta_pulso({"dav-detalhe": dav_ui.detalhe_dav(d, administrador=True, retorno=retorno)}, v,
-                                ativo=d["estado"] in ("fila", "gerando"))
+                                ativo=d["estado"] in ("fila", "gerando") or d.get("diagnostico_estado") == "pendente")
 
 
 @router.get("/{dav_id}", response_class=HTMLResponse)
@@ -245,6 +245,18 @@ def planilha(dav_id: int, cookie: str | None = Cookie(None, alias=adm.COOKIE_ADM
     if porta:
         return porta
     return dav_ui.planilha_enviada(dav_id, usuario=None, cookie_adm=cookie)
+
+
+@router.post("/{dav_id}/diagnosticar")
+def diagnosticar(dav_id: int, cookie: str | None = Cookie(None, alias=adm.COOKIE_ADM)):
+    porta = _porta(cookie)
+    if porta:
+        return porta
+    if adm.banco.dav(dav_id, None) is None:
+        raise HTTPException(404)
+    if dav_ui.FILA_DIAGNOSTICO is not None:   # enfileirar já grava "pendente"
+        dav_ui.FILA_DIAGNOSTICO.enfileirar(dav_id)
+    return RedirectResponse(f"/adm/dav/{dav_id}", status_code=303)
 
 
 @router.get("/{dav_id}/hse/{nome}")
