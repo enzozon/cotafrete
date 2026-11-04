@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import re
 import sqlite3
 import threading
@@ -50,6 +51,7 @@ ESTADOS = {"rascunho": "Conferindo", "fila": "Na fila", "gerando": "Gerando no H
 # ponytail: uma trava global; basta para uma VM com poucos vendedores.
 _TRAVA = threading.Lock()
 
+log = logging.getLogger(__name__)
 router = APIRouter(prefix="/dav", include_in_schema=False)
 
 SCRIPT_ACOES = """<script>
@@ -238,7 +240,6 @@ def tabela_davs(linhas: list[dict], com_vendedor: bool = False, *, administrador
             destino += "/conferir"
         motivo = (f'<small class="dav-motivo">{e(diag["motivo"])}</small>'
                   if d["estado"] in ("erro", "incerto", "rejeitado") else "")
-        aviso = '<small>HSE sinalizou pendência financeira.</small>' if diag["aviso_financeiro"] else ""
         correcao_url = url_dav(f'{base}/{d.get("resolvida_por")}', filtros)
         resolvida = (f'<small class="dav-correcao">✓ Resolvida por <a href="{e(correcao_url)}">novo envio #{d["resolvida_por"]}</a></small>'
                      if d.get("resolvida_por") else "")
@@ -247,7 +248,7 @@ def tabela_davs(linhas: list[dict], com_vendedor: bool = False, *, administrador
         corpo += (f'<tr data-dav="{d["id"]}"><td><b>#{d["id"]}</b><small>{e(d["criado_em"].replace("T", " ")[:16])}</small></td>'
                   + (f'<td>{e(d["usuario"])}</td>' if com_vendedor else "")
                   + f'<td><b>{e(d.get("cliente") or "Cliente não identificado")}</b><small>{e(d["arquivo"])}</small></td>'
-                  + f'<td class="dav-resultado">{_selo(d)}{motivo}{aviso}{resolvida}'
+                  + f'<td class="dav-resultado">{_selo(d)}{motivo}{resolvida}'
                   + (f'<small>{e(tempo)}</small>' if tempo else "")
                   + (f'<small>Orçamento {e(d["numero"])}</small>' if d.get("numero") else "")
                   + f'</td><td>{pdf}</td><td><a href="{e(url_dav(destino, filtros))}">Abrir →</a></td></tr>')
@@ -334,7 +335,7 @@ def _coluna(titulo: str, tom: str, cartoes: list[str], vazio: str, mais: str = "
 def _precisa_vendedor(dados: dict, filtros: dict) -> list[str]:
     cartoes = []
     for g in dados["quadro"]["precisa"]:
-        if g["tipo"] in ("aviso", "aviso_financeiro"):
+        if g["tipo"] == "aviso":
             continue  # o DAV foi criado: aparece em Prontos com o aviso
         tom = "atencao" if g["tipo"] == "confirmacao" else "erro"
         corrige = g["tipo"] in ("falha", "rejeitado") and g["origem"] not in ("automacao", "acesso_hse")
@@ -363,12 +364,10 @@ def _prontos(dados: dict, filtros: dict, base: str) -> tuple[list[str], str]:
     cartoes = []
     for d in prontos[:MAX_PRONTOS]:
         diag = diagnostico(d, administrador=False)
-        aviso = ('<p class="dav-aviso-mini">! Aviso financeiro: consulte o financeiro</p>'
-                 if diag["aviso_financeiro"] else "")
         duracao = tempo_dav(d).removeprefix("Duração: ")
         pdf = f'<a class="dav-btnc" href="{base}/{d["id"]}/pdf">Baixar PDF ↓</a>' if d.get("pdf") else ""
         cartoes.append(_cartao(d, url_dav(f'{base}/{d["id"]}', filtros), "ok",
-            f'<p>Orçamento <b>{e(d.get("numero") or "—")}</b>{" · " + e(duracao) if duracao else ""}</p>{aviso}', pdf))
+            f'<p>Orçamento <b>{e(d.get("numero") or "—")}</b>{" · " + e(duracao) if duracao else ""}</p>', pdf))
     mais = (f'<p class="dav-mais"><a href="{e(url_dav(base, filtros, estado="pronto", pagina=1))}#historico">'
             f'Ver os {len(prontos)} prontos no histórico →</a></p>' if len(prontos) > MAX_PRONTOS else "")
     return cartoes, mais
@@ -376,7 +375,7 @@ def _prontos(dados: dict, filtros: dict, base: str) -> tuple[list[str], str]:
 
 def resumo_dia(dados: dict) -> str:
     q = dados["quadro"]
-    precisa = sum(len(g["envios"]) for g in q["precisa"] if g["tipo"] not in ("aviso", "aviso_financeiro"))
+    precisa = sum(len(g["envios"]) for g in q["precisa"] if g["tipo"] != "aviso")
     prontos = len(q["prontos"])
     return (f'{PERIODOS.get(dados["periodo"]["dias"], "Período")}: {prontos} '
             f'{"pronto" if prontos == 1 else "prontos"} · {len(q["andamento"])} em andamento · '
@@ -598,10 +597,10 @@ def conferir(planilha: UploadFile = File(...),
         try:
             o = ler_planilha(temp)
         except ErroPlanilha as exc:
-            return _rejeitar(usuario, nome, origem, *exc.erros)
+            return _rejeitar(usuario, nome, origem, *exc.erros, arquivo=temp)
         except Exception:
             return _rejeitar(usuario, nome, origem, "Não consegui abrir o arquivo. "
-                                  "É a PLANILHA-BASE v3 em .xlsx?")
+                                  "É a PLANILHA-BASE v3 em .xlsx?", arquivo=temp)
         with _TRAVA:
             _validar_origem(usuario, origem)
             antigo = banco.dav_ja_gerado(usuario, hash_)
@@ -630,7 +629,8 @@ def _validar_origem(usuario: str, origem: int | None) -> None:
         raise HTTPException(409, "Confira o resultado no HSE antes de reenviar.")
 
 
-def _rejeitar(usuario: str, nome: str, origem: int | None, *msgs: str) -> HTMLResponse:
+def _rejeitar(usuario: str, nome: str, origem: int | None, *msgs: str,
+              arquivo: Path | None = None) -> HTMLResponse:
     try:
         with _TRAVA:
             _validar_origem(usuario, origem)
@@ -640,6 +640,11 @@ def _rejeitar(usuario: str, nome: str, origem: int | None, *msgs: str) -> HTMLRe
     except sqlite3.Error:
         return HTMLResponse(pagina("Planilha não aceita", '<h1>Planilha não aceita</h1>'
             '<p>Não foi possível registrar a rejeição. Nenhum DAV foi enviado ao HSE.</p>', usuario), status_code=503)
+    if arquivo:  # guarda a recusada: o ADM abre o Excel que o vendedor mandou
+        try:
+            arquivo.replace(FILA.planilha(i))
+        except OSError as exc:
+            log.error("DAV %s: não guardei a planilha recusada: %s", i, exc)
     return _erro(usuario, *msgs, origem=i)
 
 
@@ -740,6 +745,8 @@ def detalhe_dav(dav: dict, *, administrador: bool, retorno: str) -> str:
     if incerto:
         motivo = "O orçamento pode já existir no HSE; confira antes de reenviar."
     acoes = (f'<a class="botao2" href="{base}/{d["id"]}/pdf">Baixar PDF ↓</a>' if d.get("pdf") else "")
+    if administrador and FILA.planilha(d["id"]).is_file():
+        acoes += f'<a class="botao2" href="/adm/dav/{d["id"]}/planilha">Baixar planilha enviada ↓</a>'
     if (not administrador and d["estado"] in ("erro", "rejeitado") and not incerto
             and diag.get("origem") not in ("automacao", "acesso_hse")):
         acoes += f'<a class="botao2" href="/dav?origem={d["id"]}">Enviar planilha corrigida →</a>'
@@ -758,9 +765,7 @@ def detalhe_dav(dav: dict, *, administrador: bool, retorno: str) -> str:
         if posicao is not None:
             corpo += f'<p>Posição na fila: {posicao}</p>'
     corpo += f'<div class="dav-acoes">{acoes}</div></section>'
-    if diag["aviso_financeiro"]:
-        corpo += '<aside class="dav-aviso"><b>! Aviso financeiro do HSE</b><p>Consulte o financeiro sobre a pendência do cliente. Esse aviso é independente do resultado da criação.</p></aside>'
-    elif diag["tem_aviso"]:
+    if diag["tem_aviso"]:
         corpo += '<aside class="dav-aviso"><b>! Aviso do HSE</b><p>Consulte os detalhes disponíveis ou o responsável pela operação.</p></aside>'
     dados = [("Cliente", d.get("cliente") or "Cliente não identificado"), ("Vendedor", d["usuario"]),
              ("Envio", d["criado_em"].replace("T", " ")), ("Início", (d.get("iniciado_em") or "Não iniciado").replace("T", " ")),
@@ -810,4 +815,18 @@ def pdf(dav_id: int, usuario: str | None = Depends(_quem),
     if not caminho.is_relative_to((FILA.pasta / "pdf").resolve()) or not caminho.is_file():
         raise HTTPException(404)
     return FileResponse(caminho, media_type="application/pdf", filename=caminho.name,
+                        headers={"Cache-Control": "no-store"})
+
+
+@router.get("/{dav_id}/planilha")
+def planilha_enviada(dav_id: int, usuario: str | None = Depends(_quem),
+                     cookie_adm: str | None = Cookie(None, alias=adm.COOKIE_ADM)):
+    d, ir = _acesso(dav_id, usuario, cookie_adm)
+    if ir:
+        return ir
+    caminho = FILA.planilha(dav_id)
+    if not caminho.is_file():
+        raise HTTPException(404)
+    return FileResponse(caminho, filename=Path(d["arquivo"]).name or caminho.name,
+                        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                         headers={"Cache-Control": "no-store"})

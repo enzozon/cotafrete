@@ -18,9 +18,11 @@ def test_endereco_e_pendencia_sao_independentes():
     texto = relatorio("Local de entrega 'Barao': 0 endereço(s) do cliente contém esse texto",
                       "O HSE avisou: Pendência Cliente bloqueado. Consultar o setor financeiro DF15653")
     d = diagnostico(registro(relatorio=texto), administrador=False)
-    assert d["categoria"] == "endereco" and d["aviso_financeiro"] is True
+    assert d["categoria"] == "endereco"
     pronto = diagnostico(registro("pronto", relatorio=texto, numero="16410"), administrador=False)
-    assert pronto["salvamento"] == "confirmado" and pronto["tem_aviso"] is True
+    # pendência financeira é normal (VALE, CHEMTRADE): o DAV criado fica Pronto, sem aviso
+    assert pronto["salvamento"] == "confirmado" and pronto["tem_aviso"] is False
+    assert "financeiro" not in pronto["relatorio_visivel"]
 
 
 def test_erro_existe_so_no_relatorio():
@@ -74,7 +76,14 @@ def test_relatorio_completo_sem_aviso_e_mensagem_desconhecida():
 def test_nome_cliente_nao_e_aviso_financeiro():
     from orcamento.diagnostico import diagnostico
     d = diagnostico(registro("pronto", relatorio=relatorio(info="Cliente: Financeira Industrial S.A.")), administrador=False)
-    assert d["aviso_financeiro"] is False and d["tem_aviso"] is False
+    assert d["tem_aviso"] is False
+
+
+def test_aviso_do_hse_que_nao_e_financeiro_continua_aviso():
+    from orcamento.diagnostico import diagnostico
+    texto = relatorio("", "O HSE avisou: Pendência Cliente bloqueado DF1 Venc: 24/10/2026\n"
+                                    "O HSE avisou: Estoque baixo")
+    assert diagnostico(registro("pronto", relatorio=texto, numero="1"), administrador=False)["tem_aviso"] is True
 
 
 def test_itens_reconhecidos_sem_reproduzir_continuacoes():

@@ -53,12 +53,12 @@ def _ocorrencias(linhas: list[dict], diags: dict, *, administrador: bool) -> lis
         elif d["estado"] == "rascunho" and d.get("conferencia") == "erros":
             tipo = "conferencia"
         elif d["estado"] == "pronto" and diag["tem_aviso"] is True:
-            tipo = "aviso_financeiro" if diag["aviso_financeiro"] else "aviso"
+            tipo = "aviso"
         else:
             continue
         motivo = diag["motivo"]
-        if tipo in ("aviso_financeiro", "aviso"):
-            motivo = "DAV criado com aviso financeiro." if tipo == "aviso_financeiro" else "DAV criado com aviso do HSE."
+        if tipo == "aviso":
+            motivo = "DAV criado com aviso do HSE."
         # Agrupa pela causa; as células ficam por envio, senão cada planilha vira um cartão.
         chave = (tipo, diag.get("origem", "desconhecida"), motivo, diag.get("onde_conferir"),
                  diag.get("como_corrigir"))
@@ -68,9 +68,6 @@ def _ocorrencias(linhas: list[dict], diags: dict, *, administrador: bool) -> lis
                 origem_rotulo=diag.get("origem_rotulo", "Origem não identificada"),
                 onde_conferir=diag.get("onde_conferir") or "Confira os detalhes do envio e o HSE.",
                 como_corrigir=diag.get("como_corrigir") or diag["orientacao"], total=0, envios=[])
-            if tipo == "aviso_financeiro":
-                grupos[chave].update(origem_rotulo="Financeiro", onde_conferir="Situação do cliente no HSE e setor financeiro",
-                                     como_corrigir="Consulte o financeiro. O DAV já foi criado.")
         grupo = grupos[chave]
         grupo["total"] += 1
         detalhe = diagnostico(d, administrador=administrador)
