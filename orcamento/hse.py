@@ -576,7 +576,9 @@ class Hse:
 
     def _codigo_por_descricao(self, item: Item) -> str:
         alvo = normalizar(item.descricao_cadastro)
-        achados = [p.codigo for p in self.buscar_produtos(alvo) if normalizar(p.descricao) == alvo]
+        # busca com o texto original: o HSE guarda o acento e não acha "ABRACADEIRA" (envio #85)
+        termo = " ".join(item.descricao_cadastro.split())
+        achados = [p.codigo for p in self.buscar_produtos(termo) if normalizar(p.descricao) == alvo]
         if len(achados) != 1:
             raise ErroHse(f"cadastro salvo, mas não identifiquei o código de '{item.descricao_cadastro}' "
                           f"(achados: {achados}); confira no HSE")

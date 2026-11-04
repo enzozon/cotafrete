@@ -80,18 +80,34 @@ def test_conferir_com_erro_registra_rejeicao_sem_gerar(cli, app_web, tmp_path):
     assert r.status_code == 200
     assert "/gerar" not in r.text
     assert app_web.banco.dav(1, "ana")["estado"] == "rejeitado"
-    assert not list((tmp_path / "davs" / "entrada").glob("*"))
+    # a recusada fica guardada: o ADM precisa abrir o Excel que o vendedor mandou (envio #87)
+    assert [f.name for f in (tmp_path / "davs" / "entrada").glob("*")] == ["1.xlsx"]
 
 
-@pytest.mark.parametrize("nome,conteudo", [
-    ("a.xls", b"x"), ("a.xlsx", b"x" * (6 * 1024 * 1024)),
-    ("a.xlsx", b"isto nao e um xlsx")], ids=["xls", "6mb", "corrompido"])
-def test_arquivo_errado_so_registra_rejeicao(cli, app_web, tmp_path, nome, conteudo):
+@pytest.mark.parametrize("nome,conteudo,guardada", [
+    ("a.xls", b"x", []), ("a.xlsx", b"x" * (6 * 1024 * 1024), []),
+    ("a.xlsx", b"isto nao e um xlsx", ["1.xlsx"])], ids=["xls", "6mb", "corrompido"])
+def test_arquivo_errado_so_registra_rejeicao(cli, app_web, tmp_path, nome, conteudo, guardada):
     r = enviar(cli, None, nome, conteudo)
     assert r.status_code == 200
     assert "/gerar" not in r.text
     assert app_web.banco.dav(1, "ana")["estado"] == "rejeitado"
-    assert not list((tmp_path / "davs" / "entrada").glob("*"))
+    assert [f.name for f in (tmp_path / "davs" / "entrada").glob("*")] == guardada
+
+
+def test_adm_baixa_a_planilha_enviada_ate_a_recusada(cli, app_web, tmp_path, monkeypatch):
+    caminho = planilha(tmp_path, {"B31": None}, nome="recusada.xlsx")
+    enviar(cli, caminho)
+    from web import adm
+    monkeypatch.setenv("COTAFRETE_ADM_SENHA", "s3nha")
+    cli_adm = TestClient(app_web.app, follow_redirects=False)
+    cli_adm.cookies.set(adm.COOKIE_ADM, adm.token_de("s3nha"))
+    assert "/adm/dav/1/planilha" in cli_adm.get("/adm/dav/1").text
+    r = cli_adm.get("/adm/dav/1/planilha")
+    assert r.status_code == 200 and r.content == caminho.read_bytes()
+    assert "recusada.xlsx" in r.headers["content-disposition"]
+    outro = entrar(TestClient(app_web.app, follow_redirects=False), app_web, "bia")
+    assert outro.get("/dav/1/planilha").status_code == 404
 
 
 def test_gerar_enfileira_uma_vez(cli, app_web, tmp_path):
@@ -290,7 +306,7 @@ def test_detalhe_vendedor_nao_embute_relatorio_privado(cli, app_web):
         "Robô de Orçamentos HSE\nResultado: OK\nItens:\n\nDetalhes:\n"
         "O HSE avisou: Pendência financeira DF15653 valor 1234,56 Venc: 27/09/2026"))
     t = cli.get(f"/dav/{i}").text
-    assert "financeiro" in t
+    assert "Aviso financeiro" not in t  # pendência financeira é normal: Pronto sem aviso
     for segredo in ("DF15653", "1234,56", "27/09/2026"):
         assert segredo not in t
 
@@ -504,3 +520,13 @@ def test_erros_com_json_ilegivel_explica_por_que_nao_ha_gerar(cli, app_web, tmp_
     app_web.banco.dav_atualizar(1, conferencia="erros", conferencia_relatorio="{quebrado")
     t = cli.get("/dav/1/conferir").text
     assert "Não consegui ler o resultado da conferência" in t and "/gerar" not in t
+
+
+def test_pronto_com_pendencia_financeira_fica_verde_sem_aviso(cli, app_web, tmp_path):
+    enviar(cli, planilha(tmp_path))
+    app_web.banco.dav_atualizar(1, estado="pronto", numero="16504", relatorio=(
+        "Robô de Orçamentos HSE\nArquivo: 1.xlsx\nModo: REAL\nResultado: OK - orçamento 16504 salvo\n"
+        "Itens:\nDetalhes:\nO HSE avisou: Pendência Cliente bloqueado. Consultar o setor financeiro DE16214"))
+    t = cli.get("/dav/1").text
+    assert "dav-resultado-box ok" in t and "dav-selo ok" in t
+    assert "dav-selo atencao" not in t and "Aviso financeiro" not in t and "class=\"dav-aviso\"" not in t

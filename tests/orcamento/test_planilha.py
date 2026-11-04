@@ -221,3 +221,21 @@ def test_descricao_maximo_512(tmp_path):
     assert len(ler(tmp_path, "valida", {"R2": "x" * 512}).itens[0].descricao) == 512
     assert "Item 1: DESCRIÇÃO NO DAV com 513 caracteres (máximo 512)" in erros(
         tmp_path, "valida", {"R2": "x" * 513})
+
+
+def test_mesma_descricao_com_dados_diferentes_e_recusada(tmp_path):
+    # Envio #85: duas peças com a mesma descrição viraram um produto só no HSE
+    segunda = {"A4": "PRODUTO TESTE ROBO", "B4": 1, "C4": 0.10, "L4": "85359090", "M4": 0, "N4": 17}
+    assert "Item 3: descrição deve ser diferente da do item 2" in erros(tmp_path, "completa", segunda)
+
+
+def test_mesma_descricao_com_os_mesmos_dados_passa(tmp_path):
+    repetida = {"A4": "produto  teste robo", "B4": 2, "C4": 45, "L4": "84716053", "M4": 0, "N4": 17}
+    assert len(ler(tmp_path, "completa", repetida).itens) == 3
+
+
+def test_descricao_igual_cai_na_coluna_o():
+    from orcamento.diagnostico import diagnostico
+    d = diagnostico({"estado": "rejeitado", "erro": "Item 3: descrição deve ser diferente da do item 2 "
+                     "(mesma descrição com NCM, custo diferentes)"}, administrador=False)
+    assert d["origem"] == "planilha" and d["campos"] == ["O4"]

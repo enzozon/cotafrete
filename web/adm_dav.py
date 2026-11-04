@@ -64,7 +64,7 @@ COLUNAS_ADM = (("Planilha e cadastro", "erro", "Nenhuma correção de planilha p
 
 
 def _coluna_de(g: dict) -> int:
-    if g["tipo"] in ("confirmacao", "aviso", "aviso_financeiro"):
+    if g["tipo"] in ("confirmacao", "aviso"):
         return 2
     if g["origem"] in ("acesso_hse", "automacao") or g["origem_rotulo"] == "Causa não identificada":
         return 1
@@ -92,7 +92,7 @@ def quadro_adm(dados: dict, filtros: dict) -> str:
 def ocorrencias(dados: dict, filtros: dict) -> str:
     rotulos = {"falha": "Falha de criação", "rejeitado": "Planilha rejeitada",
                "conferencia": "Conferência inválida", "confirmacao": "Resultado sem confirmação",
-               "aviso_financeiro": "Criado com aviso financeiro", "aviso": "Criado com aviso"}
+               "aviso": "Criado com aviso"}
     corpo = ""
     for g in dados["ocorrencias"]:
         corpo += (f'<section class="cartao dav-card dav-guia-erro" data-tipo="{e(g["tipo"])}"><p class="dav-note">{e(rotulos[g["tipo"]])}</p>'
@@ -220,3 +220,11 @@ def pdf(dav_id: int, cookie: str | None = Cookie(None, alias=adm.COOKIE_ADM)):
     if porta:
         return porta
     return dav_ui.pdf(dav_id, usuario=None, cookie_adm=cookie)
+
+
+@router.get("/{dav_id}/planilha")
+def planilha(dav_id: int, cookie: str | None = Cookie(None, alias=adm.COOKIE_ADM)):
+    porta = _porta(cookie)
+    if porta:
+        return porta
+    return dav_ui.planilha_enviada(dav_id, usuario=None, cookie_adm=cookie)

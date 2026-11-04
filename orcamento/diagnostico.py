@@ -52,7 +52,7 @@ def _origem(mensagens: list[str], rejeitado: bool) -> dict:
                         (r"^(?:valor unitario|valor de venda unitario|preco) ", "J"),
                         (r"^codigo ", "K"), (r"^ncm ", "L"), (r"^origem (?:invalido|invalida|deve)", "M"),
                         (r"^icms (?:invalido|invalida|deve)", "N"), (r"^grupo ", "P"),
-                        (r"^descricao no dav com \d+ caracteres", "R")):
+                        (r"^descricao no dav com \d+ caracteres", "R"), (r"^descricao deve ser diferente", "O")):
                     if re.match(padrao, detalhe):
                         referencias = [f"{coluna}{int(item[1]) + 1}"]
                         break
@@ -124,9 +124,10 @@ def diagnostico(dav: dict, *, administrador: bool) -> dict:
     # (desconto, vendedor, endereços). Continuações e trechos financeiros ficam para o administrador.
     erros_robo = [linha[6:].strip() for linha in erros_rel.splitlines()
                   if linha.startswith("ERRO: ") and not _financeiro(linha)]
-    financeiro = _financeiro(original)
     completo = all(t in rel for t in ("Robô de Orçamentos HSE", "\nResultado:", "\nItens:"))
-    aviso = True if financeiro or "o hse avisou:" in texto else (False if completo else None)
+    # pendência financeira é normal (ex.: VALE): o DAV criado fica Pronto, sem aviso
+    avisos_hse = [l for l in texto.splitlines() if "o hse avisou:" in l and not _financeiro(l)]
+    aviso = True if avisos_hse else (False if completo else None)
     estado = dav.get("estado", "")
     resultado = _normal("\n".join(l for l in rel.splitlines() if l.startswith("Resultado:")) + "\n" + erro)
     simulacao = estado == "simulado" or bool(re.search(r"^Modo: DRY_RUN", rel, re.M))
@@ -200,11 +201,10 @@ def diagnostico(dav: dict, *, administrador: bool) -> dict:
     permitido = "\n".join(filter(None, (titulo, "\n".join(itens), motivo if mostrar_erros else "",
                                        "\n".join(erros_extra),
                                        orientacao if incerto else "",
-                                       "Aviso financeiro: consulte o financeiro." if financeiro else "",
                                        "Detalhes técnicos adicionais disponíveis ao administrador." if original else "")))
     return {"categoria": categoria, "titulo": titulo,
             "motivo": motivo_admin if administrador else motivo, "etapa": etapa,
-            "orientacao": orientacao, "aviso_financeiro": financeiro, "tem_aviso": aviso,
+            "orientacao": orientacao, "tem_aviso": aviso,
             "relatorio_visivel": original if administrador else permitido,
             "diagnostico_copiavel": (original if administrador else permitido),
             "salvamento": salvamento, "itens": itens, **novos}

@@ -191,6 +191,25 @@ def _ler_item(ws, linha: int, erros: list[str], avisos: list[str]) -> Item | Non
     )
 
 
+def _descricoes_conflitantes(itens: list[Item], erros: list[str]) -> None:
+    """Produto novo com a mesma descrição de outro, mas dados diferentes: o robô cadastraria um só."""
+    vistos: dict[str, Item] = {}
+    for it in itens:
+        if it.codigo:
+            continue
+        primeiro = vistos.setdefault(normalizar(it.descricao_cadastro), it)
+        if primeiro is it:
+            continue
+        # NCM, grupo e marca em branco a IA preenche: só conflita se os dois vierem preenchidos
+        diferentes = [nome for nome, a, b in (("NCM", primeiro.ncm, it.ncm), ("grupo", primeiro.grupo, it.grupo),
+                                              ("marca", primeiro.marca, it.marca)) if a and b and a != b]
+        diferentes += [nome for nome, a, b in (("custo", primeiro.custo, it.custo), ("origem", primeiro.origem, it.origem),
+                                               ("ICMS", primeiro.icms, it.icms)) if a != b]
+        if diferentes:
+            erros.append(f"Item {it.numero}: descrição deve ser diferente da do item {primeiro.numero} "
+                         f"(mesma descrição com {', '.join(diferentes)} diferentes)")
+
+
 def _filial(v, erros: list[str]) -> int:
     s = _texto(v)
     if not s:
@@ -215,6 +234,7 @@ def ler_planilha(path: Path) -> Orcamento:
              if (it := _ler_item(ws, linha, erros, avisos))]
     if not itens and not erros:
         erros.append("nenhum item preenchido (linhas 2 a 25, coluna A ou K)")
+    _descricoes_conflitantes(itens, erros)
 
     obs = _texto(ws["B26"].value) or ""
     cliente = _texto(ws["B31"].value)

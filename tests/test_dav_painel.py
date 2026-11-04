@@ -123,8 +123,9 @@ def test_ocorrencias_distinguem_conferencia_rejeicao_confirmacao_e_aviso(banco):
     novo(banco, "pronto")
     grupos = consulta(banco)["ocorrencias"]
     tipos = {g["tipo"] for g in grupos}
-    assert tipos == {"falha", "rejeitado", "conferencia", "confirmacao", "aviso_financeiro"}
-    assert sum(g["total"] for g in grupos) == 6
+    # pronto com pendência financeira não é ocorrência: é normal e fica em Prontos
+    assert tipos == {"falha", "rejeitado", "conferencia", "confirmacao"}
+    assert sum(g["total"] for g in grupos) == 5
     assert sum(g["total"] for g in grupos if g["tipo"] == "confirmacao") == 2
     for g in grupos:
         if g["tipo"] == "confirmacao":

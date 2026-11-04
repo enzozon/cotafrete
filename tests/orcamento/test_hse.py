@@ -371,3 +371,13 @@ def test_hse_so_leitura_instala_a_guarda_depois_do_login(monkeypatch):
     guarda(leitura)
     assert gravacao.chamadas == ["abort"] and leitura.chamadas == ["continue"]
     assert hse.bloqueados == ["vendaAlt.php acao=salvarObsItem"]
+
+
+def test_codigo_apos_cadastro_busca_com_acento():
+    # Envio #85: o HSE guarda "ABRAÇADEIRA" e a busca dele não acha "ABRACADEIRA"
+    from orcamento.hse import Produto
+    hse = Hse.__new__(Hse)
+    salvo = Produto("76815", "ABRAÇADEIRA NYLON 4.60 X 200MM UV PRETA", True)
+    hse.buscar_produtos = lambda termo: [salvo] if termo.upper() in salvo.descricao else []
+    item = SimpleNamespace(descricao_cadastro="Abraçadeira Nylon 4.60 x 200mm UV Preta")
+    assert hse._codigo_por_descricao(item) == "76815"
