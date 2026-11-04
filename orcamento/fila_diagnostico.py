@@ -82,7 +82,9 @@ class FilaDiagnostico:
         from orcamento.agente import diagnosticar
         from orcamento.config import config_do_ambiente
         from orcamento.hse import HseSoLeitura
+        from orcamento.processador import HseIndisponivel
         from orcamento.provas import buscador_hse, coletar
+        from playwright.sync_api import Error as PlaywrightError
 
         cfg = config_do_ambiente()
         dav = self.banco.dav(dav_id, None)
@@ -90,15 +92,21 @@ class FilaDiagnostico:
             raise LookupError(f"DAV {dav_id} não existe")
         if dav["estado"] in ("erro", "incerto"):
             cfg_hse = replace(cfg, dry_run=True, pasta_programa=self.pasta)
-            if not VAGA_NAVEGADOR.acquire(timeout=LIMITE_VAGA_S):
-                raise TimeoutError("navegador ocupado; sem vaga para buscar os pedidos no HSE")
+            provas, bloqueados = None, []
             try:
-                with HseSoLeitura(cfg_hse) as hse:
-                    provas = coletar(dav, self.pasta, buscador_hse(hse, self.banco.dav_numeros_prontos()))
-                    bloqueados = list(hse.bloqueados)
-            finally:
-                VAGA_NAVEGADOR.release()
-            if bloqueados:   # a guarda segurou uma gravação: a busca não é confiável
+                if not VAGA_NAVEGADOR.acquire(timeout=LIMITE_VAGA_S):
+                    raise TimeoutError("navegador ocupado")
+                try:
+                    with HseSoLeitura(cfg_hse) as hse:
+                        provas = coletar(dav, self.pasta, buscador_hse(hse, self.banco.dav_numeros_prontos()))
+                        bloqueados = list(hse.bloqueados)
+                finally:
+                    VAGA_NAVEGADOR.release()
+            except (HseIndisponivel, TimeoutError, ValueError, PlaywrightError) as e:
+                # Sem sessão no HSE o diagnóstico segue, com os pedidos "não verificados".
+                provas = coletar(dav, self.pasta, None)
+                provas["motivo_nao_verificado"] = f"HSE indisponível: {_sem_segredo(str(e)) or type(e).__name__}"
+            if bloqueados:   # a guarda segurou uma gravação: alarme de segurança, não indisponibilidade
                 raise RuntimeError("HSE bloqueou gravação na busca: " + "; ".join(bloqueados))
         else:
             provas = coletar(dav, self.pasta, None)

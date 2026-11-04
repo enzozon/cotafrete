@@ -1143,7 +1143,7 @@ class Banco:
         with closing(self._conectar()) as con, con:
             return [(r[0], int(r[1])) for r in con.execute(
                 "SELECT terminado_em, numero FROM dav WHERE estado = 'pronto'"
-                " AND terminado_em IS NOT NULL AND numero GLOB '[0-9]*' ORDER BY id")]
+                " AND terminado_em IS NOT NULL AND numero != '' AND numero NOT GLOB '*[^0-9]*' ORDER BY id")]
 
     def dav_rejeitar(self, usuario: str, arquivo: str, motivos: list[str]) -> int:
         with closing(self._conectar()) as con, con:

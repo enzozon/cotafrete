@@ -101,3 +101,32 @@ def test_conferencia_chama_ao_terminar(banco, tmp_path):
     FilaConferencia(banco, tmp_path, executar=lambda p: conf, disparar=_na_hora,
                     ao_terminar=vistos.append).enfileirar(i)
     assert vistos == [i]
+
+
+def test_hse_indisponivel_vira_nao_verificado(banco, tmp_path, monkeypatch):
+    import orcamento.agente as agente
+    import orcamento.config as config
+    import orcamento.hse as hse
+    from orcamento.processador import HseIndisponivel
+
+    class SemHse:
+        def __init__(self, cfg):
+            raise HseIndisponivel("fora do ar")
+
+    monkeypatch.setattr(config, "config_do_ambiente",
+                        lambda: config.Config(usuario="u", senha="s", client_id="v", dry_run=False, headless=True))
+    monkeypatch.setattr(hse, "HseSoLeitura", SemHse)
+    monkeypatch.setattr(agente, "diagnosticar", lambda provas, cfg: provas)
+    i = _dav(banco, "erro")
+    FilaDiagnostico(banco, tmp_path, disparar=_na_hora).enfileirar(i)
+    d = banco.dav(i, None)
+    j = json.loads(d["diagnostico"])
+    assert d["diagnostico_estado"] == "feito" and j["criados_no_hse"] == "nao_verificado"
+    assert "fora do ar" in j["motivo_nao_verificado"]
+
+
+def test_numeros_prontos_ignora_numero_sujo(banco):
+    for n in ("123abc", "456"):
+        i = _dav(banco, "pronto")
+        banco.dav_atualizar(i, numero=n, terminado_em="2026-11-04T10:00:00")
+    assert banco.dav_numeros_prontos() == [("2026-11-04T10:00:00", 456)]
