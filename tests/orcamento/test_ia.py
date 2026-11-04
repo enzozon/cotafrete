@@ -63,20 +63,83 @@ def test_projecao_de_custo(tmp_path, monkeypatch):
 
 def test_ncm_extrai_8_digitos_e_registra_tarefa(tmp_path, monkeypatch):
     monkeypatch.setattr(ia, "_rodar_api", lambda *a: ("Pesquisei. NCM=8418.10.00", 300, 40))
-    assert ia.ajudantes(cfg(tmp_path, "api")).ncm("REFRIGERADOR MIDEA") == "84181000"
+    assert ia.ajudantes(cfg(tmp_path, "api")).ncm("REFRIGERADOR MIDEA", lambda n: True) == "84181000"
     assert _uso(tmp_path)[0]["modo"] == "api:ncm"
 
 
 def test_ncm_sem_formato_vira_none(tmp_path, monkeypatch):
     monkeypatch.setattr(ia, "_rodar_api", lambda *a: ("não sei", 10, 10))
-    assert ia.ajudantes(cfg(tmp_path, "api")).ncm("PRODUTO X") is None
+    assert ia.ajudantes(cfg(tmp_path, "api")).ncm("PRODUTO X", lambda n: True) is None
 
 
-def test_ncm_pede_busca_na_internet(tmp_path, monkeypatch):
+def test_ncm_tenta_sem_busca_na_internet_primeiro(tmp_path, monkeypatch):
     pedidos = []
     monkeypatch.setattr(ia, "_rodar_api", lambda prompt, modelo, instrucao, web: pedidos.append(web) or ("NCM=84181000", 1, 1))
-    ia.ajudantes(cfg(tmp_path, "api")).ncm("REFRIGERADOR")
-    assert pedidos == [True]
+    assert ia.ajudantes(cfg(tmp_path, "api")).ncm("REFRIGERADOR", lambda n: True) == "84181000"
+    assert pedidos == [False]  # a busca custa US$ 0,01 cada; sem ela a pergunta sai por ~US$ 0,0001
+
+
+def test_ncm_busca_na_internet_quando_o_de_memoria_nao_existe_no_hse(tmp_path, monkeypatch):
+    pedidos = []
+
+    def api(prompt, modelo, instrucao, web):
+        pedidos.append(web)
+        return ("NCM=84181000", 1, 1, 2) if web else ("NCM=12345678", 1, 1)
+    monkeypatch.setattr(ia, "_rodar_api", api)
+    ncm = ia.ajudantes(cfg(tmp_path, "api")).ncm
+    assert ncm("REFRIGERADOR", lambda n: n == "84181000") == "84181000"
+    assert pedidos == [False, True]
+    assert [(u["modo"], u["ok"]) for u in _uso(tmp_path)] == [("api:ncm", "nao"), ("api:ncm_web", "sim")]
+    assert "não existe no HSE" in _uso(tmp_path)[0]["detalhe"]
+    # o NCM recusado não vai para o cache: reprocessar a planilha não traz o 12345678 de volta
+    assert ncm("REFRIGERADOR", lambda n: n == "84181000") == "84181000" and len(pedidos) == 3
+
+
+def test_busca_na_internet_entra_no_custo(tmp_path, monkeypatch):
+    monkeypatch.setattr(ia, "_rodar_api", lambda prompt, modelo, instrucao, web:
+                        ("NCM=84181000", 1000, 200, 2) if web else ("não sei", 10, 10))
+    ia.ajudantes(cfg(tmp_path, "api")).ncm("REFRIGERADOR", lambda n: True)
+    # tokens (US$ 0,0002) + 2 buscas a US$ 10 por mil
+    assert _uso(tmp_path)[-1]["custo_usd"] == "0.020200"
+
+
+def _gastou(tmp_path, data: str, custo: str) -> None:
+    with open(tmp_path / "ia_uso.csv", "w", newline="", encoding="utf-8-sig") as f:
+        f.write(";".join(ia.COLUNAS) + "\n")
+        f.write(f"{data} 10:00:00;api:ncm_web;claude-haiku-5-5;1;1;{custo};sim;\n")
+
+
+def test_freio_diario_para_a_ia_quando_o_gasto_do_dia_chega_ao_limite(tmp_path, monkeypatch):
+    chamadas = []
+    monkeypatch.setattr(ia, "_rodar_api", lambda *a: chamadas.append(1) or ("CABO HDMI 2M", 10, 10))
+    _gastou(tmp_path, ia.datetime.now().strftime("%Y-%m-%d"), "0.300000")
+    assert ia.resumidor(cfg(tmp_path, "api"))("CABO HDMI 2M " * 15) is None
+    assert chamadas == []
+    assert "limite do dia" in _uso(tmp_path)[-1]["detalhe"]
+
+
+def test_gasto_de_ontem_nao_conta_no_freio(tmp_path, monkeypatch):
+    monkeypatch.setattr(ia, "_rodar_api", lambda *a: ("CABO HDMI 2M", 10, 10))
+    _gastou(tmp_path, "2020-01-01", "9.000000")
+    assert ia.resumidor(cfg(tmp_path, "api"))("CABO HDMI 2M " * 15) == "CABO HDMI 2M"
+
+
+def test_gasto_do_dia_e_do_mes(tmp_path):
+    hoje = ia.datetime.now()
+    _gastou(tmp_path, hoje.strftime("%Y-%m-%d"), "0.012345")
+    assert ia.gasto(tmp_path / "ia_uso.csv", hoje) == (0.012345, 0.012345)
+    with open(tmp_path / "ia_uso.csv", "a", encoding="utf-8-sig") as f:
+        f.write(hoje.strftime("%Y-%m-%d") + " 11:00:00;api:ncm;claude-haiku-5-5;1;1;0.0\x00")  # linha cortada
+    assert ia.gasto(tmp_path / "ia_uso.csv", hoje) == (0.012345, 0.012345)
+    assert ia.gasto(tmp_path / "nao_existe.csv", hoje) == (0.0, 0.0)
+
+
+def test_grupo_usa_o_guia_de_cadastro_da_empresa(tmp_path, monkeypatch):
+    pedidos = []
+    monkeypatch.setattr(ia, "_rodar_api", lambda prompt, modelo, instrucao, web=False:
+                        pedidos.append(instrucao) or ("BEBEDOURO", 10, 10))
+    assert ia.ajudantes(cfg(tmp_path, "api")).grupo("PURIFICADOR DE AGUA", ["BEBEDOURO", "ELETROPORTATEIS"]) == "BEBEDOURO"
+    assert "PURIFICADOR/BEBEDOURO" in pedidos[0]  # D:\CADASTRO DE PRODUTO POR GRUPO.pdf
 
 
 def test_grupo_so_aceita_nome_da_lista(tmp_path, monkeypatch):

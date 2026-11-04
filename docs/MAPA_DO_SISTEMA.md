@@ -199,8 +199,14 @@ ficam em `davs/entrada/<id>.xlsx` e `davs/pdf/` (fora do git).
   "confira no HSE", nunca roda de novo sozinho.
 - O HSE é produção. Só o `DAV_DRY_RUN=0` salva de verdade.
 - `.env` do Cotafrete: `HSE_USUARIO`, `HSE_SENHA`, `HSE_CLIENT_ID`,
-  `DAV_DRY_RUN`, `DAV_HEADLESS`, `IA`, `IA_MODELO`, `ANTHROPIC_API_KEY`.
-  Senha e chave nunca em log, banco, relatório ou tela.
+  `DAV_DRY_RUN`, `DAV_HEADLESS`, `IA`, `IA_MODELO`, `ANTHROPIC_API_KEY`,
+  `IA_LIMITE_DIA_USD` (padrão 0,30). Senha e chave nunca em log, banco,
+  relatório ou tela.
+- IA do produto novo (`orcamento/ia.py`): NCM primeiro de memória e só com
+  busca na web (US$ 0,01 por busca, entra no custo) quando o HSE não tem o
+  NCM. GRUPO com o guia `orcamento/guia_grupos.txt` (o PDF "Cadastro de
+  produto por grupo"). Gasto do dia em `davs/ia_uso.csv`; chegou ao limite,
+  a IA para até o dia seguinte. O `/adm/dav` mostra o gasto do dia e do mês.
 - Modelo v3 (`orcamento/modelo/PLANILHA-BASE-v3.xlsx`): FRETE na B38 (lista
   CIF/FOB na aba LISTAS, coluna H) e DESCRIÇÃO NO DAV na coluna R. O frete vira
   a linha `FRETE CIF, PRAZO DE ENTREGA 30 DIAS` abaixo das observações (exige o

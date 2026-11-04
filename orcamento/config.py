@@ -20,6 +20,7 @@ class Config:
     ia: str = "desligada"              # desligada | api
     ia_modelo: str = "claude-haiku-5-5"
     ia_chave: str = field(default="", repr=False)  # ANTHROPIC_API_KEY, só para IA=api
+    ia_limite_dia: float = 0.30        # US$ por dia (IA_LIMITE_DIA_USD); passou, a IA para até o dia seguinte
 
 
 def _bool(v: str) -> bool:
@@ -45,4 +46,12 @@ def config_do_ambiente(ambiente: Mapping[str, str] | None = None) -> Config:
         ia="api" if ia == "api" else "desligada",
         ia_modelo=get("IA_MODELO", "claude-haiku-5-5"),
         ia_chave=get("ANTHROPIC_API_KEY"),
+        ia_limite_dia=_dolares(get("IA_LIMITE_DIA_USD"), 0.30),
     )
+
+
+def _dolares(v: str, padrao: float) -> float:
+    try:
+        return max(0.0, float(v.replace(",", "."))) if v else padrao
+    except ValueError:
+        return padrao

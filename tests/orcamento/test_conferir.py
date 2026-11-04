@@ -117,7 +117,7 @@ def test_ncm_da_ia_que_nao_existe_no_hse_nao_conta_como_preenchido():
 
 def test_conferencia_avisa_o_que_a_ia_preencheu(tmp_path, monkeypatch):
     monkeypatch.setattr("orcamento.processador.ajudantes",
-                        lambda c: Ajudantes(ncm=lambda d: "84716053"))
+                        lambda c: Ajudantes(ncm=lambda d, existe: "84716053"))
     c = conferir(criar(tmp_path, VARIANTES["novo_sem_ncm"], "o.xlsx"), cfg(tmp_path), HseFalso())
     assert c.estado == "ok"
     assert "Item 2: preenchido automaticamente — NCM 84716053 (IA); confira antes de gerar" in c.avisos

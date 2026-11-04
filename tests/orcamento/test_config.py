@@ -31,3 +31,10 @@ def test_config_le_ia_api_e_chaves():
     assert (cfg.ia, cfg.ia_modelo, cfg.ia_chave, cfg.dry_run, cfg.headless, cfg.client_id) == \
            ("api", "m", "chave-abc", False, False, "x")
     assert "chave-abc" not in repr(cfg)
+
+
+def test_limite_diario_da_ia():
+    base = {"HSE_USUARIO": "u", "HSE_SENHA": "s"}
+    assert config_do_ambiente(base).ia_limite_dia == 0.30
+    assert config_do_ambiente({**base, "IA_LIMITE_DIA_USD": "0,50"}).ia_limite_dia == 0.50
+    assert config_do_ambiente({**base, "IA_LIMITE_DIA_USD": "muito"}).ia_limite_dia == 0.30
