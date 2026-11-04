@@ -3,7 +3,7 @@ import difflib
 import functools
 import logging
 import re
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
@@ -52,12 +52,26 @@ def _qtd(v: Decimal) -> str:
     return format(v.normalize(), "f").replace(".", ",")
 
 
+_INFORMATIVOS = ("toastSuccess", "toastInfo")
+RE_MENSAGEM = re.compile(r"""\b(alert|toast\w*)\(\s*(['"])(.+?)\2""")
+
+
+def _mensagens(html: str) -> list[tuple[str, str]]:
+    """(função, texto) de cada alert/toast que a resposta abriria na tela."""
+    return [(m.group(1), re.sub(r"\s*<br\s*/?>\s*", " - ", m.group(3))) for m in RE_MENSAGEM.finditer(html)]
+
+
 def motivo_recusa(html: str) -> str:
     """O Incluir recusado não dá erro HTTP: o motivo vem num <script> da resposta (visto no orçamento 16354)."""
     m = re.search(r"erroDescontoMsg\s*=\s*'([^']*)'", html)
-    if not m:  # outra recusa (DAV 23): mostra o aviso que a resposta abriria na tela, se houver
-        aviso = re.search(r"""\b(?:alert|toast\w*)\(\s*(['"])(.+?)\1""", html)
-        return re.sub(r"\s*<br\s*/?>\s*", " - ", aviso.group(2)) if aviso else "o HSE não informou o motivo"
+    if not m:  # outra recusa (DAV 23): mostra o erro que a resposta abriria na tela, se houver
+        erros = [t for f, t in _mensagens(html) if not f.startswith(_INFORMATIVOS)]
+        if erros:
+            return " - ".join(erros)
+        avisos = [t for _, t in _mensagens(html)]
+        # DAV 91/93: "Margem atualizada" só informa; mostrar como motivo escondia o problema real
+        return ("o HSE não mostrou erro; respondeu só: " + " - ".join(avisos) if avisos
+                else "o HSE não informou o motivo")
     motivo = re.sub(r"\s*<br\s*/?>\s*", " - ", m.group(1))
     original = re.search(r"'vlOriginal',\s*([\d.]+)", html)
     maximo = re.search(r"percentDescMax\s*=\s*([\d.]+)", html)
@@ -123,6 +137,18 @@ def _rede(fn):
     return envolto
 
 
+def _print_na_falha(fn):
+    """Falhou mexendo na tela do pedido: guarda um print dela (davs/prints_hse/) antes de seguir com o erro."""
+    @functools.wraps(fn)
+    def envolto(self, *a, **kw):
+        try:
+            return fn(self, *a, **kw)
+        except Exception:
+            self._print_erro(getattr(self, "_pedido", None))
+            raise
+    return envolto
+
+
 class Hse:
     def __init__(self, cfg: Config):
         self.cfg = cfg
@@ -137,6 +163,7 @@ class Hse:
         self._vendedores: dict[str, str] | None = None
         self._orc: Orcamento | None = None
         self._listas: tuple[list[str], list[str], list[str]] | None = None
+        self.rotulo = ""  # nº do envio DAV (nome da planilha): nomeia prints e respostas guardados
 
     # --- sessão ----------------------------------------------------------------
 
@@ -319,6 +346,7 @@ class Hse:
 
     # --- orçamento ---------------------------------------------------------------
 
+    @_print_na_falha
     def montar_orcamento(self, orc: Orcamento, cliente: Cliente,
                          itens: list[tuple[Item, Produto | None]], incluir: bool) -> None:
         self._garantir_filial(orc.filial)
@@ -446,6 +474,21 @@ class Hse:
             return
         antes = page.locator("td.cellDelete").count()
         linhas = set(page.eval_on_selector_all("tr[id^=trItem_]", "ts => ts.map(t => t.id)"))
+        self._incluir(page, item, produto, antes)
+        log.info("Item %s incluído; rascunho %s", produto.codigo, self.rascunho)
+        if item.descricao:
+            self._gravar_descricao(page, item, linhas)
+
+    def _incluir(self, page: Page, item: Item, produto: Produto, antes: int) -> None:
+        # Nunca repetir o Incluir: nos DAV 91/93 o HSE incluiu (orçamentos 16533/16534/16536) e só o
+        # nº do pedido demorou a aparecer na VM; clicar de novo duplicaria o item.
+        html = self._clicar_incluir(page)
+        if not self._item_entrou(page, antes):
+            self._guardar_resposta(produto.codigo, html)
+            raise ErroHse(recusa_do_incluir(item.numero, produto.codigo, item.valor_unit, html))
+
+    def _clicar_incluir(self, page: Page) -> str:
+        """Clica Incluir e devolve o HTML da resposta do vendaItem.php."""
         self._fechar_aviso(page)
         try:
             with page.expect_response(lambda r: "vendaItem.php" in r.url and r.request.method == "POST"
@@ -456,18 +499,46 @@ class Hse:
             cd = self._cd_pedido(page)
             if cd:
                 self.rascunho = cd
-        if not cd:  # no 1º item a recusa (ex.: desconto acima do limite) nem cria o pedido
-            raise ErroHse(recusa_do_incluir(item.numero, produto.codigo, item.valor_unit, resp.value.text()))
-        # do 2º item em diante o nº do pedido já existe: só a tabela mostra se o item entrou
+        return resp.value.text()
+
+    def _item_entrou(self, page: Page, antes: int) -> bool:
+        """A linha nova na tabela é a prova de que o item entrou; o nº do pedido pode chegar depois.
+
+        DAV 91/93: o robô leu o #cdPedido logo após o Incluir, achou vazio e deu "recusado" com o
+        pedido já criado no HSE. Espera a linha (até 15 s) e só então pega o nº do rascunho."""
         try:
             page.wait_for_function("n => document.querySelectorAll('td.cellDelete').length > n", arg=antes,
-                                   timeout=5000)
+                                   timeout=15000)
         except PlaywrightError:
-            raise ErroHse(recusa_do_incluir(item.numero, produto.codigo, item.valor_unit,
-                                            resp.value.text())) from None
-        log.info("Item %s incluído; rascunho %s", produto.codigo, cd)
-        if item.descricao:
-            self._gravar_descricao(page, item, linhas)
+            return False
+        cd = self._cd_pedido(page)
+        if cd:
+            self.rascunho = cd
+        return True
+
+    def _guardar_resposta(self, codigo: str, html: str) -> None:
+        """A resposta inteira fica em davs/respostas_hse/ para achar o motivo real de uma recusa."""
+        try:
+            pasta = Path(self.cfg.pasta_programa) / "respostas_hse"
+            pasta.mkdir(parents=True, exist_ok=True)
+            arquivo = pasta / f"{getattr(self, 'rotulo', '') or 'hse'}_{datetime.now():%Y%m%d-%H%M%S}_{codigo}.html"
+            arquivo.write_text(html, encoding="utf-8")
+            log.warning("Resposta do Incluir recusado guardada em %s", arquivo)
+        except Exception as e:  # noqa: BLE001 — nunca troca a recusa por um erro daqui
+            log.warning("Não guardei a resposta do Incluir: %s", e)
+
+    def _print_erro(self, page: Page | None) -> None:
+        """Print da tela na hora do erro; nunca troca o erro original por um erro do print."""
+        try:
+            if page is None or page.is_closed():
+                return
+            pasta = Path(self.cfg.pasta_programa) / "prints_hse"
+            pasta.mkdir(parents=True, exist_ok=True)
+            arquivo = pasta / f"{getattr(self, 'rotulo', '') or 'hse'}_{datetime.now():%Y%m%d-%H%M%S}.png"
+            page.screenshot(path=str(arquivo), full_page=True)
+            log.warning("Print da tela do HSE no erro: %s", arquivo)
+        except Exception as e:  # noqa: BLE001
+            log.warning("Não consegui o print do erro: %s", e)
 
     def _gravar_descricao(self, page: Page, item: Item, antes: set[str]) -> None:
         """A caixa #dsObsItem_<cdItem> só existe depois do Incluir; o onblur chama salvarObsItem (vendaItem.php).
@@ -505,6 +576,7 @@ class Hse:
 
     # --- escrita (só com DRY_RUN=0 e teste autorizado) ---------------------------
 
+    @_print_na_falha
     def salvar_orcamento(self) -> str:
         # A janela fecha ao salvar e a resposta costuma vir ilegível (visto nos testes 16295/16297/16298):
         # o nº vem do rascunho e o salvamento é conferido reabrindo o pedido.
@@ -592,6 +664,9 @@ class Hse:
                 raise ErroHse(f"HSE recusou o cadastro: {dados.get('message')}")
             codigo = str(dados.get("rfProduto") or dados.get("cod_produto") or "") or self._codigo_por_descricao(item)
             log.info("Produto '%s' cadastrado com código %s", item.descricao_cadastro, codigo)
+        except Exception:
+            self._print_erro(page)
+            raise
         finally:
             page.close()
         # O HSE gera cód. de barras ao salvar (e regera se apagado); combinado: fica o que ele gerar.

@@ -383,6 +383,87 @@ def test_codigo_apos_cadastro_busca_com_acento():
     assert hse._codigo_por_descricao(item) == "76815"
 
 
+def test_aviso_informativo_nao_vira_motivo_quando_ha_erro():
+    # DAV 91/93: o motivo mostrado era o 1º toast ("Margem atualizada"), que só informa
+    html = "<script>toastSuccess('Margem atualizada'); toastError('Estoque insuficiente');</script>"
+    assert motivo_recusa(html) == "Estoque insuficiente"
+
+
+def test_so_aviso_informativo_diz_que_o_hse_nao_recusou():
+    html = "<script>toastSuccess('Margem atualizada');</script>"
+    assert motivo_recusa(html) == "o HSE não mostrou erro; respondeu só: Margem atualizada"
+
+
+def _hse_incluir(tmp_path, respostas, entrou):
+    hse = Hse.__new__(Hse)
+    hse.cfg = SimpleNamespace(pasta_programa=tmp_path)
+    cliques = []
+    hse._clicar_incluir = lambda page: cliques.append(1) or respostas[len(cliques) - 1]
+    hse._item_entrou = lambda page, antes: entrou[len(cliques) - 1]
+    item = SimpleNamespace(numero=1, valor_unit=Decimal("8300.94"))
+    return hse, cliques, item, SimpleNamespace(codigo="76817")
+
+
+def test_incluir_com_erro_guarda_a_resposta(tmp_path):
+    hse, cliques, item, produto = _hse_incluir(tmp_path, [RECUSA], [False])
+    with pytest.raises(Exception, match="Desconto máximo 15%"):
+        hse._incluir(None, item, produto, 0)
+    assert len(cliques) == 1
+    assert len(list((tmp_path / "respostas_hse").glob("*_76817.html"))) == 1
+
+
+def test_incluir_nunca_repete_o_clique(tmp_path):
+    # DAV 91/93: o HSE tinha incluído (16533/16534/16536); um 2º clique duplicaria o item
+    aviso = "<script>toastSuccess('Margem atualizada')</script>"
+    hse, cliques, item, produto = _hse_incluir(tmp_path, [aviso], [False])
+    with pytest.raises(Exception, match="não mostrou erro; respondeu só: Margem atualizada"):
+        hse._incluir(None, item, produto, 0)
+    assert len(cliques) == 1
+
+
+class _TelaLenta:
+    """A linha do item aparece, mas o #cdPedido só chega depois do networkidle (VM, DAV 91/93)."""
+    url = "https://app.hsesistemas.com.br/vendaAlt.php"
+
+    def wait_for_function(self, js, arg=None, timeout=None):
+        assert timeout >= 15000
+
+    def input_value(self, sel, timeout=None):
+        return "16533"
+
+
+def test_item_entrou_pela_linha_da_tabela_e_pega_o_numero_depois():
+    hse = Hse.__new__(Hse)
+    hse.rascunho = None
+    assert hse._item_entrou(_TelaLenta(), 0) is True
+    assert hse.rascunho == "16533"
+
+
+def test_erro_na_tela_do_pedido_guarda_print_com_o_numero_do_envio(tmp_path):
+    from orcamento.processador import ErroHse
+    hse = Hse.__new__(Hse)
+    hse.cfg = SimpleNamespace(pasta_programa=tmp_path)
+    hse.rotulo = "91"
+    hse._pedido = SimpleNamespace(is_closed=lambda: False,
+                                  screenshot=lambda path, full_page: open(path, "wb").write(b"png"))
+
+    def falha(_filial):
+        raise ErroHse("Item 1: o HSE recusou o produto")
+    hse._garantir_filial = falha
+    with pytest.raises(ErroHse):
+        hse.montar_orcamento(SimpleNamespace(filial=1), None, [], incluir=True)
+    assert [p.name.split("_")[0] for p in (tmp_path / "prints_hse").glob("*.png")] == ["91"]
+
+
+def test_print_que_falha_nao_esconde_o_erro_original(tmp_path):
+    hse = Hse.__new__(Hse)
+    hse.cfg = SimpleNamespace(pasta_programa=tmp_path)
+    hse.rotulo = ""
+
+    def quebra(**kw):
+        raise RuntimeError("navegador fechou")
+    hse._print_erro(SimpleNamespace(is_closed=lambda: False, screenshot=quebra))  # não levanta
+
 _ENDERECOS = [("8410", "1 - Cadastral - R NEIDE FERREIRA DE LACERDA, 75, GARCIA II, BARÃO DE COCAIS/MG"),
               ("9000", "2 - Entrega - AV BRASIL, 10, CENTRO, ITABIRA/MG")]
 

@@ -460,6 +460,7 @@ def gerar(path: Path, cfg: Config, hse: HseApi, pasta_pdf: Path,
     """Gera o orçamento/DAV de uma planilha. Não move arquivos nem grava .txt: só devolve o resultado."""
     rel = Relatorio(nome or path.name, cfg.dry_run)
     cliente = None
+    hse.rotulo = path.stem  # na fila é o nº do envio: o ADM acha o print pelo número
 
     def pronto(estado: str, resultado: str = "") -> Resultado:
         if resultado:
