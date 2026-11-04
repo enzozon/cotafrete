@@ -336,7 +336,8 @@ CREATE TABLE IF NOT EXISTS dav_correcao (
 CREATE INDEX IF NOT EXISTS idx_dav_correcao_destino ON dav_correcao(destino_id);
 """
 
-CAMPOS_DAV_NOVOS = ("conferencia", "conferencia_relatorio")
+CAMPOS_DAV_NOVOS = ("conferencia", "conferencia_relatorio",
+                    "diagnostico", "diagnostico_estado")
 
 CAMPOS_CARGA = (
     "cep_origem", "cep_destino", "cidade_origem", "uf_origem",
@@ -1131,6 +1132,12 @@ class Banco:
             con.execute(
                 f"UPDATE dav SET {', '.join(f'{c} = ?' for c in campos)}"
                 " WHERE id = ?", (*campos.values(), dav_id))
+
+    def dav_diagnostico_pendentes(self) -> list[int]:
+        with closing(self._conectar()) as con, con:
+            return [r[0] for r in con.execute(
+                "SELECT id FROM dav WHERE diagnostico_estado = 'pendente'"
+                " ORDER BY id")]
 
     def dav_rejeitar(self, usuario: str, arquivo: str, motivos: list[str]) -> int:
         with closing(self._conectar()) as con, con:
