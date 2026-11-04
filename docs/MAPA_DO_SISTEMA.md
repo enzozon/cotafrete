@@ -214,7 +214,8 @@ ficam em `davs/entrada/<id>.xlsx` e `davs/pdf/` (fora do git).
   que só existe depois do Incluir; se não gravar, o DAV sai e o relatório avisa.
   Planilha do modelo anterior (A38 = "ITEM 1", sem a linha "Frete") ignora a B38.
 - Local de entrega (B30): texto do endereço ou só o número dele ("2" casa com a
-  opção "2 - ..."). Sem endereço correspondente, o erro lista os do cliente.
+  opção "2 - ..."). Sem endereço correspondente, o erro lista os do cliente;
+  se um só for bem parecido (erro de digitação, `erro_local_entrega`), o erro diz o número dele.
 - Conferência com o HSE antes do Gerar (`orcamento/conferencia.py`,
   `processador.conferir`): ao enviar, o rascunho nasce `conferencia="conferindo"`
   e uma fila própria (uma thread, uma vaga de `VAGA_NAVEGADOR`, até 120 s) roda a
