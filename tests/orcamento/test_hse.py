@@ -494,17 +494,18 @@ def test_b30_parecida_com_dois_enderecos_nao_escolhe():
     assert "Parece ser" not in erro_local_entrega("Itabra", iguais)
 
 
-_CRU_16541 = {"cliente": "1061", "data": "04/11/2026", "linhas": [
+_CRU_16541 = {"pedido": "16541", "cliente": "1061", "data": "04/11/2026", "linhas": [
     ['1', '', '', '76817', '', 'MAQUINA FONTE PLASMA', '84569000', '', '1', '1', '2,000000', 'PC',
      '8.300,940000', '0,000000', '0,00', '8.300,940000', '16.601,880000']]}
 
 
 class _PaginaPedido:
-    def __init__(self, cru):
-        self.cru, self.fechada = cru, False
+    def __init__(self, cru, sem_cdpedido=False):
+        self.cru, self.fechada, self.sem_cdpedido = cru, False, sem_cdpedido
 
-    def wait_for_selector(self, sel, timeout):
-        pass
+    def wait_for_selector(self, sel, timeout, state=None):
+        if sel == "#cdPedido" and self.sem_cdpedido:
+            raise PlaywrightError("Timeout")
 
     def evaluate(self, js):
         return self.cru
@@ -525,7 +526,34 @@ def test_ler_pedido_monta_itens():
 
 def test_ler_pedido_inexistente_devolve_none():
     from orcamento.hse import HseSoLeitura
-    pg = _PaginaPedido({"cliente": "", "data": "", "linhas": []})
+    pg = _PaginaPedido({"pedido": "", "cliente": "", "data": "", "linhas": []})
     hse = HseSoLeitura.__new__(HseSoLeitura)
     hse._abrir = lambda caminho: pg
     assert hse.ler_pedido(99999999) is None and pg.fechada
+
+
+def _hse_com(pg):
+    from orcamento.hse import HseSoLeitura
+    hse = HseSoLeitura.__new__(HseSoLeitura)
+    hse._abrir = lambda caminho: pg
+    return hse
+
+
+def test_ler_pedido_pagina_que_nao_carregou_levanta():
+    from orcamento.processador import HseIndisponivel
+    pg = _PaginaPedido({"pedido": "", "cliente": "", "data": "", "linhas": []}, sem_cdpedido=True)
+    with pytest.raises(HseIndisponivel):
+        _hse_com(pg).ler_pedido(16492)
+    assert pg.fechada
+
+
+def test_ler_pedido_incompleto_existe_com_cliente_vazio():
+    pg = _PaginaPedido({"pedido": "16492", "cliente": "", "data": "", "linhas": []})
+    assert _hse_com(pg).ler_pedido(16492) == {"numero": 16492, "cliente": "", "data": "", "itens": []}
+
+
+def test_ler_pedido_linhas_irreconheciveis_levanta():
+    from orcamento.processador import HseIndisponivel
+    pg = _PaginaPedido({"pedido": "1", "cliente": "9", "data": "04/11/2026", "linhas": [["1", "2"]]})
+    with pytest.raises(HseIndisponivel):
+        _hse_com(pg).ler_pedido(1)

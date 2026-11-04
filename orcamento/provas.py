@@ -13,6 +13,7 @@ from orcamento.hse import _mensagens
 from orcamento.planilha import _texto, ler_planilha
 
 NAO_VERIFICADO = "nao_verificado"
+MARGEM = 25  # pedidos para cada lado do número de referência
 
 
 def pedidos_do_envio(pedidos: list[dict], cliente: str, data: str, codigos: set[str]) -> list[int]:
@@ -47,7 +48,7 @@ def _ler_planilha(arquivo: Path) -> dict | None:
         return None
 
 
-def faixa_de_busca(numeros_prontos: list[tuple[str, int]], quando: str, margem: int = 25) -> range:
+def faixa_de_busca(numeros_prontos: list[tuple[str, int]], quando: str, margem: int = MARGEM) -> range:
     """Faixa de números de pedido em torno do DAV pronto mais próximo no tempo."""
     if not numeros_prontos:
         return range(0)
@@ -59,7 +60,7 @@ def faixa_de_busca(numeros_prontos: list[tuple[str, int]], quando: str, margem: 
 def buscador_hse(hse, numeros_prontos: list[tuple[str, int]]) -> Callable[[str, str, int | None], list[dict]]:
     def buscar(cliente: str, data: str, perto_de: int | None) -> list[dict]:
         if perto_de is not None:
-            faixa = range(perto_de - 25, perto_de + 26)
+            faixa = range(perto_de - MARGEM, perto_de + MARGEM + 1)
         else:
             dia = datetime.strptime(data, "%d/%m/%Y")
             faixa = faixa_de_busca(numeros_prontos, dia.replace(hour=12).isoformat())
