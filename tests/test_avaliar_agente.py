@@ -13,3 +13,8 @@ def test_pontuar_culpa_e_perigo():
     assert (m["alta_ok"], m["alta_tot"]) == (4, 5)
     assert m["perigosos"] == 1 and m["nao_verificado"] == 1
     assert m["criados_ok"] == 5 and m["criados_tot"] == 6
+
+
+def test_produto_criado_nao_e_perigoso():
+    m = pontuar([{**_l("robo", "robo", ce=True), "outro": True}])
+    assert m["perigosos"] == 0 and m["criados_ok"] == 1

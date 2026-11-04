@@ -137,9 +137,10 @@ def pontuar(linhas):
         if isinstance(obt, str):
             m["nao_verificado"] += 1
         elif esp is not None:
+            criou = bool(obt) or bool(r.get("outro"))   # pedido, produto ou rascunho
             m["criados_tot"] += 1
-            m["criados_ok"] += bool(obt) == esp
-            m["perigosos"] += bool(esp and not obt)
+            m["criados_ok"] += criou == esp
+            m["perigosos"] += bool(esp and not criou)
     return m
 
 
@@ -152,8 +153,16 @@ def _ia_arquivo(base):
 
 def _ia_api(base, max_usd):
     from orcamento.agente import diagnosticar
+    from dataclasses import replace
+
     from orcamento.config import config_do_ambiente
-    cfg, cache, gasto = config_do_ambiente(), base / "aval" / "cache_ia", [0.0]
+    cfg = config_do_ambiente()
+    if cfg.ia != "api" or not cfg.ia_chave:
+        sys.exit("--ia api exige IA=api e ANTHROPIC_API_KEY no .env")
+    # uso vai para a pasta da avaliação, não para o ia_uso.csv de produção
+    cfg = replace(cfg, pasta_programa=base / "aval" / "programa", ia_limite_dia=max_usd)
+    cfg.pasta_programa.mkdir(parents=True, exist_ok=True)
+    cache, gasto = base / "aval" / "cache_ia", [0.0]
     cache.mkdir(parents=True, exist_ok=True)
 
     def obter(i, provas):
@@ -162,7 +171,7 @@ def _ia_api(base, max_usd):
         if f.exists():
             return json.loads(f.read_text(encoding="utf-8")), 0.0
         if gasto[0] >= max_usd:
-            return {}, 0.0
+            return None, 0.0
         res = diagnosticar(provas, cfg)
         gasto[0] += res["custo"]
         f.write_text(json.dumps(res, ensure_ascii=False), encoding="utf-8")
@@ -186,7 +195,7 @@ def main(argv=None):
     buscar = fazer_buscador(envios, [json.loads(x) for x in linhas_ped if x.strip()])
     obter = _ia_arquivo(base) if a.ia == "arquivo" else _ia_api(base, a.max_usd)
     conhecidos = {i: _numero(e) for i, e in envios.items() if _numero(e)}
-    linhas, custos, tempos = [], [], []
+    linhas, custos, tempos, pulados = [], [], [], []
     print("| id | estado | culpa esperada | culpa obtida | criados esperado | criados obtido |")
     print("|---|---|---|---|---|---|")
     with tempfile.TemporaryDirectory() as tmp:
@@ -202,11 +211,16 @@ def main(argv=None):
             provas = coletar(dav, pasta, buscar, {n for k, n in conhecidos.items() if k != i}, ant)
             t0 = time.time()
             ia, custo = obter(i, provas)
+            if ia is None:
+                pulados.append(i)
+                print(f"| {i} | {dav['estado']} | {g['culpa']} | PULADO (limite --max-usd atingido) | | |")
+                continue
             if custo:
                 custos.append(custo)
                 tempos.append(time.time() - t0)
             r = {"culpa_esp": g["culpa"], "culpa_obt": ia.get("culpa"), "conf": g["confianca"],
-                 "criados_esp": g.get("suspeita_criado_no_hse"), "criados_obt": provas["criados_no_hse"]}
+                 "criados_esp": g.get("suspeita_criado_no_hse"), "criados_obt": provas["criados_no_hse"],
+                 "outro": bool(provas.get("produtos_criados") or provas.get("rascunhos"))}
             linhas.append(r)
             print(f"| {i} | {dav['estado']} | {r['culpa_esp']} | {r['culpa_obt']} | "
                   f"{r['criados_esp']} | {r['criados_obt']} |")
@@ -219,6 +233,8 @@ def main(argv=None):
     print(f"criados corretos: {pct(m['criados_ok'], m['criados_tot'])}")
     print(f"perigosos (criado esperado, obtido []): {m['perigosos']}")
     print(f"nao_verificado: {m['nao_verificado']}")
+    if pulados:
+        print(f"limite --max-usd atingido: {len(pulados)} envios pulados (fora das métricas): {pulados}")
     if custos:
         print(f"custo médio: US$ {sum(custos) / len(custos):.4f} | tempo médio: {sum(tempos) / len(tempos):.1f}s")
     falhas = []

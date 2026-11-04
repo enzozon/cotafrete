@@ -251,6 +251,11 @@ ficam em `davs/entrada/<id>.xlsx` e `davs/pdf/` (fora do git).
     nunca. Corrigir só cria um envio para conferir: nunca gera no HSE.
   - Avaliação com envios reais (dados fora do git):
     `python scripts/avaliar_agente.py <pasta_dados> [--ia arquivo|api]`.
+    A pasta tem `envios.json`, `gabarito.json`, `pedidos.jsonl` e `vm/<id>.xlsx`. `--ia arquivo`
+    (padrão) lê respostas gravadas em `aval/ia/<id>.json`; `--ia api` chama a IA de verdade,
+    com cache em `aval/cache_ia/` e uso em `aval/programa/` (não mexe no `ia_uso.csv` de
+    produção) e para em `--max-usd` (padrão 1,00). Nunca abre o HSE: o buscador lê o
+    `pedidos.jsonl`. Sai com 1 se culpa de confiança alta < 90% ou se houver caso perigoso.
 - O modelo tem 3 cópias que precisam ficar iguais: esta, o `public/PLANILHA
   BASE.xlsx` + `public/vendor/template_planilha_base.js` (base64) do Maestro e
   a pasta pública `\\SERVIDOR2\Publico\ENZO\ORCAMENTO`. Grave o modelo pelo XML
