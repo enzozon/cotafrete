@@ -61,3 +61,17 @@ Capturas locais na pasta de visualizações da conversa:
 - dav-desenvolvido-celular.png
 
 Não houve merge, instalação no servidor nem operação produtiva no HSE.
+
+## Correção de dependência da CI — 04/11/2026
+
+A execução 41722028673 no GitHub passou em 2650 testes, mas não conseguiu
+carregar `tests/test_dav_apresentacao.py`: `ModuleNotFoundError: No module named
+'bs4'`. O pacote estava instalado no PC, mas não constava em requirements.txt.
+O usuário autorizou adicionar a dependência em 04/11: `beautifulsoup4>=4.15.0`.
+Isso substitui a restrição inicial de não acrescentar dependências apenas
+para esse parser de testes; não há biblioteca nova na interface do usuário.
+
+Validação da correção: instalação isolada do BeautifulSoup 4.15.0, sem carregar
+os pacotes globais, importação e leitura HTML confirmadas; os 5 testes de
+apresentação passaram novamente. A aprovação do ambiente limpo será conferida
+na nova execução do GitHub após o push.

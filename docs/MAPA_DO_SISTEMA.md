@@ -416,6 +416,10 @@ Arquivos produtivos e robô HSE não são necessários para esses testes.
 
 ## 8. Testes: rápido no dia a dia, inteiro em segundo plano
 
+`tests/test_dav_apresentacao.py` usa `bs4` para conferir o HTML. A distribuição
+é `beautifulsoup4`, declarada em `requirements.txt`, que a CI instala antes dos
+testes. Não depender apenas dos pacotes já instalados no PC de desenvolvimento.
+
 `tests/conftest.py` marca `navegador` sozinho todo teste de arquivo que
 importa playwright ou uvicorn (31 arquivos, ~435 testes, dois terços do
 tempo). A marcação é pelo import: teste novo de navegador cai nela sem
