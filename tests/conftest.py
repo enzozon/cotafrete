@@ -17,6 +17,7 @@ import os
 import re
 import threading
 import time
+import zlib
 
 import pytest
 
@@ -121,3 +122,16 @@ def pytest_collection_modifyitems(config, items):
                 caminho.read_text(encoding="utf-8")))
         if lidos[caminho]:
             item.add_marker(pytest.mark.navegador)
+    # PARTE_DA_SUITE=2/4: só os arquivos desta parte, para a CI rodar a suíte
+    # em várias máquinas ao mesmo tempo. Por ARQUIVO, para não abrir o mesmo
+    # navegador de módulo em duas máquinas; crc32 e não hash() porque o
+    # hash() muda a cada processo e o xdist coleta em todos eles.
+    parte = os.environ.get("PARTE_DA_SUITE")
+    if parte:
+        i, n = (int(x) for x in parte.split("/"))
+        fica, sai = [], []
+        for item in items:
+            arquivo = item.nodeid.split("::")[0]
+            (fica if zlib.crc32(arquivo.encode()) % n == i - 1 else sai).append(item)
+        config.hook.pytest_deselected(items=sai)
+        items[:] = fica

@@ -14,9 +14,18 @@ concurrency:
 
 jobs:
   # Mesmo sistema e Python da VM (Windows, 3.14): alguns testes só rodam no Windows.
-  cotafrete:
+  # A suíte vai em 4 partes ao mesmo tempo, cada uma numa máquina
+  # (PARTE_DA_SUITE, ver tests/conftest.py). Por arquivo e misturando testes
+  # de navegador com os outros: separar os dois não ganhava nada, porque o
+  # navegador passa o tempo esperando e corria de graça junto com os outros.
+  testes:
+    name: testes (${{ matrix.parte }}/4)
     runs-on: windows-latest
-    timeout-minutes: 40
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        parte: [1, 2, 3, 4]
     steps:
       - run: tzutil /s "E. South America Standard Time"  # fuso da VM
       - uses: actions/checkout@v7
@@ -29,6 +38,17 @@ jobs:
       - run: python -m playwright install chromium
       # 4 processos = 4 vCPU do windows-latest. No PC do Enzo o padrão é em série.
       - run: python -m pytest tests -q -n 4
+        env:
+          PARTE_DA_SUITE: ${{ matrix.parte }}/4
+
+  # É este o nome que a proteção da main exige: passa só com todas as
+  # partes verdes. `always()` porque um job pulado conta como aprovado.
+  cotafrete:
+    needs: testes
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - run: test "${{ needs.testes.result }}" = success
 
   # cruzar_nf roda no Server 2012 R2, que só tem Python 3.8.
   cruzar-nf-py38:
