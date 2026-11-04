@@ -33,6 +33,20 @@ def test_adm_dav_sidebar_e_links(admin, app_web):
     assert admin.get(f"/adm/dav/{i}").status_code == 200
 
 
+def test_admin_ve_o_gasto_da_ia(admin, app_web, tmp_path, monkeypatch):
+    from datetime import datetime
+    from orcamento import ia
+    from web import adm_dav
+    uso = tmp_path / "ia_uso.csv"
+    uso.write_text(";".join(ia.COLUNAS) + "\n" + datetime.now().strftime("%Y-%m-%d 10:00:00")
+                   + ";api:ncm_web;claude-haiku-5-5;1;1;0.031200;sim;\n", encoding="utf-8-sig")
+    monkeypatch.setattr(adm_dav, "IA_USO", uso)
+    t = admin.get("/adm/dav").text
+    assert "Gasto da IA" in t and "US$ 0,0312 hoje" in t and "US$ 0,0312 no mês" in t
+    monkeypatch.setattr(adm_dav, "IA_USO", tmp_path / "nao_existe.csv")
+    assert "US$ 0,0000 hoje" in admin.get("/adm/dav").text
+
+
 def test_admin_ve_relatorio_completo_sem_html_executavel(admin, app_web):
     i = app_web.banco.dav_criar("bia", "a.xlsx", "a", "Cliente A")
     app_web.banco.dav_atualizar(i, estado="erro", relatorio="Pendência financeira DF15653 <b>x</b>")

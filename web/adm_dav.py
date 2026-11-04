@@ -2,16 +2,33 @@
 from __future__ import annotations
 
 from contextlib import closing
+from datetime import datetime
 import hashlib
+import os
+from pathlib import Path
 
 from fastapi import APIRouter, Cookie, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from core import painel_dav
+from orcamento import config as cfg_dav, ia
 from web import adm, dav_ui, painel_ui as ui
 from web.layout import CSS_DAV, cabecalho, e
 
 router = APIRouter(prefix="/adm/dav", include_in_schema=False)
+IA_USO = Path("davs") / "ia_uso.csv"  # a mesma pasta que o FILA_DAV usa
+
+
+def _us(v: float) -> str:
+    return f"US$ {v:.4f}".replace(".", ",")
+
+
+def gasto_ia() -> str:
+    hoje, mes = ia.gasto(IA_USO, datetime.now())
+    limite = cfg_dav._dolares(os.environ.get("IA_LIMITE_DIA_USD", ""), cfg_dav.Config.ia_limite_dia)
+    parada = ' · <b>parada até amanhã (limite do dia)</b>' if hoje >= limite else ""
+    return (f'<p class="dav-note">Gasto da IA (produto novo): {_us(hoje)} hoje · {_us(mes)} no mês · '
+            f'limite {_us(limite)} por dia{parada}. Detalhe por tarefa: <code>python -m orcamento.ia</code>.</p>')
 
 
 def _porta(cookie: str | None, *, api: bool = False):
@@ -138,7 +155,7 @@ def painel(cookie: str | None = Cookie(None, alias=adm.COOKIE_ADM), dias: int = 
     with closing(adm.banco._conectar()) as con:
         dados = painel_dav.consultar(con, usuario=None, agora=dav_ui.agora(), **filtros)
     corpo = cabecalho("Orçamentos DAV", tarja="Administração", acoes=ui.BOTAO_TEMA)
-    corpo += dav_ui.barra_pulso('/adm/dav/agora') + f'<div id="dav-indicadores">{indicadores(dados)}</div>'
+    corpo += dav_ui.barra_pulso('/adm/dav/agora') + f'<div id="dav-indicadores">{indicadores(dados)}</div>' + gasto_ia()
     corpo += (f'<div id="dav-quadro" class="dav-quadro">{quadro_adm(dados, filtros)}</div>'
               '<section class="cartao dav-card" id="historico"><h2>Histórico de envios</h2>'
               + dav_ui.filtros_dav(dados, filtros, administrador=True)
