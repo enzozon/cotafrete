@@ -2,7 +2,7 @@
 import functools
 import logging
 import re
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
@@ -51,12 +51,30 @@ def _qtd(v: Decimal) -> str:
     return format(v.normalize(), "f").replace(".", ",")
 
 
+_INFORMATIVOS = ("toastSuccess", "toastInfo")
+RE_MENSAGEM = re.compile(r"""\b(alert|toast\w*)\(\s*(['"])(.+?)\2""")
+
+
+def _mensagens(html: str) -> list[tuple[str, str]]:
+    """(função, texto) de cada alert/toast que a resposta abriria na tela."""
+    return [(m.group(1), re.sub(r"\s*<br\s*/?>\s*", " - ", m.group(3))) for m in RE_MENSAGEM.finditer(html)]
+
+
+def resposta_tem_erro(html: str) -> bool:
+    return "erroDescontoMsg" in html or any(not f.startswith(_INFORMATIVOS) for f, _ in _mensagens(html))
+
+
 def motivo_recusa(html: str) -> str:
     """O Incluir recusado não dá erro HTTP: o motivo vem num <script> da resposta (visto no orçamento 16354)."""
     m = re.search(r"erroDescontoMsg\s*=\s*'([^']*)'", html)
-    if not m:  # outra recusa (DAV 23): mostra o aviso que a resposta abriria na tela, se houver
-        aviso = re.search(r"""\b(?:alert|toast\w*)\(\s*(['"])(.+?)\1""", html)
-        return re.sub(r"\s*<br\s*/?>\s*", " - ", aviso.group(2)) if aviso else "o HSE não informou o motivo"
+    if not m:  # outra recusa (DAV 23): mostra o erro que a resposta abriria na tela, se houver
+        erros = [t for f, t in _mensagens(html) if not f.startswith(_INFORMATIVOS)]
+        if erros:
+            return " - ".join(erros)
+        avisos = [t for _, t in _mensagens(html)]
+        # DAV 91/93: "Margem atualizada" só informa; mostrar como motivo escondia o problema real
+        return ("o HSE não mostrou erro; respondeu só: " + " - ".join(avisos) if avisos
+                else "o HSE não informou o motivo")
     motivo = re.sub(r"\s*<br\s*/?>\s*", " - ", m.group(1))
     original = re.search(r"'vlOriginal',\s*([\d.]+)", html)
     maximo = re.search(r"percentDescMax\s*=\s*([\d.]+)", html)
@@ -423,6 +441,25 @@ class Hse:
             return
         antes = page.locator("td.cellDelete").count()
         linhas = set(page.eval_on_selector_all("tr[id^=trItem_]", "ts => ts.map(t => t.id)"))
+        self._incluir_com_repeticao(page, item, produto, antes)
+        log.info("Item %s incluído; rascunho %s", produto.codigo, self.rascunho)
+        if item.descricao:
+            self._gravar_descricao(page, item, linhas)
+
+    def _incluir_com_repeticao(self, page: Page, item: Item, produto: Produto, antes: int) -> None:
+        html = self._clicar_incluir(page)
+        if not self._item_entrou(page, antes) and not resposta_tem_erro(html):
+            # DAV 91/93: preço acima da tabela; o 1º Incluir só respondeu "Margem atualizada", sem erro e
+            # sem incluir. À mão, o vendedor clica de novo e entra. Nada entrou: repetir não duplica.
+            log.warning("Item %s: Incluir sem erro e sem item (%s); repito uma vez",
+                        produto.codigo, motivo_recusa(html))
+            html = self._clicar_incluir(page)
+        if not self._item_entrou(page, antes):
+            self._guardar_resposta(produto.codigo, html)
+            raise ErroHse(recusa_do_incluir(item.numero, produto.codigo, item.valor_unit, html))
+
+    def _clicar_incluir(self, page: Page) -> str:
+        """Clica Incluir e devolve o HTML da resposta do vendaItem.php."""
         self._fechar_aviso(page)
         try:
             with page.expect_response(lambda r: "vendaItem.php" in r.url and r.request.method == "POST"
@@ -433,18 +470,30 @@ class Hse:
             cd = self._cd_pedido(page)
             if cd:
                 self.rascunho = cd
-        if not cd:  # no 1º item a recusa (ex.: desconto acima do limite) nem cria o pedido
-            raise ErroHse(recusa_do_incluir(item.numero, produto.codigo, item.valor_unit, resp.value.text()))
-        # do 2º item em diante o nº do pedido já existe: só a tabela mostra se o item entrou
+        return resp.value.text()
+
+    def _item_entrou(self, page: Page, antes: int) -> bool:
+        # no 1º item a recusa (ex.: desconto acima do limite) nem cria o pedido;
+        # do 2º em diante o nº já existe: só a tabela mostra se o item entrou
+        if not self._cd_pedido(page):
+            return False
         try:
             page.wait_for_function("n => document.querySelectorAll('td.cellDelete').length > n", arg=antes,
-                                   timeout=5000)
+                                   timeout=10000)
         except PlaywrightError:
-            raise ErroHse(recusa_do_incluir(item.numero, produto.codigo, item.valor_unit,
-                                            resp.value.text())) from None
-        log.info("Item %s incluído; rascunho %s", produto.codigo, cd)
-        if item.descricao:
-            self._gravar_descricao(page, item, linhas)
+            return False
+        return True
+
+    def _guardar_resposta(self, codigo: str, html: str) -> None:
+        """A resposta inteira fica em davs/respostas_hse/ para achar o motivo real de uma recusa."""
+        try:
+            pasta = Path(self.cfg.pasta_programa) / "respostas_hse"
+            pasta.mkdir(parents=True, exist_ok=True)
+            arquivo = pasta / f"{datetime.now():%Y%m%d-%H%M%S}_{codigo}.html"
+            arquivo.write_text(html, encoding="utf-8")
+            log.warning("Resposta do Incluir recusado guardada em %s", arquivo)
+        except OSError as e:
+            log.warning("Não guardei a resposta do Incluir: %s", e)
 
     def _gravar_descricao(self, page: Page, item: Item, antes: set[str]) -> None:
         """A caixa #dsObsItem_<cdItem> só existe depois do Incluir; o onblur chama salvarObsItem (vendaItem.php).

@@ -381,3 +381,52 @@ def test_codigo_apos_cadastro_busca_com_acento():
     hse.buscar_produtos = lambda termo: [salvo] if termo.upper() in salvo.descricao else []
     item = SimpleNamespace(descricao_cadastro="Abraçadeira Nylon 4.60 x 200mm UV Preta")
     assert hse._codigo_por_descricao(item) == "76815"
+
+
+def test_aviso_informativo_nao_vira_motivo_quando_ha_erro():
+    # DAV 91/93: o motivo mostrado era o 1º toast ("Margem atualizada"), que só informa
+    html = "<script>toastSuccess('Margem atualizada'); toastError('Estoque insuficiente');</script>"
+    assert motivo_recusa(html) == "Estoque insuficiente"
+
+
+def test_so_aviso_informativo_diz_que_o_hse_nao_recusou():
+    html = "<script>toastSuccess('Margem atualizada');</script>"
+    assert motivo_recusa(html) == "o HSE não mostrou erro; respondeu só: Margem atualizada"
+    from orcamento.hse import resposta_tem_erro
+    assert not resposta_tem_erro(html)
+    assert resposta_tem_erro("<script>alert('Produto bloqueado')</script>")
+    assert resposta_tem_erro(RECUSA)
+
+
+def _hse_incluir(tmp_path, respostas, entrou):
+    hse = Hse.__new__(Hse)
+    hse.cfg = SimpleNamespace(pasta_programa=tmp_path)
+    cliques = []
+    hse._clicar_incluir = lambda page: cliques.append(1) or respostas[len(cliques) - 1]
+    hse._item_entrou = lambda page, antes: entrou[len(cliques) - 1]
+    item = SimpleNamespace(numero=1, valor_unit=Decimal("8300.94"))
+    return hse, cliques, item, SimpleNamespace(codigo="76817")
+
+
+def test_incluir_so_com_aviso_repete_uma_vez_e_entra(tmp_path):
+    # DAV 91/93: o 1º Incluir só respondeu "Margem atualizada"; à mão, o 2º clique incluiu
+    hse, cliques, item, produto = _hse_incluir(tmp_path, ["<script>toastSuccess('Margem atualizada')</script>", ""],
+                                               [False, True])
+    hse._incluir_com_repeticao(None, item, produto, 0)
+    assert len(cliques) == 2
+
+
+def test_incluir_com_erro_nao_repete_e_guarda_a_resposta(tmp_path):
+    hse, cliques, item, produto = _hse_incluir(tmp_path, [RECUSA], [False])
+    with pytest.raises(Exception, match="Desconto máximo 15%"):
+        hse._incluir_com_repeticao(None, item, produto, 0)
+    assert len(cliques) == 1
+    assert len(list((tmp_path / "respostas_hse").glob("*_76817.html"))) == 1
+
+
+def test_incluir_que_falha_duas_vezes_diz_que_nao_houve_erro(tmp_path):
+    aviso = "<script>toastSuccess('Margem atualizada')</script>"
+    hse, cliques, item, produto = _hse_incluir(tmp_path, [aviso, aviso], [False, False])
+    with pytest.raises(Exception, match="não mostrou erro; respondeu só: Margem atualizada"):
+        hse._incluir_com_repeticao(None, item, produto, 0)
+    assert len(cliques) == 2
