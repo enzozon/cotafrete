@@ -7,8 +7,10 @@ import re
 from datetime import datetime
 from pathlib import Path
 from typing import Callable
+from urllib.parse import quote, urlencode
 
 from orcamento.config import Config
+from orcamento.diagnostico import _financeiro
 from orcamento.ia import _custo, _registrar, gasto
 
 CULPAS = ("planilha", "cadastro_hse", "robo", "hse_fora", "acesso_hse", "conferencia_ok_sem_gerar", "indefinido")
@@ -137,3 +139,30 @@ def diagnosticar(provas: dict, cfg: Config, chamar: Callable | None = None,
     correcoes = d.get("correcoes") if isinstance(d.get("correcoes"), list) else []
     return {**res, "culpa": culpa, "confianca": conf, "custo": custo, "correcoes": filtrar_correcoes(correcoes),
             **{k: str(d.get(k) or "") for k in ("causa", "acao", "evidencia")}}
+
+
+_CNPJ = re.compile(r"\d(?:[./-]?\d){13}")
+_NL = chr(10)
+_ISSUE = "https://github.com/enzozon/cotafrete/issues/new?"
+
+
+def link_issue(dav: dict, diag: dict, arquivos: list[str]) -> str:
+    """Link de issue pré-preenchido; sem CNPJ nem linhas financeiras; URL <= 6000."""
+    def limpo(t) -> str:
+        return _CNPJ.sub("", _NL.join(l for l in str(t or "").splitlines() if not _financeiro(l)))
+    criados = diag.get("criados_no_hse")
+    criados = ", ".join(str(n) for n in criados) if isinstance(criados, list) else criados
+    corpo = _NL.join(f"{k}: {limpo(v)}" for k, v in (
+        ("Envio", f"#{dav['id']}"), ("Estado", dav.get("estado")),
+        ("Causa", diag.get("causa")), ("Ação", diag.get("acao")), ("Evidência", diag.get("evidencia")),
+        ("Criados no HSE", criados), ("Arquivos na VM", ", ".join(arquivos)),
+        ("Erro", dav.get("erro"))))  # erro (longo) por último: é o que o corte come
+    titulo = limpo(f"DAV #{dav['id']}: {' '.join(str(diag.get('causa') or '').split())[:80]}").strip()
+
+    def url(c: str) -> str:
+        return _ISSUE + urlencode({"title": titulo, "body": c}, quote_via=quote)
+    if len(u := url(corpo)) <= 6000:
+        return u
+    while len(u := url(corpo + _NL + "(texto cortado)")) > 6000:  # ponytail: -10% por volta até caber
+        corpo = corpo[:len(corpo) * 9 // 10]
+    return u

@@ -119,3 +119,17 @@ def test_sistema_regras_da_rodada_0():
                    "se for true → cadastro_hse (cliente ainda não cadastrado no HSE)",
                    "a culpa é robo e a ação é corrigir o produto no HSE, não o preço"):
         assert trecho in agente.SISTEMA
+
+
+def test_link_issue_sem_cnpj_nem_financeiro_e_cabe():
+    from urllib.parse import parse_qs, urlsplit
+    dav = dict(id=7, estado="erro", arquivo="a.xlsx",
+               erro="CNPJ 33592510022042 e 33.592.510/0220-42\nPendência Cliente bloqueado DE14893\n" + "x" * 20000)
+    diag = dict(causa="Falha " + "y" * 200, acao="Rodar", evidencia="log", criados_no_hse=[1, 2])
+    url = agente.link_issue(dav, diag, ["7_a.png"])
+    assert url.startswith("https://github.com/enzozon/cotafrete/issues/new?title=") and len(url) <= 6000
+    q = parse_qs(urlsplit(url).query)
+    assert q["title"][0].startswith("DAV #7: Falha") and len(q["title"][0]) <= len("DAV #7: ") + 80
+    for t in (url, q["body"][0]):
+        assert "33592510022042" not in t and "DE14893" not in t and "33.592.510" not in t
+    assert "7_a.png" in q["body"][0] and q["body"][0].endswith("(texto cortado)")

@@ -28,7 +28,7 @@ from core import painel_dav
 from mercado_eletronico.painel import hora_de_brasilia
 from orcamento.fila import FilaDav
 from orcamento.conferencia import FilaConferencia
-from orcamento.agente import filtrar_correcoes
+from orcamento.agente import filtrar_correcoes, link_issue
 from orcamento.diagnostico import _financeiro, diagnostico
 from orcamento.processador import SEM_HSE, Conferencia
 from orcamento.relatorio import moeda
@@ -808,8 +808,12 @@ def cartao_diagnostico(d: dict) -> str:
         corrigir = (f'<h3>Correção proposta</h3><ul>{itens}</ul>'
                     f'<form method="post" action="/adm/dav/{int(d["id"])}/corrigir">'
                     '<button class="botao" type="submit">Aprovar correção</button></form>')
+    issue = ""
+    if j.get("culpa") == "robo":
+        url = link_issue(d, j, [f.name for f in arquivos_hse(int(d["id"]))])
+        issue = f'<a class="botao2" href="{e(url)}" target="_blank" rel="noopener">Abrir issue no GitHub</a> '
     return (f'<section class="cartao dav-card"><h2>Diagnóstico</h2><dl class="dav-dados">{corpo}</dl>'
-            f'{corrigir}{botao}</section>')
+            f'{corrigir}{issue}{botao}</section>')
 
 
 def detalhe_dav(dav: dict, *, administrador: bool, retorno: str) -> str:

@@ -674,3 +674,13 @@ def test_corrigir_envio_incerto_nao_da_500_nem_cria_orfao(cli, app_web, tmp_path
     r = adm.post("/adm/dav/1/corrigir")
     assert r.status_code == 200 and "não pode ser corrigido por aqui" in r.text
     assert app_web.banco.dav(2, "ana") is None
+
+
+def test_botao_issue_so_quando_culpa_robo(cli, app_web, tmp_path, monkeypatch):
+    enviar(cli, planilha(tmp_path))
+    adm = _adm(app_web, monkeypatch)
+    app_web.banco.dav_atualizar(1, estado="erro", diagnostico_estado="feito", diagnostico=_diag())
+    t = adm.get("/adm/dav/1").text
+    assert "Abrir issue no GitHub" in t and "github.com/enzozon/cotafrete/issues/new" in t
+    app_web.banco.dav_atualizar(1, diagnostico=_diag(culpa="planilha"))
+    assert "Abrir issue no GitHub" not in adm.get("/adm/dav/1").text
