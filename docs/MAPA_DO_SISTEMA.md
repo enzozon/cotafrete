@@ -409,6 +409,8 @@ decorar nada.
   os testes de navegador dela.
 - **Suíte inteira:** sempre em segundo plano e nunca dividida. Em paralelo:
   `-n 4` (pytest-xdist), que é como a CI roda. Em série é o padrão local.
+  Na CI a suíte vai em duas máquinas ao mesmo tempo (`-m navegador` e
+  `-m "not navegador"`), e o check `cotafrete` junta as duas.
 - **Espera fixa do site** (`wait_for_timeout`, `ESPERA_*`): no teste, troque a
   constante por `monkeypatch` (ver `ESPERA_AJAX_TESTE_MS` em
   `tests/test_translovato_cnpj.py`). Produção não muda.

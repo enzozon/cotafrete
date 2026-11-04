@@ -14,9 +14,17 @@ concurrency:
 
 jobs:
   # Mesmo sistema e Python da VM (Windows, 3.14): alguns testes só rodam no Windows.
-  cotafrete:
+  # A suíte vai em duas metades ao mesmo tempo, cada uma numa máquina; elas
+  # medem quase o mesmo (~3 min cada com -n 4). A marcação `navegador` é a do
+  # tests/conftest.py, então um teste novo cai sozinho na metade certa.
+  testes:
+    name: testes (${{ matrix.grupo }})
     runs-on: windows-latest
-    timeout-minutes: 40
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        grupo: [navegador, not navegador]
     steps:
       - run: tzutil /s "E. South America Standard Time"  # fuso da VM
       - uses: actions/checkout@v7
@@ -26,9 +34,19 @@ jobs:
           cache: pip
       # selenium: robô da HSE (cruzar_nf). pytest-xdist: o -n 4 abaixo.
       - run: pip install -r requirements.txt selenium pytest-xdist
-      - run: python -m playwright install chromium
+      - if: matrix.grupo == 'navegador'
+        run: python -m playwright install chromium
       # 4 processos = 4 vCPU do windows-latest. No PC do Enzo o padrão é em série.
-      - run: python -m pytest tests -q -n 4
+      - run: python -m pytest tests -q -n 4 -m "${{ matrix.grupo }}"
+
+  # É este o nome que a proteção da main exige: passa só com as duas metades
+  # verdes. `always()` porque um job pulado conta como aprovado.
+  cotafrete:
+    needs: testes
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - run: test "${{ needs.testes.result }}" = success
 
   # cruzar_nf roda no Server 2012 R2, que só tem Python 3.8.
   cruzar-nf-py38:
