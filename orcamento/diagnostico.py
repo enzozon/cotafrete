@@ -18,13 +18,108 @@ def _financeiro(texto: str) -> bool:
             or bool(re.search(r"\bdf\d+\b.*(?:venc|valor)", texto)))
 
 
+def _origem(mensagens: list[str], rejeitado: bool) -> dict:
+    campos, origens = [], set()
+    comparar = False
+    for mensagem in mensagens:
+        if _financeiro(mensagem):
+            continue
+        t = _normal(mensagem).strip().removeprefix("erro: ").removeprefix("falha durante a criacao no hse: ")
+        origem, referencias = "desconhecida", []
+        if re.match(r"^(?:o )?(?:hse esta fora|hse fora do ar|hse recusou o login|hse sem login|"
+                    r"robo do hse sem login|login recusado \(confira hse_usuario/hse_senha)", t):
+            origem = "acesso_hse"
+        elif re.match(r"^(?:item \d+: tela ficou com qtd/preco |nao consegui manter forma '|"
+                      r"tela abriu na filial \d+, esperado \d+)", t):
+            origem = "automacao"
+        elif (t.startswith("nao foi possivel abrir a planilha:") or
+              (rejeitado and t in ("envie um arquivo .xlsx (a planilha-base v3).", "o arquivo passa de 5 mb."))):
+            origem = "planilha"
+        elif t.startswith("cliente sem endereco cadastrado no hse"):
+            origem, referencias = "cadastro_hse", ["B30"]
+        elif t.startswith("local de entrega"):
+            referencias, comparar = ["B30"], True
+        elif re.match(r"^(cliente|vendedor)\b", t) and any(s in t for s in (
+                "nao encontrado no hse", "corresponde a varios cadastros")):
+            referencias = ["B31" if t.startswith("cliente") else "B33"]
+            comparar = True
+        else:
+            item = re.match(r"item (\d+):\s*(.*)", t)
+            if item and 1 <= int(item[1]) <= 24:
+                detalhe = item[2]
+                # O campo vem antes do valor interpolado; palavras dentro do valor não são estrutura.
+                for padrao, coluna in ((r"^quantidade (?:invalido|invalida|deve)", "B"),
+                        (r"^(?:valor unitario|valor de venda unitario|preco) ", "J"),
+                        (r"^codigo ", "K"), (r"^ncm ", "L"), (r"^origem (?:invalido|invalida|deve)", "M"),
+                        (r"^icms (?:invalido|invalida|deve)", "N"), (r"^grupo ", "P"),
+                        (r"^descricao no dav com \d+ caracteres", "R")):
+                    if re.match(padrao, detalhe):
+                        referencias = [f"{coluna}{int(item[1]) + 1}"]
+                        break
+                faltantes = re.match(r"^produto novo sem ((?:ncm|custo|grupo|marca)(?:, (?:ncm|custo|grupo|marca))*)", detalhe)
+                if faltantes:
+                    referencias = [f"{coluna}{int(item[1]) + 1}" for campo, coluna in (("ncm", "L"), ("grupo", "P"))
+                                   if campo in faltantes[1].split(", ")]
+                estrutura = re.sub(r"^valor unitario \(coluna j\) ", "valor unitario ", detalhe).partition(" (")[0]
+                if referencias and any(s in estrutura for s in ("invalido", "invalida", "deve", "sem ",
+                        "abaixo do minimo", "caracteres", "nao encontrado", "nao existe", "inativo",
+                        "preencha")):
+                    origem = "planilha"
+                    if any(s in estrutura for s in ("nao encontrado", "nao existe", "inativo")):
+                        origem, comparar = "desconhecida", True
+                else:
+                    referencias = []
+            else:
+                for padrao, celula in ((r"^cliente \(b31\).*obrigatorio", "B31"),
+                        (r"^vendedor \(b33\).*obrigatorio", "B33"),
+                        (r"^prazo de entrega \(b32\).*(invalido|obrigatorio)", "B32"),
+                        (r"^forma de pagamento \(b34\).*desconhecida", "B34"),
+                        (r"^filial invalida", "B37"), (r"^frete \(b38\).*deve", "B38")):
+                    if re.search(padrao, t):
+                        origem, referencias = "planilha", [celula]
+                        break
+        origens.add(origem)
+        campos.extend(c for c in referencias if c not in campos)
+    origem = next(iter(origens)) if len(origens) == 1 else "desconhecida"
+    if not mensagens and rejeitado:
+        origem = "planilha"
+    rotulo, onde, como = {
+        "planilha": ("Preenchimento da planilha", "PLANILHA-BASE v3",
+                     "Corrija os campos indicados na planilha e confira novamente."),
+        "cadastro_hse": ("Cadastro no HSE", "Cadastro do cliente no HSE",
+                         "Peça a correção do cadastro no HSE e confira novamente a planilha."),
+        "acesso_hse": ("Acesso ao HSE", "Disponibilidade e login do HSE",
+                       "Peça a Enzo, Allan ou Lucas para conferir o acesso ao HSE, informando o número do envio."),
+        "automacao": ("Falha reconhecida da automação", "Detalhes técnicos deste envio",
+                      "Procure Enzo, Allan ou Lucas, levando o número do envio."),
+        "desconhecida": ("Causa não identificada", "Detalhes do envio e resultado no HSE",
+                         "Procure Enzo, Allan ou Lucas, levando o número do envio; confira o resultado no HSE antes de reenviar."),
+    }[origem]
+    if origem == "planilha" and rejeitado and not campos:
+        como = "Envie a PLANILHA-BASE v3 em .xlsx, com até 5 MB."
+    if comparar:
+        if origem == "desconhecida":
+            rotulo = "Conferir planilha e cadastro HSE"
+        onde = "Compare a planilha com o cadastro correspondente no HSE"
+        como = "Compare os campos indicados com o cadastro no HSE e corrija o dado divergente antes de conferir novamente."
+    return dict(origem=origem, origem_rotulo=rotulo, onde_conferir=onde, como_corrigir=como, campos=campos)
+
+
 def diagnostico(dav: dict, *, administrador: bool) -> dict:
     rel = dav.get("relatorio") or ""
     erro = dav.get("erro") or ""
+    erros_conferencia = []
+    if dav.get("estado") == "rascunho" and dav.get("conferencia") == "erros":
+        from orcamento.processador import Conferencia
+        try:
+            conf = Conferencia.de_json(dav.get("conferencia_relatorio") or "")
+            erros_conferencia = [e for e in conf.erros if isinstance(e, str)]
+        except (ValueError, TypeError, KeyError, AttributeError, ArithmeticError):
+            pass  # conferência legada sem formato conhecido não expõe texto livre
     original = rel + ("\nErro registrado: " + erro if erro and erro not in rel else "")
     texto = _normal(original)
     erros_rel = rel.partition("\nErros:\n")[2]
-    falha = _normal(erro + "\n" + erros_rel)
+    falha = _normal(erro + "\n" + erros_rel + "\n" + "\n".join(erros_conferencia))
     # Só as linhas "ERRO:" que o próprio robô escreve: é com elas que o vendedor corrige a planilha
     # (desconto, vendedor, endereços). Continuações e trechos financeiros ficam para o administrador.
     erros_robo = [linha[6:].strip() for linha in erros_rel.splitlines()
@@ -57,10 +152,24 @@ def diagnostico(dav: dict, *, administrador: bool) -> dict:
         categoria, etapa = "planilha", "Validação da planilha"
         motivo = "A planilha não foi aceita e não foi enviada ao HSE."
         orientacao = "Use a PLANILHA-BASE v3 em .xlsx, até 5 MB, corrija os dados e confira novamente."
-    if salvamento == "nao_criado" and categoria == "desconhecido" and not simulacao:
-        orientacao = "Nada foi criado no HSE. Corrija a planilha e envie de novo."
     if categoria == "desconhecido" and erros_robo:
         motivo = "; ".join(erros_robo)
+    novos = _origem(erro.splitlines() + erros_robo + erros_conferencia, estado == "rejeitado")
+    if categoria == "desconhecido" and not erros_robo and estado in ("erro", "rejeitado"):
+        # Motivo pela origem reconhecida; nunca o texto livre do erro (allowlist do vendedor).
+        motivo = {"automacao": "A automação falhou ao preencher o HSE; a planilha não indica erro.",
+                  "cadastro_hse": "O cliente está sem endereço cadastrado no HSE.",
+                  "planilha": "A planilha tem dados que precisam de correção.",
+                  }.get(novos["origem"], "Um dado da planilha não confere com o cadastro do HSE."
+                        if novos["campos"] else motivo)
+        if novos["origem"] != "desconhecida" or novos["campos"]:
+            orientacao = novos["como_corrigir"]
+    if salvamento == "nao_criado" and categoria == "desconhecido" and not simulacao:
+        orientacao = ("Nada foi criado no HSE. Corrija a planilha e envie de novo."
+                      if novos["origem"] == "planilha" else novos["como_corrigir"])
+    if estado == "rascunho" and erros_conferencia and novos["origem"] == "planilha":
+        categoria, etapa = "planilha", "Validação da planilha"
+        motivo = "A conferência encontrou dados da planilha que precisam de correção."
     if salvamento == "incerto":
         motivo = "O orçamento pode já existir no HSE; a conclusão não foi confirmada."
         try:
@@ -70,6 +179,8 @@ def diagnostico(dav: dict, *, administrador: bool) -> dict:
         orientacao = (f"Confira no HSE o orçamento {dav['numero']} e não gere de novo."
                       if dav.get("numero") else
                       f"Confira no HSE os orçamentos deste cliente{' de ' + data if data else ''} antes de gerar de novo.")
+        novos.update(origem="sem_confirmacao", origem_rotulo="Resultado sem confirmação",
+                     onde_conferir="Orçamentos deste cliente no HSE", como_corrigir=orientacao)
     titulos = {"pronto": "Seu DAV está pronto", "fila": "Na fila", "gerando": "Gerando no HSE",
                "rascunho": "Confira os dados antes de gerar", "simulado": "Simulação: nada salvo",
                "rejeitado": "Planilha não aceita"}
@@ -96,4 +207,4 @@ def diagnostico(dav: dict, *, administrador: bool) -> dict:
             "orientacao": orientacao, "aviso_financeiro": financeiro, "tem_aviso": aviso,
             "relatorio_visivel": original if administrador else permitido,
             "diagnostico_copiavel": (original if administrador else permitido),
-            "salvamento": salvamento, "itens": itens}
+            "salvamento": salvamento, "itens": itens, **novos}

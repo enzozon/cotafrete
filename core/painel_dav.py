@@ -42,6 +42,47 @@ def posicao_na_fila(con, dav_id: int) -> int | None:
     return con.execute("SELECT COUNT(*) FROM dav WHERE estado = 'fila' AND id <= ?", (dav_id,)).fetchone()[0]
 
 
+def _ocorrencias(linhas: list[dict], diags: dict, *, administrador: bool) -> list[dict]:
+    grupos = {}
+    for d in linhas:
+        diag = diags[d["id"]]
+        if diag["salvamento"] == "incerto":
+            tipo = "confirmacao"
+        elif d["estado"] in ("erro", "rejeitado"):
+            tipo = "falha" if d["estado"] == "erro" else "rejeitado"
+        elif d["estado"] == "rascunho" and d.get("conferencia") == "erros":
+            tipo = "conferencia"
+        elif d["estado"] == "pronto" and diag["tem_aviso"] is True:
+            tipo = "aviso_financeiro" if diag["aviso_financeiro"] else "aviso"
+        else:
+            continue
+        motivo = diag["motivo"]
+        if tipo in ("aviso_financeiro", "aviso"):
+            motivo = "DAV criado com aviso financeiro." if tipo == "aviso_financeiro" else "DAV criado com aviso do HSE."
+        # Agrupa pela causa; as células ficam por envio, senão cada planilha vira um cartão.
+        chave = (tipo, diag.get("origem", "desconhecida"), motivo, diag.get("onde_conferir"),
+                 diag.get("como_corrigir"))
+        if chave not in grupos:
+            grupos[chave] = dict(tipo=tipo, categoria=diag["categoria"], titulo=motivo,
+                origem=diag.get("origem", "desconhecida"),
+                origem_rotulo=diag.get("origem_rotulo", "Origem não identificada"),
+                onde_conferir=diag.get("onde_conferir") or "Confira os detalhes do envio e o HSE.",
+                como_corrigir=diag.get("como_corrigir") or diag["orientacao"], total=0, envios=[])
+            if tipo == "aviso_financeiro":
+                grupos[chave].update(origem_rotulo="Financeiro", onde_conferir="Situação do cliente no HSE e setor financeiro",
+                                     como_corrigir="Consulte o financeiro. O DAV já foi criado.")
+        grupo = grupos[chave]
+        grupo["total"] += 1
+        detalhe = diagnostico(d, administrador=administrador)
+        tecnico = detalhe["relatorio_visivel"]
+        if administrador and tipo == "conferencia" and d.get("conferencia_relatorio"):
+            tecnico += "\n" + d["conferencia_relatorio"]
+        grupo["envios"].append(dict(id=d["id"], usuario=d["usuario"], cliente=d.get("cliente"),
+            campos=diag.get("campos", []),
+            arquivo=d.get("arquivo"), criado_em=d["criado_em"], detalhes=tecnico))
+    return sorted(grupos.values(), key=lambda g: -g["total"])
+
+
 def consultar(con, *, usuario: str | None, dias: int, agora: datetime,
               estado: str = "", vendedor: str = "", busca: str = "", pagina: int = 1,
               categoria: str = "") -> dict:
@@ -63,6 +104,13 @@ def consultar(con, *, usuario: str | None, dias: int, agora: datetime,
                   ("cliente", "usuario", "arquivo", "numero")).casefold()]
     contagem = Counter(d["estado"] for d in linhas)
     diags = {d["id"]: diagnostico(d, administrador=False) for d in linhas}
+    todas = linhas  # o quadro mostra o período inteiro; só a tabela segue o filtro de resultado
+    corrigidas = resolvidas(con, [d["id"] for d in todas if d["estado"] in ("erro", "rejeitado", "rascunho")],
+                            usuario)
+    pendentes = [d for d in todas if d["id"] not in corrigidas]
+    quadro = {"precisa": _ocorrencias(pendentes, diags, administrador=usuario is None),
+              "andamento": [d for d in todas if d["estado"] in ("fila", "gerando")],
+              "prontos": [d for d in todas if d["estado"] == "pronto"]}
     criados = [d for d in linhas if d["estado"] == "pronto"]
     resumo = {"tentativas": sum(contagem[e] for e in ("pronto", "erro", "incerto", "fila", "gerando")),
               "criados": contagem["pronto"], "falhas": contagem["erro"], "incertos": contagem["incerto"],
@@ -81,6 +129,8 @@ def consultar(con, *, usuario: str | None, dias: int, agora: datetime,
         linhas = [d for d in linhas if d["estado"] == estado]
     if categoria:
         linhas = [d for d in linhas if diags[d["id"]]["categoria"] == categoria]
+    ocorrencias = _ocorrencias([d for d in linhas if d["id"] not in corrigidas], diags,
+                               administrador=usuario is None)
     total = len(linhas)
     paginas = max(1, math.ceil(total / 25))
     pagina = min(max(1, pagina), paginas)
@@ -90,7 +140,7 @@ def consultar(con, *, usuario: str | None, dias: int, agora: datetime,
         d["resolvida_por"] = resolucao.get(d["id"])
     vendedores = ([r[0] for r in con.execute("SELECT DISTINCT usuario FROM dav ORDER BY usuario")]
                   if usuario is None else [])
-    return {"resumo": resumo, "atencao": atencao, "grupos": dict(grupos),
+    return {"resumo": resumo, "atencao": atencao, "grupos": dict(grupos), "ocorrencias": ocorrencias, "corrigidas": len(corrigidas), "quadro": quadro,
             "linhas": pagina_linhas, "total": total, "pagina": pagina, "paginas": paginas,
             "vendedores": vendedores, "periodo": {"dias": dias, "inicio": inicio.isoformat(),
                                                       "fim": agora.isoformat()}}

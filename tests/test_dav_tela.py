@@ -160,7 +160,8 @@ def test_estados_da_pagina(cli, app_web, tmp_path):
     assert 'data-endpoint="/dav/1/agora"' in cli.get("/dav/1").text
     app_web.banco.dav_atualizar(1, estado="incerto", numero="55")
     t = cli.get("/dav/1").text
-    assert "confira no HSE o orçamento 55 e não gere de novo" in t
+    assert "Confira no HSE o orçamento 55 e não gere de novo" in t
+    assert "Próximo passo" not in t  # uma caixa só; a orientação por origem já traz o passo
     assert 'http-equiv="refresh"' not in t
     app_web.banco.dav_atualizar(1, estado="pronto", relatorio="LINHA <b>x</b>", pdf="x.pdf")
     t = cli.get("/dav/1").text

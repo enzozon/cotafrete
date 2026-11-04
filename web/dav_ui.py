@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import sqlite3
 import threading
 import uuid
@@ -16,13 +17,14 @@ from contextlib import closing
 from datetime import datetime
 from pathlib import Path
 from typing import Callable
-from urllib.parse import urlencode
+from urllib.parse import parse_qsl, urlencode, urlsplit
 
 from fastapi import APIRouter, Cookie, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
 
 from core.banco import Banco, origem_corrigivel
 from core import painel_dav
+from mercado_eletronico.painel import hora_de_brasilia
 from orcamento.fila import FilaDav
 from orcamento.conferencia import FilaConferencia
 from orcamento.diagnostico import _financeiro, diagnostico
@@ -64,6 +66,16 @@ document.addEventListener('click', async ev => {
   const status = document.getElementById('dav-copiado');
   try { await navigator.clipboard.writeText(texto.textContent); status.textContent = 'Diagnóstico copiado.'; }
   catch (erro) { status.textContent = 'Selecione e copie o diagnóstico acima.'; }
+});
+document.addEventListener('click', ev => {
+  document.querySelectorAll('.dav-filtro-menu[open]').forEach(menu => {
+    if (!menu.contains(ev.target)) menu.open = false;
+  });
+});
+document.addEventListener('keydown', ev => {
+  if (ev.key !== 'Escape') return;
+  const menu = document.activeElement.closest('.dav-filtro-menu[open]');
+  if (menu) { menu.open = false; menu.querySelector('summary').focus(); }
 });
 </script>"""
 
@@ -110,7 +122,7 @@ SCRIPT_PULSO = """<script>
       versao = adiou ? '' : d.v;
       continua = d.ativo || adiou;
       ultimo = d.atualizado_em;
-      status.textContent = 'Última atualização: ' + ultimo + (continua ? '' : ' · Resultado concluído');
+      status.textContent = 'Última atualização: ' + ultimo + (continua ? '' : ' · Sem geração em andamento');
     } catch (erro) {
       status.textContent = 'Não foi possível atualizar. Última atualização: ' + (ultimo || 'não confirmada') + '. Os últimos dados foram mantidos.';
     } finally {
@@ -179,10 +191,44 @@ def url_dav(base: str, filtros: dict | None = None, **alteracoes) -> str:
     return base + ("?" + query if query else "")
 
 
+def tempo_dav(d: dict, *, instante: datetime | None = None) -> str:
+    """Datas do banco são Brasília; datas com fuso passam pelo conversor existente."""
+    estado = d.get("estado")
+    inicio = d.get("criado_em") if estado == "fila" else d.get("iniciado_em")
+    fim = (instante or agora()) if estado in ("fila", "gerando") else d.get("terminado_em")
+    if not inicio or not fim:
+        return ""
+    try:
+        segundos = int((hora_de_brasilia(fim) - hora_de_brasilia(inicio)).total_seconds())
+    except (ValueError, TypeError, AttributeError, OverflowError):
+        return ""
+    if segundos < 0:
+        return ""
+    duracao = (f"{segundos} s" if segundos < 60 else f"{segundos // 60} min" if segundos < 3600
+               else f"{segundos // 3600} h {(segundos % 3600) // 60} min")
+    prefixo = {"fila": "Na fila há ", "gerando": "Em execução há "}.get(estado, "Duração: ")
+    return prefixo + duracao
+
+
+def bloco_orientacao(d: dict, *, administrador: bool = False) -> str:
+    diag = diagnostico(d, administrador=administrador)
+    referencias = diag.get("campos", [])
+    quantidades = [c for c in referencias if re.fullmatch(r"B(?:[2-9]|1\d|2[0-5])", c)]
+    campos = ", ".join(f"Quantidade do item {int(c[1:])-1} ({c})" if c in quantidades else c for c in referencias)
+    correcao = diag.get("como_corrigir", diag["orientacao"])
+    if quantidades and diag.get("origem") == "planilha":
+        correcao += " A quantidade deve ser um número maior que zero nos itens indicados."
+    return ('<section class="dav-orientacao" aria-label="Orientação sobre o erro">'
+            f'<h3>{e(diag.get("origem_rotulo", "Causa não identificada"))}</h3>'
+            f'<p><b>Onde conferir:</b> {e(diag.get("onde_conferir", "Consulte os detalhes do envio."))}</p>'
+            + (f'<p class="dav-celulas"><b>Células:</b> {e(campos)}</p>' if campos else "")
+            + f'<p><b>Como corrigir:</b> {e(correcao)}</p></section>')
+
+
 def tabela_davs(linhas: list[dict], com_vendedor: bool = False, *, administrador: bool = False,
                 filtros: dict | None = None) -> str:
     if not linhas:
-        return '<p class="dav-vazio">Nenhum DAV neste recorte. Ajuste os filtros ou envie sua primeira planilha.</p>'
+        return '<p class="dav-vazio">Nenhum DAV encontrado. Ajuste os filtros.</p>'
     corpo = ""
     base = "/adm/dav" if administrador else "/dav"
     for d in linhas:
@@ -193,13 +239,16 @@ def tabela_davs(linhas: list[dict], com_vendedor: bool = False, *, administrador
         motivo = (f'<small class="dav-motivo">{e(diag["motivo"])}</small>'
                   if d["estado"] in ("erro", "incerto", "rejeitado") else "")
         aviso = '<small>HSE sinalizou pendência financeira.</small>' if diag["aviso_financeiro"] else ""
-        resolvida = (f'<small>Resolvida por <a href="{base}/{d["resolvida_por"]}">novo envio #{d["resolvida_por"]}</a></small>'
+        correcao_url = url_dav(f'{base}/{d.get("resolvida_por")}', filtros)
+        resolvida = (f'<small class="dav-correcao">✓ Resolvida por <a href="{e(correcao_url)}">novo envio #{d["resolvida_por"]}</a></small>'
                      if d.get("resolvida_por") else "")
+        tempo = tempo_dav(d)
         pdf = f'<a href="{base}/{d["id"]}/pdf">PDF</a>' if d.get("pdf") else "—"
         corpo += (f'<tr data-dav="{d["id"]}"><td><b>#{d["id"]}</b><small>{e(d["criado_em"].replace("T", " ")[:16])}</small></td>'
                   + (f'<td>{e(d["usuario"])}</td>' if com_vendedor else "")
                   + f'<td><b>{e(d.get("cliente") or "Cliente não identificado")}</b><small>{e(d["arquivo"])}</small></td>'
                   + f'<td class="dav-resultado">{_selo(d)}{motivo}{aviso}{resolvida}'
+                  + (f'<small>{e(tempo)}</small>' if tempo else "")
                   + (f'<small>Orçamento {e(d["numero"])}</small>' if d.get("numero") else "")
                   + f'</td><td>{pdf}</td><td><a href="{e(url_dav(destino, filtros))}">Abrir →</a></td></tr>')
     return ('<div class="dav-table"><table><thead><tr><th>Envio / data</th>'
@@ -208,23 +257,49 @@ def tabela_davs(linhas: list[dict], com_vendedor: bool = False, *, administrador
             + f'</tr></thead><tbody>{corpo}</tbody></table></div>')
 
 
-def filtros_dav(dados: dict, filtros: dict, *, administrador: bool = False) -> str:
-    def opcoes(itens, atual):
-        return "".join(f'<option value="{e(v)}"{" selected" if str(v) == str(atual) else ""}>{e(t)}</option>' for v, t in itens)
+def filtros_dav(dados: dict, filtros: dict, *, administrador: bool = False,
+                base: str | None = None) -> str:
+    base = base or ("/adm/dav" if administrador else "/dav")
+    atuais = dict(filtros, dias=dados["periodo"]["dias"])
+    if not administrador:
+        atuais.pop("vendedor", None)
     estados = [("", "Todos os resultados"), ("com_aviso", "Criado com aviso")]
     estados += list(ESTADOS.items())
     if filtros.get("estado") and filtros["estado"] not in dict(estados):
         estados.append((filtros["estado"], filtros["estado"]))
-    vendedor = (f'<label>Vendedor<select name="vendedor">{opcoes([("", "Todos os vendedores")] + [(v,v) for v in dados["vendedores"]], filtros.get("vendedor", ""))}</select></label>'
-                if administrador else "")
-    categoria = (f'<input type="hidden" name="categoria" value="{e(filtros["categoria"])}">'
-                 if filtros.get("categoria") else "")
-    return (f'<form class="dav-filtros" method="get">{categoria}<label>Período<select name="dias">'
-            + opcoes([(1, "Hoje"), (7, "Últimos 7 dias"), (30, "Últimos 30 dias")], dados["periodo"]["dias"])
-            + '</select></label><label>Resultado<select name="estado">'
-            + opcoes(estados, filtros.get("estado", "")) + '</select></label>' + vendedor
-            + f'<label class="dav-busca">Buscar cliente, arquivo ou orçamento<input type="search" name="busca" value="{e(filtros.get("busca", ""))}" maxlength="160"></label>'
-            + '<button type="submit">Filtrar</button><a href="'+ ('/adm/dav' if administrador else '/dav') +'">Limpar</a></form>')
+    periodos = [(1, "Hoje"), (7, "Últimos 7 dias"), (30, "Últimos 30 dias")]
+
+    def menu(chave, titulo, opcoes):
+        valor = atuais.get(chave, "")
+        rotulo = dict(opcoes).get(valor, str(valor))
+        links = "".join(f'<a href="{e(url_dav(base, atuais, **{chave: v, "pagina": 1}))}"'
+                        + (' aria-current="true"' if str(v) == str(valor) else '')
+                        + f'>{e(t)}</a>' for v, t in opcoes)
+        return (f'<details class="dav-filtro-menu"><summary><span class="dav-campo-nome">{titulo}: </span>'
+                f'{e(rotulo)}<span aria-hidden="true">⌄</span></summary>'
+                f'<nav class="dav-menu-opcoes" aria-label="{titulo}">{links}</nav></details>')
+
+    ocultos = "".join(f'<input type="hidden" name="{k}" value="{e(atuais[k])}">'
+                      for k in ("dias", "estado", "vendedor", "categoria") if atuais.get(k))
+    menus = menu("dias", "Período", periodos) + menu("estado", "Resultado", estados)
+    if administrador:
+        menus += menu("vendedor", "Vendedor", [("", "Todos os vendedores")] + [(v, v) for v in dados["vendedores"]])
+    chips = ""
+    rotulos = {"dias": "Período", "estado": "Resultado", "vendedor": "Vendedor", "busca": "Busca", "categoria": "Motivo"}
+    categorias = {"endereco": "Local de entrega", "acesso_hse": "Acesso ao HSE", "planilha": "Planilha", "desconhecido": "Não classificado"}
+    for chave, nome in rotulos.items():
+        valor = atuais.get(chave)
+        if not valor or (chave == "dias" and valor == 1):
+            continue
+        rotulo = dict(periodos).get(valor, valor) if chave == "dias" else dict(estados).get(valor, valor) if chave == "estado" else categorias.get(valor, valor) if chave == "categoria" else valor
+        destino = url_dav(base, atuais, **{chave: 1 if chave == "dias" else "", "pagina": 1})
+        chips += f'<a class="dav-chip" aria-label="Remover filtro {nome}" href="{e(destino)}">{e(rotulo)} <span aria-hidden="true">×</span></a>'
+    ativos = f'<div class="dav-filtros-ativos" aria-label="Filtros ativos">{chips}<a class="dav-limpar" href="{base}">Limpar filtros</a></div>' if chips else ""
+    return (f'<div class="dav-filtros-area"><form class="dav-barra" method="get" action="{base}">{ocultos}'
+            '<label class="dav-busca"><span class="dav-campo-nome">Buscar cliente, arquivo ou orçamento</span>'
+            f'<input type="search" name="busca" placeholder="Buscar cliente, arquivo ou orçamento" value="{e(atuais.get("busca", ""))}" maxlength="160">'
+            '<button type="submit" class="botao2" aria-label="Buscar DAVs">Buscar</button></label>'
+            f'{menus}</form>{ativos}</div>')
 
 
 def historico_dav(dados: dict, filtros: dict, *, administrador: bool = False) -> str:
@@ -232,38 +307,116 @@ def historico_dav(dados: dict, filtros: dict, *, administrador: bool = False) ->
     anterior = (f'<a href="{e(url_dav(base, filtros, pagina=dados["pagina"]-1))}">← Anterior</a>' if dados["pagina"] > 1 else '<span>Início</span>')
     proxima = (f'<a href="{e(url_dav(base, filtros, pagina=dados["pagina"]+1))}">Próxima →</a>' if dados["pagina"] < dados["paginas"] else '<span>Fim</span>')
     return (tabela_davs(dados["linhas"], administrador, administrador=administrador, filtros=filtros)
-            + f'<nav class="dav-paginacao" aria-label="Páginas do histórico DAV">{anterior}<span>{dados["total"]} registros · Página {dados["pagina"]} de {dados["paginas"]}</span>{proxima}</nav>')
+            + f'<nav class="dav-paginacao" aria-label="Páginas do histórico DAV">{anterior}<span>{dados["total"]} {"registro" if dados["total"] == 1 else "registros"} · Página {dados["pagina"]} de {dados["paginas"]}</span>{proxima}</nav>')
+
+
+PERIODOS = {1: "Hoje", 7: "Últimos 7 dias", 30: "Últimos 30 dias"}
+MAX_PRONTOS = 5  # o quadro é o resumo do período; o resto fica no histórico abaixo
+
+
+def celulas(campos: list[str]) -> str:
+    return "".join(f'<span class="dav-cel">{e(c)}</span>' for c in campos)
+
+
+def _cartao(d: dict, link: str, tom: str, corpo: str, rodape: str = "", extra: str = " ") -> str:
+    return (f'<article class="dav-cartao {tom}"><p class="dav-l1"><b>#{d["id"]}</b>{extra}'
+            f'{e(d["criado_em"].replace("T", " ")[11:16])}</p>'
+            f'<h3><a href="{e(link)}">{e(d.get("cliente") or d.get("arquivo") or "Cliente não identificado")}</a></h3>'
+            f'{corpo}{rodape}</article>')
+
+
+def _coluna(titulo: str, tom: str, cartoes: list[str], vazio: str, mais: str = "") -> str:
+    corpo = "".join(cartoes) or f'<p class="dav-vazio">{e(vazio)}</p>'
+    return (f'<section class="dav-col"><h2><i class="dav-ponto {tom}" aria-hidden="true"></i>{e(titulo)}'
+            f'<span class="dav-conta">{len(cartoes)}</span></h2>{corpo}{mais}</section>')
+
+
+def _precisa_vendedor(dados: dict, filtros: dict) -> list[str]:
+    cartoes = []
+    for g in dados["quadro"]["precisa"]:
+        if g["tipo"] in ("aviso", "aviso_financeiro"):
+            continue  # o DAV foi criado: aparece em Prontos com o aviso
+        tom = "atencao" if g["tipo"] == "confirmacao" else "erro"
+        corrige = g["tipo"] in ("falha", "rejeitado") and g["origem"] not in ("automacao", "acesso_hse")
+        for d in g["envios"]:
+            link = url_dav(f'/dav/{d["id"]}', filtros)
+            acao = (f'<a class="dav-btnc" href="/dav?origem={d["id"]}">Enviar corrigida →</a>' if corrige
+                    else f'<a class="dav-btnc" href="{e(link)}">Ver detalhes →</a>')
+            cartoes.append(_cartao(d, link, tom,
+                f'<p>{e(g["titulo"])}</p><div class="dav-faca"><b>O que fazer</b>{e(g["como_corrigir"])} '
+                f'{celulas(d.get("campos", []))}</div>', acao))
+    return cartoes
+
+
+def _andamento(dados: dict, filtros: dict, base: str, administrador: bool = False) -> list[str]:
+    cartoes = []
+    for d in dados["quadro"]["andamento"]:
+        barra = '<div class="dav-prog" aria-hidden="true"><span></span></div>' if d["estado"] == "gerando" else ""
+        quem = f' {e(d["usuario"])} · ' if administrador else " "
+        cartoes.append(_cartao(d, url_dav(f'{base}/{d["id"]}', filtros), "andamento",
+                               f'<p>{e(tempo_dav(d) or ESTADOS[d["estado"]])}</p>{barra}', extra=quem))
+    return cartoes
+
+
+def _prontos(dados: dict, filtros: dict, base: str) -> tuple[list[str], str]:
+    prontos = dados["quadro"]["prontos"]
+    cartoes = []
+    for d in prontos[:MAX_PRONTOS]:
+        diag = diagnostico(d, administrador=False)
+        aviso = ('<p class="dav-aviso-mini">! Aviso financeiro: consulte o financeiro</p>'
+                 if diag["aviso_financeiro"] else "")
+        duracao = tempo_dav(d).removeprefix("Duração: ")
+        pdf = f'<a class="dav-btnc" href="{base}/{d["id"]}/pdf">Baixar PDF ↓</a>' if d.get("pdf") else ""
+        cartoes.append(_cartao(d, url_dav(f'{base}/{d["id"]}', filtros), "ok",
+            f'<p>Orçamento <b>{e(d.get("numero") or "—")}</b>{" · " + e(duracao) if duracao else ""}</p>{aviso}', pdf))
+    mais = (f'<p class="dav-mais"><a href="{e(url_dav(base, filtros, estado="pronto", pagina=1))}#historico">'
+            f'Ver os {len(prontos)} prontos no histórico →</a></p>' if len(prontos) > MAX_PRONTOS else "")
+    return cartoes, mais
+
+
+def resumo_dia(dados: dict) -> str:
+    q = dados["quadro"]
+    precisa = sum(len(g["envios"]) for g in q["precisa"] if g["tipo"] not in ("aviso", "aviso_financeiro"))
+    prontos = len(q["prontos"])
+    return (f'{PERIODOS.get(dados["periodo"]["dias"], "Período")}: {prontos} '
+            f'{"pronto" if prontos == 1 else "prontos"} · {len(q["andamento"])} em andamento · '
+            f'<b>{precisa} {"precisa" if precisa == 1 else "precisam"} de você</b>')
+
+
+def quadro_vendedor(dados: dict, filtros: dict) -> str:
+    prontos, mais = _prontos(dados, filtros, "/dav")
+    return (_coluna("Precisa de você", "erro", _precisa_vendedor(dados, filtros), "Nada pendente agora.")
+            + _coluna("Em andamento", "andamento", _andamento(dados, filtros, "/dav"),
+                      "Nenhum orçamento em andamento.")
+            + _coluna("Prontos", "ok", prontos, "Nenhum DAV pronto neste período.", mais))
 
 
 def _tela_envio(usuario: str, aviso: str = "", origem: int | None = None, **filtros) -> HTMLResponse:
     referencia = f'<input type="hidden" name="origem" value="{origem}">' if origem else ""
     with closing(banco._conectar()) as con:
         dados = painel_dav.consultar(con, usuario=usuario, agora=agora(), **({"dias": 1} | filtros))
-    corpo = cabecalho("Da planilha ao DAV, com clareza.", tarja="Orçamentos · Área do vendedor",
-                      sub="Envie, confira e acompanhe o resultado dos seus orçamentos.") + f"""
-{aviso}
-<div class="dav-grid dav-entrada"><section class="cartao dav-card"><h2>{'Corrigir envio #' + str(origem) if origem else 'Novo orçamento DAV'}</h2>
-<div class="dav-steps"><span class="atual">1 · Enviar planilha</span><span>2 · Conferir</span><span>3 · Gerar DAV</span></div>
-<form method="post" action="/dav/conferir" enctype="multipart/form-data" data-dav-envio>
-{referencia}
-  <div class="dav-upload"><label for="dav-planilha">Escolha sua PLANILHA-BASE v3</label>
+    nome = usuario[:1].upper() + usuario[1:]
+    corpo = f"""
+<section class="dav-ola"><div><p class="dav-ola-tarja">Orçamentos · Área do vendedor</p>
+<h1>Olá, {e(nome)}</h1><p id="dav-resumo-dia">{resumo_dia(dados)}</p></div>
+<form class="dav-enviar" method="post" action="/dav/conferir" enctype="multipart/form-data" data-dav-envio>
+{referencia}<label for="dav-planilha">{'Corrigir envio #' + str(origem) if origem else 'Novo orçamento DAV'}</label>
   <input id="dav-planilha" type="file" name="planilha" accept=".xlsx" required aria-describedby="dav-limites">
-  <p id="dav-limites">Formato .xlsx · até 5 MB</p><a href="/dav/modelo">Baixar o modelo v3 ↓</a></div>
-  <div class="dav-acoes"><button type="submit">Conferir planilha →</button></div>
-</form>
-</section><aside class="cartao dav-card"><p class="tarja">Sem surpresas</p><h2>Você acompanha cada resultado</h2>
-<ul class="dav-lista"><li><b>✓ Confira antes de gerar</b><p>Revise o cliente, os itens e o local de entrega.</p></li>
-<li><b>! Entenda o que precisa de atenção</b><p>Erros e avisos aparecem separados, com orientação.</p></li>
-<li><b>↓ Encontre seu PDF</b><p>O documento fica junto do resultado, quando disponível.</p></li></ul>
-<p class="dav-note">Uma planilha corrigida cria um novo envio e preserva o histórico anterior.</p></aside></div>
-<section class="cartao dav-card"><h2>Seus DAVs</h2><p class="dav-note">Somente seus envios · período pela data de submissão · Brasília</p>
-{filtros_dav(dados, filtros)}{barra_pulso('/dav/agora')}<div id="dav-historico">{historico_dav(dados, filtros)}</div></section>"""
+  <button type="submit">Conferir planilha →</button>
+  <p id="dav-limites">.xlsx · até 5 MB · <a href="/dav/modelo">Baixar o modelo v3 ↓</a></p>
+</form></section>
+{aviso}{barra_pulso('/dav/agora')}
+<div id="dav-quadro" class="dav-quadro">{quadro_vendedor(dados, filtros)}</div>
+<section class="cartao dav-card" id="historico"><h2>Histórico</h2><p class="dav-note">Somente seus envios · período pela data de submissão · Brasília</p>
+{filtros_dav(dados, filtros)}<div id="dav-historico">{historico_dav(dados, filtros)}</div></section>"""
     return _html("Gerar DAV", corpo, usuario)
 
 
 def _erro(usuario: str, *msgs: str, origem: int | None = None) -> HTMLResponse:
     itens = "".join(f"<li>{e(m)}</li>" for m in msgs)
-    return _tela_envio(usuario, f'<div class="alerta" role="alert"><ul>{itens}</ul></div>', origem=origem)
+    d = banco.dav(origem, usuario) if origem else None
+    guia = bloco_orientacao(d) if d and d["estado"] == "rejeitado" else ""
+    return _tela_envio(usuario, f'<div class="alerta" role="alert"><ul>{itens}</ul></div>{guia}', origem=origem)
 
 
 def _ja_gerou(usuario: str, antigo: dict) -> HTMLResponse:
@@ -391,8 +544,10 @@ def _resumo(o, dav_id: int, d: dict | None = None) -> str:
     else:
         acao = (f'<form method="post" action="/dav/{dav_id}/gerar" data-dav-envio class="dav-acoes">'
                 '<button type="submit">Confirmar e gerar DAV →</button><a href="/dav">Voltar ao envio</a></form>')
+    guia = bloco_orientacao(d) if d and estado == "erros" else ""
     return cabeca + f"""
 <section class="cartao dav-card dav-entrada">{passos}{avisos}{_bloco_hse(conf)}
+{guia}
 <dl class="dav-dados"><div><dt>Cliente</dt><dd>{e(o.cliente)}</dd></div><div><dt>Vendedor</dt><dd>{e(o.vendedor)}</dd></div>
 <div><dt>Local de entrega</dt><dd>{e(o.local_entrega or 'Não informado')}</dd></div>
 <div>
@@ -531,7 +686,8 @@ def historico_agora(usuario: str | None = Depends(_quem), dias: int = 1, estado:
     filtros = dict(dias=dias if dias in (1, 7, 30) else 1, estado=estado[:40], busca=busca[:160], pagina=max(1, pagina))
     with closing(banco._conectar()) as con:
         dados = painel_dav.consultar(con, usuario=usuario, agora=agora(), **filtros)
-    return resposta_pulso({"dav-historico": historico_dav(dados, filtros)}, v,
+    return resposta_pulso({"dav-historico": historico_dav(dados, filtros), "dav-quadro": quadro_vendedor(dados, filtros),
+                           "dav-resumo-dia": resumo_dia(dados)}, v,
                           contexto=dados["periodo"]["inicio"] + str(filtros))
 
 
@@ -569,11 +725,13 @@ def detalhe_dav(dav: dict, *, administrador: bool, retorno: str) -> str:
     diag = diagnostico(d, administrador=administrador)
     incerto = diag["salvamento"] == "incerto"
     base = "/adm/dav" if administrador else "/dav"
+    filtros_retorno = dict(parse_qsl(urlsplit(retorno).query))
     tom = "atencao" if incerto else {"pronto": "ok", "erro": "erro", "rejeitado": "atencao"}.get(d["estado"], "")
     corpo = cabecalho(diag["titulo"], tarja=f"Orçamentos DAV · Envio #{d['id']}",
                        sub=e(d["arquivo"]), acoes=f'<a class="botao2" href="{e(retorno)}">← Voltar ao histórico</a>'
                        + (BOTAO_TEMA if administrador else ""))
-    motivo = diag["motivo"] if d["estado"] in ("erro", "incerto", "rejeitado") else {
+    com_erros = d["estado"] == "rascunho" and d.get("conferencia") == "erros"
+    motivo = diag["motivo"] if d["estado"] in ("erro", "incerto", "rejeitado") or com_erros else {
         "pronto": "O orçamento foi salvo no HSE. Consulte o documento disponível abaixo.",
         "fila": "Seu orçamento está aguardando a vez de execução.",
         "gerando": "O robô está trabalhando no HSE. Você pode acompanhar por esta tela.",
@@ -582,7 +740,8 @@ def detalhe_dav(dav: dict, *, administrador: bool, retorno: str) -> str:
     if incerto:
         motivo = "O orçamento pode já existir no HSE; confira antes de reenviar."
     acoes = (f'<a class="botao2" href="{base}/{d["id"]}/pdf">Baixar PDF ↓</a>' if d.get("pdf") else "")
-    if not administrador and d["estado"] in ("erro", "rejeitado") and not incerto:
+    if (not administrador and d["estado"] in ("erro", "rejeitado") and not incerto
+            and diag.get("origem") not in ("automacao", "acesso_hse")):
         acoes += f'<a class="botao2" href="/dav?origem={d["id"]}">Enviar planilha corrigida →</a>'
     if not administrador and d["estado"] == "rascunho":
         acoes += f'<a class="botao2" href="/dav/{d["id"]}/conferir">Conferir antes de gerar →</a>'
@@ -590,11 +749,9 @@ def detalhe_dav(dav: dict, *, administrador: bool, retorno: str) -> str:
     if d.get("numero"):
         corpo += f'<h2>Orçamento {e(d["numero"])}</h2>'
     corpo += f'<p>{e(motivo)}</p>'
-    if d["estado"] in ("erro", "incerto", "rejeitado"):
-        orientacao = diag["orientacao"]
-        if incerto and d.get("numero"):
-            orientacao = orientacao[:1].lower() + orientacao[1:]
-        corpo += f'<p><b>Próximo passo:</b> {e(orientacao)}</p>'
+    if d["estado"] in ("erro", "incerto", "rejeitado") or (d["estado"] == "rascunho" and d.get("conferencia") == "erros"):
+        # Uma caixa só: a orientação por origem já traz o próximo passo.
+        corpo += bloco_orientacao(d, administrador=administrador)
     if d["estado"] == "fila":
         with closing(banco._conectar()) as con:
             posicao = painel_dav.posicao_na_fila(con, d["id"])
@@ -609,7 +766,10 @@ def detalhe_dav(dav: dict, *, administrador: bool, retorno: str) -> str:
              ("Envio", d["criado_em"].replace("T", " ")), ("Início", (d.get("iniciado_em") or "Não iniciado").replace("T", " ")),
              ("Conclusão", (d.get("terminado_em") or "Não concluído").replace("T", " ")),
              ("Etapa conhecida", diag["etapa"] or "Não informada")]
-    corpo += '<section class="cartao dav-card"><h2>Contexto do orçamento</h2><dl class="dav-dados">'
+    tempo = tempo_dav(d)
+    if tempo:
+        dados.append(("Tempo", tempo.removeprefix("Duração: ")))
+    corpo += '<section class="cartao dav-card"><h2>Dados do orçamento</h2><dl class="dav-dados">'
     corpo += "".join(f'<div><dt>{e(k)}</dt><dd>{e(v)}</dd></div>' for k, v in dados) + '</dl>'
     if diag["itens"]:
         corpo += '<h3>Itens identificados</h3><ul class="dav-lista">' + "".join(f'<li>{e(item)}</li>' for item in diag["itens"]) + '</ul>'
@@ -617,15 +777,23 @@ def detalhe_dav(dav: dict, *, administrador: bool, retorno: str) -> str:
         resolvida = painel_dav.resolvidas(con, [d["id"]], None if administrador else d["usuario"])
         origens = painel_dav.origens_da_correcao(con, d["id"], d["usuario"])
     for origem in origens:
-        corpo += f'<p>Correção do envio <a href="{base}/{origem}">#{origem}</a>. Histórico preservado.</p>'
+        corpo += f'<p class="dav-correcao">Correção do envio <a href="{e(url_dav(f"{base}/{origem}", filtros_retorno))}">#{origem}</a>.</p>'
     if d["id"] in resolvida:
         destino = resolvida[d["id"]]
-        corpo += f'<p>✓ Resolvida por novo envio <a href="{base}/{destino}">#{destino}</a>. O resultado desta tentativa foi preservado.</p>'
+        corpo += f'<p class="dav-correcao">✓ Resolvida por novo envio <a href="{e(url_dav(f"{base}/{destino}", filtros_retorno))}">#{destino}</a>. O resultado desta tentativa foi preservado.</p>'
     if administrador:
         corpo += _conferencia_admin(d)
+    resumo_copia = (f'Envio #{d["id"]}\nHorário do envio: {d["criado_em"]}\n'
+                   f'Etapa: {diag["etapa"] or ESTADOS.get(d["estado"], "Não informada")}\n'
+                   + diag["diagnostico_copiavel"])
+    if d["estado"] in ("erro", "incerto", "rejeitado") or d.get("conferencia") == "erros":
+        resumo_copia += (f'\nOrigem: {diag.get("origem_rotulo", "Não identificada")}\n'
+                         f'Onde conferir: {diag.get("onde_conferir", "")}\n'
+                         + (f'Células: {", ".join(diag["campos"])}\n' if diag.get("campos") else "")
+                         + f'Como corrigir: {diag.get("como_corrigir", diag["orientacao"])}')
     corpo += (f'<details id="dav-relatorio"><summary>{"Relatório original e informações técnicas" if administrador else "Detalhes disponíveis ao vendedor"}</summary>'
               f'<pre>{e(diag["relatorio_visivel"] or "Nenhum relatório disponível.")}</pre></details>'
-              f'<details id="dav-copia"><summary>Copiar diagnóstico</summary><pre id="dav-diagnostico">{e(diag["diagnostico_copiavel"])}</pre>'
+              f'<details id="dav-copia"><summary>Copiar resumo para suporte</summary><pre id="dav-diagnostico">{e(resumo_copia)}</pre>'
               '<button type="button" data-dav-copiar>Copiar diagnóstico</button><p role="status" id="dav-copiado"></p></details></section>')
     return corpo
 

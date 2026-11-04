@@ -365,6 +365,10 @@ interessa.
   PDF e componentes compartilhados. `web/adm_dav.py`: painel e detalhe próprios
   de administração; aparece na sidebar de `web/painel_ui.py`. O `/adm` mostra
   um resumo DAV separado dos números de frete.
+  A barra compacta usa menus `details` com links GET; período, resultado,
+  vendedor (só ADM), busca e categoria continuam nos links e na paginação.
+  `/adm/dav/erros` e `/adm/dav/erros/agora` mostram o resumo com a mesma porta
+  administrativa, orientações e detalhes originais escapados.
 - `orcamento/diagnostico.py`: interpreta `erro` **e** a seção de erros do
   relatório. Aviso financeiro pode coexistir com DAV pronto e não significa
   falha de criação. Texto livre do relatório só é entregue ao administrador;
@@ -372,10 +376,33 @@ interessa.
   diagnóstico. Formato desconhecido é omitido com orientação, não exposto por
   uma tentativa de retirar números. Valores comerciais da conferência e o
   acesso aos PDFs existentes permanecem como antes.
+  Origem, onde conferir, como corrigir e células confirmadas são projeções
+  seguras. Padrões de campo são ancorados na estrutura da mensagem: texto
+  digitado dentro do valor inválido não pode virar evidência de outra célula
+  ou defeito da automação. Endereço divergente exige comparar B30 e cadastro,
+  sem atribuir culpa. Automação/acesso orientam procurar Enzo, Allan ou Lucas.
+  Resultado sem confirmação sempre prevalece sobre instrução de correção.
 - `core/painel_dav.py`: consultas completas por período, filtragem e paginação
   de 25 registros. Contagem usa o período inteiro pela data de submissão em
   Brasília; rejeições, conferências e simulações não são tentativas de geração.
   Ausência de informação de aviso não equivale a zero avisos.
+  `ocorrencias` agrupa o recorte filtrado completo antes da paginação,
+  separando falha, rejeição, conferência inválida, confirmação e avisos.
+  O grupo é a causa (tipo, origem, motivo, orientação); as células ficam em
+  cada envio, não em "Onde conferir". Erro já resolvido por novo envio pronto
+  sai das ocorrências (`corrigidas` conta quantos). O cartão do painel ADM
+  soma as mesmas ocorrências por origem, para os números baterem com o resumo.
+  Telas no modelo B: `consultar` devolve `quadro` (precisa/andamento/prontos)
+  do período inteiro, sem o filtro de resultado; só a tabela do histórico segue
+  os filtros. Vendedor: banner com o envio + colunas Precisa de você / Em
+  andamento / Prontos. ADM: indicadores + colunas por quem resolve (planilha e
+  cadastro, automação e acesso, conferir no HSE e avisos). O pulso atualiza
+  `dav-quadro` junto com o histórico.
+  Sem linha ERRO: do robô, o motivo vem da origem reconhecida (nunca do texto
+  livre do erro). No detalhe, a orientação fica dentro da caixa do resultado.
+  Espera e duração na UI vêm das datas reais (Brasília), omitidas se inválidas
+  ou negativas. A cópia para suporte inclui contexto do envio sem ampliar a
+  exposição do relatório ao vendedor.
 - `dav.estado`: `rascunho`, `fila`, `gerando`, `pronto`, `erro`, `incerto`,
   `simulado` e `rejeitado`. Rejeição guarda metadados/motivo, hash vazio e não
   mantém arquivo nem entra no robô. Estados desconhecidos continuam visíveis.
@@ -398,6 +425,10 @@ Depois de mexer: `python -m pytest tests -k dav -q`, regressão de
 Arquivos produtivos e robô HSE não são necessários para esses testes.
 
 ## 8. Testes: rápido no dia a dia, inteiro em segundo plano
+
+`tests/test_dav_apresentacao.py` usa `bs4` para conferir o HTML. A distribuição
+é `beautifulsoup4`, declarada em `requirements.txt`, que a CI instala antes dos
+testes. Não depender apenas dos pacotes já instalados no PC de desenvolvimento.
 
 `tests/conftest.py` marca `navegador` sozinho todo teste de arquivo que
 importa playwright ou uvicorn (31 arquivos, ~435 testes, dois terços do

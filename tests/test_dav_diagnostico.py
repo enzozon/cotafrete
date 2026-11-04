@@ -155,3 +155,151 @@ def test_validacao_sem_criacao_orienta_corrigir_e_reenviar():
     assert d["salvamento"] == "nao_criado"
     assert d["orientacao"] == "Nada foi criado no HSE. Corrija a planilha e envie de novo."
     assert "responsável" not in d["relatorio_visivel"]
+
+
+@pytest.mark.parametrize("erro,origem,campos", [
+    ("Item 3: quantidade deve ser maior que zero", "planilha", ["B4"]),
+    ("Cliente (B31) é obrigatório", "planilha", ["B31"]),
+    ("Cliente 8411 não encontrado no HSE (use o código ou CNPJ/CPF exato)", "desconhecida", ["B31"]),
+    ("Local de entrega 'ABC': 2 endereço(s) do cliente contém esse texto", "desconhecida", ["B30"]),
+    ("Cliente sem endereço cadastrado no HSE", "cadastro_hse", ["B30"]),
+    ("O HSE recusou o login do robô: acesso negado", "acesso_hse", []),
+    ("Item 3: tela ficou com qtd/preço (1, 2), esperado (3, 4)", "automacao", []),
+    ("Falha jamais vista B31 Item 3", "desconhecida", []),
+    ("Item 25: quantidade inválida", "desconhecida", []),
+])
+def test_origem_e_celulas_confirmadas(erro, origem, campos):
+    from orcamento.diagnostico import diagnostico
+    d = diagnostico(registro(erro=erro), administrador=False)
+    assert d["origem"] == origem
+    assert d["campos"] == campos
+    assert d["origem_rotulo"] and d["onde_conferir"] and d["como_corrigir"]
+    if origem == "automacao":
+        assert "Enzo, Allan ou Lucas" in d["como_corrigir"]
+        assert "envio" in d["como_corrigir"]
+
+
+def test_todos_os_erros_recebem_celula_sem_duplicar():
+    from orcamento.diagnostico import diagnostico
+    erros = ["Item 3: quantidade deve ser maior que zero", "Item 3: NCM deve ter 8 dígitos",
+             "Cliente (B31) é obrigatório", "Item 3: quantidade inválida"]
+    d = diagnostico(registro(erro="\n".join(erros)), administrador=False)
+    assert d["origem"] == "planilha"
+    assert d["campos"] == ["B4", "L4", "B31"]
+    # As células aparecem numa linha própria; repetir em "Onde conferir" duplicava a tela.
+    assert not any(c in d["onde_conferir"] for c in d["campos"])
+
+
+@pytest.mark.parametrize("estado,extras", [("incerto", {}), ("erro", {"numero": "16410"}),
+    ("erro", {"relatorio": "Resultado: orçamento 16410 FOI SALVO no HSE"})])
+def test_incerto_domina_instrucoes_de_correcao(estado, extras):
+    from orcamento.diagnostico import diagnostico
+    d = diagnostico(registro(estado, erro="Item 3: quantidade deve ser maior que zero", **extras), administrador=False)
+    assert d["origem"] == "sem_confirmacao"
+    assert d["como_corrigir"] == d["orientacao"]
+    assert "HSE" in d["onde_conferir"]
+    assert "envie de novo" not in d["como_corrigir"]
+
+
+@pytest.mark.parametrize("administrador", [False, True])
+def test_campos_novos_seguros_ate_para_administrador(administrador):
+    from orcamento.diagnostico import diagnostico
+    segredo = "Cliente bloqueado DF15653 valor 1234,56 vencimento 27/09/2026 B31"
+    d = diagnostico(registro(erro=segredo), administrador=administrador)
+    novos = str({k: d[k] for k in ("origem", "origem_rotulo", "onde_conferir", "como_corrigir", "campos")})
+    assert d["campos"] == []
+    for valor in ("DF15653", "1234,56", "27/09/2026"):
+        assert valor not in novos
+
+
+def test_erros_da_conferencia_no_rascunho():
+    from orcamento.diagnostico import diagnostico
+    from orcamento.processador import Conferencia
+    conf = Conferencia("erros", "", "", "", "", (), (), ("Item 3: quantidade deve ser maior que zero",))
+    d = diagnostico(registro("rascunho", conferencia="erros", conferencia_relatorio=conf.para_json()), administrador=False)
+    assert d["origem"] == "planilha" and d["campos"] == ["B4"]
+    assert d["categoria"] == "planilha"
+    assert d["onde_conferir"] == "PLANILHA-BASE v3"
+
+
+@pytest.mark.parametrize("texto", ["invalido", "null", "{}", "[]"])
+def test_conferencia_legada_invalida_nao_quebra_diagnostico(texto):
+    from orcamento.diagnostico import diagnostico
+    d = diagnostico(registro("rascunho", conferencia="erros", conferencia_relatorio=texto), administrador=False)
+    assert d["origem"] == "desconhecida" and d["campos"] == []
+
+
+@pytest.mark.parametrize("erro,celula", [
+    ("Item 2: valor unitário (coluna J) deve ser maior que zero", "J3"),
+    ("Item 2: código 49025 não encontrado no HSE", "K3"),
+    ("Item 2: NCM deve ter 8 dígitos", "L3"),
+    ("Item 2: ORIGEM deve ser de 0 a 8", "M3"),
+    ("Item 2: ICMS inválido(a)", "N3"),
+    ("Item 2: produto novo sem GRUPO", "P3"),
+    ("Item 2: DESCRIÇÃO NO DAV com 500 caracteres (máximo 200)", "R3"),
+    ("Prazo de entrega (B32) inválido", "B32"),
+    ("VENDEDOR (B33) é obrigatório", "B33"),
+    ("Forma de pagamento (B34) desconhecida", "B34"),
+    ("Filial inválida; use 1, 2 ou 3", "B37"),
+    ("FRETE (B38) deve ser CIF ou FOB", "B38"),
+])
+def test_referencias_do_modelo(erro, celula):
+    from orcamento.diagnostico import diagnostico
+    assert diagnostico(registro(erro=erro), administrador=False)["campos"] == [celula]
+
+
+def test_sem_criacao_nao_atribui_causa_desconhecida_a_planilha():
+    from orcamento.diagnostico import diagnostico
+    d = diagnostico(registro(relatorio=relatorio("mensagem desconhecida")), administrador=False)
+    assert d["origem"] == "desconhecida"
+    assert "Corrija a planilha e envie de novo" not in d["orientacao"]
+
+
+def test_conferencia_com_decimal_invalido_e_tratada_como_desconhecida():
+    from orcamento.diagnostico import diagnostico
+    texto = ('{"itens":[{"numero":1,"codigo":"","descricao":"","preco_tabela":"xyz",'
+             '"valor_unit":"1","por":""}]}')
+    d = diagnostico(registro("rascunho", conferencia="erros", conferencia_relatorio=texto), administrador=False)
+    assert d["origem"] == "desconhecida"
+
+
+@pytest.mark.parametrize("valor", ["preço NCM GRUPO", "tela ficou com qtd/preço", "hse fora do ar",
+                                    "d'Água NCM", '"GRUPO" preço', "não encontrado", "inativo"])
+def test_valor_invalido_nao_inventa_outros_campos_ou_causa(valor):
+    from orcamento.diagnostico import diagnostico
+    d = diagnostico(registro(erro=f"Item 3: quantidade inválido(a) ({valor!r})"), administrador=False)
+    assert d["origem"] == "planilha"
+    assert d["campos"] == ["B4"]
+
+
+@pytest.mark.parametrize("erro", ["não foi possível abrir a planilha: File is not a zip file",
+                                "Envie um arquivo .xlsx (a PLANILHA-BASE v3).", "O arquivo passa de 5 MB."])
+def test_rejeicao_de_arquivo_conhecida_e_planilha(erro):
+    from orcamento.diagnostico import diagnostico
+    d = diagnostico(registro("rejeitado", erro=erro), administrador=False)
+    assert d["origem"] == "planilha" and d["campos"] == []
+
+
+def test_produto_novo_com_faltantes_nao_interpreta_descricao_como_campos():
+    from orcamento.diagnostico import diagnostico
+    erro = "Item 3: produto novo sem NCM, GRUPO (não encontrado no HSE pela descrição 'preço ICMS')"
+    d = diagnostico(registro(erro=erro), administrador=False)
+    assert d["origem"] == "planilha" and d["campos"] == ["L4", "P4"]
+
+
+@pytest.mark.parametrize("erro,motivo", [
+    ("Item 3: tela ficou com qtd/preco diferente do enviado", "A automação falhou"),
+    ("Cliente 1212 não encontrado no HSE", "não confere com o cadastro do HSE"),
+    ("Item 2: código XPTO não encontrado no HSE", "não confere com o cadastro do HSE")])
+def test_motivo_segue_origem_reconhecida(erro, motivo):
+    from orcamento.diagnostico import diagnostico
+    d = diagnostico(registro(erro=erro), administrador=False)
+    assert motivo in d["motivo"] and "não identificado" not in d["motivo"]
+    assert d["orientacao"] == d["como_corrigir"]
+    assert "XPTO" not in d["motivo"] and "1212" not in d["motivo"]
+
+
+def test_rejeicao_de_formato_nao_pede_campos_inexistentes():
+    from orcamento.diagnostico import diagnostico
+    d = diagnostico(registro("rejeitado", erro="Envie um arquivo .xlsx (a planilha-base v3)."), administrador=False)
+    assert d["campos"] == [] and ".xlsx" in d["como_corrigir"] and "campos indicados" not in d["como_corrigir"]
