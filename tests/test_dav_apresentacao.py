@@ -24,13 +24,14 @@ def test_barra_compacta_preserva_e_remove_filtros():
     assert "<cliente>" not in html
 
 
-def test_vendedor_preserva_cartao_envio_sem_texto_lateral(cli):
+def test_vendedor_modelo_b_envio_no_banner_e_quadro(cli):
     s = BeautifulSoup(cli.get("/dav").text, "html.parser")
     assert "Novo orçamento DAV" in s.get_text()
-    assert s.select_one('input[name="planilha"][accept=".xlsx"]')
-    assert s.select_one('a[href="/dav/modelo"]')
-    assert len(s.select('.dav-steps span')) == 3
-    assert not s.select('.dav-entrada aside')
+    assert s.select_one('.dav-ola form input[name="planilha"][accept=".xlsx"]')
+    assert s.select_one('.dav-ola a[href="/dav/modelo"]')
+    assert [h.get_text(" ", strip=True).rsplit(" ", 1)[0] for h in s.select('#dav-quadro .dav-col h2')] == [
+        "Precisa de você", "Em andamento", "Prontos"]
+    assert s.select_one('#historico #dav-historico')
     assert not s.select('[name="vendedor"]')
     assert 'Sem surpresas' not in s.get_text() and 'com clareza' not in s.get_text()
     assert s.select_one('.dav-barra')
@@ -63,3 +64,26 @@ def test_falha_automacao_nao_pede_planilha_corrigida(cli, app_web):
     s = BeautifulSoup(cli.get(f'/dav/{i}').text, 'html.parser')
     assert 'Enzo, Allan ou Lucas' in s.get_text()
     assert not s.select(f'a[href="/dav?origem={i}"]')
+
+
+def test_quadro_vendedor_separa_situacoes_e_atualiza(cli, app_web):
+    b = app_web.banco
+    falha = b.dav_criar('ana', 'a.xlsx', 'a', 'Cliente Falha')
+    b.dav_atualizar(falha, estado='erro', erro='Local de entrega não encontrado')
+    robo = b.dav_criar('ana', 'b.xlsx', 'b', 'Cliente Robo')
+    b.dav_atualizar(robo, estado='erro', erro='Item 1: tela ficou com qtd/preço diferente do esperado')
+    fila = b.dav_criar('ana', 'c.xlsx', 'c', 'Cliente Fila')
+    b.dav_atualizar(fila, estado='fila')
+    pronto = b.dav_criar('ana', 'd.xlsx', 'd', 'Cliente Pronto')
+    b.dav_atualizar(pronto, estado='pronto', numero='777')
+    b.dav_criar('bia', 'e.xlsx', 'e', 'Cliente da Bia')
+    s = BeautifulSoup(cli.get('/dav').text, 'html.parser')
+    precisa, andamento, prontos = s.select('#dav-quadro .dav-col')
+    assert 'Cliente Falha' in precisa.get_text() and 'Cliente Robo' in precisa.get_text()
+    assert precisa.select_one(f'a[href="/dav?origem={falha}"]')  # planilha × cadastro: o vendedor corrige
+    assert not precisa.select(f'a[href="/dav?origem={robo}"]')  # falha do robô: não pede planilha nova
+    assert 'Cliente Fila' in andamento.get_text() and '777' in prontos.get_text()
+    assert 'Cliente da Bia' not in s.select_one('#dav-quadro').get_text()
+    assert '2 precisam de você' in s.select_one('#dav-resumo-dia').get_text()
+    fragmentos = cli.get('/dav/agora').json()['fragmentos']
+    assert {'dav-quadro', 'dav-resumo-dia', 'dav-historico'} <= set(fragmentos)

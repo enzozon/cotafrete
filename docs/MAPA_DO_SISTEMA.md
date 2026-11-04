@@ -392,6 +392,12 @@ interessa.
   cada envio, não em "Onde conferir". Erro já resolvido por novo envio pronto
   sai das ocorrências (`corrigidas` conta quantos). O cartão do painel ADM
   soma as mesmas ocorrências por origem, para os números baterem com o resumo.
+  Telas no modelo B: `consultar` devolve `quadro` (precisa/andamento/prontos)
+  do período inteiro, sem o filtro de resultado; só a tabela do histórico segue
+  os filtros. Vendedor: banner com o envio + colunas Precisa de você / Em
+  andamento / Prontos. ADM: indicadores + colunas por quem resolve (planilha e
+  cadastro, automação e acesso, conferir no HSE e avisos). O pulso atualiza
+  `dav-quadro` junto com o histórico.
   Sem linha ERRO: do robô, o motivo vem da origem reconhecida (nunca do texto
   livre do erro). No detalhe, a orientação fica dentro da caixa do resultado.
   Espera e duração na UI vêm das datas reais (Brasília), omitidas se inválidas

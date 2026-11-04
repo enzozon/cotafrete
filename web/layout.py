@@ -1804,6 +1804,43 @@ CSS_DAV = """
 .dav .dav-guia-erro{border-left:3px solid var(--tom-erro)}.dav .dav-guia-erro[data-tipo=confirmacao],.dav .dav-guia-erro[data-tipo=aviso_financeiro],.dav .dav-guia-erro[data-tipo=aviso]{border-left-color:var(--tom-atencao)}.dav-guia-erro p{line-height:1.8}.dav-guia-erro details summary{font-size:13px}.dav .cab-pagina{animation:dav-entrada .25s ease-out}
 .dav-guia-erro h2,.dav-guia-erro summary{overflow-wrap:anywhere}.dav details[open]>pre{animation:dav-menu .18s ease-out}.dav-acoes :is(a,button){transition:transform .16s,box-shadow .16s}.dav-acoes :is(a,button):hover{transform:translateY(-1px)}
 .dav-resultado-box .dav-orientacao{border:0;border-top:1px solid var(--borda);border-radius:0;background:none;padding:14px 0 0;margin:14px 0 0;animation:none}
+/* Modelo B: quadro por situação (vendedor) e por quem resolve (ADM). */
+.dav-ola{display:flex;gap:24px;align-items:center;flex-wrap:wrap;margin:6px 0 20px;padding:26px 28px;border-radius:16px;background:linear-gradient(120deg,#0b3ea8,#2a63d4);color:#fff;box-shadow:0 10px 30px #0b3ea833;animation:dav-entrada .25s ease-out}
+.dav-ola h1{margin:4px 0 6px;font-size:26px;color:#fff}.dav-ola p{margin:0;color:#dfe8ff;font-size:14px}.dav-ola p b{color:#fff}
+.dav-ola .dav-ola-tarja{font-size:11px;letter-spacing:.12em;text-transform:uppercase;font-weight:700;color:#b9ccf7}
+.dav-enviar{margin-left:auto;flex:0 1 460px;display:grid;grid-template-columns:1fr auto;gap:8px 10px;align-items:center;min-width:min(100%,430px);padding:14px 16px;border-radius:12px;background:var(--papel);color:var(--tinta);box-shadow:0 6px 18px #0002}
+.dav-enviar label{grid-column:1/-1;font-size:12px;font-weight:700;color:var(--tinta)}
+.dav-enviar input[type=file]{min-width:0;font-size:12px;color:var(--tinta2)}
+.dav-enviar button{margin:0;white-space:nowrap}
+.dav-enviar #dav-limites{grid-column:1/-1;font-size:11px;color:var(--fraco)}.dav-enviar #dav-limites a{color:var(--tom-marca)}
+.dav-quadro{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:16px;align-items:start;margin-bottom:22px}
+.dav-col{background:var(--cova);border:1px solid var(--borda);border-radius:14px;padding:12px}
+.dav-col h2{display:flex;align-items:center;gap:8px;margin:4px 6px 12px;font-size:12px;letter-spacing:.06em;text-transform:uppercase}
+.dav-col .dav-conta{margin-left:auto;padding:1px 9px;border-radius:99px;background:var(--papel);border:1px solid var(--borda);font-size:12px}
+.dav-col .dav-vazio{padding:14px 8px;font-size:12px;text-align:center}
+.dav-ponto{width:9px;height:9px;border-radius:50%;display:inline-block;background:var(--fraco)}
+.dav-ponto.erro{background:var(--tom-erro)}.dav-ponto.atencao{background:var(--tom-atencao)}.dav-ponto.ok{background:var(--tom-ok)}.dav-ponto.andamento{background:var(--tom-marca)}
+.dav-cartao{position:relative;margin-bottom:10px;padding:13px 14px;border-radius:11px;background:var(--papel);border:1px solid var(--borda);border-top:3px solid var(--fraco);box-shadow:0 1px 2px #0000000d;transition:transform .16s,box-shadow .16s}
+.dav-cartao:hover{transform:translateY(-1px);box-shadow:0 6px 16px #0000001a}
+.dav-cartao.erro{border-top-color:var(--tom-erro)}.dav-cartao.atencao{border-top-color:var(--tom-atencao)}.dav-cartao.ok{border-top-color:var(--tom-ok)}.dav-cartao.andamento{border-top-color:var(--tom-marca)}
+.dav-cartao .dav-l1{margin:0;font-size:12px;color:var(--fraco)}.dav-cartao .dav-l1 b{color:var(--tinta)}
+.dav-cartao h3{margin:5px 0;font-size:14px;line-height:1.35;overflow-wrap:anywhere}.dav-cartao h3 a{color:var(--tinta);text-decoration:none}.dav-cartao h3 a:hover{color:var(--tom-marca);text-decoration:underline}
+.dav-cartao p{margin:5px 0 0;font-size:12.5px;line-height:1.5;color:var(--tinta2)}
+.dav-faca{margin-top:10px;padding:9px 10px;border-radius:8px;background:var(--cova);font-size:12px;line-height:1.55;color:var(--tinta)}
+.dav-faca b{display:block;margin-bottom:3px;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--fraco)}
+.dav-cel{display:inline-block;margin:2px 4px 0 0;padding:1px 6px;border-radius:5px;background:var(--tom-erro-fraco);color:var(--tom-erro);font:700 11px ui-monospace,Consolas,monospace}
+.dav-btnc{display:inline-block;margin-top:10px;font-size:12px;font-weight:700;color:var(--tom-marca);text-decoration:none}.dav-btnc:hover{text-decoration:underline}
+.dav-prog{height:5px;margin-top:10px;border-radius:3px;background:var(--tom-marca-fraco);overflow:hidden}.dav-prog span{display:block;width:40%;height:100%;border-radius:3px;background:var(--tom-marca);animation:dav-prog 1.4s ease-in-out infinite}
+.dav-aviso-mini{color:var(--tom-atencao)!important;font-weight:600}
+.dav-mais{margin:4px 0 2px;text-align:center;font-size:12px}.dav-quadro-rodape{grid-column:1/-1}
+.dav-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin-bottom:8px}
+.dav-kpi{padding:16px 18px;border-radius:14px;background:var(--papel);border:1px solid var(--borda)}
+.dav-kpi span{display:block;font-size:12px;color:var(--tinta2)}.dav-kpi b{display:block;margin:4px 0 2px;font-size:30px;line-height:1.1;font-variant-numeric:tabular-nums}.dav-kpi small{font-size:12px;color:var(--fraco)}
+.dav-kpi.ok b{color:var(--tom-ok)}.dav-kpi.andamento b{color:var(--tom-marca)}
+.dav-kpi.alerta{background:#c2362b;border-color:#c2362b}.dav-kpi.alerta :is(span,b,small){color:#fff}.dav-kpi.alerta small{color:#ffe1de}
+@keyframes dav-prog{from{transform:translateX(-100%)}to{transform:translateX(250%)}}
+@media(max-width:850px){.dav-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.dav-enviar{margin-left:0;width:100%}}
+@media(max-width:480px){.dav-ola{padding:20px 18px}.dav-ola h1{font-size:22px}.dav-enviar{grid-template-columns:1fr}.dav-kpi b{font-size:24px}}
 @keyframes dav-menu{from{opacity:.3;transform:translateY(-5px)}to{opacity:1;transform:none}}
 @media(max-width:850px){.dav-barra .dav-busca{flex-basis:100%}.dav details.dav-filtro-menu{flex:1;min-width:130px}.dav-filtro-menu summary{gap:8px}}
 @media(max-width:480px){.dav-barra{padding:8px;gap:8px}.dav details.dav-filtro-menu{min-width:100px}.dav-menu-opcoes{min-width:200px;max-width:calc(100vw - 50px)}.dav-filtro-menu:first-of-type .dav-menu-opcoes{left:0;right:auto}.dav-orientacao{padding:17px}.dav-steps span{font-size:11px}.dav-table table{min-width:600px}}

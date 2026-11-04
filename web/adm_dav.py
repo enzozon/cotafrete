@@ -1,7 +1,6 @@
 """Gestão de orçamentos DAV, somente leitura e atrás da porta administrativa."""
 from __future__ import annotations
 
-from collections import Counter
 from contextlib import closing
 import hashlib
 
@@ -35,53 +34,59 @@ def _filtros(dias=1, estado="", vendedor="", busca="", pagina=1, categoria="") -
                 vendedor=vendedor[:160], busca=busca[:160], pagina=max(1, pagina), categoria=categoria[:40])
 
 
+def _kpi(rotulo: str, valor, sub: str, tom: str = "") -> str:
+    return (f'<div class="dav-kpi {tom}"><span>{e(rotulo)}</span><b>{valor}</b>'
+            f'<small>{sub}</small></div>')
+
+
 def indicadores(dados: dict) -> str:
     r = dados["resumo"]
-    faixa = '<div class="faixa">'
-    for rotulo, chave, tom, icone in (("Tentativas de geração", "tentativas", "marca", "cotacoes"),
-                                      ("DAVs criados", "criados", "ok", "preco"),
-                                      ("Falhas de criação", "falhas", "erro", "alerta"),
-                                      ("Em andamento", "em_andamento", "atencao", "relogio")):
-        faixa += ui.numero(rotulo, r[chave], *ui.TOM[tom], icone)
-    return faixa + ('</div><p class="dav-note">Contagens por data de submissão no período, antes do filtro de resultado. '
-        f'Criados incluem {r["com_aviso"]} com aviso conhecido; {r["avisos_desconhecidos"]} com informação de aviso indisponível. '
-        'Reenvios contam como tentativas. Conferências, simulações e rejeições não são gerações.</p>')
-
-
-def atencao(dados: dict, filtros: dict) -> str:
-    r = dados["resumo"]
-    corpo = ""
-    for n, estado, titulo in ((r["incertos"], "incerto", "Confira no HSE antes de reenviar"),
-                               (r["rejeitados"], "rejeitado", "Planilhas rejeitadas antes da geração"),
-                               (r["inesperados"], "", "Registros com estado não reconhecido")):
-        if n:
-            link = dav_ui.url_dav("/adm/dav", filtros, estado=estado, pagina=1)
-            corpo += f'<div class="dav-atencao"><span><b>{n} · {e(titulo)}</b></span><a href="{e(link)}">Ver registros →</a></div>'
-    for d in dados["atencao"][:5]:
-        corpo += (f'<div class="dav-atencao"><span>{dav_ui._selo(d)} <b>#{d["id"]} · {e(d["cliente"] or d["arquivo"])}</b>'
-                  f'<small> · {e(d["usuario"])}</small></span><a href="{e(dav_ui.url_dav(f"/adm/dav/{d['id']}", filtros))}">Abrir →</a></div>')
-    return corpo or '<p class="dav-vazio">Nenhum resultado incerto ou planilha rejeitada neste período.</p>'
-
-
-def grupos(dados: dict, filtros: dict) -> str:
-    """Mesma classificação por origem da tela /adm/dav/erros, para os números baterem."""
-    contagem = Counter()
-    for g in dados["ocorrencias"]:
-        contagem[g["origem_rotulo"]] += g["total"]
-    link = dav_ui.url_dav("/adm/dav/erros", filtros, pagina=1)
-    linhas = "".join(f'<div class="dav-atencao"><span>{e(rotulo)}</span><a href="{e(link)}">{n} →</a></div>'
-                     for rotulo, n in contagem.most_common())
-    return linhas or '<p class="dav-vazio">Nenhuma ocorrência pendente neste recorte.</p>'
-
-
-def resumo_erros(dados: dict, filtros: dict) -> str:
-    total = sum(g["total"] for g in dados["ocorrencias"])
-    link = dav_ui.url_dav("/adm/dav/erros", filtros, pagina=1)
+    pendentes = sum(g["total"] for g in dados["quadro"]["precisa"])
+    sucesso = f'{round(100 * r["criados"] / r["tentativas"])}% de sucesso' if r["tentativas"] else "sem tentativas"
     corrigidas = dados.get("corrigidas", 0)
-    nota = (f'<p class="dav-note">{corrigidas} já {"resolvido" if corrigidas == 1 else "resolvidos"} '
-            'por novo envio, fora da contagem.</p>' if corrigidas else "")
-    return (f'<div class="dav-resumo-erros"><p><b>{total} {"envio pendente" if total == 1 else "envios pendentes"}</b></p>'
-            f'{nota}<a href="{e(link)}">Resumo de erros e avisos →</a></div>')
+    nota_corr = (f'{corrigidas} já {"resolvido" if corrigidas == 1 else "resolvidos"} fora da conta'
+                 if corrigidas else "erros, conferências e avisos")
+    inesperados = (f' · {r["inesperados"]} com estado não reconhecido' if r["inesperados"] else "")
+    return ('<div class="dav-kpis">'
+            + _kpi("Tentativas de geração", r["tentativas"], f'{r["falhas"]} falhas de criação')
+            + _kpi("DAVs criados", r["criados"], e(sucesso), "ok")
+            + _kpi("Pendentes agora", pendentes, e(nota_corr), "alerta" if pendentes else "")
+            + _kpi("Em andamento", r["em_andamento"], f'fila: {r["fila"]} · gerando: {r["gerando"]}', "andamento")
+            + '</div><p class="dav-note">Contagens por data de submissão no período, antes do filtro de resultado. '
+            f'Criados incluem {r["com_aviso"]} com aviso conhecido. Reenvios contam como tentativas; '
+            f'conferências, simulações e rejeições não são gerações{inesperados}.</p>')
+
+
+# Colunas por quem resolve: o vendedor (planilha/cadastro), nós (robô/acesso) ou conferência no HSE.
+COLUNAS_ADM = (("Planilha e cadastro", "erro", "Nenhuma correção de planilha pendente."),
+               ("Conosco: automação e acesso", "erro", "Nenhuma falha do robô ou do acesso."),
+               ("Conferir no HSE e avisos", "atencao", "Nada para conferir no HSE."))
+
+
+def _coluna_de(g: dict) -> int:
+    if g["tipo"] in ("confirmacao", "aviso", "aviso_financeiro"):
+        return 2
+    if g["origem"] in ("acesso_hse", "automacao") or g["origem_rotulo"] == "Causa não identificada":
+        return 1
+    return 0
+
+
+def quadro_adm(dados: dict, filtros: dict) -> str:
+    cartoes = [[], [], []]
+    for g in dados["quadro"]["precisa"]:
+        col = _coluna_de(g)
+        tom = "atencao" if col == 2 else "erro"
+        for d in g["envios"]:
+            cartoes[col].append(dav_ui._cartao(d, dav_ui.url_dav(f'/adm/dav/{d["id"]}', filtros), tom,
+                f'<p>{dav_ui.celulas(d.get("campos", []))}{e(g["titulo"])}</p>', extra=f' {e(d["usuario"])} · '))
+    colunas = "".join(dav_ui._coluna(titulo, tom, cartoes[i], vazio)
+                      for i, (titulo, tom, vazio) in enumerate(COLUNAS_ADM))
+    andamento = dav_ui._andamento(dados, filtros, "/adm/dav", administrador=True)
+    if andamento:
+        colunas += dav_ui._coluna("Em andamento", "andamento", andamento, "")
+    link = dav_ui.url_dav("/adm/dav/erros", filtros, pagina=1)
+    return (colunas + f'<p class="dav-mais dav-quadro-rodape"><a href="{e(link)}">'
+            'Resumo por causa, com orientação e detalhes técnicos →</a></p>')
 
 
 def ocorrencias(dados: dict, filtros: dict) -> str:
@@ -134,9 +139,8 @@ def painel(cookie: str | None = Cookie(None, alias=adm.COOKIE_ADM), dias: int = 
         dados = painel_dav.consultar(con, usuario=None, agora=dav_ui.agora(), **filtros)
     corpo = cabecalho("Orçamentos DAV", tarja="Administração", acoes=ui.BOTAO_TEMA)
     corpo += dav_ui.barra_pulso('/adm/dav/agora') + f'<div id="dav-indicadores">{indicadores(dados)}</div>'
-    corpo += (f'<div class="dav-grid"><section class="cartao dav-card"><h2>Precisa de atenção</h2><div id="dav-atencao">{atencao(dados, filtros)}</div></section>'
-              f'<section class="cartao dav-card"><h2>Erros e avisos</h2><div id="dav-grupos">{resumo_erros(dados, filtros)}{grupos(dados, filtros)}</div></section></div>'
-              '<section class="cartao dav-card"><h2>Histórico de envios</h2>'
+    corpo += (f'<div id="dav-quadro" class="dav-quadro">{quadro_adm(dados, filtros)}</div>'
+              '<section class="cartao dav-card" id="historico"><h2>Histórico de envios</h2>'
               + dav_ui.filtros_dav(dados, filtros, administrador=True)
               + f'<div id="dav-historico">{dav_ui.historico_dav(dados, filtros, administrador=True)}</div></section>')
     return _html("Orçamentos DAV", corpo)
@@ -149,8 +153,7 @@ def ao_vivo(cookie: str | None = Cookie(None, alias=adm.COOKIE_ADM), dias: int =
     filtros = _filtros(dias, estado, vendedor, busca, pagina, categoria)
     with closing(adm.banco._conectar()) as con:
         dados = painel_dav.consultar(con, usuario=None, agora=dav_ui.agora(), **filtros)
-    fragmentos = {"dav-indicadores": indicadores(dados), "dav-atencao": atencao(dados, filtros),
-                  "dav-grupos": resumo_erros(dados, filtros) + grupos(dados, filtros),
+    fragmentos = {"dav-indicadores": indicadores(dados), "dav-quadro": quadro_adm(dados, filtros),
                   "dav-historico": dav_ui.historico_dav(dados, filtros, administrador=True)}
     return dav_ui.resposta_pulso(fragmentos, v, contexto=dados["periodo"]["inicio"] + str(filtros))
 

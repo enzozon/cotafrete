@@ -310,25 +310,105 @@ def historico_dav(dados: dict, filtros: dict, *, administrador: bool = False) ->
             + f'<nav class="dav-paginacao" aria-label="Páginas do histórico DAV">{anterior}<span>{dados["total"]} {"registro" if dados["total"] == 1 else "registros"} · Página {dados["pagina"]} de {dados["paginas"]}</span>{proxima}</nav>')
 
 
+PERIODOS = {1: "Hoje", 7: "Últimos 7 dias", 30: "Últimos 30 dias"}
+MAX_PRONTOS = 5  # o quadro é o resumo do período; o resto fica no histórico abaixo
+
+
+def celulas(campos: list[str]) -> str:
+    return "".join(f'<span class="dav-cel">{e(c)}</span>' for c in campos)
+
+
+def _cartao(d: dict, link: str, tom: str, corpo: str, rodape: str = "", extra: str = " ") -> str:
+    return (f'<article class="dav-cartao {tom}"><p class="dav-l1"><b>#{d["id"]}</b>{extra}'
+            f'{e(d["criado_em"].replace("T", " ")[11:16])}</p>'
+            f'<h3><a href="{e(link)}">{e(d.get("cliente") or d.get("arquivo") or "Cliente não identificado")}</a></h3>'
+            f'{corpo}{rodape}</article>')
+
+
+def _coluna(titulo: str, tom: str, cartoes: list[str], vazio: str, mais: str = "") -> str:
+    corpo = "".join(cartoes) or f'<p class="dav-vazio">{e(vazio)}</p>'
+    return (f'<section class="dav-col"><h2><i class="dav-ponto {tom}" aria-hidden="true"></i>{e(titulo)}'
+            f'<span class="dav-conta">{len(cartoes)}</span></h2>{corpo}{mais}</section>')
+
+
+def _precisa_vendedor(dados: dict, filtros: dict) -> list[str]:
+    cartoes = []
+    for g in dados["quadro"]["precisa"]:
+        if g["tipo"] in ("aviso", "aviso_financeiro"):
+            continue  # o DAV foi criado: aparece em Prontos com o aviso
+        tom = "atencao" if g["tipo"] == "confirmacao" else "erro"
+        corrige = g["tipo"] in ("falha", "rejeitado") and g["origem"] not in ("automacao", "acesso_hse")
+        for d in g["envios"]:
+            link = url_dav(f'/dav/{d["id"]}', filtros)
+            acao = (f'<a class="dav-btnc" href="/dav?origem={d["id"]}">Enviar corrigida →</a>' if corrige
+                    else f'<a class="dav-btnc" href="{e(link)}">Ver detalhes →</a>')
+            cartoes.append(_cartao(d, link, tom,
+                f'<p>{e(g["titulo"])}</p><div class="dav-faca"><b>O que fazer</b>{e(g["como_corrigir"])} '
+                f'{celulas(d.get("campos", []))}</div>', acao))
+    return cartoes
+
+
+def _andamento(dados: dict, filtros: dict, base: str, administrador: bool = False) -> list[str]:
+    cartoes = []
+    for d in dados["quadro"]["andamento"]:
+        barra = '<div class="dav-prog" aria-hidden="true"><span></span></div>' if d["estado"] == "gerando" else ""
+        quem = f' {e(d["usuario"])} · ' if administrador else " "
+        cartoes.append(_cartao(d, url_dav(f'{base}/{d["id"]}', filtros), "andamento",
+                               f'<p>{e(tempo_dav(d) or ESTADOS[d["estado"]])}</p>{barra}', extra=quem))
+    return cartoes
+
+
+def _prontos(dados: dict, filtros: dict, base: str) -> tuple[list[str], str]:
+    prontos = dados["quadro"]["prontos"]
+    cartoes = []
+    for d in prontos[:MAX_PRONTOS]:
+        diag = diagnostico(d, administrador=False)
+        aviso = ('<p class="dav-aviso-mini">! Aviso financeiro: consulte o financeiro</p>'
+                 if diag["aviso_financeiro"] else "")
+        duracao = tempo_dav(d).removeprefix("Duração: ")
+        pdf = f'<a class="dav-btnc" href="{base}/{d["id"]}/pdf">Baixar PDF ↓</a>' if d.get("pdf") else ""
+        cartoes.append(_cartao(d, url_dav(f'{base}/{d["id"]}', filtros), "ok",
+            f'<p>Orçamento <b>{e(d.get("numero") or "—")}</b>{" · " + e(duracao) if duracao else ""}</p>{aviso}', pdf))
+    mais = (f'<p class="dav-mais"><a href="{e(url_dav(base, filtros, estado="pronto", pagina=1))}#historico">'
+            f'Ver os {len(prontos)} prontos no histórico →</a></p>' if len(prontos) > MAX_PRONTOS else "")
+    return cartoes, mais
+
+
+def resumo_dia(dados: dict) -> str:
+    q = dados["quadro"]
+    precisa = sum(len(g["envios"]) for g in q["precisa"] if g["tipo"] not in ("aviso", "aviso_financeiro"))
+    prontos = len(q["prontos"])
+    return (f'{PERIODOS.get(dados["periodo"]["dias"], "Período")}: {prontos} '
+            f'{"pronto" if prontos == 1 else "prontos"} · {len(q["andamento"])} em andamento · '
+            f'<b>{precisa} {"precisa" if precisa == 1 else "precisam"} de você</b>')
+
+
+def quadro_vendedor(dados: dict, filtros: dict) -> str:
+    prontos, mais = _prontos(dados, filtros, "/dav")
+    return (_coluna("Precisa de você", "erro", _precisa_vendedor(dados, filtros), "Nada pendente agora.")
+            + _coluna("Em andamento", "andamento", _andamento(dados, filtros, "/dav"),
+                      "Nenhum orçamento em andamento.")
+            + _coluna("Prontos", "ok", prontos, "Nenhum DAV pronto neste período.", mais))
+
+
 def _tela_envio(usuario: str, aviso: str = "", origem: int | None = None, **filtros) -> HTMLResponse:
     referencia = f'<input type="hidden" name="origem" value="{origem}">' if origem else ""
     with closing(banco._conectar()) as con:
         dados = painel_dav.consultar(con, usuario=usuario, agora=agora(), **({"dias": 1} | filtros))
-    corpo = cabecalho("Meus DAVs", tarja="Orçamentos · Área do vendedor",
-                      sub="Envie a planilha e acompanhe o orçamento.") + f"""
-{aviso}
-<div class="dav-grid dav-entrada"><section class="cartao dav-card"><h2>{'Corrigir envio #' + str(origem) if origem else 'Novo orçamento DAV'}</h2>
-<div class="dav-steps"><span class="atual">1 · Enviar planilha</span><span>2 · Conferir</span><span>3 · Gerar DAV</span></div>
-<form method="post" action="/dav/conferir" enctype="multipart/form-data" data-dav-envio>
-{referencia}
-  <div class="dav-upload"><label for="dav-planilha">Escolha sua PLANILHA-BASE v3</label>
+    nome = usuario[:1].upper() + usuario[1:]
+    corpo = f"""
+<section class="dav-ola"><div><p class="dav-ola-tarja">Orçamentos · Área do vendedor</p>
+<h1>Olá, {e(nome)}</h1><p id="dav-resumo-dia">{resumo_dia(dados)}</p></div>
+<form class="dav-enviar" method="post" action="/dav/conferir" enctype="multipart/form-data" data-dav-envio>
+{referencia}<label for="dav-planilha">{'Corrigir envio #' + str(origem) if origem else 'Novo orçamento DAV'}</label>
   <input id="dav-planilha" type="file" name="planilha" accept=".xlsx" required aria-describedby="dav-limites">
-  <p id="dav-limites">Formato .xlsx · até 5 MB</p><a href="/dav/modelo">Baixar o modelo v3 ↓</a></div>
-  <div class="dav-acoes"><button type="submit">Conferir planilha →</button></div>
-</form>
-</section></div>
-<section class="cartao dav-card"><h2>Seus DAVs</h2><p class="dav-note">Somente seus envios · período pela data de submissão · Brasília</p>
-{filtros_dav(dados, filtros)}{barra_pulso('/dav/agora')}<div id="dav-historico">{historico_dav(dados, filtros)}</div></section>"""
+  <button type="submit">Conferir planilha →</button>
+  <p id="dav-limites">.xlsx · até 5 MB · <a href="/dav/modelo">Baixar o modelo v3 ↓</a></p>
+</form></section>
+{aviso}{barra_pulso('/dav/agora')}
+<div id="dav-quadro" class="dav-quadro">{quadro_vendedor(dados, filtros)}</div>
+<section class="cartao dav-card" id="historico"><h2>Histórico</h2><p class="dav-note">Somente seus envios · período pela data de submissão · Brasília</p>
+{filtros_dav(dados, filtros)}<div id="dav-historico">{historico_dav(dados, filtros)}</div></section>"""
     return _html("Gerar DAV", corpo, usuario)
 
 
@@ -606,7 +686,8 @@ def historico_agora(usuario: str | None = Depends(_quem), dias: int = 1, estado:
     filtros = dict(dias=dias if dias in (1, 7, 30) else 1, estado=estado[:40], busca=busca[:160], pagina=max(1, pagina))
     with closing(banco._conectar()) as con:
         dados = painel_dav.consultar(con, usuario=usuario, agora=agora(), **filtros)
-    return resposta_pulso({"dav-historico": historico_dav(dados, filtros)}, v,
+    return resposta_pulso({"dav-historico": historico_dav(dados, filtros), "dav-quadro": quadro_vendedor(dados, filtros),
+                           "dav-resumo-dia": resumo_dia(dados)}, v,
                           contexto=dados["periodo"]["inicio"] + str(filtros))
 
 

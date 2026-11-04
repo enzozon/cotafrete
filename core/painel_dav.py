@@ -104,6 +104,13 @@ def consultar(con, *, usuario: str | None, dias: int, agora: datetime,
                   ("cliente", "usuario", "arquivo", "numero")).casefold()]
     contagem = Counter(d["estado"] for d in linhas)
     diags = {d["id"]: diagnostico(d, administrador=False) for d in linhas}
+    todas = linhas  # o quadro mostra o período inteiro; só a tabela segue o filtro de resultado
+    corrigidas = resolvidas(con, [d["id"] for d in todas if d["estado"] in ("erro", "rejeitado", "rascunho")],
+                            usuario)
+    pendentes = [d for d in todas if d["id"] not in corrigidas]
+    quadro = {"precisa": _ocorrencias(pendentes, diags, administrador=usuario is None),
+              "andamento": [d for d in todas if d["estado"] in ("fila", "gerando")],
+              "prontos": [d for d in todas if d["estado"] == "pronto"]}
     criados = [d for d in linhas if d["estado"] == "pronto"]
     resumo = {"tentativas": sum(contagem[e] for e in ("pronto", "erro", "incerto", "fila", "gerando")),
               "criados": contagem["pronto"], "falhas": contagem["erro"], "incertos": contagem["incerto"],
@@ -122,7 +129,6 @@ def consultar(con, *, usuario: str | None, dias: int, agora: datetime,
         linhas = [d for d in linhas if d["estado"] == estado]
     if categoria:
         linhas = [d for d in linhas if diags[d["id"]]["categoria"] == categoria]
-    corrigidas = resolvidas(con, [d["id"] for d in linhas if d["estado"] in ("erro", "rejeitado", "rascunho")], usuario)
     ocorrencias = _ocorrencias([d for d in linhas if d["id"] not in corrigidas], diags,
                                administrador=usuario is None)
     total = len(linhas)
@@ -134,7 +140,7 @@ def consultar(con, *, usuario: str | None, dias: int, agora: datetime,
         d["resolvida_por"] = resolucao.get(d["id"])
     vendedores = ([r[0] for r in con.execute("SELECT DISTINCT usuario FROM dav ORDER BY usuario")]
                   if usuario is None else [])
-    return {"resumo": resumo, "atencao": atencao, "grupos": dict(grupos), "ocorrencias": ocorrencias, "corrigidas": len(corrigidas),
+    return {"resumo": resumo, "atencao": atencao, "grupos": dict(grupos), "ocorrencias": ocorrencias, "corrigidas": len(corrigidas), "quadro": quadro,
             "linhas": pagina_linhas, "total": total, "pagina": pagina, "paginas": paginas,
             "vendedores": vendedores, "periodo": {"dias": dias, "inicio": inicio.isoformat(),
                                                       "fim": agora.isoformat()}}
