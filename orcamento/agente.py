@@ -32,7 +32,7 @@ Culpas possíveis (campo culpa):
 
 Casos conhecidos:
 (a) O HSE recusou o produto ("Margem atualizada") ou não apareceu número de pedido depois de Incluir, mas criados_no_hse lista números: culpa robo. O robô leu o número cedo; o orçamento existe. Não reenviar; conferir no HSE.
-(b) Desconto acima de 15% ou "abaixo do mínimo": culpa planilha (preço da coluna J), exceto se o código do item foi unido por engano pelo robô.
+(b) Desconto acima do máximo ou "abaixo do mínimo": culpa planilha (preço da coluna J), exceto se o código do item foi unido por engano pelo robô.
 (c) B30, local de entrega, não bate: planilha se o texto está errado; cadastro_hse se falta o endereço no cadastro do cliente.
 (d) "HSE fora do ar", timeouts: hse_fora. Login recusado: acesso_hse.
 (e) Cliente ou vendedor não encontrado: planilha ou cadastro_hse.
