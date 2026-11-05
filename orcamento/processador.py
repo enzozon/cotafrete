@@ -29,6 +29,7 @@ SUBPASTAS = ("DAVs", "PROCESSADOS", "ERRO", "DRYRUN")
 # Desconto máximo sobre o preço de tabela que o HSE aceita no Incluir (visto em 28/10/2026:
 # "Desconto máximo 15%"; a gestora subiu para 50% em 05/11/2026). Fixo para todos os itens.
 DESCONTO_MAX = Decimal("50")
+TABELA_MINIMA = Decimal("0.05")  # tabela até R$ 0,05 é preço de mentira no cadastro (DAV #20, código 49025)
 
 
 @dataclass(frozen=True)
@@ -305,6 +306,9 @@ def conferir_desconto(r: Resolucao) -> Resolucao:
     e assim todos os itens nessa situação aparecem de uma vez no relatório."""
     if r.erro or r.produto is None or r.produto.preco is None:
         return r
+    if r.produto.preco <= TABELA_MINIMA:  # 0,01 é preço de mentira: o limite de desconto não vale (#20)
+        return replace(r, erro=f"preço de tabela {moeda(r.produto.preco)} no HSE para o código "
+                               f"{r.produto.codigo}: corrija o preço no cadastro do produto ou confira o código")
     minimo = r.produto.preco * (100 - DESCONTO_MAX) / 100
     if r.item.valor_unit >= minimo:
         return r
@@ -568,6 +572,24 @@ def _aviso_descricao(r: Resolucao) -> str | None:
             f"{r.produto.codigo} – {r.produto.descricao}; confira se é o produto certo")
 
 
+def _palavras(texto: str) -> set[str]:
+    return {w for w in re.findall(r"[A-Z0-9]+", normalizar(texto))
+            if len(w) >= 3 and not w.isdigit() and w not in ("COM", "SEM", "PARA")}
+
+
+def aviso_codigo_de_outro_produto(r: Resolucao) -> str | None:
+    """Código existe, mas a descrição da planilha não tem nenhuma palavra em comum com a do HSE
+    (DAVs #5/#6 fone x carregador, #28 kit praia x TV, 04/11/2026). Nas 199 linhas reais por código
+    não houve alarme falso; com palavra em comum ("TECLADO DELL" x "KIT TECLADO...") não avisa."""
+    if r.erro or r.por != "codigo" or r.produto is None:
+        return None
+    planilha = _palavras(r.item.produto)
+    if not planilha or planilha & _palavras(r.produto.descricao):
+        return None
+    return (f"Item {r.item.numero}: a descrição '{r.item.produto[:60]}' não parece com a do código "
+            f"{r.produto.codigo} – {r.produto.descricao}; confira se o código está certo")
+
+
 # Notas de _completar/resolver_item → o que foi preenchido sem o vendedor e de onde veio.
 _PREENCHIDOS = {"marca encontrada na descrição": ("MARCA", "da descrição"),
                 "grupo escolhido por IA": ("GRUPO", "IA"),
@@ -604,7 +626,7 @@ def conferir(path: Path, cfg: Config, hse: HseApi) -> Conferencia:
     def pronto(estado: str) -> Conferencia:
         texto = rel.texto()
         erros = tuple(l[len("ERRO: "):] for l in texto.splitlines() if l.startswith("ERRO: "))
-        infos = tuple(l for l in texto.splitlines() if l.startswith("O HSE avisou:"))
+        infos = tuple(l for l in texto.splitlines() if l.startswith(("O HSE avisou:", "Local de entrega")))
         endereco = ("" if orc is None else getattr(hse, "endereco", "") if orc.local_entrega
                     else "Cadastral do cliente (B30 vazia)")
         return Conferencia(estado, texto, _nome_cliente(cliente), endereco, orc.vendedor if orc else "",
@@ -621,7 +643,8 @@ def conferir(path: Path, cfg: Config, hse: HseApi) -> Conferencia:
         cliente, resolucoes = validar_online(orc, hse, rel, ajudantes(cfg))
         _listar_itens(rel, resolucoes, True)
         avisos.extend(a for r in resolucoes
-                      for a in (aviso_preco_acima(r), aviso_sem_preco_tabela(r), _aviso_descricao(r), aviso_preenchido(r)) if a)
+                      for a in (aviso_preco_acima(r), aviso_sem_preco_tabela(r), aviso_codigo_de_outro_produto(r),
+                                _aviso_descricao(r), aviso_preenchido(r)) if a)
         if not rel.tem_erro:
             try:
                 _executar_dry(orc, cliente, resolucoes, hse, rel)

@@ -403,6 +403,11 @@ class Hse:
             opcoes = page.eval_on_selector_all("#cdEndereco option",
                                                "os => os.filter(o => o.value).map(o => [o.value, o.text])")
             achados = enderecos_do_local(orc.local_entrega, opcoes)
+            if not achados and len(opcoes) == 1 and _parecido(orc.local_entrega, opcoes[0][1]) >= PARECIDO:
+                # cliente com um endereço só e B30 com erro de digitação ("STRADA", DAV #36): não há outro
+                achados = [opcoes[0][0]]
+                self.notas.append(f"Local de entrega '{orc.local_entrega}' não bate com o cadastro; usei o "
+                                  f"único endereço do cliente: {opcoes[0][1]}; confira")
             if len(achados) != 1:
                 raise ErroHse(erro_local_entrega(orc.local_entrega, opcoes))
             self._set_select_oculto(page, "#cdEndereco", achados[0])
