@@ -796,6 +796,7 @@ def cartao_diagnostico(d: dict) -> str:
         custo = "US$ 0,0000"
     linhas = [("De quem é", CULPAS.get(j.get("culpa"), "Não identificado")), ("Causa", j.get("causa")),
               ("O que fazer", j.get("acao")), ("Prova", j.get("evidencia")),
+              ("Como consertar no código", j.get("conserto")),
               ("Confiança", {"alta": "alta", "media": "média", "baixa": "baixa"}.get(j.get("confianca"), "baixa")),
               ("Ficou no HSE", ficou)]
     for rotulo, campo, sep in (("Produtos cadastrados", "produtos_criados", "; "), ("Rascunhos do robô", "rascunhos", ", ")):
@@ -813,7 +814,9 @@ def cartao_diagnostico(d: dict) -> str:
                     f'<form method="post" action="/adm/dav/{int(d["id"])}/corrigir">'
                     '<button class="botao" type="submit">Aprovar correção</button></form>')
     issue = ""
-    if j.get("culpa") == "robo":
+    if isinstance(j.get("issue"), str) and j["issue"].startswith("https://github.com/"):
+        issue = f'<a class="botao2" href="{e(j["issue"])}" target="_blank" rel="noopener">Ver issue no GitHub</a> '
+    elif j.get("culpa") == "robo":
         url = link_issue(d, j, [f.name for f in arquivos_hse(int(d["id"]))])
         issue = f'<a class="botao2" href="{e(url)}" target="_blank" rel="noopener">Abrir issue no GitHub</a> '
     return (f'<section class="cartao dav-card"><h2>Diagnóstico</h2><dl class="dav-dados">{corpo}</dl>'

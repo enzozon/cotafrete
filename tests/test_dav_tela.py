@@ -686,6 +686,16 @@ def test_botao_issue_so_quando_culpa_robo(cli, app_web, tmp_path, monkeypatch):
     assert "Abrir issue no GitHub" not in adm.get("/adm/dav/1").text
 
 
+def test_issue_automatica_e_conserto_aparecem_no_cartao(cli, app_web, tmp_path, monkeypatch):
+    enviar(cli, planilha(tmp_path))
+    adm = _adm(app_web, monkeypatch)
+    app_web.banco.dav_atualizar(1, estado="erro", diagnostico_estado="feito", diagnostico=_diag(
+        conserto="Esperar a linha do item.", issue="https://github.com/enzozon/cotafrete/issues/201"))
+    t = adm.get("/adm/dav/1").text
+    assert "Como consertar no código" in t and "Esperar a linha do item." in t
+    assert "Ver issue no GitHub" in t and "issues/201" in t and "issues/new" not in t
+
+
 @pytest.mark.parametrize("criados", [[16533], "nao_verificado", None])
 def test_sem_criados_confirmados_vazios_nao_oferece_nem_aceita_correcao(cli, app_web, tmp_path, monkeypatch, criados):
     import json
