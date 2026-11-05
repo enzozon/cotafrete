@@ -168,3 +168,20 @@ def test_ocorrencias_ignoram_erro_ja_resolvido(banco):
     dados = consulta(banco)
     assert [d["id"] for g in dados["ocorrencias"] for d in g["envios"]] == [solta]
     assert dados["corrigidas"] == 1
+
+
+def test_periodo_tudo_mostra_envio_antigo_e_a_tela_leva_ate_ele(banco):
+    from web import dav_ui
+    novo(banco, quando="2025-01-02T10:00:00")
+    novo(banco)
+    assert consulta(banco)["total"] == 1
+    assert consulta(banco, dias=30)["total"] == 1
+    tudo = consulta(banco, dias=0)
+    assert (tudo["total"], tudo["periodo"]["dias"]) == (2, 0)
+
+    hoje = dav_ui.historico_dav(consulta(banco), {"dias": 1})
+    assert 'href="/dav?dias=0&amp;pagina=1#historico">Ver todos os envios' in hoje
+    assert "Ver todos os envios" not in dav_ui.historico_dav(tudo, {"dias": 0})
+    barra = dav_ui.filtros_dav(tudo, {"dias": 0})
+    assert '<input type="hidden" name="dias" value="0">' in barra  # a busca não volta para Hoje
+    assert "Tudo <span" in barra  # chip do filtro ativo

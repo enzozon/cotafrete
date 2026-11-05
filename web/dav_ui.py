@@ -270,7 +270,7 @@ def filtros_dav(dados: dict, filtros: dict, *, administrador: bool = False,
     estados += list(ESTADOS.items())
     if filtros.get("estado") and filtros["estado"] not in dict(estados):
         estados.append((filtros["estado"], filtros["estado"]))
-    periodos = [(1, "Hoje"), (7, "Últimos 7 dias"), (30, "Últimos 30 dias")]
+    periodos = list(PERIODOS.items())
 
     def menu(chave, titulo, opcoes):
         valor = atuais.get(chave, "")
@@ -283,7 +283,7 @@ def filtros_dav(dados: dict, filtros: dict, *, administrador: bool = False,
                 f'<nav class="dav-menu-opcoes" aria-label="{titulo}">{links}</nav></details>')
 
     ocultos = "".join(f'<input type="hidden" name="{k}" value="{e(atuais[k])}">'
-                      for k in ("dias", "estado", "vendedor", "categoria") if atuais.get(k))
+                      for k in ("dias", "estado", "vendedor", "categoria") if atuais.get(k) not in ("", None))
     menus = menu("dias", "Período", periodos) + menu("estado", "Resultado", estados)
     if administrador:
         menus += menu("vendedor", "Vendedor", [("", "Todos os vendedores")] + [(v, v) for v in dados["vendedores"]])
@@ -292,7 +292,7 @@ def filtros_dav(dados: dict, filtros: dict, *, administrador: bool = False,
     categorias = {"endereco": "Local de entrega", "acesso_hse": "Acesso ao HSE", "planilha": "Planilha", "desconhecido": "Não classificado"}
     for chave, nome in rotulos.items():
         valor = atuais.get(chave)
-        if not valor or (chave == "dias" and valor == 1):
+        if valor in ("", None) or (chave == "dias" and valor == 1):
             continue
         rotulo = dict(periodos).get(valor, valor) if chave == "dias" else dict(estados).get(valor, valor) if chave == "estado" else categorias.get(valor, valor) if chave == "categoria" else valor
         destino = url_dav(base, atuais, **{chave: 1 if chave == "dias" else "", "pagina": 1})
@@ -309,11 +309,16 @@ def historico_dav(dados: dict, filtros: dict, *, administrador: bool = False) ->
     base = "/adm/dav" if administrador else "/dav"
     anterior = (f'<a href="{e(url_dav(base, filtros, pagina=dados["pagina"]-1))}">← Anterior</a>' if dados["pagina"] > 1 else '<span>Início</span>')
     proxima = (f'<a href="{e(url_dav(base, filtros, pagina=dados["pagina"]+1))}">Próxima →</a>' if dados["pagina"] < dados["paginas"] else '<span>Fim</span>')
-    return (tabela_davs(dados["linhas"], administrador, administrador=administrador, filtros=filtros)
+    so_hoje = ""
+    if dados["periodo"]["dias"] == 1:
+        tudo = url_dav(base, filtros, dias=0, pagina=1)
+        so_hoje = (f'<p class="dav-note">Mostrando só os envios de hoje · '
+                   f'<a href="{e(tudo)}#historico">Ver todos os envios</a></p>')
+    return (so_hoje + tabela_davs(dados["linhas"], administrador, administrador=administrador, filtros=filtros)
             + f'<nav class="dav-paginacao" aria-label="Páginas do histórico DAV">{anterior}<span>{dados["total"]} {"registro" if dados["total"] == 1 else "registros"} · Página {dados["pagina"]} de {dados["paginas"]}</span>{proxima}</nav>')
 
 
-PERIODOS = {1: "Hoje", 7: "Últimos 7 dias", 30: "Últimos 30 dias"}
+PERIODOS = {1: "Hoje", 7: "Últimos 7 dias", 30: "Últimos 30 dias", 0: "Tudo"}
 MAX_PRONTOS = 5  # o quadro é o resumo do período; o resto fica no histórico abaixo
 
 
@@ -695,7 +700,7 @@ def historico_agora(usuario: str | None = Depends(_quem), dias: int = 1, estado:
                     busca: str = "", pagina: int = 1, v: str = ""):
     if not usuario:
         raise HTTPException(401)
-    filtros = dict(dias=dias if dias in (1, 7, 30) else 1, estado=estado[:40], busca=busca[:160], pagina=max(1, pagina))
+    filtros = dict(dias=dias if dias in painel_dav.DIAS else 1, estado=estado[:40], busca=busca[:160], pagina=max(1, pagina))
     with closing(banco._conectar()) as con:
         dados = painel_dav.consultar(con, usuario=usuario, agora=agora(), **filtros)
     return resposta_pulso({"dav-historico": historico_dav(dados, filtros), "dav-quadro": quadro_vendedor(dados, filtros),
