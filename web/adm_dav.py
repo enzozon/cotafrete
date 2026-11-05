@@ -53,7 +53,7 @@ def _html(titulo: str, corpo: str):
 
 
 def _filtros(dias=1, estado="", vendedor="", busca="", pagina=1, categoria="") -> dict:
-    return dict(dias=dias if dias in (1, 7, 30) else 1, estado=estado[:40],
+    return dict(dias=dias if dias in painel_dav.DIAS else 1, estado=estado[:40],
                 vendedor=vendedor[:160], busca=busca[:160], pagina=max(1, pagina), categoria=categoria[:40])
 
 

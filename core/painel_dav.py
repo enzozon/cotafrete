@@ -80,12 +80,17 @@ def _ocorrencias(linhas: list[dict], diags: dict, *, administrador: bool) -> lis
     return sorted(grupos.values(), key=lambda g: -g["total"])
 
 
+DIAS = (0, 1, 7, 30)  # 0 = Tudo
+
+
 def consultar(con, *, usuario: str | None, dias: int, agora: datetime,
               estado: str = "", vendedor: str = "", busca: str = "", pagina: int = 1,
               categoria: str = "") -> dict:
-    dias = dias if dias in (1, 7, 30) else 1
+    dias = dias if dias in DIAS else 1
     agora = hora_de_brasilia(agora)
     inicio = agora.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=dias - 1)
+    if dias == 0:  # Tudo: o histórico inteiro, que nunca é apagado do banco
+        inicio = inicio.replace(year=2000, month=1, day=1)
     sql = "SELECT * FROM dav WHERE criado_em >= ? AND criado_em <= ?"
     args = [inicio.isoformat(timespec="seconds"), agora.isoformat(timespec="seconds")]
     if usuario is not None:
