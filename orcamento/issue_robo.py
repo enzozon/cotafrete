@@ -104,10 +104,25 @@ def publicar(pasta: Path, sig: str, titulo: str, corpo: Callable[[str], str], re
     return item["url"]
 
 
+def erro_do_dav(dav: dict) -> str:
+    """A mensagem de erro do envio, estável entre diagnósticos (a causa da IA muda a cada vez).
+
+    A coluna `erro` vem vazia em parte dos envios; aí vale a linha "ERRO: ..." do relatório
+    e, sem ela, a linha "Resultado: ..."."""
+    if dav.get("erro"):
+        return str(dav["erro"])
+    linhas = str(dav.get("relatorio") or "").splitlines()
+    for prefixo in ("ERRO: ", "Resultado: "):
+        achada = next((l[len(prefixo):] for l in linhas if l.startswith(prefixo)), "")
+        if achada.strip():
+            return achada
+    return ""
+
+
 def registrar_issue(dav: dict, diag: dict, pasta: Path, token: str,
                     post: Callable = _post, agora: datetime | None = None) -> str | None:
     """Erro do robô do DAV: abre a issue (ou comenta) e devolve a URL; None se o limite do dia barrou."""
-    sig = assinatura(dav.get("erro") or diag.get("causa"), dav.get("cliente") or "")
+    sig = assinatura(erro_do_dav(dav) or diag.get("causa"), dav.get("cliente") or "")
     i = int(dav["id"])   # "Diagnosticar de novo" no mesmo envio não comenta duas vezes
     return publicar(pasta, sig, f"[robô DAV] {sig[:100]}", lambda codigo: _corpo(dav, diag, sig, codigo), i,
                     f"o envio #{i}: {ADM}{i}", token, post, agora)
