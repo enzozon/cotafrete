@@ -64,6 +64,9 @@ def _plano_b_della_volpe_desligado(monkeypatch):
     # Mesmo motivo: o cartão de uma cotação com erro pediria a explicação à
     # IA de verdade (core/explicar_erro.py). Quem testa religa.
     monkeypatch.setattr(explicar_erro, "LIGADA", False)
+    # E o erro de cotação não pode virar issue no GitHub de verdade (core/issue_cotacao.py).
+    from core import issue_cotacao
+    monkeypatch.setattr(issue_cotacao, "LIGADA", False)
 
 
 # Os vigias que o LIFESPAN do app liga (web/app.py, _vida): a varredura do
