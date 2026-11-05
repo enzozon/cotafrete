@@ -50,12 +50,24 @@ def no_banco(chamada, *args, **kw):
             time.sleep(ESPERA_BANCO_S)
 
 
+def avisar(ao_terminar: Callable[[int], None] | None, dav_id: int) -> None:
+    """Chama o callback de fim de tarefa; se quebrar, só registra."""
+    if ao_terminar is None:
+        return
+    try:
+        ao_terminar(dav_id)
+    except Exception as e:
+        log.error("Callback ao_terminar do DAV %s quebrou: %s", dav_id, _sem_segredo(str(e)) or type(e).__name__)
+
+
 class FilaDav:
     def __init__(self, banco: Banco, pasta: Path,
                  executar: Callable[[Path, Path], Resultado] | None = None,
-                 disparar: Callable[[Callable[[], None]], None] | None = None) -> None:
+                 disparar: Callable[[Callable[[], None]], None] | None = None,
+                 ao_terminar: Callable[[int], None] | None = None) -> None:
         self.banco = banco
         self.pasta = Path(pasta)
+        self._ao_terminar = ao_terminar
         self._executar = executar or self._executar_no_hse
         self._disparar = disparar or self._na_thread
         self._trava = threading.Lock()
@@ -141,6 +153,7 @@ class FilaDav:
                         dav_id, linha and linha["estado"])
             return
         self._no_banco(self.banco.dav_atualizar, dav_id, terminado_em=_agora(), **campos)
+        avisar(self._ao_terminar, dav_id)
 
     def _chamar_executor(self, dav_id: int, nome: str) -> Resultado:
         def ao_salvar(numero: str) -> None:

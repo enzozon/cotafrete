@@ -336,7 +336,8 @@ CREATE TABLE IF NOT EXISTS dav_correcao (
 CREATE INDEX IF NOT EXISTS idx_dav_correcao_destino ON dav_correcao(destino_id);
 """
 
-CAMPOS_DAV_NOVOS = ("conferencia", "conferencia_relatorio")
+CAMPOS_DAV_NOVOS = ("conferencia", "conferencia_relatorio",
+                    "diagnostico", "diagnostico_estado")
 
 CAMPOS_CARGA = (
     "cep_origem", "cep_destino", "cidade_origem", "uf_origem",
@@ -1132,6 +1133,33 @@ class Banco:
                 f"UPDATE dav SET {', '.join(f'{c} = ?' for c in campos)}"
                 " WHERE id = ?", (*campos.values(), dav_id))
 
+    def dav_diagnostico_pendentes(self) -> list[int]:
+        with closing(self._conectar()) as con, con:
+            return [r[0] for r in con.execute(
+                "SELECT id FROM dav WHERE diagnostico_estado = 'pendente'"
+                " ORDER BY id")]
+
+    _NUMERO_LIMPO = "numero != '' AND numero NOT GLOB '*[^0-9]*'"
+
+    def dav_numeros_com_hora(self) -> list[tuple[str, int]]:
+        """(hora, número) de todo DAV com número, de qualquer estado; hora = término ou, sem ele, início."""
+        with closing(self._conectar()) as con, con:
+            return [(r[0], int(r[1])) for r in con.execute(
+                "SELECT COALESCE(terminado_em, iniciado_em) h, numero FROM dav"
+                f" WHERE h IS NOT NULL AND {self._NUMERO_LIMPO} ORDER BY id")]
+
+    def dav_numeros_conhecidos(self, exceto: int) -> set[int]:
+        with closing(self._conectar()) as con, con:
+            return {int(r[0]) for r in con.execute(
+                f"SELECT numero FROM dav WHERE id != ? AND {self._NUMERO_LIMPO}", (exceto,))}
+
+    def dav_origem_da_correcao(self, destino_id: int) -> dict | None:
+        """O envio que `destino_id` corrige (o mais recente, se houver mais de um)."""
+        with closing(self._conectar()) as con, con:
+            r = con.execute("SELECT a.* FROM dav_correcao c JOIN dav a ON a.id = c.origem_id"
+                            " WHERE c.destino_id = ? ORDER BY c.origem_id DESC LIMIT 1", (destino_id,)).fetchone()
+            return dict(r) if r else None
+
     def dav_rejeitar(self, usuario: str, arquivo: str, motivos: list[str]) -> int:
         with closing(self._conectar()) as con, con:
             return int(con.execute(
@@ -1160,6 +1188,12 @@ class Banco:
                 raise ValueError("Uma correção não pode criar um ciclo.")
             con.execute("INSERT OR IGNORE INTO dav_correcao (origem_id, destino_id) VALUES (?, ?)",
                         (origem_id, destino_id))
+
+    def dav_correcao_de(self, origem_id: int) -> int | None:
+        """Envio mais novo criado como correção deste, se houver."""
+        with closing(self._conectar()) as con, con:
+            r = con.execute("SELECT MAX(destino_id) FROM dav_correcao WHERE origem_id = ?", (origem_id,)).fetchone()
+            return r[0]
 
     def dav(self, dav_id: int, usuario: str | None) -> dict | None:
         """`usuario=None` é o administrador: vê o de qualquer um."""

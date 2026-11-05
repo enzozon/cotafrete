@@ -28,6 +28,7 @@ from core import painel_dav
 from mercado_eletronico.painel import hora_de_brasilia
 from orcamento.fila import FilaDav
 from orcamento.conferencia import FilaConferencia
+from orcamento.agente import filtrar_correcoes, link_issue
 from orcamento.diagnostico import _financeiro, diagnostico
 from orcamento.processador import SEM_HSE, Conferencia
 from orcamento.relatorio import moeda
@@ -39,6 +40,7 @@ banco: Banco | None = None
 vendedor: Callable[[str | None], str | None] | None = None
 FILA: FilaDav | None = None
 FILA_CONFERENCIA: FilaConferencia | None = None
+FILA_DIAGNOSTICO = None   # FilaDiagnostico; ligada por web/app.py
 AVISO_FINANCEIRO = "Aviso financeiro: consulte o financeiro."
 COOKIE = "cotafrete_usuario"
 agora = datetime.now
@@ -645,6 +647,11 @@ def _rejeitar(usuario: str, nome: str, origem: int | None, *msgs: str,
             arquivo.replace(FILA.planilha(i))
         except OSError as exc:
             log.error("DAV %s: não guardei a planilha recusada: %s", i, exc)
+    if FILA_DIAGNOSTICO is not None:   # só depois de guardar a planilha: o diagnóstico lê esse arquivo
+        try:
+            FILA_DIAGNOSTICO.enfileirar(i)
+        except Exception as exc:   # o diagnóstico nunca atrapalha a rejeição
+            log.error("DAV %s: não enfileirei o diagnóstico: %s", i, exc)
     return _erro(usuario, *msgs, origem=i)
 
 
@@ -744,6 +751,70 @@ def _bloco_arquivos_hse(dav_id: int) -> str:
     return f'<section class="cartao dav-card"><h2>Tela do HSE no erro</h2>{corpo}</section>'
 
 
+CULPAS = {"planilha": "Planilha", "cadastro_hse": "Cadastro no HSE", "robo": "Robô", "hse_fora": "HSE fora do ar",
+          "acesso_hse": "Acesso ao HSE", "conferencia_ok_sem_gerar": "Falta clicar em Gerar",
+          "indefinido": "Não identificado"}
+
+
+def corrigivel_pelo_adm(d: dict) -> bool:
+    """Mesma regra de `_validar_origem` / `dav_vincular_correcao`."""
+    return origem_corrigivel(d) and diagnostico(d, administrador=False)["salvamento"] != "incerto"
+
+
+def cartao_diagnostico(d: dict) -> str:
+    """Cartão do agente de diagnóstico (só ADM). O texto vem de uma IA lendo dados de usuário: tudo escapado."""
+    estado = d.get("diagnostico_estado")
+    if not estado:
+        return ""
+    botao = (f'<form method="post" action="/adm/dav/{int(d["id"])}/diagnosticar">'
+             '<button class="botao2" type="submit">Diagnosticar de novo</button></form>')
+    if estado == "pendente":
+        return '<section class="cartao dav-card"><h2>Diagnóstico</h2><p class="dav-note">Diagnosticando…</p></section>'
+    try:
+        j = json.loads(d.get("diagnostico") or "{}")
+        j = j if isinstance(j, dict) else {}
+    except ValueError:
+        j = {}
+    if estado == "falhou":
+        return (f'<section class="cartao dav-card"><h2>Diagnóstico</h2><p>O diagnóstico falhou: '
+                f'{e(j.get("motivo") or "motivo desconhecido")}</p>{botao}</section>')
+    criados, motivo = j.get("criados_no_hse"), j.get("motivo_nao_verificado")
+    if isinstance(criados, list) and criados:
+        ficou = "Orçamentos " + ", ".join(str(n) for n in criados) + (f" (busca parcial: {motivo})" if motivo else "")
+    elif criados == []:
+        ficou = "Nada criado"
+    else:   # "nao_verificado" ou chave ausente
+        ficou = f"Não verificado ({motivo})" if motivo else "Não verificado"
+    try:
+        custo = f'US$ {float(j.get("custo") or 0):.4f}'.replace(".", ",")
+    except (TypeError, ValueError):
+        custo = "US$ 0,0000"
+    linhas = [("De quem é", CULPAS.get(j.get("culpa"), "Não identificado")), ("Causa", j.get("causa")),
+              ("O que fazer", j.get("acao")), ("Prova", j.get("evidencia")),
+              ("Confiança", {"alta": "alta", "media": "média", "baixa": "baixa"}.get(j.get("confianca"), "baixa")),
+              ("Ficou no HSE", ficou)]
+    for rotulo, campo, sep in (("Produtos cadastrados", "produtos_criados", "; "), ("Rascunhos do robô", "rascunhos", ", ")):
+        if isinstance(j.get(campo), list):
+            linhas.append((rotulo, sep.join(str(x) for x in j[campo])))
+    linhas.append(("Custo", custo))
+    if j.get("motivo_sem_ia"):
+        linhas.append(("Sem IA", j["motivo_sem_ia"]))
+    corpo = "".join(f'<div><dt>{e(k)}</dt><dd>{e(v)}</dd></div>' for k, v in linhas if v)
+    corrigir = ""
+    ok = filtrar_correcoes(j["correcoes"]) if isinstance(j.get("correcoes"), list) else []
+    if ok and corrigivel_pelo_adm(d) and criados == []:   # criados ou não verificado: reenviar duplicaria
+        itens = "".join(f'<li><b>{e(c["celula"])}</b> = {e(c["valor"])} <small>{e(c["motivo"])}</small></li>' for c in ok)
+        corrigir = (f'<h3>Correção proposta</h3><ul>{itens}</ul>'
+                    f'<form method="post" action="/adm/dav/{int(d["id"])}/corrigir">'
+                    '<button class="botao" type="submit">Aprovar correção</button></form>')
+    issue = ""
+    if j.get("culpa") == "robo":
+        url = link_issue(d, j, [f.name for f in arquivos_hse(int(d["id"]))])
+        issue = f'<a class="botao2" href="{e(url)}" target="_blank" rel="noopener">Abrir issue no GitHub</a> '
+    return (f'<section class="cartao dav-card"><h2>Diagnóstico</h2><dl class="dav-dados">{corpo}</dl>'
+            f'{corrigir}{issue}{botao}</section>')
+
+
 def detalhe_dav(dav: dict, *, administrador: bool, retorno: str) -> str:
     d = dav
     diag = diagnostico(d, administrador=administrador)
@@ -785,7 +856,7 @@ def detalhe_dav(dav: dict, *, administrador: bool, retorno: str) -> str:
             corpo += f'<p>Posição na fila: {posicao}</p>'
     corpo += f'<div class="dav-acoes">{acoes}</div></section>'
     if administrador:
-        corpo += _bloco_arquivos_hse(d["id"])
+        corpo += cartao_diagnostico(d) + _bloco_arquivos_hse(d["id"])
     if diag["tem_aviso"]:
         corpo += '<aside class="dav-aviso"><b>! Aviso do HSE</b><p>Consulte os detalhes disponíveis ou o responsável pela operação.</p></aside>'
     dados = [("Cliente", d.get("cliente") or "Cliente não identificado"), ("Vendedor", d["usuario"]),

@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 from decimal import Decimal
 
 from core.banco import Banco
+from orcamento.fila_diagnostico import FilaDiagnostico
 from orcamento.conferencia import FilaConferencia
 from orcamento.processador import SEM_HSE, Conferencia, ItemConferido
 from orcamento.fila import FilaDav
@@ -26,6 +27,9 @@ def app_web(tmp_path, monkeypatch):
     conferencia = FilaConferencia(banco, tmp_path / "davs", executar=lambda _p: CONFERENCIA["resultado"],
                                   disparar=lambda t: t())
     monkeypatch.setattr(dav_ui, "FILA_CONFERENCIA", conferencia, raising=False)
+    diagnostico = FilaDiagnostico(banco, tmp_path / "davs", executar=lambda i: {"culpa": "teste"},
+                                  disparar=lambda t: t())
+    monkeypatch.setattr(dav_ui, "FILA_DIAGNOSTICO", diagnostico, raising=False)
     monkeypatch.setattr(modulo, "banco", banco)
     monkeypatch.setattr(modulo, "FILA_DAV", fila)
     monkeypatch.setattr(dav_ui, "banco", banco)
@@ -287,6 +291,12 @@ def test_correcao_deduplicada_vincula_resultado_existente(cli, app_web, tmp_path
     with closing(app_web.banco._conectar()) as con:
         assert tuple(con.execute("SELECT origem_id, destino_id FROM dav_correcao").fetchone()) == (origem, 1)
     assert app_web.banco.dav(3, None) is None and len(DISPARADOS) == 1
+
+
+def test_rejeicao_enfileira_diagnostico(cli, app_web):
+    cli.post("/dav/conferir", files={"planilha": ("a.xls", b"x")})
+    d = app_web.banco.dav(1, None)
+    assert d["estado"] == "rejeitado" and d["diagnostico_estado"] == "feito"
 
 
 def test_rejeicao_de_reenvio_tem_vinculo_e_sem_login_nao_grava(cli, app_web):
@@ -552,3 +562,167 @@ def test_adm_ve_print_e_resposta_do_hse_do_envio(cli, app_web, tmp_path, monkeyp
     assert cli_adm.get("/adm/dav/1/hse/11_20261104-145538.png").status_code == 404
     assert cli_adm.get("/adm/dav/1/hse/..%2Fteste.db").status_code == 404
     assert "prints_hse" not in cli.get("/dav/1").text and "/hse/" not in cli.get("/dav/1").text
+
+
+def _adm(app_web, monkeypatch):
+    from web import adm
+    monkeypatch.setenv("COTAFRETE_ADM_SENHA", "s3nha")
+    c = TestClient(app_web.app, follow_redirects=False)
+    c.cookies.set(adm.COOKIE_ADM, adm.token_de("s3nha"))
+    return c
+
+
+def _diag(**campos):
+    import json
+    base = dict(culpa="robo", causa="Falhou <b>x</b>", acao="Rodar de novo", evidencia="log", confianca="media",
+                criados_no_hse=[16533, 16534], custo=0.0004)
+    return json.dumps({**base, **campos})
+
+
+def test_adm_ve_cartao_diagnostico_vendedor_nao(cli, app_web, tmp_path, monkeypatch):
+    enviar(cli, planilha(tmp_path))
+    app_web.banco.dav_atualizar(1, estado="erro", diagnostico=_diag(), diagnostico_estado="feito")
+    t = _adm(app_web, monkeypatch).get("/adm/dav/1").text
+    assert "Robô" in t and "16533, 16534" in t and "Diagnosticar de novo" in t
+    assert "US$ 0,0004" in t and "média" in t and "<b>x</b>" not in t
+    v = cli.get("/dav/1").text
+    assert "Diagnosticar de novo" not in v and "16533" not in v
+
+
+def test_diagnostico_nao_verificado_nada_e_pendente(cli, app_web, tmp_path, monkeypatch):
+    enviar(cli, planilha(tmp_path))
+    adm = _adm(app_web, monkeypatch)
+    app_web.banco.dav_atualizar(1, estado="erro", diagnostico_estado="feito",
+                                diagnostico=_diag(criados_no_hse="nao_verificado", motivo_nao_verificado="HSE indisponível"))
+    assert "Não verificado (HSE indisponível)" in adm.get("/adm/dav/1").text
+    app_web.banco.dav_atualizar(1, diagnostico=_diag(criados_no_hse=[]))
+    assert "Nada criado" in adm.get("/adm/dav/1").text
+    app_web.banco.dav_atualizar(1, diagnostico_estado="pendente")
+    assert "Diagnosticando" in adm.get("/adm/dav/1").text
+
+
+def test_post_diagnosticar_exige_adm_e_enfileira(cli, app_web, tmp_path, monkeypatch):
+    enviar(cli, planilha(tmp_path))
+    monkeypatch.setenv("COTAFRETE_ADM_SENHA", "s3nha")
+    r = TestClient(app_web.app, follow_redirects=False).post("/adm/dav/1/diagnosticar")
+    assert r.status_code == 303 and "/adm/entrar" in r.headers["location"]
+    chamadas = []
+    from web import dav_ui
+    monkeypatch.setattr(dav_ui, "FILA_DIAGNOSTICO", type("F", (), {"enfileirar": lambda s, i: (
+        chamadas.append(i), app_web.banco.dav_atualizar(i, diagnostico_estado="pendente"))})())
+    r = _adm(app_web, monkeypatch).post("/adm/dav/1/diagnosticar")
+    assert r.status_code == 303 and r.headers["location"] == "/adm/dav/1" and chamadas == [1]
+    assert app_web.banco.dav(1, None)["diagnostico_estado"] == "pendente"
+
+
+def test_cartao_mostra_produtos_cadastrados_e_rascunhos(cli, app_web, tmp_path, monkeypatch):
+    enviar(cli, planilha(tmp_path))
+    app_web.banco.dav_atualizar(1, estado="erro", diagnostico_estado="feito", diagnostico=_diag(
+        criados_no_hse="nao_verificado", rascunhos=[16492], produtos_criados=["76811 - terminal <i>pin</i>"]))
+    t = _adm(app_web, monkeypatch).get("/adm/dav/1").text
+    assert "Produtos cadastrados" in t and "76811 - terminal &lt;i&gt;pin&lt;/i&gt;" in t
+    assert "Rascunhos do robô" in t and "16492" in t and "Não verificado" in t
+
+
+def _com_correcao(cli, app_web, tmp_path, correcoes):
+    enviar(cli, planilha(tmp_path))
+    app_web.banco.dav_atualizar(1, estado="rejeitado", diagnostico_estado="feito",
+                                diagnostico=_diag(correcoes=correcoes, criados_no_hse=[]))
+
+
+def test_botao_aprovar_correcao_so_com_correcoes(cli, app_web, tmp_path, monkeypatch):
+    adm = _adm(app_web, monkeypatch)
+    _com_correcao(cli, app_web, tmp_path, [])
+    assert "Aprovar correção" not in adm.get("/adm/dav/1").text
+    app_web.banco.dav_atualizar(1, diagnostico=_diag(criados_no_hse=[], correcoes=[
+        {"celula": "J2", "valor": "1", "motivo": "x"}, {"celula": "B30", "valor": "<i>CENTRO</i>", "motivo": "bairro"}]))
+    t = adm.get("/adm/dav/1").text
+    assert "Aprovar correção" in t and "B30" in t and "&lt;i&gt;CENTRO" in t and "J2" not in t.split("Aprovar")[0].split("Diagnóstico")[-1]
+    assert "Aprovar correção" not in cli.get("/dav/1").text
+
+
+def test_post_corrigir_cria_envio_novo_do_vendedor(cli, app_web, tmp_path, monkeypatch):
+    import openpyxl
+    from web import dav_ui
+    _com_correcao(cli, app_web, tmp_path, [{"celula": "B30", "valor": "CENTRO", "motivo": "bairro"}])
+    monkeypatch.setenv("COTAFRETE_ADM_SENHA", "s3nha")
+    r = TestClient(app_web.app, follow_redirects=False).post("/adm/dav/1/corrigir")
+    assert r.status_code == 303 and "/adm/entrar" in r.headers["location"]
+    r = _adm(app_web, monkeypatch).post("/adm/dav/1/corrigir")
+    assert r.status_code == 303 and r.headers["location"] == "/adm/dav/2"
+    novo = app_web.banco.dav(2, "ana")
+    assert novo["arquivo"] == "corrigida_orc.xlsx" and novo["estado"] != "fila" and novo["estado"] == "rascunho"
+    assert novo["conferencia"] in ("conferindo", "ok")
+    assert openpyxl.load_workbook(dav_ui.FILA.planilha(2))["ORÇAMENTO"]["B30"].value == "CENTRO"
+    assert app_web.banco.dav(1, "ana")["estado"] == "rejeitado"
+    assert DISPARADOS == []
+
+
+def test_post_corrigir_duas_vezes_um_so_envio(cli, app_web, tmp_path, monkeypatch):
+    _com_correcao(cli, app_web, tmp_path, [{"celula": "B30", "valor": "CENTRO", "motivo": "x"}])
+    adm = _adm(app_web, monkeypatch)
+    assert adm.post("/adm/dav/1/corrigir").headers["location"] == "/adm/dav/2"
+    assert adm.post("/adm/dav/1/corrigir").headers["location"] == "/adm/dav/2"
+    assert app_web.banco.dav(3, "ana") is None
+
+
+def test_corrigir_envio_incerto_nao_da_500_nem_cria_orfao(cli, app_web, tmp_path, monkeypatch):
+    _com_correcao(cli, app_web, tmp_path, [{"celula": "B30", "valor": "CENTRO", "motivo": "x"}])
+    app_web.banco.dav_atualizar(1, estado="incerto", numero="55")
+    adm = _adm(app_web, monkeypatch)
+    assert "Aprovar correção" not in adm.get("/adm/dav/1").text
+    r = adm.post("/adm/dav/1/corrigir")
+    assert r.status_code == 200 and "não pode ser corrigido por aqui" in r.text
+    assert app_web.banco.dav(2, "ana") is None
+
+
+def test_botao_issue_so_quando_culpa_robo(cli, app_web, tmp_path, monkeypatch):
+    enviar(cli, planilha(tmp_path))
+    adm = _adm(app_web, monkeypatch)
+    app_web.banco.dav_atualizar(1, estado="erro", diagnostico_estado="feito", diagnostico=_diag())
+    t = adm.get("/adm/dav/1").text
+    assert "Abrir issue no GitHub" in t and "github.com/enzozon/cotafrete/issues/new" in t
+    app_web.banco.dav_atualizar(1, diagnostico=_diag(culpa="planilha"))
+    assert "Abrir issue no GitHub" not in adm.get("/adm/dav/1").text
+
+
+@pytest.mark.parametrize("criados", [[16533], "nao_verificado", None])
+def test_sem_criados_confirmados_vazios_nao_oferece_nem_aceita_correcao(cli, app_web, tmp_path, monkeypatch, criados):
+    import json
+    _com_correcao(cli, app_web, tmp_path, [{"celula": "B30", "valor": "CENTRO", "motivo": "x"}])
+    d = json.loads(_diag(correcoes=[{"celula": "B30", "valor": "CENTRO", "motivo": "x"}]))
+    if criados is None:
+        del d["criados_no_hse"]
+    else:
+        d["criados_no_hse"] = criados
+    app_web.banco.dav_atualizar(1, diagnostico=json.dumps(d))
+    adm = _adm(app_web, monkeypatch)
+    assert "Aprovar correção" not in adm.get("/adm/dav/1").text
+    r = adm.post("/adm/dav/1/corrigir")
+    assert r.status_code == 200 and "não pode ser corrigido por aqui" in r.text
+    assert app_web.banco.dav(2, "ana") is None
+
+
+def test_corrigir_falha_ao_gravar_planilha_marca_erro(cli, app_web, tmp_path, monkeypatch):
+    from pathlib import Path
+    _com_correcao(cli, app_web, tmp_path, [{"celula": "B30", "valor": "CENTRO", "motivo": "x"}])
+
+    def quebra(self, alvo):
+        raise OSError("disco cheio")
+    monkeypatch.setattr(Path, "replace", quebra)
+    r = _adm(app_web, monkeypatch).post("/adm/dav/1/corrigir")
+    assert r.status_code == 200 and "disco cheio" in r.text
+    assert app_web.banco.dav(2, "ana")["estado"] == "erro"
+
+
+def test_cartao_sem_chave_criados_diz_nao_verificado_e_busca_parcial(cli, app_web, tmp_path, monkeypatch):
+    import json
+    enviar(cli, planilha(tmp_path))
+    adm = _adm(app_web, monkeypatch)
+    d = json.loads(_diag())
+    del d["criados_no_hse"]
+    app_web.banco.dav_atualizar(1, estado="erro", diagnostico_estado="feito", diagnostico=json.dumps(d))
+    t = adm.get("/adm/dav/1").text
+    assert "Não verificado" in t and "Nada criado" not in t
+    app_web.banco.dav_atualizar(1, diagnostico=_diag(criados_no_hse=[16533], motivo_nao_verificado="busca cortada por tempo"))
+    assert "16533 (busca parcial: busca cortada por tempo)" in adm.get("/adm/dav/1").text

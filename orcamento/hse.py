@@ -782,3 +782,31 @@ class HseSoLeitura(Hse):
     def _login_passos(self, filial: int) -> None:
         super()._login_passos(filial)
         self._ctx.route("**/*", lambda route: guarda_gravacao(route, self.bloqueados))  # cada login cria um contexto novo
+
+    @_rede
+    def ler_pedido(self, numero: int) -> dict | None:
+        """Cliente, data e itens de um pedido já gravado; None se o número não existe.
+
+        Pedido incompleto (rascunho esvaziado) existe: #cdPedido preenchido, cliente/data vazios.
+        Página que não carregou ou layout irreconhecível levantam erro: nunca viram "não existe"."""
+        page = self._abrir(f"vendaAlt.php?cdPedido={numero}")
+        try:
+            page.wait_for_selector("#cdPedido", state="attached", timeout=15000)  # levanta se a página não carregou
+            try:
+                page.wait_for_selector("tr[id^=trItem_]", timeout=5000)
+            except PlaywrightError:  # pedido sem itens existe
+                pass
+            cru = page.evaluate("""() => ({
+                pedido: document.querySelector('#cdPedido')?.value || '',
+                cliente: document.querySelector('#cdCliente')?.value || '',
+                data: document.querySelector('#dtEmissao')?.value || '',
+                linhas: [...document.querySelectorAll('tr[id^=trItem_]')]
+                    .map(tr => [...tr.cells].map(c => c.innerText.trim()))})""")
+        finally:
+            page.close()
+        if not cru["pedido"]:
+            return None
+        itens = [{"codigo": c[3], "qtd": c[10], "valor": c[12]} for c in cru["linhas"] if len(c) > 12]
+        if cru["linhas"] and not itens:
+            raise HseIndisponivel(f"pedido {numero}: linhas de item com layout desconhecido")
+        return {"numero": numero, "cliente": cru["cliente"], "data": cru["data"], "itens": itens}

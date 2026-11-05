@@ -178,3 +178,14 @@ def test_conferencia_interrompida_vira_nao_conferido(banco):
     assert banco.dav_conferencia_interromper() == [r]
     assert banco.dav(r, "ana")["conferencia"] == "nao_conferido"
     assert banco.dav(f, "ana")["conferencia"] == "conferindo"
+
+
+def test_diagnostico_colunas_e_pendentes(banco):
+    a = _novo(banco, hash_="h1")
+    b = _novo(banco, hash_="h2")
+    c = _novo(banco, hash_="h3")
+    banco.dav_atualizar(a, diagnostico_estado="pendente")
+    banco.dav_atualizar(b, diagnostico_estado="feito")
+    banco.dav_atualizar(c, diagnostico_estado="pendente")
+    assert banco.dav_diagnostico_pendentes() == [a, c]
+    assert banco.dav(b, None)["diagnostico"] is None
