@@ -557,3 +557,27 @@ def test_ler_pedido_linhas_irreconheciveis_levanta():
     pg = _PaginaPedido({"pedido": "1", "cliente": "9", "data": "04/11/2026", "linhas": [["1", "2"]]})
     with pytest.raises(HseIndisponivel):
         _hse_com(pg).ler_pedido(1)
+
+
+def _cabecalho(local, opcoes):
+    pagina = SimpleNamespace(eval_on_selector_all=lambda *a: opcoes, evaluate=lambda *a: None)
+    hse = Hse.__new__(Hse)
+    hse.endereco, hse.notas = "", []
+    orc = SimpleNamespace(local_entrega=local, forma_pg=None, parcelamento=None, prazo_dias=None,
+                          ordem_compra=None, observacoes=None, frete=None)
+    hse._preencher_cabecalho(pagina, orc)
+    return hse
+
+
+def test_b30_com_erro_de_digitacao_e_um_endereco_so_usa_esse_e_avisa():
+    # DAV #36 (04/11/2026): "STRADA" (sem o E) num cliente que só tem o endereço cadastral
+    unico = [["1", "1 - Cadastral - ESTRADA DA ILHA DA MADEIRA, S/N, ITAGUAI, ITAGUAÍ/RJ"]]
+    hse = _cabecalho("STRADA DA ILHA DA MADEIRA, S/N, ITAGUAI, ITAGUAÍ/RJ", unico)
+    assert hse.endereco == unico[0][1]
+    assert hse.notas[0].startswith("Local de entrega 'STRADA") and hse.notas[0].endswith("confira")
+
+
+def test_b30_sem_nada_parecido_e_um_endereco_so_continua_barrando():
+    from orcamento.hse import ErroHse
+    with pytest.raises(ErroHse, match="0 endereço"):
+        _cabecalho("Vitória ES", [["1", "1 - Cadastral - ESTRADA DA ILHA DA MADEIRA, S/N, ITAGUAI, ITAGUAÍ/RJ"]])

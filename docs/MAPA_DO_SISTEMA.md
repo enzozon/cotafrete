@@ -198,6 +198,11 @@ ficam em `davs/entrada/<id>.xlsx` e `davs/pdf/` (fora do git).
   diz "já gerou o orçamento N". Servidor reiniciado com DAV "gerando" vira
   "confira no HSE", nunca roda de novo sozinho.
 - O HSE é produção. Só o `DAV_DRY_RUN=0` salva de verdade.
+- Conferência de itens (`processador.py`): tabela até R$ 0,05 (`TABELA_MINIMA`) é erro,
+  porque o limite de desconto não vale; código cuja descrição no HSE não tem nenhuma
+  palavra em comum com a da planilha gera aviso (`aviso_codigo_de_outro_produto`).
+  B30 que não casa: só escolhe sozinho quando o cliente tem um endereço e ele é parecido
+  (`hse.PARECIDO`), com aviso "Local de entrega ... confira"; com dois ou mais, só sugere.
 - `.env` do Cotafrete: `HSE_USUARIO`, `HSE_SENHA`, `HSE_CLIENT_ID`,
   `DAV_DRY_RUN`, `DAV_HEADLESS`, `IA`, `IA_MODELO`, `ANTHROPIC_API_KEY`,
   `IA_LIMITE_DIA_USD` (padrão 0,30). Senha e chave nunca em log, banco,

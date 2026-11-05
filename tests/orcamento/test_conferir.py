@@ -1,11 +1,13 @@
 from decimal import Decimal
 from pathlib import Path
 
+import pytest
+
 from orcamento.config import Config
 from orcamento.planilha import Item
 from orcamento.ia import Ajudantes
 from orcamento.processador import (Cliente, Conferencia, ErroHse, HseIndisponivel, Produto, Resolucao, aviso_preco_acima, aviso_sem_preco_tabela,
-                                   aviso_preenchido, conferir, conferir_desconto)
+                                   aviso_codigo_de_outro_produto, aviso_preenchido, conferir, conferir_desconto)
 from tests.orcamento.hse_falso import HseFalso
 from tests.orcamento.planilhas.gerar import VARIANTES, criar
 
@@ -211,3 +213,40 @@ def test_conferencia_sem_preco_avisa_sem_bloquear(tmp_path):
 def test_conferencia_com_preco_nao_avisa_sem_preco(tmp_path):
     c = conferir(criar(tmp_path, None, "o.xlsx"), cfg(tmp_path), HseFalso(produtos=[_produto("150")]))
     assert c.estado == "ok" and not any("sem preço de tabela" in a for a in c.avisos)
+
+
+@pytest.mark.parametrize("preco", ["0.01", "0", "0.05"])
+def test_tabela_de_mentira_barra_o_item(preco):
+    # DAV #20 (04/11/2026): código 49025 com tabela 0,01 só gerava "52345× acima da tabela"
+    r = conferir_desconto(Resolucao(_item("523.45"), _produto(preco), "codigo"))
+    assert r.erro and "no HSE para o código 13370" in r.erro
+    assert aviso_preco_acima(r) is None  # o erro já explica; o aviso de "× acima" some
+
+
+def test_tabela_de_seis_centavos_segue_a_regra_normal():
+    assert conferir_desconto(Resolucao(_item("0.06"), _produto("0.06"), "codigo")).erro is None
+
+
+def _por_codigo(descricao_planilha, descricao_hse):
+    item = Item(numero=1, linha=2, produto=descricao_planilha, quantidade=Decimal(1), custo=Decimal(100),
+                valor_unit=Decimal(145), codigo="13370", ncm=None, origem=0, icms=Decimal(17),
+                descricao_cadastro=descricao_planilha, grupo=None, marca=None, descricao="")
+    return Resolucao(item, Produto("13370", descricao_hse, True, Decimal(150)), "codigo")
+
+
+def test_codigo_de_outro_produto_avisa():
+    # DAV #5 (04/11/2026): fone na planilha, código de um carregador
+    aviso = aviso_codigo_de_outro_produto(_por_codigo("fone headset logitech h390",
+                                                      "CARREGADOR PORTÁTIL IT-BLUE MAX-0540 20.000MAH"))
+    assert aviso.startswith("Item 1: a descrição 'fone headset logitech h390' não parece com a do código 13370")
+
+
+@pytest.mark.parametrize("planilha, hse", [
+    ("TECLADO DELL", "KIT TECLADO E MOUSE S/ FIO DELL KM3322W"),  # uma palavra em comum basta
+    ("suporte pra notebock", "SUPORTE P/ NOTEBOOK MULTILASER AC282"),
+    ("Grill elétrico", "GRILL ELETRICO OSTER"),                   # acento não conta
+    ("302205", "RACK MINI 19POL 12U"),                            # só número: não dá para comparar
+    ("", "PROJETOR EPSON W49"),                                   # descrição vazia
+])
+def test_codigo_com_descricao_parecida_nao_avisa(planilha, hse):
+    assert aviso_codigo_de_outro_produto(_por_codigo(planilha, hse)) is None
