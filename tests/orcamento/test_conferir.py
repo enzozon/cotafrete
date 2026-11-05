@@ -4,7 +4,7 @@ from pathlib import Path
 from orcamento.config import Config
 from orcamento.planilha import Item
 from orcamento.ia import Ajudantes
-from orcamento.processador import (Cliente, Conferencia, ErroHse, HseIndisponivel, Produto, Resolucao, aviso_preco_acima,
+from orcamento.processador import (Cliente, Conferencia, ErroHse, HseIndisponivel, Produto, Resolucao, aviso_preco_acima, aviso_sem_preco_tabela,
                                    aviso_preenchido, conferir, conferir_desconto)
 from tests.orcamento.hse_falso import HseFalso
 from tests.orcamento.planilhas.gerar import VARIANTES, criar
@@ -40,8 +40,8 @@ def test_conferencia_ok_lista_cliente_endereco_e_itens(tmp_path):
 
 def test_desconto_acima_do_maximo_vira_erros(tmp_path):
     p = criar(tmp_path, None, "orc.xlsx")
-    c = conferir(p, cfg(tmp_path), HseFalso(produtos=[_produto("200")]))
-    esperado = conferir_desconto(Resolucao(_item(), _produto("200"), "codigo")).erro
+    c = conferir(p, cfg(tmp_path), HseFalso(produtos=[_produto("400")]))
+    esperado = conferir_desconto(Resolucao(_item(), _produto("400"), "codigo")).erro
     assert c.estado == "erros" and c.erros[0] == f"Item 1: {esperado}"
     assert c.itens[0].por == ""
 
@@ -191,3 +191,23 @@ def test_log_da_conferencia_nao_vaza_senha(tmp_path, monkeypatch, caplog):
         conferir(p, cfg(tmp_path), Quebra(onde, produtos=[_produto("150")]))
         assert "falhou" in caplog.text and "s3gredo" not in caplog.text
         assert "Traceback" not in caplog.text
+
+
+SEM_PRECO = ("Item 1: sem preço de tabela no HSE para o código 13370; "
+             "o desconto máximo de 50% não foi conferido")
+
+
+def test_sem_preco_de_tabela_avisa_so_para_item_por_codigo():
+    assert aviso_sem_preco_tabela(Resolucao(_item(), _produto(), "codigo")) == SEM_PRECO
+    assert aviso_sem_preco_tabela(Resolucao(_item(), _produto("100"), "codigo")) is None
+    assert aviso_sem_preco_tabela(Resolucao(_item(), _produto(), "codigo", erro="x")) is None
+
+
+def test_conferencia_sem_preco_avisa_sem_bloquear(tmp_path):
+    c = conferir(criar(tmp_path, None, "o.xlsx"), cfg(tmp_path), HseFalso(produtos=[_produto()]))
+    assert c.estado == "ok" and SEM_PRECO in c.avisos
+
+
+def test_conferencia_com_preco_nao_avisa_sem_preco(tmp_path):
+    c = conferir(criar(tmp_path, None, "o.xlsx"), cfg(tmp_path), HseFalso(produtos=[_produto("150")]))
+    assert c.estado == "ok" and not any("sem preço de tabela" in a for a in c.avisos)

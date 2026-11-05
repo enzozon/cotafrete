@@ -27,8 +27,8 @@ MAX_DESCRICAO = 100  # limite do campo descrição no cadastro de produto do HSE
 MIN_REFERENCIA = 6   # tamanho mínimo de um código de modelo (letras + números) para checar duplicata
 SUBPASTAS = ("DAVs", "PROCESSADOS", "ERRO", "DRYRUN")
 # Desconto máximo sobre o preço de tabela que o HSE aceita no Incluir (visto em 28/10/2026:
-# "Desconto máximo 15%"). Fixo para todos os itens, por decisão do Enzo (29/10/2026).
-DESCONTO_MAX = Decimal("15")
+# "Desconto máximo 15%"; a gestora subiu para 50% em 05/11/2026). Fixo para todos os itens.
+DESCONTO_MAX = Decimal("50")
 
 
 @dataclass(frozen=True)
@@ -554,6 +554,13 @@ def aviso_preco_acima(r: Resolucao) -> str | None:
             f"({moeda(p.preco)}) do código {p.codigo} – {p.descricao}; confira se o código está certo")
 
 
+def aviso_sem_preco_tabela(r: Resolucao) -> str | None:
+    if r.erro or r.por != "codigo" or r.produto is None or r.produto.preco is not None:
+        return None
+    return (f"Item {r.item.numero}: sem preço de tabela no HSE para o código {r.produto.codigo}; "
+            f"o desconto máximo de {DESCONTO_MAX}% não foi conferido")
+
+
 def _aviso_descricao(r: Resolucao) -> str | None:
     if r.erro or r.por != "descricao":
         return None
@@ -614,7 +621,7 @@ def conferir(path: Path, cfg: Config, hse: HseApi) -> Conferencia:
         cliente, resolucoes = validar_online(orc, hse, rel, ajudantes(cfg))
         _listar_itens(rel, resolucoes, True)
         avisos.extend(a for r in resolucoes
-                      for a in (aviso_preco_acima(r), _aviso_descricao(r), aviso_preenchido(r)) if a)
+                      for a in (aviso_preco_acima(r), aviso_sem_preco_tabela(r), _aviso_descricao(r), aviso_preenchido(r)) if a)
         if not rel.tem_erro:
             try:
                 _executar_dry(orc, cliente, resolucoes, hse, rel)
