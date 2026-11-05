@@ -513,6 +513,10 @@ O número de cotações é a prova de que o WAL entrou. Se aparecer o aviso
 
 ### 8c. Agendar
 
+> Desde 04/11/2026 não precisa: a tarefa "Cotafrete - atualizar sozinho"
+> (`atualizar.py`) já roda o backup uma vez por dia depois das 20h. Crie a
+> tarefa abaixo só se a VM não usar a atualização automática.
+
 Agendador de Tarefas → **Criar Tarefa** (não "Tarefa Básica", que não tem as
 opções abaixo):
 

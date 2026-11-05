@@ -485,6 +485,56 @@ def volta_segura(pasta: Path = PASTA, servidor: Servidor | None = None) -> str:
         return "erro"
 
 
+# ------------------------------------------------------ backup do dia
+# O backup (core/backup.py) existia, mas dependia de alguém criar uma tarefa
+# só para ele na VM — e não havia garantia de que ela existia. Esta tarefa
+# já roda a cada 5 minutos na produção: aproveitar a volta dela dispensa
+# tarefa nova, senha e acesso à VM. Uma tentativa por dia, à noite, porque
+# um destino de rede fora do ar não pode virar uma cópia a cada 5 minutos.
+HORA_DO_BACKUP = 20
+TEMPO_DO_BACKUP_S = 1800
+
+
+def _arquivo_do_backup(pasta: Path) -> Path:
+    return pasta / "log" / "backup-ultimo-dia.txt"
+
+
+def _rodar_backup(pasta: Path) -> tuple[int, str]:
+    r = subprocess.run([str(python_do_venv(pasta)), "-m", "core.backup"],
+                       cwd=pasta, capture_output=True, text=True, errors="replace",
+                       timeout=TEMPO_DO_BACKUP_S, creationflags=SEM_JANELA,
+                       env={**_ambiente(), "PYTHONIOENCODING": "utf-8"})
+    return r.returncode, (r.stdout + r.stderr).strip()
+
+
+def backup_do_dia(pasta: Path = PASTA, agora: datetime | None = None,
+                  rodar_backup=_rodar_backup) -> str:
+    """fora_da_producao, cedo, ja_feito, feito ou falhou."""
+    if not e_producao(pasta):
+        return "fora_da_producao"
+    agora = agora or datetime.now()
+    if agora.hour < HORA_DO_BACKUP:
+        return "cedo"
+    marca, hoje = _arquivo_do_backup(pasta), agora.strftime("%Y-%m-%d")
+    try:
+        if marca.read_text(encoding="utf-8").strip() == hoje:
+            return "ja_feito"
+    except OSError:
+        pass
+    marca.parent.mkdir(exist_ok=True)
+    marca.write_text(hoje, encoding="utf-8")
+    try:
+        codigo, saida = rodar_backup(pasta)
+    except (OSError, subprocess.SubprocessError) as exc:
+        codigo, saida = 1, f"{type(exc).__name__}: {exc}"
+    detalhe = " | ".join(l.strip() for l in saida.splitlines() if l.strip())
+    if codigo == 0:
+        registrar(pasta, f"Backup do banco: OK. {detalhe}")
+        return "feito"
+    registrar(pasta, f"Backup do banco FALHOU (amanhã tento de novo): {detalhe}")
+    return "falhou"
+
+
 # ------------------------------------------------------ a tarefa agendada
 def xml_da_tarefa(pasta: Path, usuario: str) -> str:
     """A tarefa do Agendador, em XML — é o único jeito de ligar tudo o que
@@ -594,6 +644,11 @@ def main(argv: list[str] | None = None) -> int:
     if args.remover:
         return remover()
     resultado = volta_segura()
+    try:
+        backup_do_dia()
+    except Exception as exc:  # o pythonw não tem tela: erro fora do log some
+        registrar(PASTA, f"Backup do banco: erro inesperado: {type(exc).__name__}: {exc}",
+                  repetida=False)
     if sys.stdout is not None:
         try:
             print(f"[{resultado}]")
