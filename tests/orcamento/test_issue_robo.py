@@ -65,3 +65,16 @@ def test_fila_so_abre_issue_com_token_e_culpa_do_robo_alta(tmp_path, monkeypatch
     assert chamadas == []
     fila._issue(DAV, res := dict(DIAG))
     assert res["issue"] == "https://github.com/x/1"
+
+
+def test_assinatura_vem_do_relatorio_quando_a_coluna_erro_esta_vazia(tmp_path):
+    rel = "Robô de Orçamentos HSE\nResultado: ERRO\nErros:\nERRO: Item 1: o HSE recusou o produto 76817 (Margem atualizada)\n"
+    dav = {"id": 91, "cliente": "VALE", "erro": "", "relatorio": rel}
+    gh = Github()
+    for causa in ("O robô leu cedo.", "Leitura precoce do número."):   # a IA escreve diferente a cada vez
+        issue_robo.registrar_issue({**dav, "id": 91 if causa.startswith("O") else 93}, {**DIAG, "causa": causa},
+                                   tmp_path, "tok", post=gh, agora=AGORA)
+    assert [u.rsplit("/", 1)[-1] for u, _ in gh.chamadas] == ["issues", "comments"]
+    assert "Item <n>: o HSE recusou o produto <n>" in gh.chamadas[0][1]["title"]
+    assert issue_robo.erro_do_dav({"relatorio": "Resultado: DRY_RUN ok"}) == "DRY_RUN ok"
+    assert issue_robo.erro_do_dav({}) == ""
