@@ -19,8 +19,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import Callable
 
-import httpx
-
 from orcamento import issue_robo
 from orcamento.ia import _custo, _registrar, gasto
 
@@ -110,7 +108,7 @@ def _corpo(slug: str, sig: str, local: str, v: dict, cotacao_id: int, codigo: st
 
 
 def registrar(pasta: Path, cotacao_id: int, slug: str, erro: str, local: str, token: str, cfg,
-              chamar: Callable | None = None, post: Callable = httpx.post,
+              chamar: Callable | None = None, post: Callable = issue_robo._post,
               agora: datetime | None = None) -> str | None:
     """Analisa (uma vez por tipo de erro) e, se for bug com confiança alta, abre ou comenta a issue."""
     sig = f"{slug}: {_NOMES.sub('<nome>', issue_robo.assinatura(erro))}"

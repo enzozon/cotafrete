@@ -14,12 +14,16 @@ from datetime import datetime
 from pathlib import Path
 from typing import Callable
 
-import httpx
 
 REPO = "enzozon/cotafrete"
 ROTULO = "robo-dav"
 MAX_NOVAS_DIA = 5
 ADM = "https://cotafrete.ventura.inf.br/adm/dav/"
+
+
+def _post(*a, **k):
+    import httpx   # só na hora: o job de CI cruzar-nf-py38 não instala httpx e o conftest importa este módulo
+    return httpx.post(*a, **k)
 
 _ASPAS = re.compile(r"""'[^']*'|"[^"]*"|“[^”]*”""")
 _DINHEIRO = re.compile(r"R\$\s*[\d.,]+")
@@ -64,7 +68,7 @@ def codigo_de(sig: str) -> str:
 
 
 def publicar(pasta: Path, sig: str, titulo: str, corpo: Callable[[str], str], ref, comentario: str,
-             token: str, post: Callable = httpx.post, agora: datetime | None = None,
+             token: str, post: Callable = _post, agora: datetime | None = None,
              rotulo: str = ROTULO) -> str | None:
     """Abre a issue da assinatura `sig` (ou comenta na que já existe) e devolve a URL.
 
@@ -101,7 +105,7 @@ def publicar(pasta: Path, sig: str, titulo: str, corpo: Callable[[str], str], re
 
 
 def registrar_issue(dav: dict, diag: dict, pasta: Path, token: str,
-                    post: Callable = httpx.post, agora: datetime | None = None) -> str | None:
+                    post: Callable = _post, agora: datetime | None = None) -> str | None:
     """Erro do robô do DAV: abre a issue (ou comenta) e devolve a URL; None se o limite do dia barrou."""
     sig = assinatura(dav.get("erro") or diag.get("causa"), dav.get("cliente") or "")
     i = int(dav["id"])   # "Diagnosticar de novo" no mesmo envio não comenta duas vezes
