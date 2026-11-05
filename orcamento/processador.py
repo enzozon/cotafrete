@@ -27,8 +27,8 @@ MAX_DESCRICAO = 100  # limite do campo descrição no cadastro de produto do HSE
 MIN_REFERENCIA = 6   # tamanho mínimo de um código de modelo (letras + números) para checar duplicata
 SUBPASTAS = ("DAVs", "PROCESSADOS", "ERRO", "DRYRUN")
 # Desconto máximo sobre o preço de tabela que o HSE aceita no Incluir (visto em 28/10/2026:
-# "Desconto máximo 15%"). Fixo para todos os itens, por decisão do Enzo (29/10/2026).
-DESCONTO_MAX = Decimal("15")
+# "Desconto máximo 15%"; a gestora subiu para 50% em 05/11/2026). Fixo para todos os itens.
+DESCONTO_MAX = Decimal("50")
 
 
 @dataclass(frozen=True)

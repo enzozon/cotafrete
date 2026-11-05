@@ -40,8 +40,8 @@ def test_conferencia_ok_lista_cliente_endereco_e_itens(tmp_path):
 
 def test_desconto_acima_do_maximo_vira_erros(tmp_path):
     p = criar(tmp_path, None, "orc.xlsx")
-    c = conferir(p, cfg(tmp_path), HseFalso(produtos=[_produto("200")]))
-    esperado = conferir_desconto(Resolucao(_item(), _produto("200"), "codigo")).erro
+    c = conferir(p, cfg(tmp_path), HseFalso(produtos=[_produto("400")]))
+    esperado = conferir_desconto(Resolucao(_item(), _produto("400"), "codigo")).erro
     assert c.estado == "erros" and c.erros[0] == f"Item 1: {esperado}"
     assert c.itens[0].por == ""
 
@@ -194,7 +194,7 @@ def test_log_da_conferencia_nao_vaza_senha(tmp_path, monkeypatch, caplog):
 
 
 SEM_PRECO = ("Item 1: sem preço de tabela no HSE para o código 13370; "
-             "o desconto máximo de 15% não foi conferido")
+             "o desconto máximo de 50% não foi conferido")
 
 
 def test_sem_preco_de_tabela_avisa_so_para_item_por_codigo():
