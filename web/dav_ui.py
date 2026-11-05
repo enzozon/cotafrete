@@ -778,14 +778,13 @@ def cartao_diagnostico(d: dict) -> str:
     if estado == "falhou":
         return (f'<section class="cartao dav-card"><h2>Diagnóstico</h2><p>O diagnóstico falhou: '
                 f'{e(j.get("motivo") or "motivo desconhecido")}</p>{botao}</section>')
-    criados = j.get("criados_no_hse")
-    if criados == "nao_verificado":
-        motivo = j.get("motivo_nao_verificado")
-        ficou = f"Não verificado ({motivo})" if motivo else "Não verificado"
-    elif criados:
-        ficou = "Orçamentos " + ", ".join(str(n) for n in criados)
-    else:
+    criados, motivo = j.get("criados_no_hse"), j.get("motivo_nao_verificado")
+    if isinstance(criados, list) and criados:
+        ficou = "Orçamentos " + ", ".join(str(n) for n in criados) + (f" (busca parcial: {motivo})" if motivo else "")
+    elif criados == []:
         ficou = "Nada criado"
+    else:   # "nao_verificado" ou chave ausente
+        ficou = f"Não verificado ({motivo})" if motivo else "Não verificado"
     try:
         custo = f'US$ {float(j.get("custo") or 0):.4f}'.replace(".", ",")
     except (TypeError, ValueError):
@@ -803,7 +802,7 @@ def cartao_diagnostico(d: dict) -> str:
     corpo = "".join(f'<div><dt>{e(k)}</dt><dd>{e(v)}</dd></div>' for k, v in linhas if v)
     corrigir = ""
     ok = filtrar_correcoes(j["correcoes"]) if isinstance(j.get("correcoes"), list) else []
-    if ok and corrigivel_pelo_adm(d):
+    if ok and corrigivel_pelo_adm(d) and criados == []:   # criados ou não verificado: reenviar duplicaria
         itens = "".join(f'<li><b>{e(c["celula"])}</b> = {e(c["valor"])} <small>{e(c["motivo"])}</small></li>' for c in ok)
         corrigir = (f'<h3>Correção proposta</h3><ul>{itens}</ul>'
                     f'<form method="post" action="/adm/dav/{int(d["id"])}/corrigir">'

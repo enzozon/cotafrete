@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
@@ -16,6 +17,7 @@ from orcamento.planilha import _texto, ler_planilha
 NAO_VERIFICADO = "nao_verificado"
 MARGEM = 25  # pedidos para cada lado do número de referência
 ANTES = 5  # pedidos antes do último DAV conhecido anterior ao envio
+LIMITE_BUSCA_S = 180  # tempo máximo de relógio da busca no HSE
 MAX_PAGINAS = 60  # teto de pedidos lidos no HSE por diagnóstico
 TOLERANCIA = Decimal("0.01")  # diferença de preço aceita entre planilha e HSE
 
@@ -112,7 +114,8 @@ class Achados(list):
     aviso = ""
 
 
-def buscador_hse(hse, numeros: list[tuple[str, int]]) -> Callable[[str, str, int | None, str | None], list[dict]]:
+def buscador_hse(hse, numeros: list[tuple[str, int]], limite_s: float = LIMITE_BUSCA_S,
+                 relogio: Callable[[], float] = time.monotonic) -> Callable[[str, str, int | None, str | None], list[dict]]:
     def buscar(cliente: str, data: str, perto_de: int | None, quando: str | None) -> list[dict]:
         achados = Achados()
         if perto_de is not None:
@@ -125,7 +128,14 @@ def buscador_hse(hse, numeros: list[tuple[str, int]]) -> Callable[[str, str, int
             elif len(faixa) < len(inteira):
                 achados.aviso = (f"faixa cortada: li {faixa.start}..{faixa.stop - 1} de "
                                  f"{inteira.start}..{inteira.stop - 1}")
-        achados += [p for p in map(hse.ler_pedido, faixa) if p and p["cliente"] == cliente and p["data"] == data]
+        inicio = relogio()
+        for n in faixa:
+            if relogio() - inicio >= limite_s:
+                achados.aviso = (achados.aviso + "; " if achados.aviso else "") + "busca cortada por tempo"
+                break
+            p = hse.ler_pedido(n)
+            if p and p["cliente"] == cliente and p["data"] == data:
+                achados.append(p)
         return achados
     return buscar
 

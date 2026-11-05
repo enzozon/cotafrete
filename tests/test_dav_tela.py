@@ -627,14 +627,14 @@ def test_cartao_mostra_produtos_cadastrados_e_rascunhos(cli, app_web, tmp_path, 
 def _com_correcao(cli, app_web, tmp_path, correcoes):
     enviar(cli, planilha(tmp_path))
     app_web.banco.dav_atualizar(1, estado="rejeitado", diagnostico_estado="feito",
-                                diagnostico=_diag(correcoes=correcoes))
+                                diagnostico=_diag(correcoes=correcoes, criados_no_hse=[]))
 
 
 def test_botao_aprovar_correcao_so_com_correcoes(cli, app_web, tmp_path, monkeypatch):
     adm = _adm(app_web, monkeypatch)
     _com_correcao(cli, app_web, tmp_path, [])
     assert "Aprovar correção" not in adm.get("/adm/dav/1").text
-    app_web.banco.dav_atualizar(1, diagnostico=_diag(correcoes=[
+    app_web.banco.dav_atualizar(1, diagnostico=_diag(criados_no_hse=[], correcoes=[
         {"celula": "J2", "valor": "1", "motivo": "x"}, {"celula": "B30", "valor": "<i>CENTRO</i>", "motivo": "bairro"}]))
     t = adm.get("/adm/dav/1").text
     assert "Aprovar correção" in t and "B30" in t and "&lt;i&gt;CENTRO" in t and "J2" not in t.split("Aprovar")[0].split("Diagnóstico")[-1]
@@ -684,3 +684,45 @@ def test_botao_issue_so_quando_culpa_robo(cli, app_web, tmp_path, monkeypatch):
     assert "Abrir issue no GitHub" in t and "github.com/enzozon/cotafrete/issues/new" in t
     app_web.banco.dav_atualizar(1, diagnostico=_diag(culpa="planilha"))
     assert "Abrir issue no GitHub" not in adm.get("/adm/dav/1").text
+
+
+@pytest.mark.parametrize("criados", [[16533], "nao_verificado", None])
+def test_sem_criados_confirmados_vazios_nao_oferece_nem_aceita_correcao(cli, app_web, tmp_path, monkeypatch, criados):
+    import json
+    _com_correcao(cli, app_web, tmp_path, [{"celula": "B30", "valor": "CENTRO", "motivo": "x"}])
+    d = json.loads(_diag(correcoes=[{"celula": "B30", "valor": "CENTRO", "motivo": "x"}]))
+    if criados is None:
+        del d["criados_no_hse"]
+    else:
+        d["criados_no_hse"] = criados
+    app_web.banco.dav_atualizar(1, diagnostico=json.dumps(d))
+    adm = _adm(app_web, monkeypatch)
+    assert "Aprovar correção" not in adm.get("/adm/dav/1").text
+    r = adm.post("/adm/dav/1/corrigir")
+    assert r.status_code == 200 and "não pode ser corrigido por aqui" in r.text
+    assert app_web.banco.dav(2, "ana") is None
+
+
+def test_corrigir_falha_ao_gravar_planilha_marca_erro(cli, app_web, tmp_path, monkeypatch):
+    from pathlib import Path
+    _com_correcao(cli, app_web, tmp_path, [{"celula": "B30", "valor": "CENTRO", "motivo": "x"}])
+
+    def quebra(self, alvo):
+        raise OSError("disco cheio")
+    monkeypatch.setattr(Path, "replace", quebra)
+    r = _adm(app_web, monkeypatch).post("/adm/dav/1/corrigir")
+    assert r.status_code == 200 and "disco cheio" in r.text
+    assert app_web.banco.dav(2, "ana")["estado"] == "erro"
+
+
+def test_cartao_sem_chave_criados_diz_nao_verificado_e_busca_parcial(cli, app_web, tmp_path, monkeypatch):
+    import json
+    enviar(cli, planilha(tmp_path))
+    adm = _adm(app_web, monkeypatch)
+    d = json.loads(_diag())
+    del d["criados_no_hse"]
+    app_web.banco.dav_atualizar(1, estado="erro", diagnostico_estado="feito", diagnostico=json.dumps(d))
+    t = adm.get("/adm/dav/1").text
+    assert "Não verificado" in t and "Nada criado" not in t
+    app_web.banco.dav_atualizar(1, diagnostico=_diag(criados_no_hse=[16533], motivo_nao_verificado="busca cortada por tempo"))
+    assert "16533 (busca parcial: busca cortada por tempo)" in adm.get("/adm/dav/1").text

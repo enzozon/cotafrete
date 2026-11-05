@@ -348,3 +348,24 @@ def test_faixa_aceita_hora_com_espaco():
     from orcamento.provas import faixa_de_busca
     f = faixa_de_busca([("2026-11-04 09:28:53", 16504), ("2026-11-04 16:15:30", 16541)], "2026-11-04T14:55:09")
     assert f == faixa_de_busca(_PRONTOS, "2026-11-04 14:55:09") == range(16499, 16559)
+
+
+def test_busca_para_no_prazo_e_avisa():
+    from orcamento.provas import buscador_hse
+
+    class Relogio:
+        t = 0.0
+
+        def __call__(self):
+            return self.t
+
+    relogio, lidos = Relogio(), []
+
+    class Hse:
+        def ler_pedido(self, n):
+            lidos.append(n)
+            relogio.t += 10
+            return {"numero": n, "cliente": "1061", "data": "04/11/2026", "itens": []} if n == 16505 else None
+    achados = buscador_hse(Hse(), _PRONTOS, limite_s=35, relogio=relogio)("1061", "04/11/2026", 16530, None)
+    assert len(lidos) == 4 and [p["numero"] for p in achados] == [16505]
+    assert "busca cortada por tempo" in achados.aviso

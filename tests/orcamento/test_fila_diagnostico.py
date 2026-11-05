@@ -219,3 +219,48 @@ def test_executor_nao_ignora_o_proprio_numero(banco, tmp_path, monkeypatch):
     banco.dav_atualizar(i, numero="16533")
     FilaDiagnostico(banco, tmp_path, disparar=_na_hora).enfileirar(i)
     assert vistos["ignorar"] == set()
+
+
+def test_gasto_do_diagnostico_vai_para_a_pasta_da_fila(banco, tmp_path, monkeypatch):
+    import orcamento.agente as agente
+    import orcamento.config as config
+
+    vistos = []
+    monkeypatch.setattr(config, "config_do_ambiente",
+                        lambda: config.Config(usuario="u", senha="s", client_id="v", dry_run=False, headless=True))
+    monkeypatch.setattr(agente, "diagnosticar", lambda provas, cfg: vistos.append(cfg.pasta_programa) or {})
+    i = _dav(banco, "rejeitado")
+    FilaDiagnostico(banco, tmp_path / "davs", disparar=_na_hora).enfileirar(i)
+    assert vistos == [tmp_path / "davs"]
+
+
+def test_alarme_de_bloqueio_vale_mesmo_com_excecao_na_busca(banco, tmp_path, monkeypatch):
+    import orcamento.agente as agente
+    import orcamento.config as config
+    import orcamento.hse as hse
+    import orcamento.provas as provas
+
+    class Hse:
+        bloqueados = ["clicou em Incluir"]
+
+        def __init__(self, cfg):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    def coletar(*a, **k):
+        raise ValueError("estourou")
+
+    monkeypatch.setattr(config, "config_do_ambiente",
+                        lambda: config.Config(usuario="u", senha="s", client_id="v", dry_run=False, headless=True))
+    monkeypatch.setattr(hse, "HseSoLeitura", Hse)
+    monkeypatch.setattr(provas, "coletar", coletar)
+    monkeypatch.setattr(agente, "diagnosticar", lambda p, cfg: {})
+    i = _dav(banco, "erro")
+    FilaDiagnostico(banco, tmp_path, disparar=_na_hora).enfileirar(i)
+    d = banco.dav(i, None)
+    assert d["diagnostico_estado"] == "falhou" and "bloqueou gravação" in d["diagnostico"]

@@ -69,13 +69,14 @@ def filtrar_correcoes(correcoes: list[dict]) -> list[dict]:
     ok = [{"celula": c["celula"], "valor": c["valor"], "motivo": str(c.get("motivo", ""))}
           for c in correcoes
           if isinstance(c, dict) and isinstance(c.get("celula"), str) and CELULAS_PERMITIDAS.match(c["celula"])
-          and isinstance(c.get("valor"), str) and len(c["valor"]) <= MAX_VALOR]
+          and isinstance(c.get("valor"), str) and len(c["valor"]) <= MAX_VALOR
+          and not c["valor"].lstrip().startswith(("=", "+", "-", "@"))]  # o Excel leria como fórmula
     return ok[:MAX_CORRECOES]
 
 
 def montar_pedido(provas: dict) -> list[dict]:
-    # texto é JSON: neutraliza "</dados>" vindo da planilha para ela não fechar a tag
-    texto = json.dumps(provas, ensure_ascii=False, default=str).replace("</dados>", "<\\/dados>")
+    # texto é JSON: "<" vira < (JSON válido) e nada vindo da planilha fecha a tag
+    texto = json.dumps(provas, ensure_ascii=False, default=str).replace("<", "\\u003c")
     imagem, aviso = None, ""
     if provas.get("print"):
         png = Path(provas["print"])
@@ -157,7 +158,7 @@ def link_issue(dav: dict, diag: dict, arquivos: list[str]) -> str:
         ("Causa", diag.get("causa")), ("Ação", diag.get("acao")), ("Evidência", diag.get("evidencia")),
         ("Criados no HSE", criados), ("Arquivos na VM", ", ".join(arquivos)),
         ("Erro", dav.get("erro"))))  # erro (longo) por último: é o que o corte come
-    titulo = limpo(f"DAV #{dav['id']}: {' '.join(str(diag.get('causa') or '').split())[:80]}").strip()
+    titulo = f"DAV #{dav['id']}: " + limpo(" ".join(str(diag.get("causa") or "").split())[:80]).strip()
 
     def url(c: str) -> str:
         return _ISSUE + urlencode({"title": titulo, "body": c}, quote_via=quote)

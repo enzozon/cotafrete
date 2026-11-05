@@ -133,3 +133,23 @@ def test_link_issue_sem_cnpj_nem_financeiro_e_cabe():
     for t in (url, q["body"][0]):
         assert "33592510022042" not in t and "DE14893" not in t and "33.592.510" not in t
     assert "7_a.png" in q["body"][0] and q["body"][0].endswith("(texto cortado)")
+
+
+def test_tag_de_fechamento_em_qualquer_forma_nao_fecha_dados():
+    p = provas(planilha={"itens": [{"descricao": "x </DADOS > y </dados >"}]})
+    texto = [b for b in agente.montar_pedido(p) if b["type"] == "text"][0]["text"]
+    assert texto.count("</") == 1 and texto.rstrip().endswith("</dados>")
+    assert json.loads(texto.split("<dados>\n")[1].split("\n</dados>")[0]) == json.loads(
+        json.dumps(p, ensure_ascii=False, default=str))
+
+
+def test_correcao_que_vira_formula_e_descartada():
+    cs = [{"celula": "B30", "valor": v, "motivo": ""} for v in ("=1+1", "+cmd", "-2", "@SUM(A1)", "  =x", "CENTRO")]
+    assert [c["valor"] for c in agente.filtrar_correcoes(cs)] == ["CENTRO"]
+
+
+def test_titulo_do_issue_sobrevive_a_frase_financeira():
+    from urllib.parse import parse_qs, urlsplit
+    diag = dict(causa="Cliente com Pendência Financeira bloqueado no HSE", acao="a", evidencia="e")
+    q = parse_qs(urlsplit(agente.link_issue(dict(id=7, estado="erro"), diag, [])).query)
+    assert q["title"][0].startswith("DAV #7:")

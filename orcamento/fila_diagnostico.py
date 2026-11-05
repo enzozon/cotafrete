@@ -86,7 +86,7 @@ class FilaDiagnostico:
         from orcamento.provas import buscador_hse, coletar
         from playwright.sync_api import Error as PlaywrightError
 
-        cfg = config_do_ambiente()
+        cfg = replace(config_do_ambiente(), pasta_programa=self.pasta)   # gasto de IA junto ao do DAV-IA
         dav = self.banco.dav(dav_id, None)
         if dav is None:
             raise LookupError(f"DAV {dav_id} não existe")
@@ -95,24 +95,26 @@ class FilaDiagnostico:
         proprio = {int(numero)} if numero.isdigit() else set()   # outro DAV com o mesmo número não esconde o deste
         if dav["estado"] in ("erro", "incerto"):
             cfg_hse = replace(cfg, dry_run=True, pasta_programa=self.pasta)
-            provas, bloqueados = None, []
+            provas = None
             try:
                 if not VAGA_NAVEGADOR.acquire(timeout=LIMITE_VAGA_S):
                     raise TimeoutError("navegador ocupado")
                 try:
                     with HseSoLeitura(cfg_hse) as hse:
-                        provas = coletar(dav, self.pasta, buscador_hse(hse, self.banco.dav_numeros_com_hora()),
-                                         ignorar=self.banco.dav_numeros_conhecidos(exceto=dav_id) - proprio,
-                                         anterior=anterior)
-                        bloqueados = list(hse.bloqueados)
+                        try:
+                            provas = coletar(dav, self.pasta, buscador_hse(hse, self.banco.dav_numeros_com_hora()),
+                                             ignorar=self.banco.dav_numeros_conhecidos(exceto=dav_id) - proprio,
+                                             anterior=anterior)
+                        finally:   # o alarme vale mesmo se a busca estourar
+                            bloqueados = list(hse.bloqueados)
+                            if bloqueados:   # a guarda segurou uma gravação: alarme, não indisponibilidade
+                                raise RuntimeError("HSE bloqueou gravação na busca: " + "; ".join(bloqueados))
                 finally:
                     VAGA_NAVEGADOR.release()
             except (HseIndisponivel, TimeoutError, ValueError, PlaywrightError) as e:
                 # Sem sessão no HSE o diagnóstico segue, com os pedidos "não verificados".
                 provas = coletar(dav, self.pasta, None, anterior=anterior)
                 provas["motivo_nao_verificado"] = f"HSE indisponível: {_sem_segredo(str(e)) or type(e).__name__}"
-            if bloqueados:   # a guarda segurou uma gravação: alarme de segurança, não indisponibilidade
-                raise RuntimeError("HSE bloqueou gravação na busca: " + "; ".join(bloqueados))
         else:
             provas = coletar(dav, self.pasta, None, anterior=anterior)
         res = diagnosticar(provas, cfg)

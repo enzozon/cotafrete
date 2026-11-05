@@ -280,12 +280,13 @@ def corrigir(dav_id: int, cookie: str | None = Cookie(None, alias=adm.COOKIE_ADM
         return _html("Detalhe DAV", f'<p class="dav-note">{e(msg)}</p>'
                      + dav_ui.detalhe_dav(d, administrador=True, retorno=retorno))
     try:
-        correcoes = json.loads(d.get("diagnostico") or "{}")["correcoes"]
+        diag = json.loads(d.get("diagnostico") or "{}")
+        correcoes = diag["correcoes"]
     except (ValueError, KeyError, TypeError):
-        correcoes = None
+        diag, correcoes = {}, None
     if not isinstance(correcoes, list) or not correcoes:
         return falha("Não há correção para aprovar.")
-    if not dav_ui.corrigivel_pelo_adm(d):
+    if not dav_ui.corrigivel_pelo_adm(d) or diag.get("criados_no_hse") != []:
         return falha("Este envio não pode ser corrigido por aqui: confira no HSE primeiro.")
     ja = adm.banco.dav_correcao_de(dav_id)
     if ja:
@@ -310,7 +311,12 @@ def corrigir(dav_id: int, cookie: str | None = Cookie(None, alias=adm.COOKIE_ADM
             if ja:
                 return RedirectResponse(f"/adm/dav/{ja}", status_code=303)
             novo = adm.banco.dav_criar(vendedor, f"corrigida_{d['arquivo']}", hash_, o.cliente, conferencia="conferindo")
-            temp.replace(dav_ui.FILA.planilha(novo))
+            try:
+                temp.replace(dav_ui.FILA.planilha(novo))
+            except OSError as exc:
+                log.exception("corrigir DAV %s: falha ao gravar a planilha do envio %s", dav_id, novo)
+                adm.banco.dav_atualizar(novo, estado="erro", erro=f"Não consegui gravar a planilha corrigida: {exc}")
+                return falha(f"Não consegui gravar a planilha corrigida: {exc}")
             try:
                 adm.banco.dav_vincular_correcao(dav_id, novo, vendedor)
             except ValueError as exc:
