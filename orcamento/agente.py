@@ -48,15 +48,16 @@ Regras:
 - produtos_criados lista produtos cadastrados que continuam no HSE; diga isso na ação (não recadastrar).
 - Produto novo sem código (coluna K) e sem NCM/GRUPO/MARCA, ou descrição não encontrada no HSE → planilha: preencher o código HSE na coluna K ou os campos do produto novo.
 - Cliente não encontrado: se cliente_b31.cnpj_valido for false → planilha (CNPJ digitado errado); se for true → cadastro_hse (cliente ainda não cadastrado no HSE).
-- Se envio_anterior mostrar que o robô juntou itens ('cadastrado no item N') ou cadastrou o produto que agora é recusado por preço, a culpa é robo e a ação é corrigir o produto no HSE, não o preço."""
+- Se envio_anterior mostrar que o robô juntou itens ('cadastrado no item N') ou cadastrou o produto que agora é recusado por preço, a culpa é robo e a ação é corrigir o produto no HSE, não o preço.
+- Campo conserto: só quando a culpa for robo; senão, vazio. Em até 3 frases, para o programador: o que o robô fez de errado e como possivelmente consertar no código (o que esperar, ler ou conferir). Esse texto vai para uma issue pública: nunca escreva nome de cliente, produto, preço, CNPJ ou número de orçamento."""
 
 _STR = {"type": "string"}
 ESQUEMA = {
     "type": "object", "additionalProperties": False,
-    "required": ["culpa", "causa", "acao", "evidencia", "confianca", "correcoes", "criados_no_hse"],
+    "required": ["culpa", "causa", "acao", "evidencia", "conserto", "confianca", "correcoes", "criados_no_hse"],
     "properties": {
         "culpa": {"type": "string", "enum": list(CULPAS)},
-        "causa": _STR, "acao": _STR, "evidencia": _STR,
+        "causa": _STR, "acao": _STR, "evidencia": _STR, "conserto": _STR,
         "confianca": {"type": "string", "enum": list(CONFIANCAS)},
         "correcoes": {"type": "array", "items": {
             "type": "object", "additionalProperties": False, "required": ["celula", "valor", "motivo"],
@@ -113,7 +114,7 @@ def _chamar_api(cfg: Config) -> Callable[[str, list[dict]], tuple[str, int, int]
 def diagnosticar(provas: dict, cfg: Config, chamar: Callable | None = None,
                  agora: datetime | None = None) -> dict:
     agora = agora or datetime.now()
-    res = {"culpa": "indefinido", "causa": "", "acao": "", "evidencia": "", "confianca": "baixa",
+    res = {"culpa": "indefinido", "causa": "", "acao": "", "evidencia": "", "conserto": "", "confianca": "baixa",
            "correcoes": [], "criados_no_hse": provas.get("criados_no_hse", []), "modelo": cfg.ia_modelo,
            "custo": 0.0, "quando": agora.isoformat(timespec="seconds"), "motivo_sem_ia": ""}
     if cfg.ia != "api":
@@ -140,7 +141,8 @@ def diagnosticar(provas: dict, cfg: Config, chamar: Callable | None = None,
     conf = d.get("confianca") if d.get("confianca") in CONFIANCAS else "baixa"
     correcoes = d.get("correcoes") if isinstance(d.get("correcoes"), list) else []
     return {**res, "culpa": culpa, "confianca": conf, "custo": custo, "correcoes": filtrar_correcoes(correcoes),
-            **{k: str(d.get(k) or "") for k in ("causa", "acao", "evidencia")}}
+            **{k: str(d.get(k) or "") for k in ("causa", "acao", "evidencia")},
+            "conserto": str(d.get("conserto") or "") if culpa == "robo" else ""}
 
 
 _CNPJ = re.compile(r"\d(?:[./-]?\d){13}")

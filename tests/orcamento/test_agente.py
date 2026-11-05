@@ -153,3 +153,11 @@ def test_titulo_do_issue_sobrevive_a_frase_financeira():
     diag = dict(causa="Cliente com Pendência Financeira bloqueado no HSE", acao="a", evidencia="e")
     q = parse_qs(urlsplit(agente.link_issue(dict(id=7, estado="erro"), diag, [])).query)
     assert q["title"][0].startswith("DAV #7:")
+
+
+def test_conserto_so_quando_a_culpa_e_do_robo(tmp_path):
+    r = agente.diagnosticar(provas(), cfg(tmp_path), falso(resposta(conserto="esperar a linha do item")), AGORA)
+    assert r["conserto"] == "esperar a linha do item"
+    r = agente.diagnosticar(provas(), cfg(tmp_path), falso(resposta(culpa="planilha", conserto="x")), AGORA)
+    assert r["conserto"] == ""
+    assert "conserto" in agente.ESQUEMA["required"]

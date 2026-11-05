@@ -206,7 +206,12 @@ ficam em `davs/entrada/<id>.xlsx` e `davs/pdf/` (fora do git).
 - `.env` do Cotafrete: `HSE_USUARIO`, `HSE_SENHA`, `HSE_CLIENT_ID`,
   `DAV_DRY_RUN`, `DAV_HEADLESS`, `IA`, `IA_MODELO`, `ANTHROPIC_API_KEY`,
   `IA_LIMITE_DIA_USD` (padrão 0,30). Senha e chave nunca em log, banco,
-  relatório ou tela.
+  relatório ou tela. `GITHUB_TOKEN_ISSUES` (opcional): token fine-grained só com
+  Issues read/write no `enzozon/cotafrete`; com ele, diagnóstico com culpa robo e
+  confiança alta abre issue sozinho (`orcamento/issue_robo.py`, etiqueta `robo-dav`,
+  no máximo 5 novas por dia, o mesmo erro vira comentário; registro em
+  `davs/issues_robo.json`). O repositório é público: a issue não leva cliente,
+  produto, preço nem números; os detalhes ficam no `/adm/dav/<id>`.
 - IA do produto novo (`orcamento/ia.py`): NCM primeiro de memória e só com
   busca na web (US$ 0,01 por busca, entra no custo) quando o HSE não tem o
   NCM. GRUPO com o guia `orcamento/guia_grupos.txt` (o PDF "Cadastro de

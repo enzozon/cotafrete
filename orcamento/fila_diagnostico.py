@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import queue
 import threading
 from dataclasses import replace
@@ -122,4 +123,20 @@ class FilaDiagnostico:
         for campo in ("motivo_nao_verificado", "produtos_criados", "rascunhos"):
             if provas.get(campo):
                 res[campo] = provas[campo]
+        self._issue(dav, res)
         return res
+
+    def _issue(self, dav: dict, res: dict) -> None:
+        """Culpa do robô com confiança alta vira issue no GitHub (só com GITHUB_TOKEN_ISSUES na VM)."""
+        token = os.environ.get("GITHUB_TOKEN_ISSUES", "")
+        if not token or res.get("culpa") != "robo" or res.get("confianca") != "alta":
+            return
+        from orcamento.issue_robo import registrar_issue
+        try:
+            url = registrar_issue(dav, res, self.pasta, token)
+        except Exception as e:   # noqa: BLE001 — a issue nunca derruba o diagnóstico
+            log.error("Fila do diagnóstico: issue do DAV %s falhou: %s", dav["id"], _sem_segredo(str(e))[:200])
+            res["issue_erro"] = "não consegui abrir a issue no GitHub"
+            return
+        if url:
+            res["issue"] = url
