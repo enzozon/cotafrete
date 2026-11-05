@@ -212,6 +212,11 @@ ficam em `davs/entrada/<id>.xlsx` e `davs/pdf/` (fora do git).
   no máximo 5 novas por dia, o mesmo erro vira comentário; registro em
   `davs/issues_robo.json`). O repositório é público: a issue não leva cliente,
   produto, preço nem números; os detalhes ficam no `/adm/dav/<id>`.
+  O mesmo token liga a issue dos erros de cotação (`core/issue_cotacao.py`,
+  chamado no `_rodar` do `web/app.py`): erro final sem frase em
+  `MENSAGENS_DE_ERRO` vai uma vez por tipo para a IA (veredito em
+  `davs/erros_cotacao.json`); só bug com confiança alta abre issue com a
+  etiqueta `robo-cotacao`, no mesmo limite diário.
 - IA do produto novo (`orcamento/ia.py`): NCM primeiro de memória e só com
   busca na web (US$ 0,01 por busca, entra no custo) quando o HSE não tem o
   NCM. GRUPO com o guia `orcamento/guia_grupos.txt` (o PDF "Cadastro de

@@ -58,7 +58,7 @@ from carriers.translovato.adapter import TranslovatoAdapter
 from core import cep as buscador_cep
 from core import sessao
 from core import cnpj as buscador_cnpj
-from core import busca_historico, explicar_erro, extrair_carga, resposta_cliente
+from core import busca_historico, explicar_erro, extrair_carga, issue_cotacao, resposta_cliente
 from core import ia
 from core import conferencia, selecao
 from core.aceite import rotulo_validade, vencida
@@ -1570,6 +1570,12 @@ if "dellavolpe" in AUTOMATICAS:
     FABRICAS["dellavolpe"] = _cotar_dellavolpe
 
 
+def _issue_se_novo(cotacao_id: int, slug: str, erro: str | None, local: str = "") -> None:
+    """Erro sem frase conhecida pode ser bug: a IA olha e, se for, abre issue (core/issue_cotacao.py)."""
+    if erro and mensagem_amigavel(slug, erro) is None:
+        issue_cotacao.em_fundo(Path("davs"), cotacao_id, slug, erro, local)
+
+
 def _rodar(cotacao_id: int, slug: str, cotar_fn, req) -> None:
     """Roda uma transportadora e grava o resultado, aconteça o que acontecer.
 
@@ -1607,9 +1613,12 @@ def _rodar(cotacao_id: int, slug: str, cotar_fn, req) -> None:
             evidencia=res.evidencias[-1] if res.evidencias else None,
             respondido_em=(res.respondido_em.isoformat(timespec="seconds")
                            if res.respondido_em else None))
+        if res.status is StatusCotacao.ERRO:
+            _issue_se_novo(cotacao_id, slug, res.erro)
     except Exception as exc:
         banco.salvar_resultado(cotacao_id, slug, status="erro",
                                erro=f"{type(exc).__name__}: {exc}")
+        _issue_se_novo(cotacao_id, slug, f"{type(exc).__name__}: {exc}", issue_cotacao.onde(exc))
     finally:
         # Sem isto o dicionário cresce para sempre — uma entrada por
         # transportadora por cotação, num processo que fica semanas de pé.
