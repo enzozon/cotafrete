@@ -540,12 +540,16 @@ HORA_DO_RESUMO = 19
 HORA_DO_RESUMO_DA_SEMANA = 8  # segunda-feira
 
 
-def _rodar_resumo(pasta: Path, *opcoes: str) -> tuple[int, str]:
-    r = subprocess.run([str(python_do_venv(pasta)), "-m", "core.resumo_email", *opcoes],
+def _rodar_modulo(pasta: Path, modulo: str, *opcoes: str) -> tuple[int, str]:
+    r = subprocess.run([str(python_do_venv(pasta)), "-m", modulo, *opcoes],
                        cwd=pasta, capture_output=True, text=True, errors="replace",
                        timeout=TEMPO_DO_BACKUP_S, creationflags=SEM_JANELA,
                        env={**_ambiente(), "PYTHONIOENCODING": "utf-8"})
     return r.returncode, (r.stdout + r.stderr).strip()
+
+
+def _rodar_resumo(pasta: Path, *opcoes: str) -> tuple[int, str]:
+    return _rodar_modulo(pasta, "core.resumo_email", *opcoes)
 
 
 def resumo_do_dia(pasta: Path = PASTA, agora: datetime | None = None,
@@ -568,6 +572,27 @@ def resumo_da_semana(pasta: Path = PASTA, agora: datetime | None = None,
     if agora.weekday() != 0 or agora.hour < HORA_DO_RESUMO_DA_SEMANA:
         return "cedo"
     return _uma_vez(pasta, agora, "resumo-ultima-semana.txt", lambda p: rodar_resumo(p, "--semana"))
+
+
+# ------------------------------------------------------ teste de fumaça do DAV
+# 8h05, e não 8h: o login do HSE só abre às 8h, e relógio adiantado na VM
+# viraria alarme falso.
+HORA_DA_FUMACA = (8, 5)
+
+
+def _rodar_fumaca(pasta: Path) -> tuple[int, str]:
+    return _rodar_modulo(pasta, "orcamento.fumaca")
+
+
+def fumaca_do_dia(pasta: Path = PASTA, agora: datetime | None = None,
+                  rodar_fumaca=_rodar_fumaca) -> str:
+    """Só leitura no HSE, uma tentativa por dia; quem avisa é o próprio módulo (P2 #14)."""
+    if not e_producao(pasta):
+        return "fora_da_producao"
+    agora = agora or datetime.now()
+    if (agora.hour, agora.minute) < HORA_DA_FUMACA:
+        return "cedo"
+    return _uma_vez(pasta, agora, "fumaca-ultimo-dia.txt", rodar_fumaca)
 
 
 def _uma_vez(pasta: Path, agora: datetime, nome: str, rodar) -> str:
@@ -706,6 +731,11 @@ def main(argv: list[str] | None = None) -> int:
         resumo_da_semana()
     except Exception as exc:
         registrar(PASTA, f"Resumo por e-mail: erro inesperado: {type(exc).__name__}: {exc}",
+                  repetida=False)
+    try:
+        fumaca_do_dia()
+    except Exception as exc:
+        registrar(PASTA, f"Teste de fumaça: erro inesperado: {type(exc).__name__}: {exc}",
                   repetida=False)
     if sys.stdout is not None:
         try:

@@ -202,6 +202,11 @@ ficam em `davs/entrada/<id>.xlsx` e `davs/pdf/` (fora do git).
   diz "já gerou o orçamento N". Servidor reiniciado com DAV "gerando" vira
   "confira no HSE", nunca roda de novo sozinho.
 - O HSE é produção. Só o `DAV_DRY_RUN=0` salva de verdade.
+- **Teste de fumaça:** `orcamento/fumaca.py` roda às 8h05 pelo `atualizar.py`
+  (`fumaca_do_dia`, uma tentativa por dia). Confere um DAV de mentira com
+  `HseSoLeitura`, sem IA, e só manda e-mail quando falha. Sem `FUMACA_CLIENTE`,
+  `FUMACA_VENDEDOR` e `FUMACA_CODIGO` no `.env`, não roda e só diz no
+  `log\atualizar.log`. Vendedor que sai da empresa vira alarme até trocar.
 - Conferência de itens (`processador.py`): tabela até R$ 0,05 (`TABELA_MINIMA`) só gera aviso,
   porque quem decide é o HSE (ele aceitou 0,01 no orçamento 16600); código cuja descrição no HSE não tem nenhuma
   palavra em comum com a da planilha gera aviso (`aviso_codigo_de_outro_produto`).
