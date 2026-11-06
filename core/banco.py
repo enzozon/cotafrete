@@ -354,6 +354,9 @@ CAMPOS_CARGA = (
     # Quem participa desta cotação. NULL = todas — ver core/selecao.py, que
     # explica por que ausência e escolha vazia precisam ser coisas distintas.
     "transportadoras",
+    # O e-mail ou a mensagem que o vendedor colou em "Colar o pedido" (P2 #21):
+    # o original fica junto da cotação para conferir depois.
+    "texto_colado",
 )
 
 # Colunas de `resultado` que nasceram depois do banco. Mesma razão de

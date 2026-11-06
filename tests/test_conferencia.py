@@ -100,3 +100,16 @@ def test_confirmar_cota_como_estava(cliente):
     assert r.status_code == 303
     [c] = cliente.modulo.banco.listar_cotacoes("enzo")
     assert cliente.modulo.banco.buscar_cotacao(c["id"], "enzo")["tipo_frete"] == "cif"
+
+
+def test_texto_colado_fica_na_cotacao_e_sai_escapado_na_ficha(cliente):
+    from web.ficha_ui import ficha_da_cotacao
+    colado = "Oi, cotar 2 caixas <b>urgente</b>"
+    tela = cliente.post("/cotar", data={**GRUPO_RECEBENDO, "texto_colado": colado}, follow_redirects=False)
+    assert 'name="texto_colado"' in tela.text                 # atravessa a tela de conferência
+    cliente.post("/cotar", data={**GRUPO_RECEBENDO, "texto_colado": colado, "conferido": "1"}, follow_redirects=False)
+    [c] = cliente.modulo.banco.listar_cotacoes("enzo")
+    guardada = cliente.modulo.banco.buscar_cotacao(c["id"], "enzo")
+    assert guardada["texto_colado"] == colado
+    ficha = ficha_da_cotacao(guardada, casco=False)
+    assert "Texto colado do pedido" in ficha and "&lt;b&gt;urgente" in ficha and "<b>urgente" not in ficha
