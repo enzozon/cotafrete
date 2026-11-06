@@ -503,7 +503,5 @@ def test_cnpj_valido_codigo_curto_e_dois_candidatos_nao_sugerem():
     vale = Cliente("1061", "VALE S.A.", "33592510022042")
     assert "Parece ser" not in proc.resolver_cliente("1016", HseFalso(clientes=[vale]))[1]
     assert "Parece ser" not in proc.resolver_cliente("33000167000101", HseFalso(clientes=[vale]))[1]  # DV certo
-    erro = "33592510022043"
-    vizinho = next(v for v in proc.cnpjs_vizinhos(erro) if v != vale.documento)
-    dois = HseFalso(clientes=[vale, Cliente("2", "OUTRA", vizinho)])
-    assert "Parece ser" not in proc.resolver_cliente(erro, dois)[1]
+    dois = HseFalso(clientes=[vale, Cliente("2", "OUTRO CADASTRO", vale.documento)])
+    assert "Parece ser" not in proc.resolver_cliente("33592510022043", dois)[1]
