@@ -30,7 +30,7 @@ SUBPASTAS = ("DAVs", "PROCESSADOS", "ERRO", "DRYRUN")
 # Desconto máximo sobre o preço de tabela que o HSE aceita no Incluir (visto em 28/10/2026:
 # "Desconto máximo 15%"; a gestora subiu para 50% em 05/11/2026). Fixo para todos os itens.
 DESCONTO_MAX = Decimal("50")
-TABELA_MINIMA = Decimal("0.05")  # tabela até R$ 0,05 é preço de mentira no cadastro (DAV #20, código 49025)
+TABELA_MINIMA = Decimal("0.05")  # tabela até R$ 0,05 é preço de mentira no cadastro: só avisa, quem decide é o HSE
 
 
 @dataclass(frozen=True)
@@ -365,9 +365,6 @@ def conferir_desconto(r: Resolucao) -> Resolucao:
     e assim todos os itens nessa situação aparecem de uma vez no relatório."""
     if r.erro or r.produto is None or r.produto.preco is None:
         return r
-    if r.produto.preco <= TABELA_MINIMA:  # 0,01 é preço de mentira: o limite de desconto não vale (#20)
-        return replace(r, erro=f"preço de tabela {moeda(r.produto.preco)} no HSE para o código "
-                               f"{r.produto.codigo}: corrija o preço no cadastro do produto ou confira o código")
     minimo = r.produto.preco * (100 - DESCONTO_MAX) / 100
     if r.item.valor_unit >= minimo:
         return r
@@ -612,6 +609,9 @@ def aviso_preco_acima(r: Resolucao) -> str | None:
     p = r.produto
     if r.erro or p is None or p.preco is None or r.item.valor_unit <= p.preco * PRECO_ACIMA_TABELA:
         return None
+    if p.preco <= TABELA_MINIMA:  # orçamento 16600 (06/11/2026): o HSE aceita, então não barra
+        return (f"Item {r.item.numero}: tabela de {moeda(p.preco)} no HSE para o código {p.codigo} – {p.descricao}; "
+                f"o desconto não foi conferido, confira se o código está certo")
     razao = f"{r.item.valor_unit / p.preco:.1f}".replace(".", ",")
     return (f"Item {r.item.numero}: {moeda(r.item.valor_unit)} está {razao}× acima da tabela "
             f"({moeda(p.preco)}) do código {p.codigo} – {p.descricao}; confira se o código está certo")
