@@ -224,7 +224,10 @@ def completar_json(sistema: str, pedido: str, esquema: dict | None = None, *,
             if r.status_code == 400 and estrito:
                 # O provedor recusou o esquema estrito (regra dele mudou, ou o
                 # esquema tem algo que ele não aceita): mesma pergunta com o
-                # esquema no texto, antes de desistir do modelo.
+                # esquema no texto, antes de desistir do modelo. Registra a
+                # recusa: ela gastou um pedido da cota.
+                _registrar(funcao, modelo, False, "esquema recusado (400)", agora() - t0)
+                t0 = agora()
                 r = POST(f"{base}/chat/completions", chave,
                          _corpo(modelo_id, sistema, pedido, esquema, False, max_tokens), provedor)
         except Exception as exc:          # rede, timeout
