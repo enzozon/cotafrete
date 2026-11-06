@@ -736,3 +736,14 @@ def test_cartao_sem_chave_criados_diz_nao_verificado_e_busca_parcial(cli, app_we
     assert "Não verificado" in t and "Nada criado" not in t
     app_web.banco.dav_atualizar(1, diagnostico=_diag(criados_no_hse=[16533], motivo_nao_verificado="busca cortada por tempo"))
     assert "16533 (busca parcial: busca cortada por tempo)" in adm.get("/adm/dav/1").text
+
+
+def test_outra_cotacao_nao_resolve_a_origem(tmp_path, monkeypatch):
+    # Envio #110 (lousa) ficou "Resolvida por #111" (leitor de código de barras)
+    from types import SimpleNamespace
+    from web import dav_ui
+    origem = criar(tmp_path, {"A2": "LOUSA", "K2": 76433}, "origem.xlsx")
+    monkeypatch.setattr(dav_ui, "FILA", SimpleNamespace(planilha=lambda i: origem))
+    assert dav_ui._mesmos_itens(1, criar(tmp_path, {"A2": "LOUSA", "K2": 76433, "B31": "1"}, "igual.xlsx"))
+    assert not dav_ui._mesmos_itens(1, criar(tmp_path, {"A2": "LEITOR", "K2": 62885}, "outra.xlsx"))
+    assert dav_ui._mesmos_itens(1, tmp_path / "nao_existe.xlsx")

@@ -312,3 +312,13 @@ def test_rejeicao_de_formato_nao_pede_campos_inexistentes():
     from orcamento.diagnostico import diagnostico
     d = diagnostico(registro("rejeitado", erro="Envie um arquivo .xlsx (a planilha-base v3)."), administrador=False)
     assert d["campos"] == [] and ".xlsx" in d["como_corrigir"] and "campos indicados" not in d["como_corrigir"]
+
+
+def test_rascunho_com_erro_da_conferencia_mostra_o_motivo():
+    # Envios #105 e #123: a conferência dizia a causa e a tela dizia "Motivo não identificado"
+    from orcamento.diagnostico import diagnostico
+    from orcamento.processador import Conferencia
+    conf = Conferencia("erros", "", "", "", "", (), (), ("Cliente 123 não encontrado no HSE",))
+    d = diagnostico(registro("rascunho", conferencia="erros", conferencia_relatorio=conf.para_json()),
+                    administrador=False)
+    assert d["motivo"] == "Cliente 123 não encontrado no HSE"

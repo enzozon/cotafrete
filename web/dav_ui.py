@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Callable
 from urllib.parse import parse_qsl, urlencode, urlsplit
 
+import openpyxl
 from fastapi import APIRouter, Cookie, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
 
@@ -612,18 +613,37 @@ def conferir(planilha: UploadFile = File(...),
             _validar_origem(usuario, origem)
             antigo = banco.dav_ja_gerado(usuario, hash_)
             if antigo:
-                if origem:
+                if origem and _mesmos_itens(origem, temp):
                     banco.dav_vincular_correcao(origem, antigo["id"], usuario)
                 return _ja_gerou(usuario, antigo)
             # já nasce "conferindo": a fila só grava em "conferindo"
             dav_id = banco.dav_criar(usuario, nome, hash_, o.cliente, conferencia="conferindo")
-            if origem:
+            if origem and _mesmos_itens(origem, temp):
                 banco.dav_vincular_correcao(origem, dav_id, usuario)
             temp.replace(FILA.planilha(dav_id))
         FILA_CONFERENCIA.enfileirar(dav_id)
         return _html("Conferir DAV", _resumo(o, dav_id, banco.dav(dav_id, usuario)), usuario)
     finally:
         temp.unlink(missing_ok=True)
+
+
+def _itens_da_planilha(arquivo: Path) -> set[str]:
+    wb = openpyxl.load_workbook(arquivo, read_only=True, data_only=True)
+    try:
+        linhas = wb["ORÇAMENTO"].iter_rows(min_row=2, max_row=25, max_col=11, values_only=True)
+        return {str(v).strip().upper() for lin in linhas for v in (lin[0], lin[10]) if str(v or "").strip()}
+    finally:
+        wb.close()
+
+
+def _mesmos_itens(origem: int, arquivo: Path | None) -> bool:
+    """Outra cotação enviada por "Enviar corrigida" não resolve a origem (#110 x #111).
+    Sem conseguir comparar, vincula: é o que o vendedor pediu."""
+    try:
+        antes, agora = _itens_da_planilha(FILA.planilha(origem)), _itens_da_planilha(arquivo)
+    except Exception:  # noqa: BLE001 — arquivo ausente ou que não é a PLANILHA-BASE
+        return True
+    return not antes or not agora or bool(antes & agora)
 
 
 def _validar_origem(usuario: str, origem: int | None) -> None:
@@ -642,7 +662,7 @@ def _rejeitar(usuario: str, nome: str, origem: int | None, *msgs: str,
         with _TRAVA:
             _validar_origem(usuario, origem)
             i = banco.dav_rejeitar(usuario, nome, list(msgs))
-            if origem:
+            if origem and _mesmos_itens(origem, arquivo):
                 banco.dav_vincular_correcao(origem, i, usuario)
     except sqlite3.Error:
         return HTMLResponse(pagina("Planilha não aceita", '<h1>Planilha não aceita</h1>'

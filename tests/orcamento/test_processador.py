@@ -505,3 +505,15 @@ def test_cnpj_valido_codigo_curto_e_dois_candidatos_nao_sugerem():
     assert "Parece ser" not in proc.resolver_cliente("33000167000101", HseFalso(clientes=[vale]))[1]  # DV certo
     dois = HseFalso(clientes=[vale, Cliente("2", "OUTRO CADASTRO", vale.documento)])
     assert "Parece ser" not in proc.resolver_cliente("33592510022043", dois)[1]
+
+
+def test_cnpj_sem_zero_a_esquerda_acha_o_cliente():
+    # Envios #105 e #123 (05 e 06/11/2026): o Excel cortou o zero do CNPJ
+    nestle = Cliente("5864", "NESTLE", "08334818000403")
+    for digitado in ("8334818000403", "8.334.818/0004-03"):
+        assert proc.resolver_cliente(digitado, HseFalso(clientes=[nestle])) == (nestle, None)
+
+
+def test_numero_curto_invalido_nao_vira_cnpj():
+    hse = HseFalso(clientes=[Cliente("5864", "NESTLE", "08334818000403")])
+    assert proc.resolver_cliente("8334818000404", hse)[0] is None

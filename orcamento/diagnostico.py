@@ -171,6 +171,8 @@ def diagnostico(dav: dict, *, administrador: bool) -> dict:
     if estado == "rascunho" and erros_conferencia and novos["origem"] == "planilha":
         categoria, etapa = "planilha", "Validação da planilha"
         motivo = "A conferência encontrou dados da planilha que precisam de correção."
+    elif estado == "rascunho" and erros_conferencia:  # a conferência já disse a causa (#105, #117)
+        motivo = "; ".join(t for t in erros_conferencia if not _financeiro(t)) or motivo
     if salvamento == "incerto":
         motivo = "O orçamento pode já existir no HSE; a conclusão não foi confirmada."
         try:

@@ -161,3 +161,14 @@ def test_conserto_so_quando_a_culpa_e_do_robo(tmp_path):
     r = agente.diagnosticar(provas(), cfg(tmp_path), falso(resposta(culpa="planilha", conserto="x")), AGORA)
     assert r["conserto"] == ""
     assert "conserto" in agente.ESQUEMA["required"]
+
+
+def test_instrucao_no_lugar_do_valor_nao_vira_correcao():
+    # Envios #110, #117 e #127 (05 e 06/11/2026): Aprovar gravaria este texto na planilha
+    cs = [{"celula": c, "valor": v, "motivo": ""} for c, v in (
+        ("B31", "preencher com o cliente e CNPJ válidos"),
+        ("B33", "Nome do vendedor cadastrado no HSE (ex.: Micheli)"),
+        ("K5", "Código 17766 (item 4): confirmar o código correto do produto na planilha"),
+        ("B31", "08.334.818/0004-03"), ("K5", "17766"), ("B33", "MICHELI DA SILVA RIBEIRO"))]
+    assert [c["valor"] for c in agente.filtrar_correcoes(cs)] == [
+        "08.334.818/0004-03", "17766", "MICHELI DA SILVA RIBEIRO"]
