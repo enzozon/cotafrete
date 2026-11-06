@@ -59,6 +59,13 @@ def test_sem_erro_o_email_vai_dizendo_que_esta_tudo_certo(banco, tmp_path):
     assert assunto.endswith("tudo certo") and corpo.count("Nenhum erro.") == 3
 
 
+def test_resumo_da_semana_usa_o_texto_do_adm(banco):
+    from contextlib import closing
+    with closing(banco._conectar()) as con:
+        assunto, corpo = resumo_email.montar_semana(con, DIA)
+    assert assunto == "Resumo da semana 06/11" and corpo.startswith("Resumo da semana até 06/11/2026")
+
+
 def test_enviar_usa_o_destino_e_exige_credencial():
     enviados = []
 

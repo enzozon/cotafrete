@@ -23,7 +23,7 @@ from datetime import date, datetime
 from email.message import EmailMessage
 from pathlib import Path
 
-from core import resumo_erros
+from core import resumo_erros, resumo_semana
 
 PARA_PADRAO = "vendas2@venturainformatica.com.br"
 SMTP_HOST, SMTP_PORTA = "email-ssl.com.br", 465
@@ -92,6 +92,13 @@ def montar(con: sqlite3.Connection, dia: date, nome_de=lambda s: s, pasta_logs: 
     return assunto, "\n".join(corpo)
 
 
+def montar_semana(con: sqlite3.Connection, hoje: date, nome_de=lambda s: s) -> tuple[str, str]:
+    """(assunto, corpo) do resumo da semana (P2 #20): o mesmo texto do /adm."""
+    linhas = resumo_semana.linhas(resumo_semana.fatos(con, hoje, nome_de))
+    corpo = [f"Resumo da semana até {hoje:%d/%m/%Y}", "", *linhas]
+    return f"Resumo da semana {hoje:%d/%m}", "\n".join(corpo)
+
+
 def enviar(assunto: str, corpo: str, ambiente=None, smtp=smtplib.SMTP_SSL) -> None:
     env = os.environ if ambiente is None else ambiente
     usuario, senha = env.get("SMTP_USER", ""), env.get("SMTP_PASSWORD", "")
@@ -112,7 +119,8 @@ def main() -> int:
     from web import transportadoras
     load_dotenv()
     with closing(sqlite3.connect(CAMINHO_PADRAO)) as con:
-        assunto, corpo = montar(con, datetime.now().date(), transportadoras.nome_de)
+        montagem = montar_semana if "--semana" in sys.argv else montar
+        assunto, corpo = montagem(con, datetime.now().date(), transportadoras.nome_de)
     try:
         enviar(assunto, corpo)
     except (OSError, RuntimeError, smtplib.SMTPException) as e:
