@@ -198,8 +198,8 @@ ficam em `davs/entrada/<id>.xlsx` e `davs/pdf/` (fora do git).
   diz "já gerou o orçamento N". Servidor reiniciado com DAV "gerando" vira
   "confira no HSE", nunca roda de novo sozinho.
 - O HSE é produção. Só o `DAV_DRY_RUN=0` salva de verdade.
-- Conferência de itens (`processador.py`): tabela até R$ 0,05 (`TABELA_MINIMA`) é erro,
-  porque o limite de desconto não vale; código cuja descrição no HSE não tem nenhuma
+- Conferência de itens (`processador.py`): tabela até R$ 0,05 (`TABELA_MINIMA`) só gera aviso,
+  porque quem decide é o HSE (ele aceitou 0,01 no orçamento 16600); código cuja descrição no HSE não tem nenhuma
   palavra em comum com a da planilha gera aviso (`aviso_codigo_de_outro_produto`).
   B30 que não casa: só escolhe sozinho quando o cliente tem um endereço e ele é parecido
   (`hse.PARECIDO`), com aviso "Local de entrega ... confira"; com dois ou mais, só sugere.

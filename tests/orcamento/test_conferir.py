@@ -216,11 +216,18 @@ def test_conferencia_com_preco_nao_avisa_sem_preco(tmp_path):
 
 
 @pytest.mark.parametrize("preco", ["0.01", "0", "0.05"])
-def test_tabela_de_mentira_barra_o_item(preco):
-    # DAV #20 (04/11/2026): código 49025 com tabela 0,01 só gerava "52345× acima da tabela"
+def test_tabela_de_mentira_nao_barra_e_avisa(preco):
+    # Orçamento 16600 (06/11/2026): o HSE aceitou 17766 e 35309 com tabela 0,01; quem decide é ele
     r = conferir_desconto(Resolucao(_item("523.45"), _produto(preco), "codigo"))
-    assert r.erro and "no HSE para o código 13370" in r.erro
-    assert aviso_preco_acima(r) is None  # o erro já explica; o aviso de "× acima" some
+    assert r.erro is None
+    assert "o desconto não foi conferido" in aviso_preco_acima(r)
+    assert "× acima" not in aviso_preco_acima(r)
+
+
+def test_tabela_de_mentira_passa_na_conferencia(tmp_path):
+    c = conferir(criar(tmp_path, None, "o.xlsx"), cfg(tmp_path), HseFalso(produtos=[_produto("0.01")]))
+    assert c.estado == "ok" and not c.erros
+    assert any("tabela de R$ 0,01" in a for a in c.avisos)
 
 
 def test_tabela_de_seis_centavos_segue_a_regra_normal():
