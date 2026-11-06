@@ -1,5 +1,4 @@
 """Acesso ao HSE pela tela (Playwright). Seletores levantados em docs/mapa-hse.md."""
-import difflib
 import functools
 import logging
 import re
@@ -13,7 +12,7 @@ from playwright.sync_api import Page, sync_playwright
 
 from orcamento.config import Config
 from orcamento.planilha import Item, Orcamento, normalizar, observacoes_hse
-from orcamento.processador import Cliente, ErroHse, HseIndisponivel, Produto, SalvoIncerto
+from orcamento.processador import PARECIDO, Cliente, ErroHse, HseIndisponivel, Produto, SalvoIncerto, _parecido, _so_palavras
 
 log = logging.getLogger("robo")
 
@@ -82,10 +81,6 @@ def motivo_recusa(html: str) -> str:
     return motivo
 
 
-def _so_palavras(texto: str) -> str:
-    return " ".join(re.sub(r"[^A-Z0-9]+", " ", normalizar(texto)).split())
-
-
 def enderecos_do_local(local: str, opcoes: list[tuple[str, str]]) -> list[str]:
     """Endereços do cliente que contêm o texto da B30, sem ligar para pontuação.
 
@@ -96,17 +91,6 @@ def enderecos_do_local(local: str, opcoes: list[tuple[str, str]]) -> list[str]:
         return [v for v, t in opcoes if re.match(rf"\s*{int(local)}\s*-", t)]
     alvo = f" {_so_palavras(local)} "
     return [v for v, t in opcoes if alvo in f" {_so_palavras(t)} "]
-
-
-PARECIDO = 0.8  # "ITABRA" x "ITABIRA" dá 0,92; cidades diferentes ficam bem abaixo
-
-
-def _parecido(local: str, endereco: str) -> float:
-    """Nota do trecho do endereço mais parecido com a B30 (mesmo número de palavras)."""
-    alvo, palavras = _so_palavras(local), _so_palavras(endereco).split()
-    n = max(1, len(alvo.split()))
-    return max((difflib.SequenceMatcher(None, alvo, " ".join(palavras[i:i + n])).ratio()
-                for i in range(max(1, len(palavras) - n + 1))), default=0.0)
 
 
 def erro_local_entrega(local: str, opcoes: list[tuple[str, str]]) -> str:
@@ -302,6 +286,10 @@ class Hse:
     @_rede
     def vendedor_existe(self, nome: str) -> bool:
         return normalizar(nome) in self._lista_vendedores()
+
+    @_rede
+    def nomes_vendedores(self) -> list[str]:
+        return list(self._lista_vendedores())
 
     def _lista_vendedores(self) -> dict[str, str]:
         if self._vendedores is None:

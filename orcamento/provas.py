@@ -13,6 +13,7 @@ import openpyxl
 
 from orcamento.hse import _mensagens
 from orcamento.planilha import _texto, ler_planilha
+from orcamento.processador import cnpj_valido as _cnpj_valido
 
 NAO_VERIFICADO = "nao_verificado"
 MARGEM = 25  # pedidos para cada lado do número de referência
@@ -198,16 +199,6 @@ def _produtos_criados(texto: str) -> list[str]:
         if p:
             saida.setdefault(p.split(" - ", 1)[0], p)
     return list(saida.values())
-
-
-def _cnpj_valido(d: str) -> bool:
-    if len(set(d)) == 1:
-        return False
-
-    def dv(base: str) -> str:
-        r = sum(int(a) * b for a, b in zip(base, [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2][-len(base):])) % 11
-        return "0" if r < 2 else str(11 - r)
-    return dv(d[:12]) == d[12] and dv(d[:13]) == d[13]
 
 
 def _cliente_b31(planilha: dict | None) -> dict | None:

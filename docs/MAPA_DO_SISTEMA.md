@@ -203,6 +203,9 @@ ficam em `davs/entrada/<id>.xlsx` e `davs/pdf/` (fora do git).
   palavra em comum com a da planilha gera aviso (`aviso_codigo_de_outro_produto`).
   B30 que não casa: só escolhe sozinho quando o cliente tem um endereço e ele é parecido
   (`hse.PARECIDO`), com aviso "Local de entrega ... confira"; com dois ou mais, só sugere.
+  Vendedor (B33) com erro de digitação sugere o nome parecido da lista do HSE. CNPJ (B31)
+  com dígito verificador errado: o HSE só acha CNPJ inteiro, então a conferência procura os
+  CNPJs válidos a um dígito de distância (`cnpjs_vizinhos`) e sugere se achar um só. Nunca escolhe.
 - `.env` do Cotafrete: `HSE_USUARIO`, `HSE_SENHA`, `HSE_CLIENT_ID`,
   `DAV_DRY_RUN`, `DAV_HEADLESS`, `IA`, `IA_MODELO`, `ANTHROPIC_API_KEY`,
   `IA_LIMITE_DIA_USD` (padrão 0,30). Senha e chave nunca em log, banco,

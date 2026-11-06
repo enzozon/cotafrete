@@ -52,6 +52,9 @@ class HseFalso:
         self._registrar("vendedor_existe", nome)
         return nome in self.vendedores
 
+    def nomes_vendedores(self) -> list[str]:
+        return sorted(self.vendedores)
+
     def buscar_produtos(self, termo: str) -> list[Produto]:
         self._registrar("buscar_produtos", termo)
         t = termo.upper()
