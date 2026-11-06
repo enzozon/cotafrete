@@ -106,6 +106,13 @@ O CNPJ do lado livre preenche o endereço **cadastrado** dele, que pode não ser
 o da cotação. `_usar_cep_da_cotacao` digita o CEP da ficha por cima; se não
 der, recusa nomeando a cidade do cadastro. Nunca cotar o endereço do cadastro.
 
+### Jadlog: oferta na frente do botão
+
+O site abre ofertas por cima do painel (a "11.11" custou 45 s e uma falha na
+cotação #630). O seletor muda a cada campanha, então `_clicar_calcular` esconde
+qualquer camada `position: fixed` sobre o centro do botão, antes do clique e de
+novo se ele não passar em 10 s. Só cobre o "Calcular Envio".
+
 ### Braspress: recusa antes do preço
 
 `normalizar_resposta` confere a caixa de recusa (`alert-danger`) antes do
@@ -229,7 +236,9 @@ ficam em `davs/entrada/<id>.xlsx` e `davs/pdf/` (fora do git). A cada volta, o
   O mesmo token liga a issue dos erros de cotação (`core/issue_cotacao.py`,
   chamado no `_rodar` do `web/app.py`): erro final sem frase em
   `MENSAGENS_DE_ERRO` vai uma vez por tipo para a IA (veredito em
-  `davs/erros_cotacao.json`); só bug com confiança alta ou média abre issue com a
+  `davs/erros_cotacao.json`, menos confiança baixa, que pergunta de novo na próxima
+  ocorrência; a IA vê o erro inteiro, com o call log do Playwright, e a assinatura
+  segue sendo só a 1ª linha); só bug com confiança alta ou média abre issue com a
   etiqueta `robo-cotacao`, no mesmo limite diário. O botão "Abrir issue no GitHub"
   do `/adm/dav/<id>` só aparece quando a issue não abriu sozinha (confiança baixa,
   sem token ou limite do dia).

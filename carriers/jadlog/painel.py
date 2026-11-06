@@ -38,6 +38,8 @@ from carriers.base import (
     CredencialRecusada, erro_do_adapter, recusa_por_validacao,
 )
 from carriers.jadlog import mapping as m
+
+ESPERA_CLIQUE_CALCULAR_MS = 10_000
 from core.models import CotacaoRequest, StatusCotacao, limpa_doc
 
 URL_LOGIN = "https://jadlogentregas.com.br/login"
@@ -235,6 +237,33 @@ class JadlogPainelAdapter:
                     return
             except Exception:
                 continue
+
+    def _tirar_da_frente(self, botao) -> bool:
+        """Esconde o que estiver por cima do botão, como a oferta "11.11" de 06/11/2026 (cotação #630).
+
+        A oferta muda a cada campanha e não dá para saber o seletor dela. Vale qualquer camada
+        fixa sobre o centro do botão; a página não muda de estado, só deixa de ficar coberta."""
+        return botao.evaluate("""b => {
+            b.scrollIntoView({block: 'center'});
+            const r = b.getBoundingClientRect();
+            let e = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
+            if (!e || b.contains(e) || e.contains(b)) return false;
+            let camada = null;
+            for (; e && e !== document.body; e = e.parentElement)
+                if (getComputedStyle(e).position === 'fixed') camada = e;
+            if (!camada || camada.contains(b)) return false;
+            camada.style.display = 'none';
+            return true;
+        }""")
+
+    def _clicar_calcular(self, page) -> None:
+        botao = page.get_by_role("button", name="Calcular Envio").first
+        self._tirar_da_frente(botao)
+        try:
+            botao.click(timeout=ESPERA_CLIQUE_CALCULAR_MS)
+        except PlaywrightTimeoutError:   # a oferta pode entrar depois da primeira olhada
+            self._tirar_da_frente(botao)
+            botao.click()
 
     def _preencher_login(self, page, usuario: str, senha: str) -> None:
         """Preenche e CONFERE que o valor ficou — o site é um SPA React.
@@ -483,7 +512,7 @@ class JadlogPainelAdapter:
                             calculos.append((resposta.status, ""))
 
                 page.on("response", anotar_calculo)
-                page.get_by_role("button", name="Calcular Envio").first.click()
+                self._clicar_calcular(page)
 
                 recusa = self._esperar_resultado(page, calculos)
                 if recusa:
