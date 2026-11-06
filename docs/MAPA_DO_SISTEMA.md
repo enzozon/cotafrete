@@ -196,7 +196,9 @@ juntas. O `monitorar.py` se atualiza sozinho.
 Código em `orcamento/` (leitura da planilha `planilha.py`, robô do HSE,
 `fila.py`) e a tela em `web/dav_ui.py` (`/dav`; lista do admin em `/adm/dav`).
 O estado fica na tabela `dav` do `cotafrete.db`; a planilha enviada e os PDFs
-ficam em `davs/entrada/<id>.xlsx` e `davs/pdf/` (fora do git).
+ficam em `davs/entrada/<id>.xlsx` e `davs/pdf/` (fora do git). A cada volta, o
+`atualizar.py` copia o que é novo ou mudou em `davs/` para
+`//SERVIDOR2/Publico/ENZO/davs` (`espelhar_davs`). Só acrescenta, nunca apaga.
 
 - A mesma planilha (hash) do mesmo vendedor não gera outro orçamento: a tela
   diz "já gerou o orçamento N". Servidor reiniciado com DAV "gerando" vira
@@ -285,9 +287,9 @@ ficam em `davs/entrada/<id>.xlsx` e `davs/pdf/` (fora do git).
     com cache em `aval/cache_ia/` e uso em `aval/programa/` (não mexe no `ia_uso.csv` de
     produção) e para em `--max-usd` (padrão 1,00). Nunca abre o HSE: o buscador lê o
     `pedidos.jsonl`. Sai com 1 se culpa de confiança alta < 90% ou se houver caso perigoso.
-- O modelo tem 3 cópias que precisam ficar iguais: esta, o `public/PLANILHA
-  BASE.xlsx` + `public/vendor/template_planilha_base.js` (base64) do Maestro e
-  a pasta pública `\\SERVIDOR2\Publico\ENZO\ORCAMENTO`. Grave o modelo pelo XML
+- O modelo tem 2 cópias que precisam ficar iguais: esta e o `public/PLANILHA
+  BASE.xlsx` + `public/vendor/template_planilha_base.js` (base64) do Maestro. A
+  pasta pública `ORCAMENTO` saiu de uso em 06/11/2026. Grave o modelo pelo XML
   (o openpyxl apaga as listas suspensas x14) e mantenha a aba protegida com as
   células de digitação desbloqueadas. As regras de digitação ficam em
   `scripts/validacoes_modelo.py`: barra o que o robô recusaria e só avisa no que

@@ -17,6 +17,8 @@ O que precisa continuar valendo:
 
 from __future__ import annotations
 
+import os
+import shutil
 import subprocess
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -488,6 +490,75 @@ def test_fumaca_so_na_producao(tmp_path):
     assert atualizar.fumaca_do_dia(tmp_path / "cotafrete-dev", _dt(2026, 11, 6, 9, 0), None) == "fora_da_producao"
 
 
+def _davs(pasta, arquivos: dict[str, str]) -> None:
+    for nome, texto in arquivos.items():
+        arquivo = pasta / "davs" / nome
+        arquivo.parent.mkdir(parents=True, exist_ok=True)
+        arquivo.write_text(texto, encoding="utf-8")
+
+
+def test_espelho_copia_os_davs_com_as_subpastas_e_so_o_que_mudou(tmp_path):
+    producao, servidor = tmp_path / "cotafrete-producao", tmp_path / "servidor" / "davs"
+    servidor.parent.mkdir()
+    _davs(producao, {"entrada/7.xlsx": "planilha", "pdf/7.pdf": "pdf", "ia_uso.csv": "x"})
+
+    assert atualizar.espelhar_davs(producao, servidor) == 3
+    assert (servidor / "entrada" / "7.xlsx").read_text(encoding="utf-8") == "planilha"
+    assert atualizar.espelhar_davs(producao, servidor) == 0
+
+    alterado = producao / "davs" / "ia_uso.csv"
+    alterado.write_text("novo", encoding="utf-8")
+    os.utime(alterado, (alterado.stat().st_mtime + 60,) * 2)
+    assert atualizar.espelhar_davs(producao, servidor) == 1
+    assert (servidor / "ia_uso.csv").read_text(encoding="utf-8") == "novo"
+    assert not list(servidor.rglob("*.copiando"))
+    assert "1 arquivo" in _log(producao)
+
+
+def test_espelho_nunca_apaga_o_que_saiu_da_vm(tmp_path):
+    producao, servidor = tmp_path / "cotafrete-producao", tmp_path / "servidor" / "davs"
+    servidor.parent.mkdir()
+    _davs(producao, {"entrada/7.xlsx": "planilha"})
+    atualizar.espelhar_davs(producao, servidor)
+
+    (producao / "davs" / "entrada" / "7.xlsx").unlink()
+    atualizar.espelhar_davs(producao, servidor)
+
+    assert (servidor / "entrada" / "7.xlsx").exists()
+
+
+def test_espelho_com_servidor_fora_avisa_e_nao_tenta_arquivo_por_arquivo(tmp_path, monkeypatch):
+    producao = tmp_path / "cotafrete-producao"
+    _davs(producao, {"pdf/7.pdf": "pdf"})
+    monkeypatch.setattr(atualizar.shutil, "copy2", lambda *a: pytest.fail("não devia copiar"))
+
+    assert atualizar.espelhar_davs(producao, tmp_path / "nao-existe" / "davs") is None
+    assert "fora de alcance" in _log(producao)
+
+
+def test_espelho_segue_quando_um_arquivo_falha(tmp_path, monkeypatch):
+    producao, servidor = tmp_path / "cotafrete-producao", tmp_path / "servidor" / "davs"
+    servidor.parent.mkdir()
+    _davs(producao, {"a.txt": "a", "b.txt": "b"})
+    copiar = shutil.copy2
+
+    def preso(origem, destino):
+        if Path(origem).name == "a.txt":
+            raise PermissionError("em uso")
+        return copiar(origem, destino)
+    monkeypatch.setattr(atualizar.shutil, "copy2", preso)
+
+    assert atualizar.espelhar_davs(producao, servidor) == 1
+    assert (servidor / "b.txt").exists() and "a.txt" in _log(producao)
+
+
+def test_espelho_so_na_producao(tmp_path):
+    _davs(tmp_path / "cotafrete-dev", {"pdf/7.pdf": "pdf"})
+
+    assert atualizar.espelhar_davs(tmp_path / "cotafrete-dev", tmp_path / "s") is None
+    assert not (tmp_path / "s").exists()
+
+
 def test_resumo_da_semana_so_na_segunda_depois_das_8h(repos):
     _, producao = repos
     chamadas = []
@@ -500,3 +571,7 @@ def test_resumo_da_semana_so_na_segunda_depois_das_8h(repos):
     assert atualizar.resumo_da_semana(producao, _dt(2026, 11, 9, 8, 1), roda) == "feito"
     assert atualizar.resumo_da_semana(producao, _dt(2026, 11, 9, 12, 0), roda) == "ja_feito"
     assert chamadas == [("--semana",)]
+
+
+def test_destino_dos_davs_e_o_compartilhamento_do_servidor():
+    assert atualizar.DESTINO_DOS_DAVS.as_posix() == "//SERVIDOR2/Publico/ENZO/davs"
