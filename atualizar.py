@@ -40,6 +40,7 @@ import argparse
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -612,6 +613,41 @@ def _uma_vez(pasta: Path, agora: datetime, nome: str, rodar) -> str:
     return "feito" if codigo == 0 else "falhou"
 
 
+# ------------------------------------------------------ DAVs no SERVIDOR2
+DESTINO_DOS_DAVS = Path("//SERVIDOR2/Publico/ENZO/davs")
+FOLGA_DA_DATA_S = 2  # o compartilhamento pode arredondar a data do arquivo
+
+
+def espelhar_davs(pasta: Path = PASTA, destino: Path = DESTINO_DOS_DAVS) -> int | None:
+    """Copia para o SERVIDOR2 o que é novo ou mudou em davs/. Quantos copiou, ou
+    None se não rodou. Só acrescenta: o que sai da VM continua lá."""
+    if not e_producao(pasta):
+        return None
+    # Sem isto, servidor fora esperaria o tempo limite da rede em cada arquivo.
+    if not destino.parent.is_dir():
+        registrar(pasta, f"Cópia dos DAVs: {destino.parent} fora de alcance.", repetida=False)
+        return None
+    davs, copiados, falhas = pasta / "davs", 0, []
+    for origem in (p for p in davs.rglob("*") if p.is_file()):
+        alvo = destino / origem.relative_to(davs)
+        try:
+            if alvo.exists() and alvo.stat().st_mtime >= origem.stat().st_mtime - FOLGA_DA_DATA_S:
+                continue
+            alvo.parent.mkdir(parents=True, exist_ok=True)
+            # Temporário: quem abrir no servidor nunca pega arquivo pela metade.
+            temporario = alvo.with_name(alvo.name + ".copiando")
+            shutil.copy2(origem, temporario)
+            os.replace(temporario, alvo)
+            copiados += 1
+        except OSError as exc:   # arquivo em uso: a próxima volta tenta de novo
+            falhas.append(f"{origem.name} ({type(exc).__name__})")
+    if falhas:
+        registrar(pasta, f"Cópia dos DAVs: {len(falhas)} falha(s), {falhas[0]} e outros.", repetida=False)
+    if copiados:
+        registrar(pasta, f"Cópia dos DAVs: {copiados} arquivo(s) no SERVIDOR2.")
+    return copiados
+
+
 # ------------------------------------------------------ a tarefa agendada
 def xml_da_tarefa(pasta: Path, usuario: str) -> str:
     """A tarefa do Agendador, em XML — é o único jeito de ligar tudo o que
@@ -736,6 +772,11 @@ def main(argv: list[str] | None = None) -> int:
         fumaca_do_dia()
     except Exception as exc:
         registrar(PASTA, f"Teste de fumaça: erro inesperado: {type(exc).__name__}: {exc}",
+                  repetida=False)
+    try:
+        espelhar_davs()
+    except Exception as exc:
+        registrar(PASTA, f"Cópia dos DAVs: erro inesperado: {type(exc).__name__}: {exc}",
                   repetida=False)
     if sys.stdout is not None:
         try:
