@@ -205,23 +205,6 @@ def test_registro_de_cada_chamada(prov, monkeypatch):
         ("groq:melhor", False, "revisão ME"), ("openrouter:segundo:free", True, "revisão ME")]
 
 
-def test_cadeia_padrao_e_configuracao(monkeypatch):
-    monkeypatch.delenv("IA_MODELOS", raising=False)
-    assert ia.cadeia()[0] == "groq:openai/gpt-oss-120b"
-    monkeypatch.setenv("IA_MODELOS", "openrouter:x:free, inventado:y ,groq:z")
-    assert ia.cadeia() == ["openrouter:x:free", "groq:z"]     # provedor desconhecido some
-    monkeypatch.delenv("GROQ_API_KEY", raising=False)
-    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
-    assert not ia.configurada()
-
-
-def test_corpo_no_formato_openai():
-    c = ia._corpo("openai/gpt-oss-120b", "sis", "pedido", {"type": "object"}, True, 4000)
-    assert c["model"] == "openai/gpt-oss-120b" and c["max_tokens"] == 4000
-    assert [m["role"] for m in c["messages"]] == ["system", "user"]
-    assert c["response_format"]["type"] == "json_schema"
-
-
 def test_limite_total_corta_a_cadeia_e_encurta_a_ultima_espera(prov):
     """Com gente olhando a tela: 40 s no pedido inteiro, não 90 s por modelo."""
     prov.demora = 25
@@ -254,3 +237,20 @@ def test_quem_tem_tela_esperando_usa_o_limite(prov, chamar, monkeypatch):
         chamar()
 
     assert prov.prazos[0] == ia.LIMITE_TELA_S
+
+
+def test_cadeia_padrao_e_configuracao(monkeypatch):
+    monkeypatch.delenv("IA_MODELOS", raising=False)
+    assert ia.cadeia()[0] == "groq:openai/gpt-oss-120b"
+    monkeypatch.setenv("IA_MODELOS", "openrouter:x:free, inventado:y ,groq:z")
+    assert ia.cadeia() == ["openrouter:x:free", "groq:z"]     # provedor desconhecido some
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    assert not ia.configurada()
+
+
+def test_corpo_no_formato_openai():
+    c = ia._corpo("openai/gpt-oss-120b", "sis", "pedido", {"type": "object"}, True, 4000)
+    assert c["model"] == "openai/gpt-oss-120b" and c["max_tokens"] == 4000
+    assert [m["role"] for m in c["messages"]] == ["system", "user"]
+    assert c["response_format"]["type"] == "json_schema"
