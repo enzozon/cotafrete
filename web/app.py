@@ -1127,6 +1127,7 @@ JS_COLAR_PEDIDO = """<script>
       const d = await r.json();
       if (d.erro) { status.textContent = ''; saida.innerHTML = '<p class="alerta">' + esc(d.erro) + '</p>'; return; }
       const preenchidos = [];
+      document.getElementById('texto_colado').value = texto;
       for (const [nome, valor] of Object.entries(d.campos)) {
         if (nome === 'tipo_frete') {
           const radio = document.querySelector('input[name="tipo_frete"][value="' + valor + '"]');
@@ -1179,6 +1180,7 @@ def _render_formulario(v: dict, usuario: str, aviso: str) -> str:
                f"WhatsApp.")}
 {colar_pedido()}
 <form method="post" action="/cotar" class="cartao">
+  <input type="hidden" id="texto_colado" name="texto_colado">
   <fieldset><legend>Rota</legend><div class="grid">
     {campo("cep_origem", "CEP de origem", v)}
     {campo("cep_destino", "CEP de destino", v)}
@@ -1390,6 +1392,7 @@ def cotar(usuario: str | None = Depends(vendedor),
           # o vendedor deixou ligado. Default [] para o caso de alguem
           # postar sem o painel — que `validar_formulario` recusa embaixo.
           transportadora: list[str] = Form(default=[]),
+          texto_colado: str = Form(""),
           # Vêm da tela de conferência (`tela_conferencia`): "1" = o vendedor
           # leu os avisos e quer cotar assim; "cif"/"fob" = trocar e cotar.
           conferido: str = Form(""), corrigir: str = Form("")):
@@ -1441,6 +1444,7 @@ def cotar(usuario: str | None = Depends(vendedor),
         # QUEM paga, nao so a sigla.
         "cnpj_pagador": req.pagador_frete.cnpj_formatado,
         "tipo_frete": req.tipo_frete.value,
+        "texto_colado": texto_colado[:extrair_carga.MAX_TEXTO] or None,
         "nome_remetente": buscador_cnpj.buscar(req.remetente.cnpj),
         "nome_destinatario": buscador_cnpj.buscar(req.destinatario.cnpj),
         "nome_pagador": buscador_cnpj.buscar(req.pagador_frete.cnpj),

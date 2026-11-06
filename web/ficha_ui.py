@@ -120,6 +120,14 @@ def parte(rotulo: str, nome: str | None, cnpj: str | None) -> str:
     return dado(rotulo, nome or cnpj, cnpj if nome else "")
 
 
+def _texto_colado(c: dict) -> str:
+    """O original de "Colar o pedido". Veio de fora: sai escapado."""
+    if not c.get("texto_colado"):
+        return ""
+    return (f'<details style="margin-top:12px"><summary>Texto colado do pedido</summary>'
+            f'<pre style="white-space:pre-wrap;margin:8px 0 0">{e(c["texto_colado"])}</pre></details>')
+
+
 def ficha_da_cotacao(c: dict, *, casco: bool = True) -> str:
     """Os dados que geraram esta cotação, com os rótulos do formulário.
 
@@ -161,7 +169,7 @@ def ficha_da_cotacao(c: dict, *, casco: bool = True) -> str:
     {dado("Altura", f"{c['altura_cm']} cm")}
     {dado("Valor da nota fiscal", moeda(c["valor_nf"]))}
     {dado("Material", c.get("material"))}
-  </div></fieldset>"""
+  </div></fieldset>{_texto_colado(c)}"""
 
     if not casco:
         return f'<div class="ficha">{campos}</div>'
