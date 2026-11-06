@@ -1,4 +1,4 @@
-"""Aplica as correções de célula aprovadas pelo ADM sobre uma cópia da planilha."""
+"""Aplica correções de célula sobre uma cópia da planilha: aprovadas pelo ADM ou automáticas."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -6,6 +6,30 @@ from pathlib import Path
 import openpyxl
 
 from orcamento.agente import filtrar_correcoes
+
+# Local de entrega e vendedor: a conferência confere os dois contra o HSE. CNPJ e código de produto
+# ficam de fora: um dígito errado vira outro cliente ou outro produto que também passa na conferência.
+CAMPOS_AUTOMATICOS = {"B30": "Local de entrega", "B33": "Vendedor"}
+
+
+def automaticas(diag: dict) -> list[dict]:
+    """As correções que entram sem aprovação; [] se qualquer uma delas precisar de uma pessoa."""
+    brutas = diag.get("correcoes")
+    if (diag.get("culpa") != "planilha" or diag.get("confianca") != "alta"
+            or diag.get("criados_no_hse") != [] or not isinstance(brutas, list)):
+        return []
+    ok = filtrar_correcoes(brutas)
+    if len(ok) != len(brutas) or any(c["celula"] not in CAMPOS_AUTOMATICOS for c in ok):
+        return []
+    return ok
+
+
+def trocas(origem: Path, correcoes: list[dict]) -> list[dict]:
+    """O que muda de fato, para contar ao vendedor. Sem o motivo: é texto livre da IA."""
+    ws = openpyxl.load_workbook(origem)["ORÇAMENTO"]
+    feitas = [{"celula": c["celula"], "campo": CAMPOS_AUTOMATICOS.get(c["celula"], c["celula"]),
+               "de": str(ws[c["celula"]].value or "").strip(), "para": c["valor"].strip()} for c in correcoes]
+    return [t for t in feitas if t["de"] != t["para"]]
 
 
 def aplicar(origem: Path, correcoes: list[dict], destino: Path) -> list[str]:

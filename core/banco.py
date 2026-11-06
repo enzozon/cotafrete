@@ -338,7 +338,7 @@ CREATE INDEX IF NOT EXISTS idx_dav_correcao_destino ON dav_correcao(destino_id);
 """
 
 CAMPOS_DAV_NOVOS = ("conferencia", "conferencia_relatorio",
-                    "diagnostico", "diagnostico_estado")
+                    "diagnostico", "diagnostico_estado", "correcao_ia")
 
 CAMPOS_CARGA = (
     "cep_origem", "cep_destino", "cidade_origem", "uf_origem",

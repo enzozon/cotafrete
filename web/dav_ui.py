@@ -30,6 +30,7 @@ from mercado_eletronico.painel import hora_de_brasilia
 from orcamento.fila import FilaDav
 from orcamento.conferencia import FilaConferencia
 from orcamento.agente import filtrar_correcoes, link_issue
+from orcamento.correcao import aplicar, automaticas, trocas
 from orcamento.diagnostico import _financeiro, diagnostico
 from orcamento.processador import SEM_HSE, Conferencia
 from orcamento.relatorio import moeda
@@ -351,6 +352,9 @@ def _precisa_vendedor(dados: dict, filtros: dict) -> list[str]:
             link = url_dav(f'/dav/{d["id"]}', filtros)
             acao = (f'<a class="dav-btnc" href="/dav?origem={d["id"]}">Enviar corrigida →</a>' if corrige
                     else f'<a class="dav-btnc" href="{e(link)}">Ver detalhes →</a>')
+            ia = correcao_da_ia(d)
+            if ia:
+                acao = f'<a class="dav-btnc" href="/dav/{int(ia["id"])}/conferir">Corrigido pela IA: conferir →</a>'
             cartoes.append(_cartao(d, link, tom,
                 f'<p>{e(g["titulo"])}</p><div class="dav-faca"><b>O que fazer</b>{e(g["como_corrigir"])} '
                 f'{celulas(d.get("campos", []))}</div>', acao))
@@ -526,6 +530,26 @@ def _tabela_itens(o, conf: Conferencia | None) -> str:
     return f'<div class="dav-table"><table><thead><tr>{cab}</tr></thead><tbody>{linhas}</tbody></table></div>'
 
 
+def aviso_ia(d: dict) -> str:
+    """Conta ao vendedor o que a IA corrigiu sozinha: campo, valor antigo e novo."""
+    try:
+        feitas = json.loads(d.get("correcao_ia") or "[]")
+    except ValueError:
+        return ""
+    if not feitas:
+        return ""
+    itens = "".join(f'<li>{e(t["campo"])}: de "{e(t["de"])}" para "{e(t["para"])}"</li>' for t in feitas)
+    return ('<div class="aviso"><b>Erro encontrado e corrigido pela IA na planilha.</b>'
+            f'<ul>{itens}</ul>Confira antes de gerar o DAV.</div>')
+
+
+def correcao_da_ia(d: dict) -> dict | None:
+    """O envio que a IA criou corrigindo `d`, enquanto espera o vendedor."""
+    novo = banco.dav_correcao_de(d["id"])
+    alvo = banco.dav(novo, None) if novo else None
+    return alvo if alvo and alvo.get("correcao_ia") and alvo["estado"] == "rascunho" else None
+
+
 def _resumo(o, dav_id: int, d: dict | None = None) -> str:
     estado, conf = _conferencia_de(d)
     cabeca = cabecalho("Conferir orçamento", tarja=f"DAV · Envio #{dav_id}",
@@ -553,7 +577,7 @@ def _resumo(o, dav_id: int, d: dict | None = None) -> str:
                 '<button type="submit">Confirmar e gerar DAV →</button><a href="/dav">Voltar ao envio</a></form>')
     guia = bloco_orientacao(d) if d and estado == "erros" else ""
     return cabeca + f"""
-<section class="cartao dav-card dav-entrada">{passos}{avisos}{_bloco_hse(conf)}
+<section class="cartao dav-card dav-entrada">{passos}{aviso_ia(d) if d else ""}{avisos}{_bloco_hse(conf)}
 {guia}
 <dl class="dav-dados"><div><dt>Cliente</dt><dd>{e(o.cliente)}</dd></div><div><dt>Vendedor</dt><dd>{e(o.vendedor)}</dd></div>
 <div><dt>Local de entrega</dt><dd>{e(o.local_entrega or 'Não informado')}</dd></div>
@@ -781,6 +805,85 @@ CULPAS = {"planilha": "Planilha", "cadastro_hse": "Cadastro no HSE", "robo": "Ro
           "indefinido": "Não identificado"}
 
 
+class CorrecaoRecusada(Exception):
+    """A correção não entrou; a mensagem vai para a tela do ADM."""
+
+
+def criar_envio_corrigido(d: dict, correcoes: list[dict], correcao_ia: str | None = None) -> tuple[int, bool]:
+    """Cria o envio corrigido, do vendedor original, para conferir. Nunca gera no HSE.
+
+    Devolve (envio, True); (envio, False) se já havia correção para este envio."""
+    dav_id, vendedor = int(d["id"]), d["usuario"]
+    ja = banco.dav_correcao_de(dav_id)
+    if ja:
+        return ja, False
+    pasta = FILA.pasta / "entrada"
+    pasta.mkdir(parents=True, exist_ok=True)
+    temp = pasta / f"{uuid.uuid4().hex}.xlsx"
+    try:
+        try:
+            if not aplicar(FILA.planilha(dav_id), correcoes, temp):
+                raise CorrecaoRecusada("Nenhuma célula da correção é permitida.")
+            o = ler_planilha(temp)
+        except ErroPlanilha as exc:
+            raise CorrecaoRecusada("A correção gerou uma planilha inválida: " + "; ".join(exc.erros)) from exc
+        except CorrecaoRecusada:
+            raise
+        except Exception as exc:
+            log.exception("corrigir DAV %s: falha ao aplicar/ler a planilha", dav_id)
+            raise CorrecaoRecusada("Não consegui aplicar a correção: planilha original indisponível ou ilegível.") from exc
+        hash_ = hashlib.sha256(temp.read_bytes()).hexdigest()
+        with _TRAVA:
+            ja = banco.dav_correcao_de(dav_id)
+            if ja:
+                return ja, False
+            novo = banco.dav_criar(vendedor, f"corrigida_{d['arquivo']}", hash_, o.cliente, conferencia="conferindo")
+            try:
+                temp.replace(FILA.planilha(novo))
+            except OSError as exc:
+                log.exception("corrigir DAV %s: falha ao gravar a planilha do envio %s", dav_id, novo)
+                banco.dav_atualizar(novo, estado="erro", erro=f"Não consegui gravar a planilha corrigida: {exc}")
+                raise CorrecaoRecusada(f"Não consegui gravar a planilha corrigida: {exc}") from exc
+            try:
+                banco.dav_vincular_correcao(dav_id, novo, vendedor)
+            except ValueError as exc:
+                banco.dav_atualizar(novo, estado="erro", erro=str(exc))
+                raise CorrecaoRecusada(str(exc)) from exc
+            if correcao_ia:
+                banco.dav_atualizar(novo, correcao_ia=correcao_ia)
+        FILA_CONFERENCIA.enfileirar(novo)
+        return novo, True
+    finally:
+        temp.unlink(missing_ok=True)
+
+
+def corrigir_sozinho(dav_id: int) -> int | None:
+    """Depois do diagnóstico: erro básico da planilha entra sem aprovação e volta para o vendedor gerar.
+
+    Uma rodada só: envio que já veio da IA não é corrigido de novo."""
+    d = banco.dav(dav_id, None)
+    if d is None or d.get("correcao_ia") or not corrigivel_pelo_adm(d):
+        return None
+    try:
+        diag = json.loads(d.get("diagnostico") or "{}")
+    except ValueError:
+        return None
+    correcoes = automaticas(diag) if isinstance(diag, dict) else []
+    if not correcoes:
+        return None
+    feitas = trocas(FILA.planilha(dav_id), correcoes)
+    if not feitas:
+        return None
+    mudam = {t["celula"] for t in feitas}
+    try:
+        novo, criou = criar_envio_corrigido(d, [c for c in correcoes if c["celula"] in mudam],
+                                            json.dumps(feitas, ensure_ascii=False))
+    except CorrecaoRecusada as exc:
+        log.warning("Correção automática do DAV %s não entrou: %s", dav_id, exc)
+        return None
+    return novo if criou else None
+
+
 def corrigivel_pelo_adm(d: dict) -> bool:
     """Mesma regra de `_validar_origem` / `dav_vincular_correcao`."""
     return origem_corrigivel(d) and diagnostico(d, administrador=False)["salvamento"] != "incerto"
@@ -870,7 +973,12 @@ def detalhe_dav(dav: dict, *, administrador: bool, retorno: str) -> str:
         acoes += f'<a class="botao2" href="/dav?origem={d["id"]}">Enviar planilha corrigida →</a>'
     if not administrador and d["estado"] == "rascunho":
         acoes += f'<a class="botao2" href="/dav/{d["id"]}/conferir">Conferir antes de gerar →</a>'
+    ia = correcao_da_ia(d)
+    if ia:
+        destino = f'/adm/dav/{int(ia["id"])}' if administrador else f'/dav/{int(ia["id"])}/conferir'
+        acoes = f'<a class="botao" href="{destino}">Conferir a correção da IA →</a>' + acoes
     corpo += f'<section class="dav-resultado-box {tom}">{_selo(d)}'
+    corpo += (aviso_ia(ia) if ia else "") + aviso_ia(d)
     if d.get("numero"):
         corpo += f'<h2>Orçamento {e(d["numero"])}</h2>'
     corpo += f'<p>{e(motivo)}</p>'

@@ -32,11 +32,13 @@ def deve_diagnosticar(dav: dict) -> bool:
 class FilaDiagnostico:
     def __init__(self, banco: Banco, pasta: Path,
                  executar: Callable[[int], dict] | None = None,
-                 disparar: Callable[[Callable[[], None]], None] | None = None) -> None:
+                 disparar: Callable[[Callable[[], None]], None] | None = None,
+                 ao_terminar: Callable[[int], None] | None = None) -> None:
         self.banco = banco
         self.pasta = Path(pasta)
         self._executar = executar or self._executar_padrao
         self._disparar = disparar or self._na_thread
+        self._ao_terminar = ao_terminar
         self._trava = threading.Lock()
         self._tarefas: queue.Queue = queue.Queue()
         self._trabalhadora: threading.Thread | None = None
@@ -76,6 +78,12 @@ class FilaDiagnostico:
             campos = {"diagnostico": json.dumps({"motivo": motivo}, ensure_ascii=False),
                       "diagnostico_estado": "falhou"}
         no_banco(self.banco.dav_atualizar, dav_id, **campos)
+        if self._ao_terminar and campos["diagnostico_estado"] == "feito":
+            try:
+                self._ao_terminar(dav_id)
+            except Exception as e:   # nunca perde o diagnóstico já gravado
+                log.error("Fila do diagnóstico: pós-diagnóstico do DAV %s falhou: %s", dav_id,
+                          _sem_segredo(str(e)) or type(e).__name__)
 
     def _executar_padrao(self, dav_id: int) -> dict:
         # Import aqui: o playwright só carrega quando um diagnóstico roda de verdade.
@@ -127,9 +135,11 @@ class FilaDiagnostico:
         return res
 
     def _issue(self, dav: dict, res: dict) -> None:
-        """Culpa do robô com confiança alta vira issue no GitHub (só com GITHUB_TOKEN_ISSUES na VM)."""
+        """Culpa do robô com confiança alta ou média vira issue no GitHub (só com GITHUB_TOKEN_ISSUES na VM).
+
+        Confiança baixa não abre: a tela do ADM mantém o botão "Abrir issue no GitHub"."""
         token = os.environ.get("GITHUB_TOKEN_ISSUES", "")
-        if not token or res.get("culpa") != "robo" or res.get("confianca") != "alta":
+        if not token or res.get("culpa") != "robo" or res.get("confianca") not in ("alta", "media"):
             return
         from orcamento.issue_robo import registrar_issue
         try:

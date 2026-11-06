@@ -26,6 +26,8 @@ def _post(*a, **k):
     return httpx.post(*a, **k)
 
 _ASPAS = re.compile(r"""'[^']*'|"[^"]*"|“[^”]*”""")
+# Nome de tipo entre aspas é técnico: sem ele a IA adivinha ("'<texto>' object" virou "str" na #127).
+_TIPO_PYTHON = re.compile(r"NoneType|str|int|float|bool|bytes|list|dict|tuple|set|[A-Z]\w*(?:Error|Exception)")
 _DINHEIRO = re.compile(r"R\$\s*[\d.,]+")
 _NUMERO = re.compile(r"\d[\d.,/-]*")
 _MAIUSCULAS = re.compile(r"\b[A-ZÀ-Ý0-9/-]{3,}(?:\s+[A-ZÀ-Ý0-9/-]{3,}){2,}\b")  # descrição de produto
@@ -36,7 +38,7 @@ def limpar(texto, cliente: str = "") -> str:
     t = str(texto or "")
     for palavra in {w for w in re.split(r"\W+", cliente or "") if len(w) >= 4}:
         t = re.sub(re.escape(palavra), "<cliente>", t, flags=re.IGNORECASE)
-    t = _ASPAS.sub("'<texto>'", t)
+    t = _ASPAS.sub(lambda m: m.group() if _TIPO_PYTHON.fullmatch(m.group()[1:-1]) else "'<texto>'", t)
     t = _MAIUSCULAS.sub("<texto>", t)
     t = _DINHEIRO.sub("<valor>", t)
     t = _NUMERO.sub("<n>", t)
@@ -52,7 +54,8 @@ def assinatura(erro, cliente: str = "") -> str:
 def _corpo(dav: dict, diag: dict, sig: str, codigo: str) -> str:
     cliente = dav.get("cliente") or ""
     return "\n".join([
-        f"Aberta sozinha pelo agente de diagnóstico do DAV. Assinatura `{codigo}`.",
+        f"Aberta sozinha pelo agente de diagnóstico do DAV. Assinatura `{codigo}`. "
+        f"Confiança da IA: {diag.get('confianca') or 'não informada'}.",
         "", "## O que aconteceu", limpar(diag.get("causa"), cliente) or "—",
         "", "## Como possivelmente consertar", limpar(diag.get("conserto"), cliente) or "—",
         "", "## Erro (sem dados)", f"`{sig}`",

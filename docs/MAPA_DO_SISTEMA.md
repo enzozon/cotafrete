@@ -211,15 +211,17 @@ ficam em `davs/entrada/<id>.xlsx` e `davs/pdf/` (fora do git).
   `IA_LIMITE_DIA_USD` (padrão 0,30), `SMTP_USER` e `SMTP_PASSWORD` (resumo diário de erros por e-mail, `core/resumo_email.py`, às 19h pelo `atualizar.py`; destino em `RESUMO_EMAIL_PARA`). Senha e chave nunca em log, banco,
   relatório ou tela. `GITHUB_TOKEN_ISSUES` (opcional): token fine-grained só com
   Issues read/write no `enzozon/cotafrete`; com ele, diagnóstico com culpa robo e
-  confiança alta abre issue sozinho (`orcamento/issue_robo.py`, etiqueta `robo-dav`,
+  confiança alta ou média abre issue sozinho (`orcamento/issue_robo.py`, etiqueta `robo-dav`,
   no máximo 5 novas por dia, o mesmo erro vira comentário; registro em
   `davs/issues_robo.json`). O repositório é público: a issue não leva cliente,
   produto, preço nem números; os detalhes ficam no `/adm/dav/<id>`.
   O mesmo token liga a issue dos erros de cotação (`core/issue_cotacao.py`,
   chamado no `_rodar` do `web/app.py`): erro final sem frase em
   `MENSAGENS_DE_ERRO` vai uma vez por tipo para a IA (veredito em
-  `davs/erros_cotacao.json`); só bug com confiança alta abre issue com a
-  etiqueta `robo-cotacao`, no mesmo limite diário.
+  `davs/erros_cotacao.json`); só bug com confiança alta ou média abre issue com a
+  etiqueta `robo-cotacao`, no mesmo limite diário. O botão "Abrir issue no GitHub"
+  do `/adm/dav/<id>` só aparece quando a issue não abriu sozinha (confiança baixa,
+  sem token ou limite do dia).
 - IA do produto novo (`orcamento/ia.py`): NCM primeiro de memória e só com
   busca na web (US$ 0,01 por busca, entra no custo) quando o HSE não tem o
   NCM. GRUPO com o guia `orcamento/guia_grupos.txt` (o PDF "Cadastro de
@@ -465,6 +467,14 @@ interessa.
   validação transacional impede origem incerta e ciclos. Um descendente pronto
   resolve a pendência visual, preservando o erro e a contagem originais. Não
   inferir vínculos antigos por nome de arquivo ou cliente.
+- **Correção automática da IA** (`dav_ui.corrigir_sozinho`, ligada no `ao_terminar`
+  da `FilaDiagnostico`): só culpa `planilha`, confiança alta, `criados_no_hse == []`
+  e todas as correções em B30/B33 (`correcao.automaticas`). CNPJ e código de produto
+  continuam no "Aprovar correção": um dígito errado vira outro cliente ou produto que
+  passa na conferência. Cria o mesmo envio do Aprovar (`criar_envio_corrigido`), passa
+  pela conferência e espera o vendedor clicar em Gerar. Nunca gera no HSE. A coluna
+  `dav.correcao_ia` guarda campo, valor antigo e novo para o aviso ao vendedor (sem o
+  motivo, que é texto livre da IA) e impede uma segunda rodada sobre o mesmo envio.
 - **Duplicidade:** `incerto`, evidência de salvamento ou erro com número HSE
   exigem conferência antes de reenviar. A deduplicação protege também erro com
   número já persistido. Nada aqui repete geração automaticamente. O ADM consulta
