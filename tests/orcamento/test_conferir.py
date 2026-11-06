@@ -257,3 +257,18 @@ def test_codigo_de_outro_produto_avisa():
 ])
 def test_codigo_com_descricao_parecida_nao_avisa(planilha, hse):
     assert aviso_codigo_de_outro_produto(_por_codigo(planilha, hse)) is None
+
+
+@pytest.mark.parametrize("planilha,hse", [
+    ("2 caixas de A4", "PAPEL A4 C/ 10 UNID"),                      # #119
+    ("10 caixas para arquivar", "CAIXA ARQUIVO MORTO 35X25X13CM"),  # #119
+    ("2 garrafas de café 1L", "GARRAFA TERM LUMINA PRESSAO"),       # #117
+    ("6 esponjas amarelas", "ESPONJA MULTIUSO DUPLA FACE C/4"),     # #117
+    ("transformador", "TRANSF COMANDO/ISOL 440V POLUX"),            # #125
+])
+def test_plural_a4_e_abreviacao_nao_sao_outro_produto(planilha, hse):
+    assert aviso_codigo_de_outro_produto(_por_codigo(planilha, hse)) is None
+
+
+def test_produto_diferente_continua_avisando():
+    assert aviso_codigo_de_outro_produto(_por_codigo("Kindle", "E-READER XTEINK X3 16GB"))

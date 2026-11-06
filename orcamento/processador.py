@@ -233,6 +233,8 @@ def cliente_parecido(doc: str, hse: HseApi) -> Cliente | None:
 
 def resolver_cliente(chave: str, hse: HseApi) -> tuple[Cliente | None, str | None]:
     doc = _so_digitos(chave)
+    if len(doc) in (12, 13) and cnpj_valido(doc.zfill(14)):  # o Excel corta o zero à esquerda (#105, #123)
+        chave = doc = doc.zfill(14)
     achados = {c.codigo: c for c in hse.buscar_cliente(chave)
                if c.codigo == chave or (len(doc) >= 11 and _so_digitos(c.documento) == doc)}
     if len(achados) == 1:
@@ -632,8 +634,17 @@ def _aviso_descricao(r: Resolucao) -> str | None:
 
 
 def _palavras(texto: str) -> set[str]:
-    return {w for w in re.findall(r"[A-Z0-9]+", normalizar(texto))
-            if len(w) >= 3 and not w.isdigit() and w not in ("COM", "SEM", "PARA")}
+    """Singular das palavras da descrição; A4 e parecidos contam, mesmo com 2 letras (#119)."""
+    palavras = {w for w in re.findall(r"[A-Z0-9]+", normalizar(texto))
+                if (len(w) >= 3 or re.fullmatch(r"[A-Z]\d", w)) and not w.isdigit()
+                and w not in ("COM", "SEM", "PARA")}
+    return {w[:-1] if len(w) > 3 and w.endswith("S") else w for w in palavras}
+
+
+def _tem_em_comum(a: set[str], b: set[str]) -> bool:
+    """Palavra igual ou abreviada a partir de 5 letras: TRANSF é TRANSFORMADOR (#125)."""
+    return bool(a & b) or any(len(x) >= 5 and len(y) >= 5 and (x.startswith(y) or y.startswith(x))
+                              for x in a for y in b)
 
 
 def aviso_codigo_de_outro_produto(r: Resolucao) -> str | None:
@@ -643,7 +654,7 @@ def aviso_codigo_de_outro_produto(r: Resolucao) -> str | None:
     if r.erro or r.por != "codigo" or r.produto is None:
         return None
     planilha = _palavras(r.item.produto)
-    if not planilha or planilha & _palavras(r.produto.descricao):
+    if not planilha or _tem_em_comum(planilha, _palavras(r.produto.descricao)):
         return None
     return (f"Item {r.item.numero}: a descrição '{r.item.produto[:60]}' não parece com a do código "
             f"{r.produto.codigo} – {r.produto.descricao}; confira se o código está certo")
