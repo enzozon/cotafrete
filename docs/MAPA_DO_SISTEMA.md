@@ -289,7 +289,10 @@ ficam em `davs/entrada/<id>.xlsx` e `davs/pdf/` (fora do git).
   BASE.xlsx` + `public/vendor/template_planilha_base.js` (base64) do Maestro e
   a pasta pública `\\SERVIDOR2\Publico\ENZO\ORCAMENTO`. Grave o modelo pelo XML
   (o openpyxl apaga as listas suspensas x14) e mantenha a aba protegida com as
-  células de digitação desbloqueadas.
+  células de digitação desbloqueadas. As regras de digitação ficam em
+  `scripts/validacoes_modelo.py`: barra o que o robô recusaria e só avisa no que
+  vem do HSE (vendedor, parcelamento, grupo, marca). Colar por cima passa pela
+  validação do Excel; quem pega é a conferência do robô.
 
 ---
 
