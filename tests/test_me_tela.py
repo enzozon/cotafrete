@@ -528,3 +528,19 @@ def test_limpar_so_exclui_anexo_que_o_robo_subiu(cliente, monkeypatch):
     me_ui.banco.me_registrar(cid, "aviso do robô", "anexado no ME: Tecnica.pdf em Proposta técnica", "enzo")
     cliente.post(f"/me/{cid}/limpar")
     assert limpador.anexos == ["Tecnica.pdf"]
+
+
+def test_campo_de_marca_vazio_ganha_o_botao_com_a_marca_da_descricao(cliente):
+    """P2 #23: só sugere. O campo continua vazio até o vendedor clicar."""
+    cid = me_ui.banco.me_criar("ventura", 77, status="pendente")
+    me_ui.banco.me_gravar_itens_do_me(cid, [
+        {"numero": 10, "pagina": 1, "indice": 1, "descricao": "ROLAMENTO Marca Bortolini",
+         "quantidade": "1", "unidade": "UN"},
+        {"numero": 20, "pagina": 1, "indice": 2, "descricao": "CORREIA Marca Gates",
+         "quantidade": "1", "unidade": "UN"}])
+    me_ui.banco.me_gravar_entrada(cid, 20, marca="Dayco")
+
+    html = cliente.get(f"/me/{cid}").text
+
+    assert 'data-marca="Bortolini"' in html and 'name="marca_10" value=""' in html
+    assert "data-marca=\"Gates\"" not in html

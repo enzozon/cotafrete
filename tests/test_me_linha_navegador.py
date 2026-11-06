@@ -94,3 +94,25 @@ def test_escolher_a_origem_completa_a_linha(servidor):
         PRINTS.mkdir(parents=True, exist_ok=True)
         pg.screenshot(path=str(PRINTS / "me_linha_completa.png"), full_page=True)
         nav.close()
+
+
+def test_botao_da_marca_sugerida_preenche_o_campo(servidor, tmp_path):
+    from playwright.sync_api import expect, sync_playwright
+    from web import me_ui
+    base, _, cookie, nome = servidor
+    cid = me_ui.banco.me_criar("ventura", 77, status="pendente")
+    me_ui.banco.me_gravar_itens_do_me(cid, [
+        {"numero": 10, "pagina": 1, "indice": 1, "descricao": "ROLAMENTO Marca Bortolini",
+         "quantidade": "1", "unidade": "UN"}])
+    with sync_playwright() as p:
+        nav = p.chromium.launch()
+        pg = nav.new_page()
+        pg.context.add_cookies([{"name": nome, "value": cookie, "url": base}])
+        pg.goto(f"{base}/me/{cid}")
+        expect(pg.locator("input[name=marca_10]")).to_have_value("")
+
+        pg.click("[data-marca]")
+
+        expect(pg.locator("input[name=marca_10]")).to_have_value("Bortolini")
+        expect(pg.locator("[data-marca]")).to_have_count(0)
+        nav.close()

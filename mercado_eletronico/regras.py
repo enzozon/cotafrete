@@ -91,6 +91,29 @@ def aviso_marca(marca: str, textos_do_comprador: list[str]) -> str | None:
             "pedido — confira se é a marca pedida.")
 
 
+# A palavra depois de "marca" que não é nome de marca.
+_NAO_E_MARCA = frozenset("""
+A AO AS O OS DA DE DO DAS DOS E OU NA NO EM COM SEM PARA POR QUE NAO
+SIMILAR SIMILARES EQUIVALENTE EQUIVALENTES EXCLUSIVA EXCLUSIVAMENTE
+NACIONAL IMPORTADA ORIGINAL PROPRIA REFERENCIA REFERENCIAL SUGERIDA
+PREFERENCIAL HOMOLOGADA APROVADA DEFINIDA CONFORME MODELO TIPO QUALQUER
+OUTRA MESMA ESTA ESSA NENHUMA
+""".split())
+_RE_MARCA_CITADA = re.compile(r"(?<![^\W\d_])marca(?:\s*[:=-]\s*|\s+)(\w[\w&.-]*)", re.IGNORECASE)
+
+
+def marca_citada(textos: list[str | None]) -> str | None:
+    """A palavra depois de "Marca" no pedido (P2 #23), para sugerir no campo
+    vazio. Só a primeira palavra: quem confere e aceita é o vendedor."""
+    for texto in textos:
+        for achado in _RE_MARCA_CITADA.finditer(texto or ""):
+            marca = achado.group(1).rstrip(".-")
+            if (marca and not marca.isdigit() and len(marca) <= MAX_MARCA
+                    and _sem_acento(marca) not in _NAO_E_MARCA):
+                return marca
+    return None
+
+
 def nao_atendemos(empresa: str | None) -> bool:
     nome = _sem_acento(empresa or "")
     return any(re.search(rf"\b{c}\b", nome) for c in CLIENTES_NAO_ATENDIDOS)

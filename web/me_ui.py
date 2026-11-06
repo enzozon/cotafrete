@@ -1153,6 +1153,10 @@ def ver(cid: int, request: Request, msg: str = ""):
                f'class="me-ref"{trava}>' if "ref_fabricante" in exige_de(c) else "")
         local = (f'<span class="me-local">entrega em {e(i["local_entrega"])}</span>'
                  if i.get("local_entrega") else "")
+        citada = None if i["marca"] else rg.marca_citada(
+            [i["descricao"], i["obs_comprador"], i["campos_adicionais"]])
+        sugestao = (f'<button type="button" class="botao2 me-mini" data-marca="{e(citada)}"'
+                    f'{trava}>usar {e(citada)}</button>' if citada else "")
         linhas += f"""<tr data-item="{n}">
 <td><b>{n}</b></td>
 <td class="me-desc"><b>{e(i['descricao'])}</b><br><small>{e(i['quantidade'])} {e(i['unidade'])} · {e(pedido)}</small>{local}
@@ -1160,7 +1164,7 @@ def ver(cid: int, request: Request, msg: str = ""):
 <td><input name="preco_{n}" value="{e(i['preco'] or '')}" inputmode="decimal" placeholder="0,00"{trava}></td>
 <td><input name="ncm_{n}" value="{e(i['ncm'] or '')}" maxlength="10" placeholder="8 dígitos"{trava}>{_etiqueta_ncm(i)}</td>
 <td><input name="prazo_{n}" value="{e(i['prazo_dias'] or '')}" inputmode="numeric" data-copiar="prazo"{trava}></td>
-<td><input name="marca_{n}" value="{e(i['marca'] or '')}" maxlength="{rg.MAX_MARCA}" data-copiar="marca"{trava}>{ref}</td>
+<td><input name="marca_{n}" value="{e(i['marca'] or '')}" maxlength="{rg.MAX_MARCA}" data-copiar="marca"{trava}>{sugestao}{ref}</td>
 <td><input name="obs_{n}" value="{e(i['obs'] or '')}" maxlength="{MAX_OBS}"{trava}></td>
 <td><select name="origem_{n}" data-copiar="origem"{trava}>{_opcoes_origem(i['origem'])}</select>
 <button type="button" class="botao2 me-mini" data-anterior{trava}>↑ copiar anterior</button></td>
@@ -1251,6 +1255,10 @@ def ver(cid: int, request: Request, msg: str = ""):
 document.querySelectorAll("[data-aplicar]").forEach(b => b.addEventListener("click", () => {{
   const campos = [...document.querySelectorAll(`[data-copiar="${{b.dataset.aplicar}}"]`)];
   campos.slice(1).forEach(c => {{ c.value = campos[0].value; mudou(c); }});
+}}));
+document.querySelectorAll("[data-marca]").forEach(b => b.addEventListener("click", () => {{
+  const c = b.closest("td").querySelector('[data-copiar="marca"]');
+  c.value = b.dataset.marca; mudou(c); b.remove();
 }}));
 document.querySelectorAll("[data-anterior]").forEach(b => b.addEventListener("click", () => {{
   const tr = b.closest("tr"); let ant = tr.previousElementSibling;
