@@ -106,3 +106,24 @@ def test_rodar_so_chama_issue_para_erro_sem_frase(monkeypatch):
     assert chamadas == []
     app._issue_se_novo(1, "camilo", "KeyError: 'preco'", "carriers/camilo/adapter.py:9 (ler)")
     assert chamadas and chamadas[0][1:] == (1, "camilo", "KeyError: 'preco'", "carriers/camilo/adapter.py:9 (ler)")
+
+
+def test_ia_ve_o_call_log_e_duvida_nao_fica_guardada(tmp_path):
+    erro = ("TimeoutError: Locator.click: Timeout 45000ms exceeded.\nCall log:\n  - waiting for button\n"
+            "  - <div class=\"oferta\">...</div> intercepts pointer events")
+    gh = Github()
+    chamar = ia(e_bug=False, confianca="baixa", causa="Timeout sem detalhe.")
+    assert issue_cotacao.registrar(tmp_path, 1, "jadlog", erro, "", "tok", cfg(tmp_path), chamar, gh, AGORA) is None
+    assert "intercepts pointer events" in chamar.chamadas[0]
+    assert not (tmp_path / "erros_cotacao.json").exists()   # a próxima ocorrência pergunta de novo
+    assert issue_cotacao.registrar(tmp_path, 2, "jadlog", erro, "", "tok", cfg(tmp_path), ia(confianca="alta"), gh, AGORA)
+    assert len(gh.chamadas) == 1
+
+
+def test_duvida_que_ja_estava_no_arquivo_pergunta_de_novo(tmp_path):
+    erro = "TimeoutError: Locator.click: Timeout 45000ms exceeded."
+    sig = f"jadlog: {issue_cotacao.issue_robo.assinatura(erro)}"
+    (tmp_path / "erros_cotacao.json").write_text(json.dumps({issue_cotacao.issue_robo.codigo_de(sig): {
+        "e_bug": False, "confianca": "baixa", "causa": "x", "conserto": ""}}), encoding="utf-8")
+    gh = Github()
+    assert issue_cotacao.registrar(tmp_path, 1, "jadlog", erro, "", "tok", cfg(tmp_path), ia(), gh, AGORA)

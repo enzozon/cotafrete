@@ -235,3 +235,44 @@ def test_motivo_da_recusa_so_quando_a_jadlog_diz_cep_nao_encontrado(status, corp
     assert bool(motivo) is recusa
     if recusa:
         assert "CEP" in motivo and "cote pelas outras" in motivo
+
+
+OFERTA = """<button style="position:fixed;bottom:0;left:50%">Calcular Envio</button>
+<div id="oferta" style="position:fixed;inset:0;background:#000"><div><b>11.11</b></div></div>"""
+
+
+def test_oferta_na_frente_do_botao_nao_trava_o_calculo(navegador, adapter):
+    # Cotação #630 (06/11/2026): a oferta "11.11" cobriu o botão e o clique esperou 45 s.
+    page = navegador.new_page()
+    page.set_content(OFERTA + "<script>document.querySelector('button').onclick="
+                                   "()=>document.title='clicou'</script>")
+    adapter._clicar_calcular(page)
+    assert page.title() == "clicou"
+
+
+def test_oferta_que_entra_depois_da_primeira_olhada(navegador, adapter, monkeypatch):
+    monkeypatch.setattr("carriers.jadlog.painel.ESPERA_CLIQUE_CALCULAR_MS", 300)
+    page = navegador.new_page()
+    page.set_content("""<button onclick="document.title='clicou'">Calcular Envio</button>""")
+    real = adapter._tirar_da_frente
+    vezes = []
+
+    def com_oferta_atrasada(botao):
+        vezes.append(1)
+        if len(vezes) == 1:
+            r = real(botao)
+            botao.page.evaluate("""() => { const d = document.createElement('div');
+                d.style = 'position:fixed;inset:0;background:#000'; document.body.append(d); }""")
+            return r
+        return real(botao)
+    monkeypatch.setattr(adapter, "_tirar_da_frente", com_oferta_atrasada)
+    adapter._clicar_calcular(page)
+    assert page.title() == "clicou" and len(vezes) == 2
+
+
+def test_nada_na_frente_nao_esconde_nada(navegador, adapter):
+    page = navegador.new_page()
+    page.set_content("<button>Calcular Envio</button><div id='x' style='position:fixed;top:0;left:0'>a</div>")
+    botao = page.get_by_role("button", name="Calcular Envio").first
+    assert adapter._tirar_da_frente(botao) is False
+    assert page.locator("#x").is_visible()
