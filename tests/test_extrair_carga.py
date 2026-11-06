@@ -216,3 +216,23 @@ def test_a_tela_preenche_o_formulario_de_verdade(cliente, prov):
     assert fob and destaque == 9
     assert "45 kg ÷ 3 volumes = 15 kg" in aviso and "CEP de origem" in aviso
     assert cotou == []   # preencher nunca cota
+
+
+def test_formulario_mostra_o_aviso_da_ia_na_hora_e_trava_o_botao():
+    """P2 #24. O preventDefault segura a página como a IA demorando."""
+    sync = pytest.importorskip("playwright.sync_api")
+    from web.app import JS_ESPERA_IA
+    html = ('<form method="post" action="/x" data-ia-espera="A IA está escrevendo…">'
+            '<button type="submit">Ir</button><span role="status"></span></form>' + JS_ESPERA_IA
+            + "<script>document.forms[0].addEventListener('submit', e => e.preventDefault())</script>")
+
+    with sync.sync_playwright() as pw:
+        b = pw.chromium.launch()
+        pg = b.new_page()
+        pg.route("**/*", lambda route: route.fulfill(
+            status=200, content_type="text/html; charset=utf-8", body=html))
+        pg.goto("http://cotafrete.teste/")
+        pg.click("button")
+        sync.expect(pg.locator("[role=status]")).to_have_text("A IA está escrevendo…")
+        sync.expect(pg.locator("button")).to_be_disabled()
+        b.close()

@@ -95,3 +95,43 @@ def test_falha_nao_e_pedida_de_novo_a_cada_abertura(monkeypatch, conectar):
     assert ex.explicar_em_fundo(conectar, "camilo", "Camilo", TIMEOUT) is False
     monkeypatch.setattr(ex, "ESPERA_FALHA_S", 0)
     assert ex.explicar_em_fundo(conectar, "camilo", "Camilo", TIMEOUT) is True
+
+
+def test_explicacao_fica_pendente_so_enquanto_a_thread_roda(monkeypatch, conectar):
+    import threading
+    solta = threading.Event()
+    monkeypatch.setattr(ex, "LIGADA", True)
+    monkeypatch.setattr(ex, "_pedidos", {})
+    monkeypatch.setattr(ia, "configurada", lambda: True)
+    monkeypatch.setattr(ex, "explicar", lambda *a: solta.wait(5))
+
+    ex.explicar_em_fundo(conectar, "camilo", "Camilo", TIMEOUT)
+    assert ex.pendente("camilo", TIMEOUT)
+
+    solta.set()
+    for t in threading.enumerate():
+        if t.name == "explicar-erro":
+            t.join(5)
+    assert not ex.pendente("camilo", TIMEOUT)
+
+
+def test_tela_recarrega_em_10_s_enquanto_a_explicacao_esta_pendente(monkeypatch, tmp_path):
+    from fastapi.testclient import TestClient
+
+    from core.banco import Banco
+    from tests.apoio import entrar
+    from tests.test_web_cotacao import CARGA
+    from web import app as modulo
+    monkeypatch.setattr(modulo, "banco", Banco(tmp_path / "t.db"))
+    monkeypatch.setattr(modulo, "TENTATIVAS_EM_CURSO", {})
+    monkeypatch.setattr(modulo, "AUTOMATICAS", ("camilo",))
+    cli = TestClient(modulo.app)
+    entrar(cli, modulo)
+    cid = modulo.banco.salvar_cotacao("enzo", CARGA)
+    modulo.banco.salvar_resultado(cid, "camilo", status="erro", erro="erro nunca visto")
+    recarga = '<meta http-equiv="refresh" content="10">'
+
+    assert recarga not in cli.get(f"/cotacao/{cid}").text
+
+    monkeypatch.setattr(ex, "_em_curso", {ex.chave("camilo", "erro nunca visto")})
+    assert recarga in cli.get(f"/cotacao/{cid}").text

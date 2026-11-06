@@ -137,6 +137,10 @@ reais. `core/explicar_erro.py` (frase do erro, sem número),
 `core/resposta_cliente.py` (cada preço igual ao do banco) e
 `core/busca_historico.py` (só filtros da lista fechada). Nos testes, o que
 chama a IA sozinho fica desligado em `tests/conftest.py`.
+Quem tem gente esperando passa `limite_s=ia.LIMITE_TELA_S` (40 s no pedido
+inteiro). Formulário que espera a IA leva `data-ia-espera` (`JS_ESPERA_IA` em
+`web/app.py`). A cotação recarrega de 10 em 10 s enquanto
+`explicar_erro.pendente` diz que a frase do erro está sendo escrita.
 
 ### Para ligar uma transportadora nova
 

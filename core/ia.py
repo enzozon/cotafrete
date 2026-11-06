@@ -68,6 +68,10 @@ COM_ESQUEMA = {
 }
 
 TIMEOUT_S = 90
+# Teto do pedido inteiro quando tem gente olhando a tela (quem está em segundo
+# plano fica sem teto). httpx conta o tempo entre pacotes, não o total: a
+# resposta sem streaming chega de uma vez, então na prática é o total.
+LIMITE_TELA_S = 40
 # Quanto tempo cada tipo de falha deixa o modelo de fora.
 CASTIGO_LIMITE_S = 60          # 429 sem dizer quanto esperar
 CASTIGO_FORA_DO_AR_S = 120     # 5xx, timeout, rede
@@ -125,12 +129,12 @@ def _ate_meia_noite_utc() -> float:
 
 
 # ------------------------------------------------------------------ chamada
-def _post(url: str, chave: str, corpo: dict, provedor: str):
+def _post(url: str, chave: str, corpo: dict, provedor: str, timeout: float = TIMEOUT_S):
     import httpx
     cab = {"Authorization": f"Bearer {chave}", "Content-Type": "application/json"}
     if provedor == "openrouter":   # identificação opcional pedida pelo OpenRouter
         cab |= {"HTTP-Referer": "https://cotafrete.local", "X-Title": "Cotafrete"}
-    return httpx.post(url, headers=cab, json=corpo, timeout=TIMEOUT_S)
+    return httpx.post(url, headers=cab, json=corpo, timeout=timeout)
 
 
 POST: Callable[..., Any] = _post              # os testes trocam por um falso
@@ -197,14 +201,19 @@ def _motivo_http(r) -> tuple[float, str]:
 
 def completar_json(sistema: str, pedido: str, esquema: dict | None = None, *,
                    funcao: str = "", validar: Callable[[Any], Any] | None = None,
-                   max_tokens: int = 4000) -> Resposta:
+                   max_tokens: int = 4000, limite_s: float | None = None) -> Resposta:
     """Pede um JSON ao primeiro modelo livre da cadeia; falhou, o próximo.
 
     `validar(dados)` confere o formato e pode devolver os dados já limpos;
     levantar ali = resposta ruim = próximo modelo. `funcao` é só o rótulo do
-    registro ("revisão ME", ...)."""
+    registro ("revisão ME", ...). `limite_s` é o teto do pedido inteiro, somando
+    os modelos; estourou, levanta IAIndisponivel como se todos tivessem falhado."""
     tentativas: list[str] = []
     inicio = agora()
+
+    def prazo() -> float:
+        return TIMEOUT_S if limite_s is None else min(TIMEOUT_S, limite_s - (agora() - inicio))
+
     for modelo in cadeia():
         provedor, modelo_id = modelo.split(":", 1)
         base, var = PROVEDORES[provedor]
@@ -216,17 +225,22 @@ def completar_json(sistema: str, pedido: str, esquema: dict | None = None, *,
         if fora:
             tentativas.append(f"{modelo}: {fora[1]} (volta em {int(fora[0] - agora())} s)")
             continue
+        if prazo() <= 0:
+            tentativas.append(f"tempo esgotado ({limite_s} s)")
+            break
         estrito = bool(esquema) and modelo in COM_ESQUEMA
         t0 = agora()
         try:
             r = POST(f"{base}/chat/completions", chave,
-                     _corpo(modelo_id, sistema, pedido, esquema, estrito, max_tokens), provedor)
+                     _corpo(modelo_id, sistema, pedido, esquema, estrito, max_tokens), provedor,
+                     prazo())
             if r.status_code == 400 and estrito:
                 # O provedor recusou o esquema estrito (regra dele mudou, ou o
                 # esquema tem algo que ele não aceita): mesma pergunta com o
                 # esquema no texto, antes de desistir do modelo.
                 r = POST(f"{base}/chat/completions", chave,
-                         _corpo(modelo_id, sistema, pedido, esquema, False, max_tokens), provedor)
+                         _corpo(modelo_id, sistema, pedido, esquema, False, max_tokens), provedor,
+                         max(1, prazo()))
         except Exception as exc:          # rede, timeout
             _castigar(modelo, CASTIGO_FORA_DO_AR_S, f"sem resposta ({type(exc).__name__})")
             tentativas.append(f"{modelo}: sem resposta ({type(exc).__name__})")

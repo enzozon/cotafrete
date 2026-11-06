@@ -498,7 +498,7 @@ def _sem_acento(texto: str) -> str:
 
 def _explicacao_ia(slug: str, erro: str | None) -> str | None:
     """A frase que a IA escreveu para este TIPO de erro (core/explicar_erro).
-    Ainda não tem: pede em segundo plano e mostra na próxima abertura."""
+    Ainda não tem: pede em segundo plano e a tela recarrega sozinha."""
     if not erro:
         return None
     try:
@@ -1108,6 +1108,22 @@ def colar_pedido() -> str:
 </details>"""
 
 
+# Formulário que espera a IA: o navegador segura a página antiga até a resposta,
+# então o aviso aparece na hora sem fila nem job. Voltar no navegador reabre a
+# página como estava: o pageshow solta o botão.
+JS_ESPERA_IA = """<script>
+(() => {
+  const forms = [...document.querySelectorAll('form[data-ia-espera]')];
+  const marcar = (f, esperando) => {
+    f.querySelector('button[type=submit]').disabled = esperando;
+    f.querySelector('[role=status]').textContent = esperando ? f.dataset.iaEspera : '';
+  };
+  forms.forEach(f => f.addEventListener('submit', () => marcar(f, true)));
+  addEventListener('pageshow', () => forms.forEach(f => marcar(f, false)));
+})();
+</script>"""
+
+
 # Fora da f-string do formulário para não dobrar as chaves do JavaScript.
 JS_COLAR_PEDIDO = """<script>
 (() => {
@@ -1119,7 +1135,7 @@ JS_COLAR_PEDIDO = """<script>
   botao.addEventListener('click', async () => {
     const texto = document.getElementById('ia-texto').value;
     botao.disabled = true; saida.innerHTML = '';
-    status.textContent = 'Lendo o pedido… (alguns segundos)';
+    status.textContent = 'A IA está escrevendo…';
     try {
       const r = await fetch('/extrair', {method: 'POST', headers: {'Content-Type': 'application/json'},
                                          body: JSON.stringify({texto})});
@@ -1928,10 +1944,11 @@ def _tela_resposta(cotacao_id: int, usuario: str | None, mensagem: str = "",
         except ia.IAIndisponivel:
             nota = "A IA não deu um texto que passasse na conferência dos preços. Use o padrão abaixo."
     botao_ia = ("" if not (ops and ia.configurada()) else f"""
-<form method="post" action="/resposta/{cotacao_id}">
+<form method="post" action="/resposta/{cotacao_id}" data-ia-espera="A IA está escrevendo…">
   <p><b>Mensagem do cliente</b> (opcional — a IA escreve no mesmo tom):</p>
   <textarea name="mensagem" rows="4" style="width:100%">{e(mensagem)}</textarea>
-  <p><button class="botao2" type="submit">Reescrever com IA</button></p>
+  <p><button class="botao2" type="submit">Reescrever com IA</button>
+  <span class="sub" role="status" aria-live="polite"></span></p>
 </form>""")
     return HTMLResponse(pagina(f"Resposta — cotação {cotacao_id}", f"""
 {cabecalho("Resposta para o cliente", tarja=f"Cotação #{cotacao_id}",
@@ -1949,7 +1966,7 @@ function copiar() {{
   try {{ document.execCommand('copy'); }} catch (erro) {{ }}
   window.getSelection().removeAllRanges();
 }}
-</script>""", usuario))
+</script>{JS_ESPERA_IA}""", usuario))
 
 
 def _url_formulario_dv(c: dict) -> str:
@@ -2558,8 +2575,14 @@ def ver_cotacao(cotacao_id: int,
     dv_enviando = (dv_r is not None
                    and dv_r["status"] == StatusCotacao.ENVIANDO.value
                    and not _envio_expirou(dv_r))
+    # A frase do erro ainda está sendo escrita em segundo plano: mostra sem o
+    # vendedor precisar abrir de novo.
+    explicando = any(r["erro"] and explicar_erro.pendente(r["transportadora"], r["erro"])
+                     for r in c["resultados"])
     if (faltam and not desistiu) or dv_enviando:
         recarrega = '<meta http-equiv="refresh" content="3">'
+    elif explicando:
+        recarrega = '<meta http-equiv="refresh" content="10">'
     elif esperando_proposta:
         recarrega = '<meta http-equiv="refresh" content="20">'
     else:
@@ -3222,6 +3245,7 @@ def historico(request: Request, usuario: str | None = Depends(vendedor)):
         return achou
     cotacoes, filtros, aviso = achou
     q = request.query_params.get("q", "")
+    busca_ia = ' data-ia-espera="A IA está lendo a busca…"' if ia.configurada() else ""
     linhas = ""
     for c in cotacoes:
         # Sem preço nenhum: o travessão perde o verde lá no CSS. Verde é
@@ -3248,10 +3272,11 @@ def historico(request: Request, usuario: str | None = Depends(vendedor)):
            sub="Clique numa linha para ver o preço de cada transportadora.",
            acoes='<a class="botao2" href="/">Nova cotação</a>')}
 <div class="cartao">
-<form method="get" action="/historico">
+<form method="get" action="/historico"{busca_ia}>
   <input name="q" value="{e(q)}" style="width:70%"
          placeholder="Buscar: cotações para Anchieta acima de 100 kg em agosto">
   <button class="botao2" type="submit">Buscar</button>
+  <span class="sub" role="status" aria-live="polite"></span>
 </form>
 {_chips_busca(filtros, q)}{f'<p class="sub">{e(aviso)}</p>' if aviso else ''}
 <div class="rolagem-r"><table>
@@ -3270,4 +3295,4 @@ document.querySelectorAll("tr[data-abrir]").forEach(tr =>
     if (ev.target.closest("a")) return;
     location = tr.dataset.abrir;
   }}));
-</script>""", usuario))
+</script>{JS_ESPERA_IA}""", usuario))

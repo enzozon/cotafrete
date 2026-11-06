@@ -149,4 +149,4 @@ def pedir(c: dict, ops: list[dict], mensagem_do_cliente: str = "") -> ia.Respost
              "mensagem_do_cliente": (mensagem_do_cliente or "")[:2000]}
     return ia.completar_json(SISTEMA, json.dumps(dados, ensure_ascii=False, indent=1),
                              ESQUEMA, funcao=FUNCAO, validar=_validador(c, ops),
-                             max_tokens=1200)
+                             max_tokens=1200, limite_s=ia.LIMITE_TELA_S)

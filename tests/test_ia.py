@@ -8,11 +8,12 @@ contador, para provar o castigo e a volta aos melhores sem esperar de verdade.
 from __future__ import annotations
 
 import json
+from datetime import date
 from types import SimpleNamespace
 
 import pytest
 
-from core import ia
+from core import busca_historico, explicar_erro, extrair_carga, ia, resposta_cliente
 
 CADEIA = "groq:melhor,openrouter:segundo:free,groq:terceiro"
 
@@ -33,9 +34,14 @@ class Provedor:
     def __init__(self):
         self.roteiro: dict[str, list[Resp]] = {}
         self.pedidos: list[tuple[str, str, dict]] = []
+        self.prazos: list[float] = []
+        self.demora = 0
 
-    def __call__(self, url, chave, corpo, provedor):
+    def __call__(self, url, chave, corpo, provedor, timeout=None):
         self.pedidos.append((provedor, corpo["model"], corpo))
+        self.prazos.append(timeout)
+        if self.demora:
+            self.relogio.t += self.demora
         fila = self.roteiro.get(corpo["model"])
         if fila:
             return fila.pop(0) if len(fila) > 1 else fila[0]
@@ -214,3 +220,37 @@ def test_corpo_no_formato_openai():
     assert c["model"] == "openai/gpt-oss-120b" and c["max_tokens"] == 4000
     assert [m["role"] for m in c["messages"]] == ["system", "user"]
     assert c["response_format"]["type"] == "json_schema"
+
+
+def test_limite_total_corta_a_cadeia_e_encurta_a_ultima_espera(prov):
+    """Com gente olhando a tela: 40 s no pedido inteiro, não 90 s por modelo."""
+    prov.demora = 25
+    prov.roteiro = {m: [Resp(500)] for m in ("melhor", "segundo:free", "terceiro")}
+
+    with pytest.raises(ia.IAIndisponivel, match="tempo esgotado"):
+        ia.completar_json("sis", "p", limite_s=40)
+
+    assert prov.prazos == [40, 15]          # o terceiro nem foi chamado
+
+
+def test_sem_limite_cada_modelo_tem_o_prazo_inteiro(prov):
+    ia.completar_json("sis", "p")
+    assert prov.prazos == [ia.TIMEOUT_S]
+
+
+@pytest.mark.parametrize("chamar", [
+    lambda: extrair_carga.extrair("Pedido de frete para Vitória, 10 kg"),
+    lambda: busca_historico.interpretar("acima de 100 kg", date(2026, 11, 6), {}),
+    lambda: explicar_erro.pedir("Camilo", "erro"),
+    lambda: resposta_cliente.pedir({}, []),
+])
+def test_quem_tem_tela_esperando_usa_o_limite(prov, chamar, monkeypatch):
+    monkeypatch.setattr(resposta_cliente, "_rota", lambda c: "")
+    monkeypatch.setattr(resposta_cliente, "_carga", lambda c: "")
+    monkeypatch.setattr(resposta_cliente, "_validador", lambda c, ops: None)
+    prov.roteiro = {m: [Resp(500)] for m in ("melhor", "segundo:free", "terceiro")}
+
+    with pytest.raises(ia.IAIndisponivel):
+        chamar()
+
+    assert prov.prazos[0] == ia.LIMITE_TELA_S
