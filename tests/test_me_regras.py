@@ -286,6 +286,29 @@ def test_jeitos_de_dizer_nao_aceita_similar(frase):
     assert R.exige_marca_exata(frase)
 
 
+@pytest.mark.parametrize("frase", [
+    "Não aceitamos equivalente", "NÃO ACEITAMOS EQUIVALENTES",
+    "Não será aceito produto equivalente", "sem equivalente",
+    "Somente marca Bortolini", "SOMENTE DA MARCA WEG", "Apenas marca SKF",
+    "Somente a marca 3M"])
+def test_equivalente_e_somente_marca_tambem_exigem_a_marca(frase):
+    assert R.exige_marca_exata(frase)
+
+
+@pytest.mark.parametrize("frase", [
+    "Referência WEG ou equivalente", "Aceitamos equivalente técnico",
+    "Somente marcas homologadas", "Somente com nota fiscal"])
+def test_frases_que_nao_exigem_a_marca(frase):
+    assert not R.exige_marca_exata(frase)
+
+
+def test_somente_marca_x_avisa_marca_diferente_e_aceita_a_pedida():
+    pedido = ["Motor 5 CV. Somente marca WEG."]
+
+    assert R.aviso_marca("Voges", pedido)
+    assert R.aviso_marca("weg", pedido) is None
+
+
 def test_aceita_similar_nao_e_exigencia():
     assert not R.exige_marca_exata("Aceita-se similar de qualidade igual ou superior")
 

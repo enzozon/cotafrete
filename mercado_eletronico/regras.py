@@ -63,11 +63,13 @@ def _sem_acento(texto: str) -> str:
                    if not unicodedata.combining(c)).upper()
 
 
-# "NÃO SERÃO ACEITAS MARCAS SIMILARES" (Samarco), "sem similar", "marca
-# exclusiva". Roda sobre o texto já sem acento e em maiúsculas.
+# "NÃO SERÃO ACEITAS MARCAS SIMILARES" (Samarco), "não aceitamos equivalente",
+# "sem similar", "marca exclusiva", "somente marca X". "ou equivalente" sozinho
+# é o contrário: aceita. Roda sobre o texto já sem acento e em maiúsculas.
 _RE_SEM_SIMILAR = re.compile(
-    r"\bNAO\s+(?:SERAO|SERA|SE)?\s*ACEIT\w*\s+(?:\w+\s+){0,2}SIMILAR"
-    r"|\bSEM\s+SIMILAR\b|\bMARCA\s+EXCLUSIVA\b")
+    r"\bNAO\s+(?:SERAO|SERA|SE)?\s*ACEIT\w*\s+(?:\w+\s+){0,2}(?:SIMILAR|EQUIVALENTE)"
+    r"|\bSEM\s+(?:SIMILAR|EQUIVALENTE)\b|\bMARCA\s+EXCLUSIVA\b"
+    r"|\b(?:SOMENTE|APENAS)\s+(?:DA\s+|A\s+)?MARCA\b")
 
 
 def exige_marca_exata(texto: str) -> bool:
