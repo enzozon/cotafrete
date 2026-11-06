@@ -142,7 +142,7 @@ async def _vida(_app):
 app = FastAPI(title="Cotafrete — Ventura", lifespan=_vida)
 banco = Banco()
 # Fila do Gerar DAV: a thread só nasce no primeiro DAV (nada sobe no import).
-FILA_DIAGNOSTICO = FilaDiagnostico(banco, Path("davs"))
+FILA_DIAGNOSTICO = FilaDiagnostico(banco, Path("davs"), ao_terminar=lambda i: dav_ui.corrigir_sozinho(i))
 
 
 def _diagnosticar_se_falhou(dav_id: int) -> None:

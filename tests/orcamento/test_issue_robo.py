@@ -53,7 +53,7 @@ def test_limite_de_issues_novas_por_dia(tmp_path):
     assert urls[5:] == [None, None] and len(gh.chamadas) == 5
 
 
-def test_fila_so_abre_issue_com_token_e_culpa_do_robo_alta(tmp_path, monkeypatch):
+def test_fila_so_abre_issue_com_token_e_culpa_do_robo(tmp_path, monkeypatch):
     chamadas = []
     monkeypatch.setattr(issue_robo, "registrar_issue", lambda *a, **k: chamadas.append(a) or "https://github.com/x/1")
     fila = FilaDiagnostico(banco=None, pasta=tmp_path)
@@ -61,7 +61,7 @@ def test_fila_so_abre_issue_com_token_e_culpa_do_robo_alta(tmp_path, monkeypatch
     fila._issue(DAV, res := dict(DIAG))
     assert chamadas == [] and "issue" not in res
     monkeypatch.setenv("GITHUB_TOKEN_ISSUES", "tok")
-    fila._issue(DAV, res := {**DIAG, "confianca": "media"})
+    fila._issue(DAV, res := {**DIAG, "confianca": "baixa"})
     assert chamadas == []
     fila._issue(DAV, res := dict(DIAG))
     assert res["issue"] == "https://github.com/x/1"
@@ -78,3 +78,10 @@ def test_assinatura_vem_do_relatorio_quando_a_coluna_erro_esta_vazia(tmp_path):
     assert "Item <n>: o HSE recusou o produto <n>" in gh.chamadas[0][1]["title"]
     assert issue_robo.erro_do_dav({"relatorio": "Resultado: DRY_RUN ok"}) == "DRY_RUN ok"
     assert issue_robo.erro_do_dav({}) == ""
+
+
+def test_nome_de_tipo_python_fica_e_texto_entre_aspas_sai():
+    assert "'NoneType'" in issue_robo.limpar("TypeError: 'NoneType' object is not subscriptable")
+    assert "'KeyError'" in issue_robo.limpar("recebi 'KeyError' aqui")
+    for segredo in ("'VALE'", "'Rua das Flores'", "'33592510'"):
+        assert segredo not in issue_robo.limpar(f"cliente {segredo} recusado")

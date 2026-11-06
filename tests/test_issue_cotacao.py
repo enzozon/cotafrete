@@ -69,8 +69,15 @@ def test_site_fora_ou_confianca_baixa_nao_abre_issue_e_nao_pergunta_de_novo(tmp_
         assert issue_cotacao.registrar(tmp_path, 1, "jadlog", "erro x", "", "tok", cfg(tmp_path), chamar, gh, AGORA) is None
     assert len(chamar.chamadas) == 1 and gh.chamadas == []
     assert issue_cotacao.registrar(tmp_path, 1, "jadlog", "erro y", "", "tok", cfg(tmp_path),
-                                   ia(confianca="media"), gh, AGORA) is None
+                                   ia(confianca="baixa"), gh, AGORA) is None
     assert gh.chamadas == []
+
+
+def test_bug_com_confianca_media_abre_issue_e_diz_a_confianca(tmp_path):
+    gh = Github()
+    assert issue_cotacao.registrar(tmp_path, 1, "jadlog", "erro y", "", "tok", cfg(tmp_path),
+                                   ia(confianca="media"), gh, AGORA)
+    assert len(gh.chamadas) == 1 and "Confiança da IA: media" in gh.chamadas[0][1]["body"]
 
 
 def test_sem_ia_nao_registra_veredito(tmp_path):

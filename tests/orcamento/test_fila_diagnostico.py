@@ -264,3 +264,30 @@ def test_alarme_de_bloqueio_vale_mesmo_com_excecao_na_busca(banco, tmp_path, mon
     FilaDiagnostico(banco, tmp_path, disparar=_na_hora).enfileirar(i)
     d = banco.dav(i, None)
     assert d["diagnostico_estado"] == "falhou" and "bloqueou gravação" in d["diagnostico"]
+
+
+@pytest.mark.parametrize("confianca, abre", [("alta", True), ("media", True), ("baixa", False)])
+def test_issue_abre_em_alta_e_media_e_baixa_fica_com_o_botao(banco, tmp_path, monkeypatch, confianca, abre):
+    from orcamento import issue_robo
+    monkeypatch.setenv("GITHUB_TOKEN_ISSUES", "tok")
+    monkeypatch.setattr(issue_robo, "registrar_issue", lambda *a: "https://github.com/x/1")
+    res = {"culpa": "robo", "confianca": confianca}
+    FilaDiagnostico(banco, tmp_path)._issue({"id": 1}, res)
+    assert ("issue" in res) is abre
+
+
+def test_ao_terminar_roda_so_com_diagnostico_feito_e_nao_perde_o_resultado(banco, tmp_path):
+    vistos = []
+
+    def quebra(i):
+        vistos.append(i)
+        raise RuntimeError("x")
+    ok, ruim = _dav(banco), _dav(banco)
+    def executar(i):
+        if i == ruim:
+            raise RuntimeError("falhou")
+        return {"culpa": "planilha"}
+    fila = FilaDiagnostico(banco, tmp_path, executar=executar, disparar=_na_hora, ao_terminar=quebra)
+    fila.enfileirar(ok)
+    fila.enfileirar(ruim)
+    assert vistos == [ok] and banco.dav(ok, None)["diagnostico_estado"] == "feito"

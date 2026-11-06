@@ -747,3 +747,61 @@ def test_outra_cotacao_nao_resolve_a_origem(tmp_path, monkeypatch):
     assert dav_ui._mesmos_itens(1, criar(tmp_path, {"A2": "LOUSA", "K2": 76433, "B31": "1"}, "igual.xlsx"))
     assert not dav_ui._mesmos_itens(1, criar(tmp_path, {"A2": "LEITOR", "K2": 62885}, "outra.xlsx"))
     assert dav_ui._mesmos_itens(1, tmp_path / "nao_existe.xlsx")
+
+
+def _erro_basico(app_web, cli, tmp_path, **campos):
+    from web import dav_ui
+    base = dict(culpa="planilha", confianca="alta", criados_no_hse=[],
+                correcoes=[{"celula": "B30", "valor": "CENTRO", "motivo": "bairro"}])
+    _com_correcao(cli, app_web, tmp_path, [])
+    app_web.banco.dav_atualizar(1, diagnostico=_diag(**{**base, **campos}))
+    return dav_ui.corrigir_sozinho(1)
+
+
+def test_erro_basico_a_ia_corrige_e_o_vendedor_ainda_gera(cli, app_web, tmp_path):
+    import openpyxl
+    from web import dav_ui
+    assert _erro_basico(app_web, cli, tmp_path) == 2
+    novo = app_web.banco.dav(2, "ana")
+    assert novo["arquivo"] == "corrigida_orc.xlsx" and novo["estado"] == "rascunho"
+    assert openpyxl.load_workbook(dav_ui.FILA.planilha(2))["ORÇAMENTO"]["B30"].value == "CENTRO"
+    assert DISPARADOS == []   # nada foi para o HSE
+    t = cli.get("/dav/2/conferir").text
+    assert "corrigido pela IA na planilha" in t and "Local de entrega" in t and "CENTRO" in t
+    assert "bairro" not in t.split("corrigido pela IA")[1].split("</div>")[0]   # motivo é texto livre da IA
+    assert "Conferir a correção da IA" in cli.get("/dav/1").text
+    assert "Corrigido pela IA: conferir" in cli.get("/dav").text
+
+
+@pytest.mark.parametrize("campos", [
+    {"confianca": "media"}, {"culpa": "cadastro_hse"}, {"criados_no_hse": [16533]},
+    {"criados_no_hse": "nao_verificado"},
+    {"correcoes": [{"celula": "B31", "valor": "33592510000154", "motivo": "x"}]},
+    {"correcoes": [{"celula": "K2", "valor": "123", "motivo": "x"}]},
+    {"correcoes": [{"celula": "B30", "valor": "CENTRO", "motivo": "x"}, {"celula": "K2", "valor": "123", "motivo": "x"}]},
+    {"correcoes": [{"celula": "B30", "valor": "informar o bairro correto", "motivo": "x"}]},
+])
+def test_o_que_nao_e_basico_fica_para_uma_pessoa(cli, app_web, tmp_path, campos):
+    assert _erro_basico(app_web, cli, tmp_path, **campos) is None
+    assert app_web.banco.dav(2, "ana") is None
+
+
+def test_ia_nao_corrige_o_proprio_envio_nem_duas_vezes(cli, app_web, tmp_path):
+    from web import dav_ui
+    assert _erro_basico(app_web, cli, tmp_path) == 2
+    assert dav_ui.corrigir_sozinho(1) is None
+    app_web.banco.dav_atualizar(2, estado="rascunho", conferencia="erros", diagnostico_estado="feito",
+                                diagnostico=_diag(culpa="planilha", confianca="alta", criados_no_hse=[], correcoes=[
+                                    {"celula": "B30", "valor": "OUTRO", "motivo": "x"}]))
+    assert dav_ui.corrigir_sozinho(2) is None and app_web.banco.dav(3, "ana") is None
+
+
+def test_correcao_igual_ao_que_ja_esta_na_planilha_nao_cria_envio(cli, app_web, tmp_path):
+    import openpyxl
+    from web import dav_ui
+    enviar(cli, planilha(tmp_path))
+    atual = openpyxl.load_workbook(dav_ui.FILA.planilha(1))["ORÇAMENTO"]["B33"].value
+    app_web.banco.dav_atualizar(1, estado="rejeitado", diagnostico_estado="feito", diagnostico=_diag(
+        culpa="planilha", confianca="alta", criados_no_hse=[],
+        correcoes=[{"celula": "B33", "valor": str(atual), "motivo": "x"}]))
+    assert dav_ui.corrigir_sozinho(1) is None and app_web.banco.dav(2, "ana") is None

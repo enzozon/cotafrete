@@ -4,7 +4,7 @@
   frase é conhecido e não precisa de issue.
 - A IA analisa cada TIPO de erro uma vez (transportadora + mensagem sem dados);
   o veredito fica em `davs/erros_cotacao.json`. Site fora, lento, recusa ou dado
-  errado não viram issue; só `e_bug` com confiança alta.
+  errado não viram issue; só `e_bug` com confiança alta ou média.
 - A issue usa o mesmo registro, limite diário e limpeza do DAV (`orcamento/issue_robo.py`):
   o repositório é público, então nada de CNPJ, CEP, cliente, cidade ou valor.
 """
@@ -98,7 +98,8 @@ def analisar(slug: str, sig: str, local: str, cfg, pasta: Path, chamar: Callable
 def _corpo(slug: str, sig: str, local: str, v: dict, cotacao_id: int, codigo: str) -> str:
     limpar = _limpo
     return "\n".join([
-        f"Aberta sozinha pelo agente: erro novo ao cotar na **{slug}**. Assinatura `{codigo}`.",
+        f"Aberta sozinha pelo agente: erro novo ao cotar na **{slug}**. Assinatura `{codigo}`. "
+        f"Confiança da IA: {v.get('confianca') or 'não informada'}.",
         "", "## O que aconteceu", limpar(v["causa"]) or "—",
         "", "## Como possivelmente consertar", limpar(v["conserto"]) or "—",
         "", "## Erro (sem dados)", f"`{sig}`",
@@ -110,7 +111,7 @@ def _corpo(slug: str, sig: str, local: str, v: dict, cotacao_id: int, codigo: st
 def registrar(pasta: Path, cotacao_id: int, slug: str, erro: str, local: str, token: str, cfg,
               chamar: Callable | None = None, post: Callable = issue_robo._post,
               agora: datetime | None = None) -> str | None:
-    """Analisa (uma vez por tipo de erro) e, se for bug com confiança alta, abre ou comenta a issue."""
+    """Analisa (uma vez por tipo de erro) e, se for bug com confiança alta ou média, abre ou comenta a issue."""
     sig = f"{slug}: {_NOMES.sub('<nome>', issue_robo.assinatura(erro))}"
     codigo = issue_robo.codigo_de(sig)
     arquivo = Path(pasta) / "erros_cotacao.json"
@@ -126,7 +127,7 @@ def registrar(pasta: Path, cotacao_id: int, slug: str, erro: str, local: str, to
             vistos[codigo] = v
             Path(pasta).mkdir(parents=True, exist_ok=True)
             arquivo.write_text(json.dumps(vistos, ensure_ascii=False, indent=1), encoding="utf-8")
-    if not (v["e_bug"] and v["confianca"] == "alta"):
+    if not (v["e_bug"] and v["confianca"] in ("alta", "media")):
         return None
     return issue_robo.publicar(pasta, sig, f"[robô cotação] {sig[:100]}",
                                lambda c: _corpo(slug, sig, local, v, cotacao_id, c),
