@@ -200,3 +200,19 @@ def test_o_menu_do_painel_leva_a_tela(chefe):
     html = chefe.get("/adm").text
 
     assert 'href="/adm/dellavolpe"' in html
+
+
+def test_mais_de_uma_mostra_botao_e_exige_login(app_web, chefe):
+    _registrar(app_web.banco, "<d@dv>", "ambigua", detalhe="a proposta serve a mais de uma cotação (#12, #13) e o PDF não diz qual")
+    html = chefe.get("/adm/dellavolpe").text
+    assert html.count("É esta") == 2 and 'href="/adm/cotacao/13"' in html
+    r = chefe.post("/adm/dellavolpe/escolher", data={"message_id": "<d@dv>", "cotacao_id": 13}, follow_redirects=False)
+    assert r.status_code == 303 and app_web.banco.email_cotacao_escolhida("<d@dv>") == 13
+    assert "É esta" not in chefe.get("/adm/dellavolpe").text
+
+
+def test_escolher_sem_login_nao_faz_nada(app_web):
+    _registrar(app_web.banco, "<d@dv>", "ambigua", detalhe="(#12, #13)")
+    r = TestClient(app_web.app).post("/adm/dellavolpe/escolher", data={"message_id": "<d@dv>", "cotacao_id": 13}, follow_redirects=False)
+    assert r.status_code == 303 and "/adm/entrar" in r.headers["location"]
+    assert app_web.banco.email_cotacao_escolhida("<d@dv>") is None

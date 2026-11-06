@@ -328,3 +328,21 @@ def test_a_linha_de_comando_diz_com_quem_casaria_sem_gravar(
 
     assert f"casaria agora com a cotação #{cid}" in capsys.readouterr().out
     assert preco(banco, cid) is None
+
+
+def test_mais_de_uma_o_adm_escolhe_e_o_ingestor_grava(banco, tmp_path):
+    a = pedir(banco, material="geladeira", minutos_atras=10)
+    b = pedir(banco, minutos_atras=5)
+    assert processar(banco, tmp_path, email()).desfecho == "ambigua"
+    mid = "<p1@dellavolpe.com.br>"
+    assert banco.email_ja_processado(mid)
+
+    assert not banco.email_escolher_cotacao(mid, 999999)     # só as citadas no detalhe
+    assert banco.email_escolher_cotacao(mid, b)
+    assert not banco.email_ja_processado(mid)                # relê
+
+    d = processar(banco, tmp_path, email())
+    assert (d.desfecho, d.cotacao_id) == ("gravado", b)
+    assert preco(banco, b) == Decimal("1873.91") and preco(banco, a) is None
+    assert banco.email_ja_processado(mid)
+    assert not banco.email_escolher_cotacao(mid, a)          # depois de gravado não troca

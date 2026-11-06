@@ -10,6 +10,7 @@ acumula erro de arredondamento, e frete é dinheiro de cliente.
 
 from __future__ import annotations
 
+import re
 import sqlite3
 from contextlib import closing
 from datetime import date, datetime, timedelta
@@ -604,9 +605,28 @@ class Banco:
         with closing(self._conectar()) as con, con:
             return con.execute(
                 "SELECT 1 FROM email_processado WHERE message_id = ?"
+                " AND desfecho <> 'escolhida'"
                 " AND NOT (desfecho = 'sem_pdf'"
                 "  AND COALESCE(assunto, '') LIKE '%rota n_o atendida%')",
                 (message_id,)).fetchone() is not None
+
+    def email_escolher_cotacao(self, message_id: str, cotacao_id: int) -> bool:
+        """O ADM disse de qual cotação é a proposta "Mais de uma". O ingestor relê o
+        e-mail na próxima volta e grava. Só aceita uma cotação citada no detalhe."""
+        with closing(self._conectar()) as con, con:
+            r = con.execute("SELECT detalhe FROM email_processado WHERE message_id = ?"
+                            " AND desfecho = 'ambigua'", (message_id,)).fetchone()
+            if r is None or f"#{cotacao_id}" not in re.findall(r"#\d+", r["detalhe"] or ""):
+                return False
+            con.execute("UPDATE email_processado SET desfecho = 'escolhida', cotacao_id = ?"
+                        " WHERE message_id = ?", (cotacao_id, message_id))
+            return True
+
+    def email_cotacao_escolhida(self, message_id: str) -> int | None:
+        with closing(self._conectar()) as con, con:
+            r = con.execute("SELECT cotacao_id FROM email_processado WHERE message_id = ?"
+                            " AND desfecho = 'escolhida'", (message_id,)).fetchone()
+            return r["cotacao_id"] if r else None
 
     def registrar_email(self, message_id: str, transportadora: str, *,
                         desfecho: str, cotacao_id: int | None = None,

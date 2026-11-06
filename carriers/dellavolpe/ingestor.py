@@ -504,6 +504,9 @@ def processar(bruto: bytes, banco, *, gravar: bool,
         # registra, e a próxima volta tenta de novo.
         return fim("pdf_ilegivel", erros, registrar=False)
 
+    escolhida = banco.email_cotacao_escolhida(msg.message_id)
+    if escolhida is not None:   # o ADM escolheu no "Mais de uma"; a rota ainda confere abaixo
+        p = p._replace(cotacao_id=escolhida)
     if p.cotacao_id is not None:
         # Com carimbo (se um dia a Della Volpe passar a devolvê-lo no A/C):
         # o número manda, e a rota só confere.
