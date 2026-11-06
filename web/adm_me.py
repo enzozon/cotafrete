@@ -43,7 +43,7 @@ def _porta(cookie: str | None):
     """A mesma porta do /adm: 404 sem senha no .env, login sem cookie."""
     adm._exigir_montado()
     if not adm.autorizado(cookie):
-        return RedirectResponse("/adm/entrar", status_code=303)
+        return RedirectResponse("/login", status_code=303)
     return None
 
 
@@ -261,7 +261,7 @@ async function pulsar() {
   const q = new URLSearchParams(location.search); q.set('v', versao);
   try {
     const r = await fetch('/adm/me/agora?' + q);
-    if (r.redirected) { location.href = '/adm/entrar'; return; }
+    if (r.redirected) { location.href = '/login'; return; }
     if (r.status === 204 || !r.ok) return;
     const d = await r.json();
     versao = d.v;

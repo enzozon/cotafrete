@@ -402,8 +402,8 @@ botão **Esquecer senha** reabre o convite e a pessoa escolhe outra.
 Quem não tem conta não entra — e o histórico antigo **não** vira conta
 sozinho. Faça isto antes de avisar a equipe, senão ninguém trabalha:
 
-1. Abra `https://cotafrete.ventura.inf.br/adm/contas` (pede a senha do
-   painel, a mesma do `COTAFRETE_ADM_SENHA`).
+1. Abra `https://cotafrete.ventura.inf.br/adm/contas`. Sem sessão de
+   administrador, o sistema manda para `/login`: entre como abaixo.
 2. Embaixo aparece **"Já cotaram, mas ainda não têm conta"**, com os nomes do
    histórico. Clique nos que são pessoas de verdade.
 3. **Confira nome por nome.** Ali também aparecem erros de digitação e testes
@@ -414,17 +414,13 @@ sozinho. Faça isto antes de avisar a equipe, senão ninguém trabalha:
 
 ### Como você mesmo entra no painel
 
-Duas portas, a mesma senha (`COTAFRETE_ADM_SENHA`):
+Na tela normal do vendedor (`/login`), digite **`adm`** (ou `admin`, ou
+`administrador`) no nome e a senha do painel (`COTAFRETE_ADM_SENHA`). Cai
+direto no `/adm`; **Sair do painel** volta para o `/login`.
 
-- direto em `/adm/entrar`;
-- ou na tela normal do vendedor, digitando **`adm`** (ou `admin`, ou
-  `administrador`) no nome e a senha do painel — cai direto no `/adm`.
-
-A segunda existe só para não obrigar ninguém a decorar o endereço. Não abre
-nada novo: `/adm/entrar` já aceita essa senha, na mesma internet, e os dois
-caminhos esperam 1 segundo a cada tentativa errada. Esses três nomes são
-reservados — a tela de contas recusa criar vendedor com eles, senão a conta
-existiria sem nunca conseguir entrar.
+Cada tentativa errada espera 1 segundo. Esses três nomes são reservados — a
+tela de contas recusa criar vendedor com eles, senão a conta existiria sem
+nunca conseguir entrar.
 
 Dentro do painel, **Contas** fica na barra da esquerda, em "Administrar".
 

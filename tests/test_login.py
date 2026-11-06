@@ -234,8 +234,7 @@ def com_painel(app_web, monkeypatch):
 
 @pytest.mark.parametrize("como", ["adm", "ADMIN", "Administrador", "  adm  "])
 def test_o_administrador_entra_pela_tela_do_vendedor(c, com_painel, como):
-    """Poupa decorar /adm/entrar. É a MESMA senha e a mesma barreira — muda
-    só onde se digita."""
+    """A única porta do painel: o /login, com a senha do painel."""
     r = c.post("/login", data={"usuario": como, "senha": SENHA_DO_PAINEL})
 
     assert r.status_code == 303

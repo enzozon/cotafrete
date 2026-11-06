@@ -61,7 +61,7 @@ def test_sem_a_senha_do_painel_ninguem_mexe_em_conta(anonimo, app_web):
 
     for r in tentativas:
         assert r.status_code == 303
-        assert r.headers["location"] == "/adm/entrar"
+        assert r.headers["location"] == "/login"
     assert [c["nome"] for c in app_web.banco.contas()] == ["joao"], (
         "nada foi criado nem removido")
 

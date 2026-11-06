@@ -39,7 +39,7 @@ def _porta(cookie: str | None, *, api: bool = False):
     if not adm.autorizado(cookie):
         if api:
             raise HTTPException(401)
-        return RedirectResponse("/adm/entrar", status_code=303)
+        return RedirectResponse("/login", status_code=303)
     return None
 
 

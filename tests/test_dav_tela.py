@@ -203,7 +203,7 @@ def test_historico_so_do_vendedor(cli, app_web, tmp_path):
 def test_adm_dav_sem_admin_redireciona(app_web, monkeypatch):
     monkeypatch.setenv("COTAFRETE_ADM_SENHA", "s3nha")
     r = TestClient(app_web.app, follow_redirects=False).get("/adm/dav")
-    assert r.status_code == 303 and r.headers["location"] == "/adm/entrar"
+    assert r.status_code == 303 and r.headers["location"] == "/login"
 
 
 def test_nome_do_arquivo_escapado(cli, app_web, tmp_path):
@@ -605,7 +605,7 @@ def test_post_diagnosticar_exige_adm_e_enfileira(cli, app_web, tmp_path, monkeyp
     enviar(cli, planilha(tmp_path))
     monkeypatch.setenv("COTAFRETE_ADM_SENHA", "s3nha")
     r = TestClient(app_web.app, follow_redirects=False).post("/adm/dav/1/diagnosticar")
-    assert r.status_code == 303 and "/adm/entrar" in r.headers["location"]
+    assert r.status_code == 303 and "/login" in r.headers["location"]
     chamadas = []
     from web import dav_ui
     monkeypatch.setattr(dav_ui, "FILA_DIAGNOSTICO", type("F", (), {"enfileirar": lambda s, i: (
@@ -647,7 +647,7 @@ def test_post_corrigir_cria_envio_novo_do_vendedor(cli, app_web, tmp_path, monke
     _com_correcao(cli, app_web, tmp_path, [{"celula": "B30", "valor": "CENTRO", "motivo": "bairro"}])
     monkeypatch.setenv("COTAFRETE_ADM_SENHA", "s3nha")
     r = TestClient(app_web.app, follow_redirects=False).post("/adm/dav/1/corrigir")
-    assert r.status_code == 303 and "/adm/entrar" in r.headers["location"]
+    assert r.status_code == 303 and "/login" in r.headers["location"]
     r = _adm(app_web, monkeypatch).post("/adm/dav/1/corrigir")
     assert r.status_code == 303 and r.headers["location"] == "/adm/dav/2"
     novo = app_web.banco.dav(2, "ana")

@@ -38,11 +38,11 @@ def test_sem_cookie_cai_na_tela_de_senha(cliente):
     resposta = cliente.get("/adm", follow_redirects=False)
 
     assert resposta.status_code == 303
-    assert resposta.headers["location"] == "/adm/entrar"
+    assert resposta.headers["location"] == "/login"
 
 
 def test_senha_certa_entra(cliente):
-    resposta = cliente.post("/adm/entrar", data={"senha": SENHA},
+    resposta = cliente.post("/login", data={"usuario": "adm", "senha": SENHA},
                             follow_redirects=False)
 
     assert resposta.status_code == 303
@@ -50,10 +50,29 @@ def test_senha_certa_entra(cliente):
 
 
 def test_senha_errada_nao_entra(cliente):
-    resposta = cliente.post("/adm/entrar", data={"senha": "chutando"},
+    resposta = cliente.post("/login", data={"usuario": "adm",
+                                            "senha": "chutando"},
                             follow_redirects=False)
 
     assert adm.COOKIE_ADM not in resposta.cookies
+
+
+def test_sair_do_painel_vai_para_o_login_e_derruba_o_cookie(cliente):
+    cliente.cookies.set(adm.COOKIE_ADM, adm.token_de(SENHA))
+
+    resposta = cliente.get("/adm/sair", follow_redirects=False)
+
+    assert resposta.status_code == 303
+    assert resposta.headers["location"] == "/login"
+    assert adm.COOKIE_ADM in resposta.headers["set-cookie"]
+    assert 'Max-Age=0' in resposta.headers["set-cookie"]
+
+
+def test_a_tela_propria_do_painel_nao_existe_mais(cliente):
+    """A entrada é só pelo /login, com o nome adm."""
+    assert cliente.get("/adm/entrar").status_code == 404
+    assert cliente.post("/adm/entrar",
+                        data={"senha": SENHA}).status_code == 404
 
 
 def test_cookie_forjado_nao_entra(cliente):
@@ -75,7 +94,8 @@ def test_trocar_a_senha_invalida_as_sessoes(cliente, monkeypatch):
 
 def test_a_senha_nunca_aparece_na_resposta(cliente):
     """Nem em campo escondido, nem em URL, nem em mensagem de erro."""
-    resposta = cliente.post("/adm/entrar", data={"senha": "chutando"})
+    resposta = cliente.post("/login", data={"usuario": "adm",
+                                            "senha": "chutando"})
 
     assert SENHA not in resposta.text
     assert "chutando" not in resposta.text

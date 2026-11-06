@@ -74,7 +74,7 @@ def test_sem_senha_no_env_nao_existe(monkeypatch, banco):
 def test_sem_cookie_vai_para_o_login(monkeypatch, banco):
     monkeypatch.setenv("COTAFRETE_ADM_SENHA", SENHA)
     r = TestClient(app_web.app).get("/adm/me", follow_redirects=False)
-    assert r.status_code == 303 and r.headers["location"] == "/adm/entrar"
+    assert r.status_code == 303 and r.headers["location"] == "/login"
     r = TestClient(app_web.app).get("/adm/me/agora", follow_redirects=False)
     assert r.status_code == 303
 
