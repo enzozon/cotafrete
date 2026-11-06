@@ -214,3 +214,17 @@ def test_corpo_no_formato_openai():
     assert c["model"] == "openai/gpt-oss-120b" and c["max_tokens"] == 4000
     assert [m["role"] for m in c["messages"]] == ["system", "user"]
     assert c["response_format"]["type"] == "json_schema"
+
+
+def test_esquema_recusado_registra_as_duas_chamadas(prov, monkeypatch):
+    """A cota do provedor conta os dois pedidos: o painel também (P2 #25)."""
+    linhas = []
+    monkeypatch.setattr(ia, "REGISTRO", lambda **kw: linhas.append(kw))
+    monkeypatch.setattr(ia, "COM_ESQUEMA", {"groq:melhor"})
+    prov.roteiro["melhor"] = [Resp(400, texto="invalid response_format"), Resp(conteudo='{"a": 1}')]
+
+    ia.completar_json("sis", "p", {"type": "object"}, funcao="revisão ME")
+
+    assert [(l["modelo"], l["ok"], l["funcao"]) for l in linhas] == [
+        ("groq:melhor", False, "revisão ME"), ("groq:melhor", True, "revisão ME")]
+    assert "esquema" in linhas[0]["erro"]
