@@ -471,6 +471,23 @@ def test_resumo_por_email_uma_tentativa_por_dia_depois_das_19h(repos):
     assert len(chamadas) == 1 and "faltam credenciais" in _log(producao)
 
 
+def test_fumaca_uma_vez_por_dia_depois_das_8h05(repos):
+    _, producao = repos
+    chamadas = []
+
+    def roda(pasta):
+        chamadas.append(pasta)
+        return 1, "Teste de fumaça FALHOU: HSE fora"
+    assert atualizar.fumaca_do_dia(producao, _dt(2026, 11, 6, 8, 4), roda) == "cedo"
+    assert atualizar.fumaca_do_dia(producao, _dt(2026, 11, 6, 8, 6), roda) == "falhou"
+    assert atualizar.fumaca_do_dia(producao, _dt(2026, 11, 6, 8, 11), roda) == "ja_feito"
+    assert len(chamadas) == 1 and "HSE fora" in _log(producao)
+
+
+def test_fumaca_so_na_producao(tmp_path):
+    assert atualizar.fumaca_do_dia(tmp_path / "cotafrete-dev", _dt(2026, 11, 6, 9, 0), None) == "fora_da_producao"
+
+
 def test_resumo_da_semana_so_na_segunda_depois_das_8h(repos):
     _, producao = repos
     chamadas = []
