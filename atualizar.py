@@ -535,6 +535,58 @@ def backup_do_dia(pasta: Path = PASTA, agora: datetime | None = None,
     return "falhou"
 
 
+# ------------------------------------------------------ resumo do dia por e-mail
+HORA_DO_RESUMO = 19
+HORA_DO_RESUMO_DA_SEMANA = 8  # segunda-feira
+
+
+def _rodar_resumo(pasta: Path, *opcoes: str) -> tuple[int, str]:
+    r = subprocess.run([str(python_do_venv(pasta)), "-m", "core.resumo_email", *opcoes],
+                       cwd=pasta, capture_output=True, text=True, errors="replace",
+                       timeout=TEMPO_DO_BACKUP_S, creationflags=SEM_JANELA,
+                       env={**_ambiente(), "PYTHONIOENCODING": "utf-8"})
+    return r.returncode, (r.stdout + r.stderr).strip()
+
+
+def resumo_do_dia(pasta: Path = PASTA, agora: datetime | None = None,
+                  rodar_resumo=_rodar_resumo) -> str:
+    """fora_da_producao, cedo, ja_feito, feito ou falhou. Mesma regra do backup: uma tentativa por dia."""
+    if not e_producao(pasta):
+        return "fora_da_producao"
+    agora = agora or datetime.now()
+    if agora.hour < HORA_DO_RESUMO:
+        return "cedo"
+    return _uma_vez(pasta, agora, "resumo-ultimo-dia.txt", rodar_resumo)
+
+
+def resumo_da_semana(pasta: Path = PASTA, agora: datetime | None = None,
+                     rodar_resumo=_rodar_resumo) -> str:
+    """Segunda-feira, a partir das 8h (P2 #20)."""
+    if not e_producao(pasta):
+        return "fora_da_producao"
+    agora = agora or datetime.now()
+    if agora.weekday() != 0 or agora.hour < HORA_DO_RESUMO_DA_SEMANA:
+        return "cedo"
+    return _uma_vez(pasta, agora, "resumo-ultima-semana.txt", lambda p: rodar_resumo(p, "--semana"))
+
+
+def _uma_vez(pasta: Path, agora: datetime, nome: str, rodar) -> str:
+    marca, hoje = pasta / "log" / nome, agora.strftime("%Y-%m-%d")
+    try:
+        if marca.read_text(encoding="utf-8").strip() == hoje:
+            return "ja_feito"
+    except OSError:
+        pass
+    marca.parent.mkdir(exist_ok=True)
+    marca.write_text(hoje, encoding="utf-8")
+    try:
+        codigo, saida = rodar(pasta)
+    except (OSError, subprocess.SubprocessError) as exc:
+        codigo, saida = 1, f"{type(exc).__name__}: {exc}"
+    registrar(pasta, " | ".join(l.strip() for l in saida.splitlines() if l.strip()) or f"Resumo: código {codigo}")
+    return "feito" if codigo == 0 else "falhou"
+
+
 # ------------------------------------------------------ a tarefa agendada
 def xml_da_tarefa(pasta: Path, usuario: str) -> str:
     """A tarefa do Agendador, em XML — é o único jeito de ligar tudo o que
@@ -648,6 +700,12 @@ def main(argv: list[str] | None = None) -> int:
         backup_do_dia()
     except Exception as exc:  # o pythonw não tem tela: erro fora do log some
         registrar(PASTA, f"Backup do banco: erro inesperado: {type(exc).__name__}: {exc}",
+                  repetida=False)
+    try:
+        resumo_do_dia()
+        resumo_da_semana()
+    except Exception as exc:
+        registrar(PASTA, f"Resumo por e-mail: erro inesperado: {type(exc).__name__}: {exc}",
                   repetida=False)
     if sys.stdout is not None:
         try:

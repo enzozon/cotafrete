@@ -456,3 +456,30 @@ def test_backup_so_na_producao(tmp_path):
     roda = BackupFalso()
     assert atualizar.backup_do_dia(tmp_path / "cotafrete-dev", _dt(2026, 11, 4, 21, 0), roda) == "fora_da_producao"
     assert roda.chamadas == 0
+
+
+def test_resumo_por_email_uma_tentativa_por_dia_depois_das_19h(repos):
+    _, producao = repos
+    chamadas = []
+
+    def roda(pasta):
+        chamadas.append(pasta)
+        return 1, "Resumo por e-mail falhou: faltam credenciais"
+    assert atualizar.resumo_do_dia(producao, _dt(2026, 11, 6, 18, 59), roda) == "cedo"
+    assert atualizar.resumo_do_dia(producao, _dt(2026, 11, 6, 19, 1), roda) == "falhou"
+    assert atualizar.resumo_do_dia(producao, _dt(2026, 11, 6, 19, 6), roda) == "ja_feito"
+    assert len(chamadas) == 1 and "faltam credenciais" in _log(producao)
+
+
+def test_resumo_da_semana_so_na_segunda_depois_das_8h(repos):
+    _, producao = repos
+    chamadas = []
+
+    def roda(pasta, *opcoes):
+        chamadas.append(opcoes)
+        return 0, "Resumo enviado"
+    assert atualizar.resumo_da_semana(producao, _dt(2026, 11, 6, 9, 0), roda) == "cedo"   # sexta
+    assert atualizar.resumo_da_semana(producao, _dt(2026, 11, 9, 7, 59), roda) == "cedo"  # segunda cedo
+    assert atualizar.resumo_da_semana(producao, _dt(2026, 11, 9, 8, 1), roda) == "feito"
+    assert atualizar.resumo_da_semana(producao, _dt(2026, 11, 9, 12, 0), roda) == "ja_feito"
+    assert chamadas == [("--semana",)]

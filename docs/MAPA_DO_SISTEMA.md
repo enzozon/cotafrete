@@ -208,7 +208,7 @@ ficam em `davs/entrada/<id>.xlsx` e `davs/pdf/` (fora do git).
   CNPJs válidos a um dígito de distância (`cnpjs_vizinhos`) e sugere se achar um só. Nunca escolhe.
 - `.env` do Cotafrete: `HSE_USUARIO`, `HSE_SENHA`, `HSE_CLIENT_ID`,
   `DAV_DRY_RUN`, `DAV_HEADLESS`, `IA`, `IA_MODELO`, `ANTHROPIC_API_KEY`,
-  `IA_LIMITE_DIA_USD` (padrão 0,30). Senha e chave nunca em log, banco,
+  `IA_LIMITE_DIA_USD` (padrão 0,30), `SMTP_USER` e `SMTP_PASSWORD` (resumo diário de erros por e-mail, `core/resumo_email.py`, às 19h pelo `atualizar.py`; destino em `RESUMO_EMAIL_PARA`). Senha e chave nunca em log, banco,
   relatório ou tela. `GITHUB_TOKEN_ISSUES` (opcional): token fine-grained só com
   Issues read/write no `enzozon/cotafrete`; com ele, diagnóstico com culpa robo e
   confiança alta abre issue sozinho (`orcamento/issue_robo.py`, etiqueta `robo-dav`,
