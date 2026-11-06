@@ -53,6 +53,7 @@ ESQUEMA = {
 # cada abertura da cotação (que se recarrega sozinha) gastaria a cota grátis.
 ESPERA_FALHA_S = 30 * 60
 _pedidos: dict[str, float] = {}
+_em_curso: set[str] = set()
 _trava = threading.Lock()
 
 
@@ -85,7 +86,8 @@ def _validar(dados) -> str:
 def pedir(nome: str, erro: str) -> ia.Resposta:
     """Levanta ia.IAIndisponivel se nenhum modelo der uma frase que passe."""
     return ia.completar_json(SISTEMA, f"Transportadora: {nome}\nMensagem do robô: {erro[:600]}",
-                             ESQUEMA, funcao=FUNCAO, validar=_validar, max_tokens=300)
+                             ESQUEMA, funcao=FUNCAO, validar=_validar, max_tokens=300,
+                             limite_s=ia.LIMITE_TELA_S)
 
 
 def explicar(conectar: Callable[[], sqlite3.Connection], slug: str, nome: str,
@@ -104,6 +106,12 @@ def explicar(conectar: Callable[[], sqlite3.Connection], slug: str, nome: str,
     return r.dados
 
 
+def pendente(slug: str, erro: str) -> bool:
+    """A thread ainda está escrevendo esta frase? A tela recarrega enquanto
+    estiver. Acaba sozinho: a IA tem teto e a falha não fica pendente."""
+    return chave(slug, erro) in _em_curso
+
+
 def explicar_em_fundo(conectar: Callable[[], sqlite3.Connection], slug: str, nome: str,
                       erro: str) -> bool:
     """Dispara `explicar` numa thread, uma vez por chave. True se disparou."""
@@ -114,12 +122,15 @@ def explicar_em_fundo(conectar: Callable[[], sqlite3.Connection], slug: str, nom
         if time.monotonic() - _pedidos.get(k, -ESPERA_FALHA_S) < ESPERA_FALHA_S:
             return False
         _pedidos[k] = time.monotonic()
+        _em_curso.add(k)
 
     def rodar():
         try:
             explicar(conectar, slug, nome, erro)
         except Exception:      # a explicação nunca derruba nada
             pass
+        finally:
+            _em_curso.discard(k)
         # Deu certo: a frase está no banco e ninguém pede de novo. Falhou: a
         # chave fica em _pedidos e só volta a tentar depois de ESPERA_FALHA_S.
 

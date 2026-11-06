@@ -129,7 +129,7 @@ def test_so_passa_sugestao_que_faz_sentido():
 def test_cotacao_grande_vai_em_lotes(prov):
     itens = [{"numero": n * 10, "descricao": f"item {n}"} for n in range(1, 31)]
 
-    def responde(url, chave, corpo, provedor):
+    def responde(url, chave, corpo, provedor, timeout=None):
         prov.pedidos.append(corpo)
         pedidos = json.loads(corpo["messages"][1]["content"].split("\n\n", 1)[1])
         return Resp(conteudo=json.dumps({"sugestoes": [

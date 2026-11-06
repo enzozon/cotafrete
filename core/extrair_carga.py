@@ -237,7 +237,8 @@ def extrair(texto: str) -> Extracao:
         raise TextoInvalido(f"Texto grande demais ({len(texto)} caracteres; máximo {MAX_TEXTO}). "
                             "Cole só a parte do pedido.")
     r = ia.completar_json(SISTEMA, "Texto colado pelo vendedor:\n\n" + texto, ESQUEMA,
-                          funcao="preencher cotação", validar=_validar, max_tokens=2000)
+                          funcao="preencher cotação", validar=_validar, max_tokens=2000,
+                          limite_s=ia.LIMITE_TELA_S)
     x = limpar(r.dados)
     x.modelo = r.modelo
     return x

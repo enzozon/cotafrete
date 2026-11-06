@@ -168,5 +168,6 @@ def interpretar(frase: str, hoje: date, slugs: dict[str, str]) -> dict[str, str]
               + ", ".join(f"{s}: {n}" for s, n in slugs.items())
               + f"\nFrase: {frase[:300]}")
     r = ia.completar_json(SISTEMA, pedido, ESQUEMA, funcao=FUNCAO,
-                          validar=lambda d: limpar(d, slugs), max_tokens=400)
+                          validar=lambda d: limpar(d, slugs), max_tokens=400,
+                          limite_s=ia.LIMITE_TELA_S)
     return r.dados

@@ -86,6 +86,22 @@ def test_tela_mostra_o_texto_padrao(tmp_path, monkeypatch):
     assert f'href="/resposta/{cid}"' in cli.get(f"/cotacao/{cid}").text
 
 
+def test_reescrever_avisa_que_a_ia_esta_escrevendo(tmp_path, monkeypatch):
+    from web import app as modulo
+    monkeypatch.setattr(modulo, "banco", Banco(tmp_path / "t.db"))
+    monkeypatch.setattr(modulo, "TENTATIVAS_EM_CURSO", {})
+    monkeypatch.setattr(ia, "configurada", lambda: True)
+    cli = TestClient(modulo.app)
+    entrar(cli, modulo)
+    cid = modulo.banco.salvar_cotacao("enzo", CARGA)
+    modulo.banco.salvar_resultado(cid, "camilo", status="cotado", valor=Decimal("208.89"),
+                                  validade=date(2026, 10, 20))
+
+    html = cli.get(f"/resposta/{cid}").text
+
+    assert 'data-ia-espera="A IA está escrevendo…"' in html and "pageshow" in html
+
+
 def _valida(texto):
     return rc._validador(C, rc.opcoes(C))({"texto": texto})
 
