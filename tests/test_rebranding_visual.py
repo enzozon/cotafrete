@@ -136,7 +136,6 @@ def _telas(base: str, cotacao_id: int) -> tuple[tuple[str, str], ...]:
     """(nome do arquivo, endereço). Cobre o escopo obrigatório do trabalho."""
     return (
         ("login-vendedor", f"{base}/login"),
-        ("login-adm", f"{base}/adm/entrar"),
         ("formulario", f"{base}/"),
         ("resultado", f"{base}/cotacao/{cotacao_id}"),
         ("aceitar-generoso", f"{base}/aceitar/{cotacao_id}/generoso"),

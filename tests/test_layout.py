@@ -462,25 +462,16 @@ def test_a_entrada_escapa_o_que_vem_de_fora():
     assert "&lt;script&gt;a&lt;/script&gt;" in html
 
 
-def test_o_texto_das_telas_de_entrada_sai_acentuado(monkeypatch):
+def test_o_texto_da_tela_de_entrada_sai_acentuado():
     """Segunda vez que acento se perde em texto que a pessoa LE - a primeira
     foi a contagem do historico, que saiu "1 cotacao". Some quando o texto e
     escrito por script e o shell come o UTF-8, e ninguem percebe ate a tela
     estar no ar, porque o codigo ao redor continua funcionando."""
-    from web import adm, app as app_web
-
-    # Sem senha no ambiente o painel responde 404 de proposito (a Regra 1 do
-    # modulo: a tela nao passa a existir "aberta por engano"). O teste e do
-    # TEXTO, entao monta a senha para chegar na tela.
-    monkeypatch.setenv("COTAFRETE_ADM_SENHA", "so-para-o-teste")
+    from web import app as app_web
 
     vendedor = app_web.tela_login()
     for palavra in ("formulário", "cotações", "automáticas", "histórico"):
         assert palavra in vendedor, f"a tela do vendedor perdeu: {palavra}"
-
-    painel = adm.tela_de_entrada().body.decode("utf-8")
-    for palavra in ("cotações", "Números", "histórico", "única"):
-        assert palavra in painel, f"a tela do painel perdeu: {palavra}"
 
 
 def test_a_rota_conta_as_transportadoras_de_verdade():

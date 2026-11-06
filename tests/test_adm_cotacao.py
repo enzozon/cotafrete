@@ -84,7 +84,7 @@ def test_sem_cookie_cai_na_tela_de_senha(monkeypatch, tmp_path):
                                     follow_redirects=False)
 
     assert r.status_code == 303
-    assert r.headers["location"] == "/adm/entrar"
+    assert r.headers["location"] == "/login"
 
 
 def test_cookie_forjado_tambem_nao_entra(monkeypatch, tmp_path):

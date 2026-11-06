@@ -22,7 +22,7 @@ Três regras que não devem ser afrouxadas sem pensar:
 2. O cookie guarda um HMAC derivado da senha, nunca "sim". Quem tem a senha
    produz o valor — que é exatamente a permissão concedida. Trocar a senha
    invalida todas as sessões, sem lista de sessões para administrar.
-3. Senha errada dorme 1s. Não é bloqueio; é o bastante para inviabilizar
+3. Senha errada dorme 1s (em web/app.py, na rota /login). Não é bloqueio; é o bastante para inviabilizar
    tentativa em massa numa rede local. Se esta tela um dia for para a
    internet, isto precisa virar bloqueio de verdade.
 """
@@ -50,7 +50,7 @@ from carriers.dellavolpe.ingestor import texto_do_cabecalho
 from core import ia, painel as contas, resumo_erros, resumo_semana
 from web import painel_ui as ui, transportadoras
 from web.ficha_ui import ficha_da_cotacao, lugar, quando as _quando
-from web.layout import e, entrada, moeda, print_embutido
+from web.layout import e, moeda, print_embutido
 
 # O banco chega por INJEÇÃO: `web/app.py` faz `adm.banco = banco` logo
 # depois de criar o dele. Importar `web.app` daqui seria circular —
@@ -64,9 +64,6 @@ COOKIE_ADM = "cotafrete_adm"
 
 # Acesso mais poderoso que o do vendedor (30 dias) dura menos.
 VALIDADE_S = 60 * 60 * 12
-
-# Atraso na senha errada. Ver a regra 3 no topo do módulo.
-PAUSA_SENHA_ERRADA_S = 1.0
 
 # include_in_schema=False: a Regra 1 do módulo (404 sem senha configurada) é
 # aplicada no HANDLER, não no registro da rota — sem isto as rotas do /adm
@@ -123,73 +120,19 @@ def _exigir_montado() -> str:
     return senha
 
 
-@router.get("/entrar", response_class=HTMLResponse)
-def tela_de_entrada(erro: str = ""):
-    """A porta do painel. `erro` preenchido é a MESMA tela, com o aviso e o
-    campo já em foco — e não uma segunda tela.
-
-    Antes a senha errada caía numa página com o casco claro do vendedor e um
-    link "Tentar de novo": a pessoa saía de uma tela escura, errava a senha e
-    aterrissava numa tela branca de outro sistema, tendo de clicar mais uma
-    vez para voltar ao campo que ela já ia digitar de novo."""
-    _exigir_montado()
-    aviso = f'<div class="alerta">{e(erro)}</div>' if erro else ""
-    return HTMLResponse(entrada("Painel", f"""
-<div class="cartao">
-  <h1>Painel</h1>
-  <p class="sub">As cotações de toda a empresa, num lugar só.</p>
-  {aviso}
-  <form method="post" action="/adm/entrar">
-    <input name="senha" type="password" placeholder="Senha do painel"
-           autocomplete="current-password" autofocus required
-           style="margin-bottom:12px">
-    <button type="submit" style="width:100%">Entrar</button>
-  </form>
-</div>""",
-        chamada="O que a empresa inteira cotou.",
-        paradas=("as cotações", "cinco transportadoras", "o que deu certo"),
-        apoio="Números por transportadora, tempo de resposta e o histórico "
-              "completo — atualizado sozinho conforme as cotações chegam.",
-        rodape="Esta tela junta CNPJ, valor de nota e print de cliente. "
-               "A senha é a única barreira."))
-
-
-@router.post("/entrar")
-def entrar(senha: str = Form(...)):
-    correta = _exigir_montado()
-    # .encode() nos dois lados, pelo mesmo motivo de autorizado(): sem isto,
-    # COTAFRETE_ADM_SENHA com acento ou cedilha no .env de produção — o caso
-    # provável, escrevendo em português — faz até a senha CERTA levantar
-    # TypeError (500) e o painel fica inacessível para sempre.
-    if not hmac.compare_digest(senha.encode(), correta.encode()):
-        time.sleep(PAUSA_SENHA_ERRADA_S)
-        # Sem repetir o que foi digitado: nem na tela, nem em log.
-        resposta = tela_de_entrada("Senha incorreta.")
-        resposta.status_code = 401
-        return resposta
-
-    r = RedirectResponse("/adm", status_code=303)
-    r.set_cookie(COOKIE_ADM, token_de(correta), max_age=VALIDADE_S,
-                 httponly=True, samesite="lax", secure=sessao.cookie_seguro())
-    return r
-
-
 @router.get("/sair")
 def sair():
     _exigir_montado()
-    r = RedirectResponse("/adm/entrar", status_code=303)
+    r = RedirectResponse("/login", status_code=303)
     r.delete_cookie(COOKIE_ADM)
     return r
 
 
 # ---------------------------------------------- entrar pela porta do vendedor
 # Nomes reservados: quem digitar um deles na tela de login do vendedor, com a
-# senha do painel, cai no /adm. É a mesma senha e a mesma barreira de sempre
-# — só poupa decorar o endereço /adm/entrar.
-#
-# Não amplia o que está exposto: /adm/entrar já aceita essa senha, na mesma
-# internet, e os dois caminhos têm o mesmo atraso de 1 segundo na tentativa
-# errada. O que muda é só onde a pessoa digita.
+# senha do painel, cai no /adm. É a única porta do painel: a tela própria
+# /adm/entrar saiu em 06/11/2026. O atraso de 1 segundo na tentativa errada
+# fica em web/app.py, na rota /login.
 NOMES_RESERVADOS = frozenset({"adm", "admin", "administrador"})
 
 
@@ -452,7 +395,7 @@ def agora(adm: str | None = Cookie(None, alias=COOKIE_ADM),
     Tem os mesmos dados da tela, entao exige o mesmo cookie."""
     _exigir_montado()
     if not autorizado(adm):
-        return RedirectResponse("/adm/entrar", status_code=303)
+        return RedirectResponse("/login", status_code=303)
 
     dias = _periodo_valido(dias)
     from web import adm_dav
@@ -596,10 +539,10 @@ async function pulsar() {
   try {
     const r = await fetch('/adm/agora?' + busca_url);
     // fetch segue redirect por padrao: passadas as 12h do cookie, /adm/agora
-    // redireciona para /adm/entrar e o fetch recebe 200 com a PAGINA DE LOGIN
+    // redireciona para /login e o fetch recebe 200 com a PAGINA DE LOGIN
     // inteira - r.ok sozinho nao percebe isso. r.redirected denuncia que a
     // resposta veio de outro lugar.
-    if (r.redirected) { location.href = '/adm/entrar'; return; }
+    if (r.redirected) { location.href = '/login'; return; }
     if (r.status === 204 || !r.ok) return;   // 204 = nada mudou desde a ultima
     const d = await r.json();
     versao = d.v;
@@ -716,7 +659,7 @@ def escolher_cotacao_dv(message_id: str = Form(...), cotacao_id: int = Form(...)
                         adm: str | None = Cookie(None, alias=COOKIE_ADM)):
     _exigir_montado()
     if not autorizado(adm):
-        return RedirectResponse("/adm/entrar", status_code=303)
+        return RedirectResponse("/login", status_code=303)
     banco.email_escolher_cotacao(message_id, cotacao_id)
     return RedirectResponse("/adm/dellavolpe", status_code=303)
 
@@ -726,7 +669,7 @@ def gerar_resumo_ia(adm: str | None = Cookie(None, alias=COOKIE_ADM)):
     """Pede à IA o resumo de hoje e volta ao painel. Falhou: volta com o motivo."""
     _exigir_montado()
     if not autorizado(adm):
-        return RedirectResponse("/adm/entrar", status_code=303)
+        return RedirectResponse("/login", status_code=303)
     try:
         with closing(banco._conectar()) as con:
             resumo_erros.gerar(con, date.today(), transportadoras.nome_de)
@@ -740,7 +683,7 @@ def painel(adm: str | None = Cookie(None, alias=COOKIE_ADM),
            dias: int = 30, quem: str = "", falhas: int = 0, resumo_ia: str = ""):
     _exigir_montado()
     if not autorizado(adm):
-        return RedirectResponse("/adm/entrar", status_code=303)
+        return RedirectResponse("/login", status_code=303)
 
     dias = _periodo_valido(dias)
     so_falhas = bool(falhas)
@@ -1001,7 +944,7 @@ async function pulsar() {
   try {
     const r = await fetch('/adm/cotacao/' + numeros.dataset.cotacao
                           + '/agora?v=' + encodeURIComponent(versao));
-    if (r.redirected) { location.href = '/adm/entrar'; return; }
+    if (r.redirected) { location.href = '/login'; return; }
     if (r.status === 204 || !r.ok) return;   // 204 = nada mudou desde a ultima
     const d = await r.json();
     versao = d.v;
@@ -1045,7 +988,7 @@ def ver_cotacao(cotacao_id: int,
     quem cotou."""
     _exigir_montado()
     if not autorizado(adm):
-        return RedirectResponse("/adm/entrar", status_code=303)
+        return RedirectResponse("/login", status_code=303)
 
     with closing(banco._conectar()) as con:
         c = contas.cotacao(con, cotacao_id)
@@ -1139,7 +1082,7 @@ def cotacao_agora(cotacao_id: int,
     respondendo a pagina inteira para quem chega pelo link."""
     _exigir_montado()
     if not autorizado(adm):
-        return RedirectResponse("/adm/entrar", status_code=303)
+        return RedirectResponse("/login", status_code=303)
 
     with closing(banco._conectar()) as con:
         versao = contas.versao_da_cotacao(con, cotacao_id)
@@ -1170,7 +1113,7 @@ def baixar_evidencias_zip(cotacao_id: int,
     transportadora não têm registro no banco, então não têm como entrar aqui."""
     _exigir_montado()
     if not autorizado(adm):
-        return RedirectResponse("/adm/entrar", status_code=303)
+        return RedirectResponse("/login", status_code=303)
 
     with closing(banco._conectar()) as con:
         c = contas.cotacao(con, cotacao_id)
@@ -1230,7 +1173,7 @@ def tela_contas(adm: str | None = Cookie(None, alias=COOKIE_ADM),
                 erro: str = "", feito: str = ""):
     _exigir_montado()
     if not autorizado(adm):
-        return RedirectResponse("/adm/entrar", status_code=303)
+        return RedirectResponse("/login", status_code=303)
 
     lista = banco.contas()
     linhas = "".join(_linha_da_conta(c) for c in lista) or (
@@ -1313,7 +1256,7 @@ def criar_conta(nome: str = Form(...),
                 adm: str | None = Cookie(None, alias=COOKIE_ADM)):
     _exigir_montado()
     if not autorizado(adm):
-        return RedirectResponse("/adm/entrar", status_code=303)
+        return RedirectResponse("/login", status_code=303)
 
     limpo = nome.strip()[:40]
     if not limpo:
@@ -1334,7 +1277,7 @@ def esquecer_senha(nome: str = Form(...),
                    adm: str | None = Cookie(None, alias=COOKIE_ADM)):
     _exigir_montado()
     if not autorizado(adm):
-        return RedirectResponse("/adm/entrar", status_code=303)
+        return RedirectResponse("/login", status_code=303)
 
     if not banco.esquecer_senha(nome):
         return _voltar(erro="Conta não encontrada.")
@@ -1347,7 +1290,7 @@ def remover_conta(nome: str = Form(...),
                   adm: str | None = Cookie(None, alias=COOKIE_ADM)):
     _exigir_montado()
     if not autorizado(adm):
-        return RedirectResponse("/adm/entrar", status_code=303)
+        return RedirectResponse("/login", status_code=303)
 
     if not banco.remover_conta(nome):
         return _voltar(erro="Conta não encontrada.")
@@ -1475,7 +1418,7 @@ def _legenda_dv() -> str:
 def emails_dellavolpe(adm: str | None = Cookie(None, alias=COOKIE_ADM)):
     _exigir_montado()
     if not autorizado(adm):
-        return RedirectResponse("/adm/entrar", status_code=303)
+        return RedirectResponse("/login", status_code=303)
 
     emails = banco.emails_processados(limite=100)
     precisam = [m for m in emails if _precisa_de_gente(m["desfecho"])]

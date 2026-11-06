@@ -261,7 +261,7 @@ def test_sem_login_de_adm_o_botao_nao_funciona(monkeypatch, banco, prov):
     monkeypatch.setattr(adm, "banco", banco)
     monkeypatch.setenv("COTAFRETE_ADM_SENHA", SENHA)
     r = TestClient(app_web.app).post("/adm/resumo-ia", follow_redirects=False)
-    assert r.status_code == 303 and r.headers["location"] == "/adm/entrar"
+    assert r.status_code == 303 and r.headers["location"] == "/login"
     assert prov.pedidos == []
 
 

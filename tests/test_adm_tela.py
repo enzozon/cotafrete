@@ -151,10 +151,11 @@ def test_login_aceita_senha_acentuada(monkeypatch, tmp_path):
     monkeypatch.setattr(adm, "banco", Banco(tmp_path / "t.db"))
     c = TestClient(app_web.app)
 
-    errada = c.post("/adm/entrar", data={"senha": "outra-señha-ã"})
+    errada = c.post("/login", data={"usuario": "adm",
+                                    "senha": "outra-señha-ã"})
     assert errada.status_code == 401
 
-    certa = c.post("/adm/entrar", data={"senha": senha},
+    certa = c.post("/login", data={"usuario": "adm", "senha": senha},
                    follow_redirects=False)
     assert certa.status_code == 303
 
