@@ -348,3 +348,31 @@ def test_aviso_de_frete_com_negacao(aviso, esperado):
 def test_aviso_que_cita_as_duas_sem_negar_nao_decide():
     frete, motivo = R.tipo_frete(["Frete CIF ou FOB, a combinar"], "NESTLE")
     assert (frete, "aviso" in motivo) == ("CIF", False)     # cai na regra do cliente
+
+
+# ---------------------------------------------- sugerir a marca (P2 #23)
+@pytest.mark.parametrize("texto, marca", [
+    ("Rolamento 6205 Marca Bortolini", "Bortolini"),
+    ("MOTOR 5CV;MARCA: WEG;TRIFASICO", "WEG"),
+    ("Fita isolante, marca 3M.", "3M"),
+    ("Luva (MARCA - DANNY)", "DANNY"),
+])
+def test_marca_citada_e_a_palavra_depois_de_marca(texto, marca):
+    assert R.marca_citada([texto]) == marca
+
+
+@pytest.mark.parametrize("texto", [
+    "Rolamento 6205", "marca", "Qualquer marca", "marca/modelo a informar",
+    "Marca similar", "Marca de primeira linha", "Marca ou modelo", "marca 123",
+    "Marca nacional", "marca equivalente", "Marca: a definir", "Marcador azul",
+])
+def test_frase_sem_nome_de_marca_nao_sugere(texto):
+    assert R.marca_citada([texto]) is None
+
+
+def test_marca_citada_olha_os_textos_em_ordem_e_ignora_vazio():
+    assert R.marca_citada(["", None, "Marca similar. Marca WEG", "Marca SKF"]) == "WEG"
+
+
+def test_marca_maior_que_o_campo_do_me_nao_e_sugerida():
+    assert R.marca_citada(["Marca " + "X" * (R.MAX_MARCA + 1)]) is None
