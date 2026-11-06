@@ -456,3 +456,16 @@ def test_backup_so_na_producao(tmp_path):
     roda = BackupFalso()
     assert atualizar.backup_do_dia(tmp_path / "cotafrete-dev", _dt(2026, 11, 4, 21, 0), roda) == "fora_da_producao"
     assert roda.chamadas == 0
+
+
+def test_resumo_por_email_uma_tentativa_por_dia_depois_das_19h(repos):
+    _, producao = repos
+    chamadas = []
+
+    def roda(pasta):
+        chamadas.append(pasta)
+        return 1, "Resumo por e-mail falhou: faltam credenciais"
+    assert atualizar.resumo_do_dia(producao, _dt(2026, 11, 6, 18, 59), roda) == "cedo"
+    assert atualizar.resumo_do_dia(producao, _dt(2026, 11, 6, 19, 1), roda) == "falhou"
+    assert atualizar.resumo_do_dia(producao, _dt(2026, 11, 6, 19, 6), roda) == "ja_feito"
+    assert len(chamadas) == 1 and "faltam credenciais" in _log(producao)
