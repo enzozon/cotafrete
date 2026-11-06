@@ -32,6 +32,7 @@ from __future__ import annotations
 import hmac
 import json
 import os
+import re
 import time
 from contextlib import closing
 from datetime import date
@@ -710,6 +711,16 @@ def _resumo_do_dia(con, hoje, erro: str = "") -> str:
     return "".join(partes) + botao + fatos_html
 
 
+@router.post("/dellavolpe/escolher")
+def escolher_cotacao_dv(message_id: str = Form(...), cotacao_id: int = Form(...),
+                        adm: str | None = Cookie(None, alias=COOKIE_ADM)):
+    _exigir_montado()
+    if not autorizado(adm):
+        return RedirectResponse("/adm/entrar", status_code=303)
+    banco.email_escolher_cotacao(message_id, cotacao_id)
+    return RedirectResponse("/adm/dellavolpe", status_code=303)
+
+
 @router.post("/resumo-ia")
 def gerar_resumo_ia(adm: str | None = Cookie(None, alias=COOKIE_ADM)):
     """Pede à IA o resumo de hoje e volta ao painel. Falhou: volta com o motivo."""
@@ -1369,6 +1380,8 @@ DESFECHOS_DV = {
     "ambigua": ("Mais de uma", "atencao", True,
                 "A proposta serve a mais de uma cotação e o sistema não "
                 "escolhe no chute."),
+    "escolhida": ("Escolhida", "neutro", False,
+                  "O ADM escolheu a cotação; o preço entra na próxima leitura da caixa."),
     "sem_valor": ("PDF sem valor", "erro", True,
                   "O PDF não traz o valor total do frete."),
     "sem_cotacao": ("Cotação não existe", "erro", True,
@@ -1397,6 +1410,20 @@ def _hora_curta(iso: str | None) -> str:
     return f"{iso[8:10]}/{iso[5:7]} {iso[11:16]}"
 
 
+def _botoes_escolha(m: dict) -> str:
+    """"Mais de uma": uma pessoa diz qual é a cotação; link para abrir, botão para escolher."""
+    if m["desfecho"] != "ambigua":
+        return ""
+    botoes = ""
+    for cid in dict.fromkeys(re.findall(r"#(\d+)", m["detalhe"] or "")):
+        botoes += (f'<form method="post" action="/adm/dellavolpe/escolher" style="display:inline;margin-right:8px">'
+                   f'<input type="hidden" name="message_id" value="{e(m["message_id"])}">'
+                   f'<input type="hidden" name="cotacao_id" value="{int(cid)}">'
+                   f'<a href="/adm/cotacao/{int(cid)}">ver #{int(cid)}</a> '
+                   f'<button class="botao2" type="submit">É esta</button></form>')
+    return f'<div style="margin-top:6px">{botoes}</div>'
+
+
 def _linha_email(m: dict) -> str:
     cid = m["cotacao_id"]
     cotacao = (f'<a href="/adm/cotacao/{int(cid)}">#{int(cid)}</a>'
@@ -1410,7 +1437,7 @@ def _linha_email(m: dict) -> str:
             f'<td>{e(texto_do_cabecalho(m.get("assunto")) or m["message_id"])}</td>'
             f'<td>{_pastilha_dv(m["desfecho"])}</td>'
             f'<td class="id">{cotacao}</td>'
-            f'<td class="sub">{e(texto_do_cabecalho(m["detalhe"]))}</td>'
+            f'<td class="sub">{e(texto_do_cabecalho(m["detalhe"]))}{_botoes_escolha(m)}</td>'
             f'<td class="hora">{e(_hora_curta(m["processado_em"]))}</td>'
             '</tr>')
 
