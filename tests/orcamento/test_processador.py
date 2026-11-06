@@ -477,3 +477,33 @@ def test_marca_de_uma_letra_nao_conta():
     assert proc.detectar_marca("CAIXA ORGANIZADORA C/ TAMPA AZUL 26L LARPLASTICO", marcas) == "LARPLASTICO"
     assert proc.detectar_marca("Caixa Organizadora com Tampa 26 x 34 Cm 25 Litros", marcas) is None
     assert proc.detectar_marca("TV LG 43", marcas) == "LG"
+
+
+def test_vendedor_com_erro_de_digitacao_sugere_o_nome_e_nao_escolhe(tmp_path):
+    c = cfg(tmp_path, dry_run=False)
+    p = planilha(c, {"B33": "ELIZIANE AMORIM ROSA BARRO"})
+    assert processar_arquivo(p, c, HseFalso()) == "ERRO"
+    assert "Parece ser ELIZIANE AMORIM ROSA BARROS: escreva esse nome na B33" in txt(c, "ERRO")
+
+
+def test_vendedor_empatado_ou_diferente_nao_sugere():
+    assert proc.vendedor_parecido("FULANO", ["ELIZIANE AMORIM ROSA BARROS"]) is None
+    assert proc.vendedor_parecido("ANA LIMA", ["ANA LIMA X", "ANA LIMA Y"]) is None  # empate
+
+
+def test_cnpj_com_digito_errado_sugere_o_cliente():
+    hse = HseFalso(clientes=[Cliente("1061", "VALE S.A.", "33592510022042")])
+    for errado in ("33592510022043", "33592519022042", "33592501022042"):   # DV, meio e dois invertidos
+        cliente, erro = proc.resolver_cliente(errado, hse)
+        assert cliente is None
+        assert "Parece ser 1061 - VALE S.A. (33592510022042): escreva 1061 na B31" in erro, errado
+
+
+def test_cnpj_valido_codigo_curto_e_dois_candidatos_nao_sugerem():
+    vale = Cliente("1061", "VALE S.A.", "33592510022042")
+    assert "Parece ser" not in proc.resolver_cliente("1016", HseFalso(clientes=[vale]))[1]
+    assert "Parece ser" not in proc.resolver_cliente("33000167000101", HseFalso(clientes=[vale]))[1]  # DV certo
+    erro = "33592510022043"
+    vizinho = next(v for v in proc.cnpjs_vizinhos(erro) if v != vale.documento)
+    dois = HseFalso(clientes=[vale, Cliente("2", "OUTRA", vizinho)])
+    assert "Parece ser" not in proc.resolver_cliente(erro, dois)[1]

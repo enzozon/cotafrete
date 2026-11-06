@@ -1,4 +1,5 @@
 """Regras de decisão e fluxo de cada planilha (independente do navegador)."""
+import difflib
 import hashlib
 import json
 import logging
@@ -77,6 +78,7 @@ class HseApi(Protocol):
     avisos: list[str]  # avisos que o HSE mostrou ao montar o orçamento (ex.: cliente bloqueado)
     def buscar_cliente(self, chave: str) -> list[Cliente]: ...
     def vendedor_existe(self, nome: str) -> bool: ...
+    def nomes_vendedores(self) -> list[str]: ...
     def buscar_produtos(self, termo: str) -> list[Produto]: ...
     def cadastrar_produto(self, item: Item, filial: int, salvar: bool) -> str | None: ...
     def montar_orcamento(self, orc: Orcamento, cliente: Cliente,
@@ -178,6 +180,57 @@ def _so_digitos(s: str) -> str:
     return re.sub(r"\D", "", s or "")
 
 
+PARECIDO = 0.8  # "ITABRA" x "ITABIRA" dá 0,92; cidades diferentes ficam bem abaixo
+MAX_VIZINHOS = 12  # cada vizinho é uma busca no HSE
+
+
+def _so_palavras(texto: str) -> str:
+    return " ".join(re.sub(r"[^A-Z0-9]+", " ", normalizar(texto)).split())
+
+
+def _parecido(texto: str, candidato: str) -> float:
+    """Nota do trecho do candidato mais parecido com o texto (mesmo número de palavras)."""
+    alvo, palavras = _so_palavras(texto), _so_palavras(candidato).split()
+    n = max(1, len(alvo.split()))
+    return max((difflib.SequenceMatcher(None, alvo, " ".join(palavras[i:i + n])).ratio()
+                for i in range(max(1, len(palavras) - n + 1))), default=0.0)
+
+
+def vendedor_parecido(nome: str, nomes: list[str]) -> str | None:
+    """O único nome claramente parecido. Só sugere; nunca escolhe, porque o HSE é produção."""
+    notas = sorted(((_parecido(nome, n), n) for n in nomes), reverse=True)
+    if notas and notas[0][0] >= PARECIDO and (len(notas) == 1 or notas[1][0] < notas[0][0]):
+        return notas[0][1]
+    return None
+
+
+def cnpj_valido(d: str) -> bool:
+    if len(set(d)) == 1:
+        return False
+
+    def dv(base: str) -> str:
+        r = sum(int(a) * b for a, b in zip(base, [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2][-len(base):])) % 11
+        return "0" if r < 2 else str(11 - r)
+    return dv(d[:12]) == d[12] and dv(d[:13]) == d[13]
+
+
+def cnpjs_vizinhos(doc: str) -> list[str]:
+    """CNPJs válidos a um dígito trocado ou a dois dígitos vizinhos invertidos de `doc`."""
+    trocas = {doc[:i] + c + doc[i + 1:] for i in range(14) for c in "0123456789"}
+    trocas |= {doc[:i] + doc[i + 1] + doc[i] + doc[i + 2:] for i in range(13)}
+    return sorted(t for t in trocas if t != doc and cnpj_valido(t))
+
+
+def cliente_parecido(doc: str, hse: HseApi) -> Cliente | None:
+    """CNPJ com dígito verificador errado é erro de digitação. O HSE só acha o CNPJ inteiro (nunca um
+    pedaço), então procura cada vizinho válido; são cerca de 2 a cada 100 trocas, e só devolve se achar um só."""
+    if len(doc) != 14 or cnpj_valido(doc):
+        return None   # ponytail: CPF fica de fora; a B31 da empresa é quase sempre CNPJ
+    achados = {c.codigo: c for v in cnpjs_vizinhos(doc)[:MAX_VIZINHOS] for c in hse.buscar_cliente(v)
+               if _so_digitos(c.documento) == v}
+    return next(iter(achados.values())) if len(achados) == 1 else None
+
+
 def resolver_cliente(chave: str, hse: HseApi) -> tuple[Cliente | None, str | None]:
     doc = _so_digitos(chave)
     achados = {c.codigo: c for c in hse.buscar_cliente(chave)
@@ -185,7 +238,11 @@ def resolver_cliente(chave: str, hse: HseApi) -> tuple[Cliente | None, str | Non
     if len(achados) == 1:
         return next(iter(achados.values())), None
     if not achados:
-        return None, f"Cliente {chave} não encontrado no HSE (use o código ou CNPJ/CPF exato)"
+        msg = f"Cliente {chave} não encontrado no HSE (use o código ou CNPJ/CPF exato)"
+        parecido = cliente_parecido(doc, hse)
+        if parecido:
+            msg += f". Parece ser {parecido.codigo} - {parecido.nome} ({parecido.documento}): escreva {parecido.codigo} na B31"
+        return None, msg
     return None, f"Cliente {chave} corresponde a vários cadastros: {', '.join(achados)}"
 
 
@@ -297,7 +354,9 @@ def validar_online(orc: Orcamento, hse: HseApi, rel: Relatorio,
     else:
         rel.info(f"Cliente: {cliente.codigo} - {cliente.nome} ({cliente.documento})")
     if not hse.vendedor_existe(orc.vendedor):
-        rel.erro(f"Vendedor '{orc.vendedor}' não encontrado no HSE (use o nome exato da lista)")
+        parecido = vendedor_parecido(orc.vendedor, hse.nomes_vendedores())
+        rel.erro(f"Vendedor '{orc.vendedor}' não encontrado no HSE (use o nome exato da lista)"
+                 + (f". Parece ser {parecido}: escreva esse nome na B33" if parecido else ""))
     return cliente, [conferir_desconto(resolver_item(it, hse, ajuda)) for it in orc.itens]
 
 
