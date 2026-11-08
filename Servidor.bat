@@ -217,6 +217,17 @@ REM     setx /M COTAFRETE_HOST 127.0.0.1
 REM
 REM Isso DERRUBA o acesso por 192.168.1.250:8000 para todo mundo. Nao faca
 REM sem avisar a equipe e sem o endereco publico ja funcionando.
+REM
+REM COTAFRETE_PUBLICO=1 fecha a documentacao da API (/docs, /redoc,
+REM /openapi.json), que expoe o mapa inteiro das rotas. Ligue no servidor
+REM publico; deixe desligado na maquina de desenvolvimento, onde a doc ajuda:
+REM
+REM     setx /M COTAFRETE_PUBLICO 1
+REM
+REM COTAFRETE_COOKIE_SEGURO=1 forca a marca `Secure` nos cookies. Nao e mais
+REM obrigatoria: o Secure ja liga sozinho quando o acesso vem por https (pelo
+REM X-Forwarded-Proto do Cloudflare) e continua desligado no http da LAN. Use
+REM a variavel so para forcar o Secure tambem na LAN.
 if not defined COTAFRETE_HOST set COTAFRETE_HOST=0.0.0.0
 
 .venv\Scripts\python.exe -m uvicorn web.app:app --host %COTAFRETE_HOST% --port 8000 --log-level warning >> "log\servidor.log" 2>&1

@@ -150,7 +150,7 @@ def emitido_em(valor: str, dias: int = DIAS_DE_SESSAO) -> int | None:
         return None
 
 
-def cookie_seguro() -> bool:
+def cookie_seguro(https: bool = False) -> bool:
     """Se os cookies de sessão saem com a marca `Secure`.
 
     É a única função deste módulo que olha o ambiente — as outras são puras.
@@ -168,8 +168,13 @@ def cookie_seguro() -> bool:
     todo mundo já estiver entrando pelo endereço público:
 
         setx /M COTAFRETE_COOKIE_SEGURO 1
+
+    `https` vem de quem chama (o pedido chegou por https, direto ou via
+    Cloudflare). Com ele a marca liga SOZINHA no endereço público, sem
+    derrubar o http da rede local — lá o pedido chega por http e `https` é
+    falso. A env continua valendo como liga-mestre para quem quiser forçar.
     """
-    return os.getenv("COTAFRETE_COOKIE_SEGURO", "").strip() == "1"
+    return https or os.getenv("COTAFRETE_COOKIE_SEGURO", "").strip() == "1"
 
 
 def novo_segredo() -> str:

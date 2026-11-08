@@ -315,6 +315,38 @@ def test_a_variavel_liga_a_marca_nos_dois_cookies(c, app_web, monkeypatch):
     assert "secure" in do_painel.headers["set-cookie"].lower()
 
 
+def test_https_encaminhado_liga_a_marca_sozinho(c, app_web):
+    """Atrás do Cloudflare o uvicorn vê http; o esquema real vem em
+    `X-Forwarded-Proto`. Quando ele diz https, o Secure liga sem precisar da
+    env — é o que fecha o cookie no endereço público sem tocar na LAN."""
+    _com_conta(app_web)
+
+    r = c.post("/login", data={"usuario": "joao", "senha": "senha-do-joao"},
+               headers={"x-forwarded-proto": "https"})
+
+    assert "secure" in r.headers["set-cookie"].lower()
+
+
+def test_cabecalhos_de_seguranca_em_toda_resposta(c):
+    r = c.get("/login")
+    assert r.headers["x-content-type-options"] == "nosniff"
+    assert r.headers["x-frame-options"] == "DENY"
+    assert "frame-ancestors 'none'" in r.headers["content-security-policy"]
+    assert "strict-origin" in r.headers["referrer-policy"]
+
+
+def test_pagina_autenticada_nao_cacheia_nem_indexa(c, app_web):
+    _com_conta(app_web)
+    entrada = c.post("/login", data={"usuario": "joao",
+                                     "senha": "senha-do-joao"})
+    c.cookies.set(app_web.COOKIE, entrada.cookies[app_web.COOKIE])
+
+    r = c.get("/")
+
+    assert "no-store" in r.headers["cache-control"]
+    assert "noindex" in r.headers["x-robots-tag"]
+
+
 def test_sair_derruba_a_sessao(c, app_web):
     _com_conta(app_web)
     c.cookies.set(app_web.COOKIE,

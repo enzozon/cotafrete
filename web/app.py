@@ -26,6 +26,7 @@ fora da rede local sem virar autenticação de verdade.
 
 from __future__ import annotations
 
+import os
 import sqlite3
 import threading
 import time
@@ -139,7 +140,60 @@ async def _vida(_app):
         VIGIA_ME.set()
 
 
-app = FastAPI(title="Cotafrete — Ventura", lifespan=_vida)
+# A documentação interativa da API (/docs, /redoc, /openapi.json) expõe o mapa
+# completo das rotas e dos parâmetros. Em rede local ajuda; na internet é
+# reconhecimento de graça para quem quiser atacar. Fica LIGADA no
+# desenvolvimento e DESLIGADA assim que a env de produção estiver marcada.
+# Ligue no servidor junto com o Secure dos cookies (ver Servidor.bat):
+#     setx /M COTAFRETE_PUBLICO 1
+_PUBLICO = os.getenv("COTAFRETE_PUBLICO", "").strip() == "1"
+app = FastAPI(
+    title="Cotafrete — Ventura",
+    lifespan=_vida,
+    docs_url=None if _PUBLICO else "/docs",
+    redoc_url=None if _PUBLICO else "/redoc",
+    openapi_url=None if _PUBLICO else "/openapi.json",
+)
+
+
+def _pedido_https(request: Request) -> bool:
+    """Se o pedido chegou por https — direto ou via proxy (Cloudflare).
+
+    Atrás do Cloudflare o uvicorn vê http; quem guarda o esquema original é o
+    cabeçalho `X-Forwarded-Proto`. É o que deixa o Secure dos cookies ligar
+    sozinho no endereço público sem quebrar o http da rede local."""
+    encaminhado = request.headers.get("x-forwarded-proto", "")
+    if encaminhado.split(",")[0].strip().lower() == "https":
+        return True
+    return request.url.scheme == "https"
+
+
+@app.middleware("http")
+async def _cabecalhos_de_seguranca(request: Request, call_next):
+    """Cabeçalhos de segurança em TODA resposta, e `no-store`/`noindex` nas
+    páginas autenticadas. São aditivos: `setdefault` não sobrescreve o que uma
+    rota já definiu (há rotas que mandam o próprio `Cache-Control: no-store`)."""
+    resp = await call_next(request)
+    resp.headers.setdefault("X-Content-Type-Options", "nosniff")
+    resp.headers.setdefault("X-Frame-Options", "DENY")
+    resp.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    resp.headers.setdefault("Permissions-Policy",
+                            "geolocation=(), microphone=(), camera=()")
+    # CSP enxuta: só barra enquadramento em iframe de terceiros (clickjacking).
+    # Não restringe script/style porque a interface usa inline por toda parte;
+    # uma CSP de script aqui quebraria a tela sem aviso. Endurecer depois, com
+    # nonce, é um passo à parte.
+    resp.headers.setdefault("Content-Security-Policy", "frame-ancestors 'none'")
+    if _pedido_https(request):
+        resp.headers.setdefault("Strict-Transport-Security",
+                                "max-age=31536000; includeSubDomains")
+    if request.cookies.get(COOKIE) or request.cookies.get(adm.COOKIE_ADM):
+        resp.headers.setdefault("Cache-Control",
+                                "no-store, no-cache, must-revalidate, private")
+        resp.headers.setdefault("X-Robots-Tag", "noindex, nofollow")
+    return resp
+
+
 banco = Banco()
 # Fila do Gerar DAV: a thread só nasce no primeiro DAV (nada sobe no import).
 FILA_DIAGNOSTICO = FilaDiagnostico(banco, Path("davs"), ao_terminar=lambda i: dav_ui.corrigir_sozinho(i))
@@ -841,14 +895,16 @@ def tela_login() -> str:
     return _tela_login()
 
 
-def _abrir_sessao(nome: str) -> RedirectResponse:
+def _abrir_sessao(nome: str, https: bool = False) -> RedirectResponse:
     r = RedirectResponse("/", status_code=303)
     # httponly: JavaScript não lê, então um XSS não leva a sessão embora.
     # samesite=lax: site de terceiro não consegue postar cotação em nome de
     # quem está logado.
+    # secure: liga sozinho quando o pedido veio por https (público via
+    # Cloudflare); fica desligado no http da rede local.
     r.set_cookie(COOKIE, sessao.assinar(nome, banco.segredo_sessao()),
                  max_age=sessao.DIAS_DE_SESSAO * 86400, httponly=True,
-                 samesite="lax", secure=cookie_seguro())
+                 samesite="lax", secure=cookie_seguro(https))
     return r
 
 
@@ -865,7 +921,7 @@ def _recusar(erro: str, nome: str = "", escolher_senha: bool = False):
 # convite devolvia str crua. Declarado na ROTA, vale para todo `return` dela,
 # inclusive os que vierem depois.
 @app.post("/login", response_class=HTMLResponse)
-def entrar(usuario: str = Form(...), senha: str = Form(""),
+def entrar(request: Request, usuario: str = Form(...), senha: str = Form(""),
            confirmacao: str = Form("")):
     """Uma rota, três caminhos: conta inexistente, primeiro acesso e entrada
     normal.
@@ -874,12 +930,13 @@ def entrar(usuario: str = Form(...), senha: str = Form(""),
     qualquer pessoa que achasse o endereço na internet se cadastraria
     sozinha, que é exatamente o buraco que este login veio fechar."""
     nome = usuario.strip()[:40]
+    https = _pedido_https(request)
 
     # O administrador entra por aqui também, com a senha do painel. Vem antes
     # da busca de conta porque o nome é reservado: /adm/contas recusa criar
     # conta de vendedor com ele, então não há ambiguidade.
     if adm.nome_reservado(nome):
-        resposta = adm.entrada_pelo_login(senha)
+        resposta = adm.entrada_pelo_login(senha, https)
         if resposta is not None:
             return resposta
         time.sleep(PAUSA_SENHA_ERRADA_S)
@@ -910,14 +967,14 @@ def entrar(usuario: str = Form(...), senha: str = Form(""),
         if not banco.definir_senha(nome, sessao.hash_senha(senha)):
             # Só chega aqui se outra aba fechou o convite no meio do caminho.
             return _recusar("Essa conta já tem senha. Entre com ela.", nome)
-        return _abrir_sessao(nome)
+        return _abrir_sessao(nome, https)
 
     if not sessao.senha_confere(senha, conta["senha_hash"]):
         time.sleep(PAUSA_SENHA_ERRADA_S)
         # Nunca repetir o que foi digitado: nem na tela, nem em log.
         return _recusar("Nome ou senha não conferem.", nome)
 
-    return _abrir_sessao(nome)
+    return _abrir_sessao(nome, https)
 
 
 @app.get("/sair")

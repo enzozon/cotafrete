@@ -144,13 +144,16 @@ def nome_reservado(nome: str) -> bool:
     return nome.strip().casefold() in NOMES_RESERVADOS
 
 
-def entrada_pelo_login(senha: str):
+def entrada_pelo_login(senha: str, https: bool = False):
     """A entrada no painel, ou None se a senha não confere.
 
     Devolver None em vez de uma tela de erro é de propósito: quem chama é a
     tela do vendedor, e é ela que sabe como mostrar a recusa — com o mesmo
     texto de uma senha de vendedor errada, para a tela não virar um detector
-    de "este nome existe"."""
+    de "este nome existe".
+
+    `https` vem da tela do vendedor (o pedido chegou por https) e liga o
+    Secure do cookie do painel sozinho no endereço público."""
     correta = senha_configurada()
     if not correta:
         return None
@@ -158,7 +161,8 @@ def entrada_pelo_login(senha: str):
         return None
     r = RedirectResponse("/adm", status_code=303)
     r.set_cookie(COOKIE_ADM, token_de(correta), max_age=VALIDADE_S,
-                 httponly=True, samesite="lax", secure=sessao.cookie_seguro())
+                 httponly=True, samesite="lax",
+                 secure=sessao.cookie_seguro(https))
     return r
 
 
