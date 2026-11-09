@@ -78,7 +78,7 @@ from web.ficha_ui import (
     quando as quando_humano, quem_e as _quem,
 )
 from web.layout import (MALHA_CORREDORES, cabecalho, e_pdf, entrada, e, moeda,
-                        pagina, print_embutido as _img)
+                        pagina, plural, print_embutido as _img)
 from web.transportadoras import cota_por_volume
 from web.aceite_ui import COM_ACEITE, celula_de_aceite, tela_aceite
 from core.models import (
@@ -2550,7 +2550,7 @@ def ver_cotacao(cotacao_id: int,
             # Sem ele a comparacao e so preco - e frete se decide comparando
             # preco CONTRA prazo.
             if r["prazo"]:
-                prazo = f'{e(str(r["prazo"]))} dias'
+                prazo = f'{e(str(r["prazo"]))} {plural(r["prazo"], "dia", "dias")}'
             # Validade e botão "Aceitar" na MESMA célula: é a validade que
             # decide se ainda vale a pena aceitar, e separá-los faria o
             # vendedor ler "vence hoje" num canto e clicar no outro.

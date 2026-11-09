@@ -30,7 +30,7 @@ from mercado_eletronico import painel as pn
 from mercado_eletronico import revisao as rv
 from web import adm
 from web import painel_ui as ui
-from web.layout import e, print_embutido
+from web.layout import e, plural, print_embutido
 
 router = APIRouter(prefix="/adm/me", include_in_schema=False)
 
@@ -415,7 +415,7 @@ def cotacao(cid: int, adm_cookie: str | None = Cookie(None, alias=adm.COOKIE_ADM
                 + (f'<br>Salva por {e(c["salvo_por"])} em {e(_hora(c["salvo_em"]))}' if c["salvo_em"] else "")
                 + (f'<br>Enviada em {e(_hora(c["enviada_em"]))}' if c["enviada_em"] else ""))
     grade = (
-        ui.cartao("Itens", tabela_itens, nota=f"{len(c['itens'])} itens", classe="c12", atraso=0.02)
+        ui.cartao("Itens", tabela_itens, nota=f"{len(c['itens'])} {plural(len(c['itens']), 'item', 'itens')}", classe="c12", atraso=0.02)
         + ui.cartao("Histórico", _eventos(linhas_hist), classe="c8", atraso=0.05)
         + ui.cartao("Revisão por IA", ia, classe="c4", atraso=0.08)
         + ui.cartao("Prints do robô", imagens, nota="os 3 mais recentes", classe="c12", atraso=0.10))

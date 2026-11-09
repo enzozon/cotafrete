@@ -1422,6 +1422,23 @@ def moeda(v: Decimal | None) -> str:
     return f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 
+def plural(n, singular: str, plural: str) -> str:
+    """Concorda o substantivo com o número: 1 vira singular, o resto plural.
+
+    Existe porque a tela mostrava "1 itens", "1 dias" — o número é dinâmico, o
+    substantivo vinha fixo no plural. A convenção "(s)" do resto do sistema
+    (transportadora(s), problema(s)) resolve o plural regular, mas quebra no
+    irregular (item → itens, não "iten(s)"), que é justamente onde o bug
+    aparecia. Devolve só o substantivo; o número quem escreve é quem chama, para
+    caber em "N de M itens" e afins.
+
+        f"{n} {plural(n, 'item', 'itens')}"  ->  "1 item", "3 itens"
+
+    Aceita `n` como número ou texto ("1"): só o 1 exato vira singular. Zero e
+    faixas ("2 a 3") ficam no plural, como no português."""
+    return singular if str(n).strip() == "1" else plural
+
+
 # ------------------------------------------------------- a malha do hero
 #
 # O desenho de fundo da tela de entrada, e o mesmo em miniatura na faixa da
@@ -1866,7 +1883,7 @@ def pagina(titulo: str, corpo: str, usuario: str | None = None) -> str:
 <title>{e(titulo)} — Cotafrete</title>{ICONE_ABA}{cabeca_do_tema("claro")}
 <style>{CSS}</style></head><body>
 <a class="pular" href="#conteudo">Pular para o conteúdo</a>
-<div class="topo"><a class="marca-placa" href="/" aria-label="Ventura Comércio — início"><span class="marca-peca marca-lockup" role="img"></span></a>
+<div class="topo"><a class="marca-placa" href="/" aria-label="Ventura Comércio — início"><span class="marca-peca marca-lockup" aria-hidden="true"></span></a>
 {quem}{BOTAO_TEMA}</div>
 <main class="wrap" id="conteudo">{corpo}</main>
 {rodape_do_site(usuario)}{LUPA}{SCRIPT_TEMA}</body></html>"""

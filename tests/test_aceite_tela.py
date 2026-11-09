@@ -319,3 +319,19 @@ def test_falha_no_portal_libera_nova_tentativa(app_web, cliente, monkeypatch):
     linha = linha_de(cliente.get(f"/cotacao/{cid}").text, "generoso")
     assert "tentar de novo" in linha
     assert f"/aceitar/{cid}/generoso" in linha
+
+
+def test_prazo_de_um_dia_fica_no_singular(app_web, cliente):
+    """"1 dias" era o sintoma clássico do plural quebrado (CAN-TXT-01). Com um
+    dia só, a tela de aceite precisa dizer "1 dia"."""
+    cid = app_web.banco.salvar_cotacao("enzo", CARGA)
+    for slug in app_web.AUTOMATICAS:
+        eh = slug == "generoso"
+        app_web.banco.salvar_resultado(
+            cid, slug, status="cotado", valor=Decimal("152.16"),
+            protocolo="2684352" if eh else None, prazo="1",
+            validade=(date.today() + timedelta(days=7)) if eh else None)
+
+    html = cliente.get(f"/aceitar/{cid}/generoso").text
+
+    assert "1 dia" in html and "1 dias" not in html

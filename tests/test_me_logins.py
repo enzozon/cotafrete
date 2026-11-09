@@ -241,7 +241,9 @@ def test_previa_pela_rota_nao_grava_e_o_quadro_mostra_o_frete(cliente):
     assert me_ui.banco.me_cotacao(cid)["itens"] == antes        # só calcula
 
     html = cliente.get(f"/me/{cid}").text
-    assert "Frete FOB" in html and "itens prontos" in html
+    # "prontos"/"pronto": o quadro concorda com a contagem (CAN-TXT-01) — esta
+    # cotação tem um item só, então diz "item pronto", não "1 itens prontos".
+    assert "Frete FOB" in html and "pronto" in html
     assert 'id="linha-' in html and "/linha/" in html
     assert cliente.get(f"/me/{cid}/linha/99999").status_code == 404
 

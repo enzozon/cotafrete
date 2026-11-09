@@ -48,7 +48,7 @@ from mercado_eletronico import painel as pn
 from mercado_eletronico import regras as rg
 from mercado_eletronico import revisao as rv
 from mercado_eletronico.painel import Status
-from web.layout import cabecalho, e, pagina
+from web.layout import cabecalho, e, pagina, plural
 
 # Injetados por web/app.py (mesmo esquema do /adm: importar web.app daqui
 # seria circular).
@@ -625,7 +625,7 @@ def _quadro_cotacao(c: dict, hoje: date, trava: str = "") -> str:
             'comprador não foi conferido. Use estas informações para responder pelo site do ME.</p>')
     return f"""<div class="cartao me-quadro">
 <div class="me-frete me-frete-{frete.lower()}">Frete {frete}</div><small>{e(motivo)}</small>
-<p><b id="me-prontos">{prontos}</b> de {len(c['itens'])} itens prontos</p>
+<p><b id="me-prontos">{prontos}</b> de {len(c['itens'])} {plural(len(c['itens']), 'item pronto', 'itens prontos')}</p>
 <dl class="me-dados">{''.join(f'<dt>{e(k)}</dt><dd>{e(v)}</dd>' for k, v in dados)}</dl>
 {uf}{robo}
 {('<h3>Avisos do comprador</h3><ul class="me-avisos">'
@@ -743,7 +743,7 @@ def sugerir_ncm(cid: int, usuario: str) -> str:
     faltam = len(vazios) - len(sugestoes)
     banco.me_registrar(cid, f"NCM sugerido pela IA: {len(sugestoes)} itens",
                        f"{modelo}" + (f" · {faltam} sem sugestão" if faltam else ""), usuario)
-    return (f"A IA sugeriu o NCM de {len(sugestoes)} de {len(vazios)} itens. Confira cada um "
+    return (f"A IA sugeriu o NCM de {len(sugestoes)} de {len(vazios)} {plural(len(vazios), 'item', 'itens')}. Confira cada um "
             "(etiqueta \"IA\" embaixo do campo) antes de salvar.")
 
 
@@ -1185,7 +1185,7 @@ def ver(cid: int, request: Request, msg: str = ""):
 
     sem_ncm = sum(not (i["ncm"] or "").strip() for i in c["itens"])
     botao_ncm = (f'<button type="submit" name="acao" value="ncm" class="botao2"{trava}'
-                 f' title="A IA sugere o NCM dos {sem_ncm} itens sem NCM; você confere">'
+                 f' title="A IA sugere o NCM {plural(sem_ncm, "do item", "dos itens")} sem NCM; você confere">'
                  f'Sugerir NCM com IA ({sem_ncm})</button>'
                  if sem_ncm and ia.configurada() else "")
     if not c["itens"]:
