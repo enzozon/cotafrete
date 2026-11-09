@@ -184,7 +184,10 @@ CREATE TABLE IF NOT EXISTS conta (
     nome        TEXT PRIMARY KEY,
     senha_hash  TEXT,
     criado_em   TEXT NOT NULL,
-    definida_em TEXT
+    definida_em TEXT,
+    -- Corte de logout: cookie emitido ANTES deste instante não vale mais.
+    -- É o que faz "Sair" derrubar a sessão no servidor, não só no navegador.
+    sessoes_ate TEXT
 );
 
 -- Convite de primeiro acesso. O admin cria a conta e gera um convite; a
@@ -426,6 +429,10 @@ class Banco:
         for coluna in CAMPOS_CARGA:
             if coluna not in existentes:
                 con.execute(f"ALTER TABLE cotacao ADD COLUMN {coluna} TEXT")
+
+        existentes = {r["name"] for r in con.execute("PRAGMA table_info(conta)")}
+        if "sessoes_ate" not in existentes:
+            con.execute("ALTER TABLE conta ADD COLUMN sessoes_ate TEXT")
 
         existentes = {r["name"] for r in con.execute("PRAGMA table_info(resultado)")}
         for coluna in CAMPOS_RESULTADO:
@@ -1014,6 +1021,16 @@ class Banco:
                 return None
             con.execute("DELETE FROM convite WHERE nome = ?", (linha["nome"],))
             return linha["nome"]
+
+    def invalidar_sessoes(self, nome: str) -> None:
+        """Marca o corte de logout: qualquer cookie emitido até agora deixa de
+        valer. É o que faz "Sair" derrubar a sessão no servidor, não só apagar
+        o cookie no navegador — um cookie copiado antes do logout não entra
+        mais. Um novo login, emitido depois, vale normalmente."""
+        with closing(self._conectar()) as con, con:
+            con.execute(
+                "UPDATE conta SET sessoes_ate = ? WHERE nome = ?",
+                (datetime.now().isoformat(timespec="seconds"), nome))
 
     def remover_conta(self, nome: str) -> bool:
         """Tira o acesso. As cotações que a pessoa já fez ficam — são

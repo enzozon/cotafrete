@@ -399,6 +399,37 @@ def test_esquecer_a_senha_derruba_a_sessao_aberta(app_web):
     assert c.get("/").headers.get("location") == "/login"
 
 
+def test_sair_corta_a_sessao_no_servidor(c, app_web):
+    """"Sair" grava o corte no servidor — não só apaga o cookie no navegador.
+    Antes, um cookie copiado sobrevivia ao logout até o prazo de 7 dias."""
+    _com_conta(app_web)
+    login = c.post("/login", data={"usuario": "joao", "senha": "senha-do-joao"})
+    c.cookies.set(app_web.COOKIE, login.cookies[app_web.COOKIE])
+    assert app_web.banco.conta("joao")["sessoes_ate"] is None
+
+    c.get("/sair")
+
+    assert app_web.banco.conta("joao")["sessoes_ate"] is not None
+
+
+def test_cookie_emitido_antes_do_logout_nao_vale(app_web):
+    """A lógica do corte, com tempos controlados (sem depender do relógio da
+    suíte): cookie anterior ao `sessoes_ate` é recusado; um posterior vale."""
+    from datetime import datetime
+    seg = app_web.banco.segredo_sessao()
+    base = {"senha_hash": "x", "definida_em": datetime(2020, 1, 1).isoformat()}
+    antes = sessao.assinar("joao", seg, agora=datetime(2021, 1, 1))
+    depois = sessao.assinar("joao", seg, agora=datetime(2022, 1, 1))
+
+    # sem logout: vale
+    assert app_web._cookie_vale_para({**base, "sessoes_ate": None}, antes)
+    # logout em 2021-06: o cookie de 2021-01 (anterior) cai...
+    corte = {**base, "sessoes_ate": datetime(2021, 6, 1).isoformat()}
+    assert app_web._cookie_vale_para(corte, antes) is False
+    # ...e um novo login (2022, posterior ao corte) volta a valer
+    assert app_web._cookie_vale_para(corte, depois) is True
+
+
 def test_conta_recriada_nao_herda_o_cookie_da_antiga(app_web):
     from datetime import datetime, timedelta
     app_web.banco.criar_conta("joao")

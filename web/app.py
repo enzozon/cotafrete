@@ -814,11 +814,25 @@ def _cookie_vale_para(conta: dict, cookie: str) -> bool:
         # para não prender a pessoa num login que nunca abre.
         return True
     emitido = sessao.emitido_em(cookie)
+    if emitido is None:
+        return False
     try:
         definida = datetime.fromisoformat(conta["definida_em"]).timestamp()
     except (TypeError, ValueError):
         return False
-    return emitido is not None and emitido >= int(definida)
+    if emitido < int(definida):
+        return False
+    # Corte de logout: "Sair" grava `sessoes_ate`; cookie emitido antes dele
+    # (um que foi copiado antes do logout) não vale mais. Sem data, nunca
+    # houve logout e não há o que cortar.
+    corte = conta.get("sessoes_ate")
+    if corte:
+        try:
+            if emitido < int(datetime.fromisoformat(corte).timestamp()):
+                return False
+        except (TypeError, ValueError):
+            return False
+    return True
 
 
 
@@ -996,7 +1010,12 @@ def entrar(request: Request, usuario: str = Form(...), senha: str = Form(""),
 
 
 @app.get("/sair")
-def sair():
+def sair(usuario: str | None = Depends(vendedor)):
+    # Além de apagar o cookie no navegador, grava o corte de logout no
+    # servidor: um cookie copiado antes do "Sair" para de valer na hora, em vez
+    # de durar os 7 dias do prazo. Um novo login, emitido depois, vale.
+    if usuario:
+        banco.invalidar_sessoes(usuario)
     r = RedirectResponse("/login", status_code=303)
     r.delete_cookie(COOKIE)
     return r

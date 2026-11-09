@@ -509,3 +509,12 @@ def test_convite_nao_reescreve_senha_de_quem_ja_entra(db):
     assert db.nome_do_convite(token) is None
     assert db.definir_senha_por_convite(token, sessao.hash_senha("invasor")) is None
     assert sessao.senha_confere("a-verdadeira", db.conta("maria")["senha_hash"])
+
+
+def test_invalidar_sessoes_grava_o_corte(db):
+    db.criar_conta("maria")
+    assert db.conta("maria")["sessoes_ate"] is None
+
+    db.invalidar_sessoes("maria")
+
+    assert db.conta("maria")["sessoes_ate"] is not None
