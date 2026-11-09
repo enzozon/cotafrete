@@ -4,6 +4,32 @@ from __future__ import annotations
 import re
 import unicodedata
 from datetime import datetime
+from functools import lru_cache
+from pathlib import Path
+from typing import Callable
+
+# Ligada por web/app.py: id do envio → planilha guardada. Com ela, as células indicadas saem no
+# endereço daquela planilha (Nº na coluna A, mais ou menos itens); sem ela, no do modelo antigo.
+PLANILHA: Callable[[int], Path] | None = None
+
+
+@lru_cache(maxsize=256)
+def _layout(caminho: str, _mtime: int) -> tuple[int, int]:
+    from orcamento.planilha import layout
+    return layout(Path(caminho))
+
+
+def _tradutor(dav: dict) -> Callable[[str], str]:
+    """Só abre a planilha se houver célula a indicar (o painel diagnostica todos os envios)."""
+    def real(celula: str) -> str:
+        try:
+            p = PLANILHA(int(dav["id"]))
+            desloc, rodape = _layout(str(p), p.stat().st_mtime_ns)
+        except Exception:  # noqa: BLE001 — sem hook, sem arquivo ou arquivo ilegível: endereço do modelo
+            return celula
+        from orcamento.planilha import traduzir
+        return traduzir(celula, desloc, rodape)
+    return real
 
 
 def _normal(texto: str) -> str:
@@ -18,14 +44,15 @@ def _financeiro(texto: str) -> bool:
             or bool(re.search(r"\bdf\d+\b.*(?:venc|valor)", texto)))
 
 
-def _origem(mensagens: list[str], rejeitado: bool) -> dict:
+def _origem(mensagens: list[str], rejeitado: bool, real: Callable[[str], str] = lambda c: c) -> dict:
+    """`real` leva uma célula do modelo antigo (24 itens, sem o Nº) ao endereço na planilha do envio."""
     campos, origens = [], set()
     comparar = False
     for mensagem in mensagens:
         if _financeiro(mensagem):
             continue
         t = _normal(mensagem).strip().removeprefix("erro: ").removeprefix("falha durante a criacao no hse: ")
-        origem, referencias = "desconhecida", []
+        origem, referencias, da_mensagem = "desconhecida", [], False
         if re.match(r"^(?:o )?(?:hse esta fora|hse fora do ar|hse recusou o login|hse sem login|"
                     r"robo do hse sem login|login recusado \(confira hse_usuario/hse_senha)", t):
             origem = "acesso_hse"
@@ -60,7 +87,7 @@ def _origem(mensagens: list[str], rejeitado: bool) -> dict:
                 if faltantes:
                     referencias = [f"{coluna}{int(item[1]) + 1}" for campo, coluna in (("ncm", "L"), ("grupo", "P"))
                                    if campo in faltantes[1].split(", ")]
-                estrutura = re.sub(r"^valor unitario \(coluna j\) ", "valor unitario ", detalhe).partition(" (")[0]
+                estrutura = re.sub(r"^valor unitario \(coluna [a-z]+\) ", "valor unitario ", detalhe).partition(" (")[0]
                 if referencias and any(s in estrutura for s in ("invalido", "invalida", "deve", "sem ",
                         "abaixo do minimo", "caracteres", "nao encontrado", "nao existe", "inativo",
                         "preencha")):
@@ -70,18 +97,19 @@ def _origem(mensagens: list[str], rejeitado: bool) -> dict:
                 else:
                     referencias = []
             else:
-                # a célula vem na mensagem: com mais ou menos itens o rodapé muda de linha
-                for padrao in (r"^cliente \((b\d+)\).*obrigatorio", r"^vendedor \((b\d+)\).*obrigatorio",
-                               r"^prazo de entrega \((b\d+)\).*(invalido|obrigatorio)",
-                               r"^forma de pagamento \((b\d+)\).*desconhecida", r"^frete \((b\d+)\).*deve",
-                               r"^filial \((b\d+)\) invalida"):
+                # a célula real vem na mensagem: o rodapé anda com o número de itens e com o Nº
+                for padrao in (r"^cliente \(([a-z]+\d+)\).*obrigatorio", r"^vendedor \(([a-z]+\d+)\).*obrigatorio",
+                               r"^prazo de entrega \(([a-z]+\d+)\).*(invalido|obrigatorio)",
+                               r"^forma de pagamento \(([a-z]+\d+)\).*desconhecida",
+                               r"^frete \(([a-z]+\d+)\).*deve", r"^filial \(([a-z]+\d+)\) invalida"):
                     if m := re.search(padrao, t):
-                        origem, referencias = "planilha", [m[1].upper()]
+                        origem, referencias, da_mensagem = "planilha", [m[1].upper()], True
                         break
                 else:
                     if t.startswith("filial invalida"):   # mensagem antiga, sem a célula
                         origem, referencias = "planilha", ["B37"]
         origens.add(origem)
+        referencias = referencias if da_mensagem else [real(c) for c in referencias]
         campos.extend(c for c in referencias if c not in campos)
     origem = next(iter(origens)) if len(origens) == 1 else "desconhecida"
     if not mensagens and rejeitado:
@@ -158,7 +186,7 @@ def diagnostico(dav: dict, *, administrador: bool) -> dict:
         orientacao = "Use a PLANILHA-BASE v3 em .xlsx, até 5 MB, corrija os dados e confira novamente."
     if categoria == "desconhecido" and erros_robo:
         motivo = "; ".join(erros_robo)
-    novos = _origem(erro.splitlines() + erros_robo + erros_conferencia, estado == "rejeitado")
+    novos = _origem(erro.splitlines() + erros_robo + erros_conferencia, estado == "rejeitado", _tradutor(dav))
     if categoria == "desconhecido" and not erros_robo and estado in ("erro", "rejeitado"):
         # Motivo pela origem reconhecida; nunca o texto livre do erro (allowlist do vendedor).
         motivo = {"automacao": "A automação falhou ao preencher o HSE; a planilha não indica erro.",

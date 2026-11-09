@@ -7,6 +7,7 @@ from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from pathlib import Path
 
 import openpyxl
+from openpyxl.utils import column_index_from_string, get_column_letter
 
 LINHA_INI = 2
 RODAPE_PADRAO = 26  # "OBSERVAÇÕES:" no modelo de 24 itens
@@ -126,8 +127,9 @@ def observacoes_hse(orc: Orcamento) -> str:
     return _com_frete(orc.observacoes, orc.frete, orc.prazo_dias)
 
 
-def _ler_item(ws, linha: int, erros: list[str], avisos: list[str]) -> Item | None:
-    cel = {c: ws[f"{c}{linha}"].value for c in "ABCDEFGHIJKLMNOPQR"}
+def _ler_item(ws, linha: int, erros: list[str], avisos: list[str], desloc: int = 0) -> Item | None:
+    # chaves no layout antigo (A = PRODUTO); desloc = colunas antes do PRODUTO (o Nº)
+    cel = {c: ws.cell(linha, i + desloc).value for i, c in enumerate("ABCDEFGHIJKLMNOPQR", 1)}
     produto, codigo = _texto(cel["A"]), _texto(cel["K"])
     if not produto and not codigo:
         return None
@@ -164,7 +166,7 @@ def _ler_item(ws, linha: int, erros: list[str], avisos: list[str]) -> Item | Non
         avisos.append(f"{pre} valor recalculado (planilha sem cache de fórmulas)")
     valor = j.quantize(CENTAVO, ROUND_HALF_UP)
     if valor <= 0:
-        erros.append(f"{pre} valor unitário (coluna J) deve ser maior que zero")
+        erros.append(f"{pre} valor unitário (coluna {_coluna('J', desloc)}) deve ser maior que zero")
 
     if codigo:  # com CÓDIGO HSE as colunas L–Q são ignoradas
         return Item(numero=n, linha=linha, produto=produto or "", quantidade=qtd, custo=custo,
@@ -234,19 +236,57 @@ def _filial(v, celula: str, erros: list[str]) -> int:
     return int(m.group(1))
 
 
-def linha_rodape(ws) -> int:
-    """Linha de "OBSERVAÇÕES:" na coluna A: os itens vão até a linha antes dela e o rodapé anda junto."""
+def colunas_antes(ws) -> int:
+    """Colunas antes do PRODUTO na linha 1: 1 no modelo com o Nº na coluna A, 0 nos antigos."""
+    for c in range(1, 6):
+        if normalizar(ws.cell(1, c).value) == "PRODUTO":
+            return c - 1
+    return 0
+
+
+def _coluna(letra: str, desloc: int) -> str:
+    return get_column_letter(column_index_from_string(letra) + desloc)
+
+
+def linha_rodape(ws, desloc: int | None = None) -> int:
+    """Linha de "OBSERVAÇÕES:" na coluna dos rótulos (a do PRODUTO): os itens vão até a linha antes
+    dela e o rodapé anda junto."""
+    col = 1 + (colunas_antes(ws) if desloc is None else desloc)
     for linha in range(LINHA_INI, ws.max_row + 1):
-        if normalizar(ws[f"A{linha}"].value).startswith("OBSERVACOES"):
+        if normalizar(ws.cell(linha, col).value).startswith("OBSERVACOES"):
             return linha
     return RODAPE_PADRAO
 
 
-def celula_real(ws, celula: str) -> str:
-    """Célula do rodapé no endereço do modelo de 24 itens (B30, B33...) → endereço nesta planilha."""
+def traduzir(celula: str, desloc: int, rodape: int) -> str:
+    """Endereço no modelo antigo de 24 itens, sem o Nº (B30, K2...) → endereço numa planilha com
+    `desloc` colunas antes do PRODUTO e "OBSERVAÇÕES:" na linha `rodape`."""
     col, linha = re.fullmatch(r"([A-Z]+)(\d+)", celula).groups()
     linha = int(linha)
-    return f"{col}{linha + linha_rodape(ws) - RODAPE_PADRAO}" if linha >= RODAPE_PADRAO else celula
+    if linha >= RODAPE_PADRAO:
+        linha += rodape - RODAPE_PADRAO
+    return f"{_coluna(col, desloc)}{linha}"
+
+
+def celula_real(ws, celula: str) -> str:
+    desloc = colunas_antes(ws)
+    return traduzir(celula, desloc, linha_rodape(ws, desloc))
+
+
+def layout(path: Path) -> tuple[int, int]:
+    """(colunas antes do PRODUTO, linha de "OBSERVAÇÕES:") lendo só o necessário do arquivo."""
+    wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
+    try:
+        ws = _aba(wb)
+        cab = next(ws.iter_rows(min_row=1, max_row=1, max_col=5, values_only=True), ())
+        desloc = next((i for i, v in enumerate(cab) if normalizar(v) == "PRODUTO"), 0)
+        for n, (v,) in enumerate(ws.iter_rows(min_row=LINHA_INI, min_col=1 + desloc, max_col=1 + desloc,
+                                              values_only=True), LINHA_INI):
+            if normalizar(v).startswith("OBSERVACOES"):
+                return desloc, n
+        return desloc, RODAPE_PADRAO
+    finally:
+        wb.close()
 
 
 def ler_planilha(path: Path) -> Orcamento:
@@ -258,14 +298,17 @@ def ler_planilha(path: Path) -> Orcamento:
     erros: list[str] = []
     avisos: list[str] = []
 
-    r = linha_rodape(ws)
-    b = {campo: f"B{r + d}" for campo, d in (("obs", 0), ("local", 4), ("cliente", 5), ("prazo", 6),
+    desloc = colunas_antes(ws)
+    r = linha_rodape(ws, desloc)
+    rotulo, valor = _coluna("A", desloc), _coluna("B", desloc)
+    b = {campo: f"{valor}{r + d}" for campo, d in (("obs", 0), ("local", 4), ("cliente", 5), ("prazo", 6),
                                               ("vendedor", 7), ("forma", 8), ("parcelamento", 9),
                                               ("oc", 10), ("filial", 11), ("frete", 12))}
     itens = [it for linha in range(LINHA_INI, r)
-             if (it := _ler_item(ws, linha, erros, avisos))]
+             if (it := _ler_item(ws, linha, erros, avisos, desloc))]
     if not itens and not erros:
-        erros.append(f"nenhum item preenchido (linhas {LINHA_INI} a {r - 1}, coluna A ou K)")
+        erros.append(f"nenhum item preenchido (linhas {LINHA_INI} a {r - 1}, "
+                     f"coluna {rotulo} ou {_coluna('K', desloc)})")
     _descricoes_conflitantes(itens, erros)
     _codigos_conflitantes(itens, erros)
 
@@ -295,7 +338,7 @@ def ler_planilha(path: Path) -> Orcamento:
         forma = codigo
 
     # Só o modelo com a linha "Frete" (A38 no de 24 itens) tem o FRETE na coluna B; no anterior ela é a linha "ITEM 1".
-    a_frete = f"A{r + 12}"
+    a_frete = f"{rotulo}{r + 12}"
     frete = (normalizar(ws[b["frete"]].value) or None) if normalizar(ws[a_frete].value) == "FRETE" else None
     if frete and frete not in FRETES:
         erros.append(f"FRETE ({b['frete']}) deve ser CIF ou FOB ({ws[b['frete']].value!r})")
