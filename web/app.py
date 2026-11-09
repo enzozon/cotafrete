@@ -68,6 +68,7 @@ from core.aceite import rotulo_validade, vencida
 from carriers.generoso.mapping import Agendamento, validar_agendamento
 from core.banco import Banco
 from orcamento.conferencia import FilaConferencia
+from orcamento import diagnostico as diagnostico_dav
 from orcamento.fila_diagnostico import FilaDiagnostico, deve_diagnosticar
 from orcamento.fila import FilaDav
 from core.evidencias import limpar_antigas, montar_zip_de_prints
@@ -289,6 +290,7 @@ app.include_router(adm_dav.router)
 me_ui.banco = banco
 dav_ui.banco = banco
 dav_ui.FILA = FILA_DAV
+diagnostico_dav.PLANILHA = FILA_DAV.planilha   # células indicadas no endereço da planilha do envio
 dav_ui.FILA_CONFERENCIA = FILA_CONFERENCIA
 dav_ui.FILA_DIAGNOSTICO = FILA_DIAGNOSTICO
 # Cada chamada à IA (core/ia.py) fica registrada no banco para o /adm/me
