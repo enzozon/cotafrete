@@ -287,6 +287,11 @@ ficam em `davs/entrada/<id>.xlsx` e `davs/pdf/` (fora do git). A cada volta, o
 - `planilha.ler_planilha` recusa, antes do HSE, o mesmo CÓDIGO HSE em duas linhas:
   o HSE junta as linhas. Com valor diferente recusa o preço da segunda (envio #149);
   com o mesmo valor soma as quantidades e o robô não vê item novo (envio #153).
+  `processador._recusar_repetidos` faz o mesmo depois de achar os produtos no HSE: pega a
+  linha sem código que cai, pela descrição, no produto de outra linha, e o produto novo
+  repetido (antes o robô cadastrava um só e reaproveitava, o que o HSE também junta).
+- `hse.motivo_recusa` só conta o alert/toast solto no `<script>` da resposta; os que estão
+  dentro de função são o JavaScript da tela e não apareceram. `toastOk` só informa.
 - Diagnóstico do DAV (`orcamento/agente.py`, `provas.py`, `fila_diagnostico.py`):
   quando um envio vira `erro`, `incerto`, `rejeitado` ou rascunho com
   conferência `erros`, a fila própria (uma thread, uma por vez) junta as
