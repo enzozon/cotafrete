@@ -168,6 +168,39 @@ def _pedido_https(request: Request) -> bool:
     return request.url.scheme == "https"
 
 
+def _clique_deliberado(request: Request) -> bool:
+    """Se este GET veio de um clique de verdade do vendedor — e não de um
+    prefetch do navegador, de um varredor, ou de uma navegação forçada por
+    outro site.
+
+    As rotas /whatsapp, /email e /dellavolpe/.../abrir REGISTRAM a abertura
+    (banco.marcar_whatsapp_aberto): são links com efeito. O navegador moderno
+    "prefaz" (prefetch/prerender) links que acha que a pessoa vai clicar, e um
+    varredor que segue todo href também cai aqui — os dois inflariam o contador
+    de "abertas" sem ninguém ter aberto nada. Foi exatamente assim que uma
+    varredura marcou 32 cotações de uma vez.
+
+    O guarda NÃO bloqueia o redirecionamento — a navegação segue igual. Ele só
+    decide se a abertura CONTA. Na dúvida (cliente antigo que não manda estes
+    cabeçalhos), conta, para não perder a abertura de um navegador honesto.
+
+    Deixa a decisão de GET→<form>POST do dono em pé: aqui o link continua link
+    (abre em aba nova, o userscript da Della Volpe continua mandando), e mesmo
+    assim o contador para de subir por conta de robô.
+
+    - `Sec-Purpose` / `Purpose`: o navegador avisa quando o pedido é prefetch.
+    - `Sec-Fetch-Site: cross-site`: disparado por outro domínio (link ou
+      recurso embutido em site de terceiro). O SameSite=Lax já barra o cookie
+      em recurso embutido; isto cobre a navegação de topo forçada."""
+    cab = request.headers
+    proposito = f"{cab.get('sec-purpose', '')} {cab.get('purpose', '')}".lower()
+    if "prefetch" in proposito or "prerender" in proposito:
+        return False
+    if cab.get("sec-fetch-site", "").strip().lower() == "cross-site":
+        return False
+    return True
+
+
 @app.middleware("http")
 async def _cabecalhos_de_seguranca(request: Request, call_next):
     """Cabeçalhos de segurança em TODA resposta, e `no-store`/`noindex` nas
@@ -1940,7 +1973,7 @@ def enviar_dellavolpe(cotacao_id: int, destino: str = Form(...),
 
 
 @app.get("/whatsapp/{cotacao_id}/{slug}")
-def abrir_whatsapp(cotacao_id: int, slug: str,
+def abrir_whatsapp(cotacao_id: int, slug: str, request: Request,
                    usuario: str | None = Depends(vendedor)):
     """Registra a ABERTURA e leva para a conversa com o texto pronto.
 
@@ -1958,14 +1991,15 @@ def abrir_whatsapp(cotacao_id: int, slug: str,
     if c is None or reg is None:
         return HTMLResponse("Não encontrado", status_code=404)
 
-    banco.marcar_whatsapp_aberto(cotacao_id, slug, usuario)
+    if _clique_deliberado(request):
+        banco.marcar_whatsapp_aberto(cotacao_id, slug, usuario)
     texto = quote(mensagem_whatsapp(c))
     return RedirectResponse(f"https://wa.me/{reg.telefone}?text={texto}",
                             status_code=303)
 
 
 @app.get("/email/{cotacao_id}/{slug}", response_class=HTMLResponse)
-def preparar_email(cotacao_id: int, slug: str,
+def preparar_email(cotacao_id: int, slug: str, request: Request,
                    usuario: str | None = Depends(vendedor)):
     """A cotação escrita, pronta para o vendedor copiar e mandar por e-mail.
 
@@ -1992,7 +2026,8 @@ def preparar_email(cotacao_id: int, slug: str,
 
     # Mesma tabela do WhatsApp: o fato registrado é idêntico — a pessoa abriu
     # a coisa pronta. Uma tabela nova só daria duas contagens para conciliar.
-    banco.marcar_whatsapp_aberto(cotacao_id, slug, usuario)
+    if _clique_deliberado(request):
+        banco.marcar_whatsapp_aberto(cotacao_id, slug, usuario)
     texto = mensagem_whatsapp(c)
 
     return HTMLResponse(pagina(f"Cotação {cotacao_id} — {reg.nome}", f"""
@@ -2109,7 +2144,7 @@ def _url_formulario_dv(c: dict) -> str:
 
 
 @app.get("/dellavolpe/{cotacao_id}/abrir")
-def abrir_formulario_dellavolpe(cotacao_id: int,
+def abrir_formulario_dellavolpe(cotacao_id: int, request: Request,
                                 usuario: str | None = Depends(vendedor)):
     """O atalho do cartão "Semiautomática" quando o script está em dia: vai
     direto para o site da Della Volpe já preenchido, sem a tela de instruções.
@@ -2122,7 +2157,8 @@ def abrir_formulario_dellavolpe(cotacao_id: int,
     c = banco.buscar_cotacao(cotacao_id, usuario)
     if c is None:
         return HTMLResponse("Não encontrado", status_code=404)
-    banco.marcar_whatsapp_aberto(cotacao_id, "dellavolpe", usuario)
+    if _clique_deliberado(request):
+        banco.marcar_whatsapp_aberto(cotacao_id, "dellavolpe", usuario)
     return RedirectResponse(_url_formulario_dv(c), status_code=303)
 
 
