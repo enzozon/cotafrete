@@ -212,7 +212,8 @@ ficam em `davs/entrada/<id>.xlsx` e `davs/pdf/` (fora do git). A cada volta, o
   "confira no HSE", nunca roda de novo sozinho.
 - O HSE é produção. Só o `DAV_DRY_RUN=0` salva de verdade.
 - **Teste de fumaça:** `orcamento/fumaca.py` roda às 8h05 pelo `atualizar.py`
-  (`fumaca_do_dia`, uma tentativa por dia). Confere um DAV de mentira com
+  (`fumaca_do_dia`, uma tentativa por dia, só seg–sex antes das 18h: fora disso
+  o usuário do HSE não loga). Confere um DAV de mentira com
   `HseSoLeitura`, sem IA, e só manda e-mail quando falha. Sem `FUMACA_CLIENTE`,
   `FUMACA_VENDEDOR` e `FUMACA_CODIGO` no `.env`, não roda e só diz no
   `log\atualizar.log`. Vendedor que sai da empresa vira alarme até trocar.

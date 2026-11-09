@@ -115,10 +115,11 @@ def enviar(assunto: str, corpo: str, ambiente=None, smtp=smtplib.SMTP_SSL) -> No
 def main() -> int:
     from dotenv import load_dotenv
 
-    from core.banco import CAMINHO_PADRAO
+    from core.banco import CAMINHO_PADRAO, Banco
     from web import transportadoras
     load_dotenv()
-    with closing(sqlite3.connect(CAMINHO_PADRAO)) as con:
+    # _conectar põe row_factory=sqlite3.Row: o resumo_erros lê r["coluna"] (06/11/2026)
+    with closing(Banco(CAMINHO_PADRAO)._conectar()) as con:
         montagem = montar_semana if "--semana" in sys.argv else montar
         assunto, corpo = montagem(con, datetime.now().date(), transportadoras.nome_de)
     try:

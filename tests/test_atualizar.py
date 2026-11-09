@@ -486,6 +486,13 @@ def test_fumaca_uma_vez_por_dia_depois_das_8h05(repos):
     assert len(chamadas) == 1 and "HSE fora" in _log(producao)
 
 
+def test_fumaca_so_no_horario_do_login_do_hse(tmp_path):
+    producao = tmp_path / "cotafrete-producao"
+    (producao / "log").mkdir(parents=True)
+    for quando in (_dt(2026, 11, 7, 9, 0), _dt(2026, 11, 8, 9, 0), _dt(2026, 11, 6, 18, 0)):
+        assert atualizar.fumaca_do_dia(producao, quando, None) == "fora_do_horario"
+
+
 def test_fumaca_so_na_producao(tmp_path):
     assert atualizar.fumaca_do_dia(tmp_path / "cotafrete-dev", _dt(2026, 11, 6, 9, 0), None) == "fora_da_producao"
 

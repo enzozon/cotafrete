@@ -79,3 +79,23 @@ def test_enviar_usa_o_destino_e_exige_credencial():
     assert enviados == ["x@v.com", "vendas2@venturainformatica.com.br"]
     with pytest.raises(RuntimeError, match="SMTP_USER"):
         resumo_email.enviar("a", "b", {}, Smtp)
+
+
+def test_main_le_o_banco_com_linhas_por_nome(banco, monkeypatch, capsys):
+    """Produção 06–08/11/2026: o main abria o banco sem row_factory e r["transportadora"]
+    estourava "tuple indices must be integers" assim que o dia tinha uma cotação."""
+    from contextlib import closing
+    hoje = datetime.now().isoformat()
+    with closing(banco._conectar()) as con, con:
+        cid = con.execute(
+            "INSERT INTO cotacao (usuario, criado_em, cep_origem, cep_destino, peso_kg, quantidade,"
+            " comprimento_cm, largura_cm, altura_cm, valor_nf) VALUES ('ana', ?, '1', '2', '1', 1, 1, 1, 1, '1')",
+            (hoje,)).lastrowid
+        con.execute("INSERT INTO resultado (cotacao_id, transportadora, status, erro)"
+                    " VALUES (?, 'jadlog', 'erro', 'caiu')", (cid,))
+    monkeypatch.setattr("core.banco.CAMINHO_PADRAO", banco.caminho)
+    enviados = []
+    monkeypatch.setattr(resumo_email, "enviar", lambda a, c: enviados.append(c))
+    monkeypatch.setattr("sys.argv", ["resumo_email"])
+    assert resumo_email.main() == 0
+    assert "caiu" in enviados[0]
