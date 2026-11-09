@@ -250,7 +250,13 @@ def resolver_cliente(chave: str, hse: HseApi) -> tuple[Cliente | None, str | Non
 
 def _por_descricao(texto: str, hse: HseApi) -> dict[str, Produto]:
     alvo = normalizar(texto)
-    return {p.codigo: p for p in hse.buscar_produtos(alvo) if p.ativo and normalizar(p.descricao) == alvo}
+    # o HSE guarda o acento e não acha "ABRACADEIRA" (envio #85): procura também com o texto original,
+    # senão o produto que o próprio robô cadastrou não é achado e é cadastrado de novo
+    for termo in dict.fromkeys((alvo, " ".join(texto.split()))):
+        achados = {p.codigo: p for p in hse.buscar_produtos(termo) if p.ativo and normalizar(p.descricao) == alvo}
+        if achados:
+            return achados
+    return {}
 
 
 def _referencias(texto: str) -> set[str]:
@@ -359,7 +365,25 @@ def validar_online(orc: Orcamento, hse: HseApi, rel: Relatorio,
         parecido = vendedor_parecido(orc.vendedor, hse.nomes_vendedores())
         rel.erro(f"Vendedor '{orc.vendedor}' não encontrado no HSE (use o nome exato da lista)"
                  + (f". Parece ser {parecido}: escreva esse nome na B33" if parecido else ""))
-    return cliente, [conferir_desconto(resolver_item(it, hse, ajuda)) for it in orc.itens]
+    return cliente, _recusar_repetidos([conferir_desconto(resolver_item(it, hse, ajuda)) for it in orc.itens])
+
+
+def _recusar_repetidos(resolucoes: list[Resolucao]) -> list[Resolucao]:
+    """Duas linhas que dão no mesmo produto: o HSE junta as linhas, soma as quantidades e o robô não
+    vê item novo (envio #153). A planilha só compara a coluna do CÓDIGO HSE; aqui entram também a
+    linha achada pela descrição e o produto novo repetido, antes de cadastrar ou criar qualquer coisa."""
+    vistos: dict[tuple[bool, str], int] = {}
+    saida = []
+    for r in resolucoes:
+        if not r.erro and (r.produto or r.por == "novo"):
+            chave = (True, r.produto.codigo) if r.produto else (False, normalizar(r.item.descricao_cadastro))
+            primeiro = vistos.setdefault(chave, r.item.numero)
+            if primeiro != r.item.numero:
+                qual = r.produto.codigo if r.produto else "produto novo"
+                r = replace(r, erro=f"mesmo produto do item {primeiro} ({qual}): deve ficar numa linha só, "
+                                    "com a quantidade somada (o HSE junta as linhas)")
+        saida.append(r)
+    return saida
 
 
 def conferir_desconto(r: Resolucao) -> Resolucao:
@@ -421,25 +445,17 @@ def _executar_real(orc: Orcamento, cliente: Cliente, resolucoes: list[Resolucao]
                    hse: HseApi, rel: Relatorio, pasta_pdf: Path,
                    ao_salvar: Callable[[str], None] | None = None) -> "Resultado":
     cadastrados: list[str] = []
-    novos: dict[str, tuple[Produto, int]] = {}  # descrição normalizada → (produto, item que cadastrou)
     numero = None
     nome_cliente = _nome_cliente(cliente)
     try:
         pares = []
         for r in resolucoes:
             produto = r.produto
-            if r.por == "novo":
-                chave = normalizar(r.item.descricao_cadastro)
-                if chave in novos:  # mesma peça em outra linha: reaproveita, não duplica
-                    produto, origem = novos[chave]
-                    rel.item_existente(r.item.numero, produto.codigo, produto.descricao,
-                                       f"cadastrado no item {origem}")
-                else:
-                    codigo = hse.cadastrar_produto(r.item, orc.filial, salvar=True)
-                    cadastrados.append(f"{codigo} - {r.item.descricao_cadastro}")
-                    rel.item_cadastrado(r.item.numero, codigo, r.item)
-                    produto = Produto(codigo, r.item.descricao_cadastro, True)
-                    novos[chave] = (produto, r.item.numero)
+            if r.por == "novo":  # produto novo repetido em outra linha já foi barrado em _recusar_repetidos
+                codigo = hse.cadastrar_produto(r.item, orc.filial, salvar=True)
+                cadastrados.append(f"{codigo} - {r.item.descricao_cadastro}")
+                rel.item_cadastrado(r.item.numero, codigo, r.item)
+                produto = Produto(codigo, r.item.descricao_cadastro, True)
             pares.append((r.item, produto))
         try:
             hse.montar_orcamento(orc, cliente, pares, incluir=True)

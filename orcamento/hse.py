@@ -51,13 +51,25 @@ def _qtd(v: Decimal) -> str:
     return format(v.normalize(), "f").replace(".", ",")
 
 
-_INFORMATIVOS = ("toastSuccess", "toastInfo")
+_INFORMATIVOS = ("toastSuccess", "toastInfo", "toastOk")  # toastOk é o que a tela do pedido usa (envio #153)
 RE_MENSAGEM = re.compile(r"""\b(alert|toast\w*)\(\s*(['"])(.+?)\2""")
 
 
+def _roda_ao_chegar(html: str, pos: int) -> bool:
+    """A chamada em `pos` está solta no <script>, fora de qualquer função?"""
+    # ponytail: conta chaves, sem entender strings; uma chave dentro de texto esconde a mensagem e o
+    # motivo vira "não informou" (a resposta inteira fica em respostas_hse/). Trocar por parser se acontecer.
+    trecho = html[html.rfind("<script", 0, pos) + 1:pos]
+    return trecho.count("{") <= trecho.count("}")
+
+
 def _mensagens(html: str) -> list[tuple[str, str]]:
-    """(função, texto) de cada alert/toast que a resposta abriria na tela."""
-    return [(m.group(1), re.sub(r"\s*<br\s*/?>\s*", " - ", m.group(3))) for m in RE_MENSAGEM.finditer(html)]
+    """(função, texto) de cada alert/toast que a resposta abre na tela ao chegar.
+
+    A resposta do Incluir traz o JavaScript da tela inteira: o toast dentro de uma função só aparece
+    num clique ou numa falha futura, e entrava no motivo da recusa como se tivesse aparecido (envio #153)."""
+    return [(m.group(1), re.sub(r"\s*<br\s*/?>\s*", " - ", m.group(3))) for m in RE_MENSAGEM.finditer(html)
+            if _roda_ao_chegar(html, m.start())]
 
 
 def motivo_recusa(html: str) -> str:

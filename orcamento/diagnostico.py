@@ -77,7 +77,7 @@ def _origem(mensagens: list[str], rejeitado: bool, real: Callable[[str], str] = 
                 # O campo vem antes do valor interpolado; palavras dentro do valor não são estrutura.
                 for padrao, coluna in ((r"^quantidade (?:invalido|invalida|deve)", "B"),
                         (r"^(?:valor unitario|valor de venda unitario|preco) ", "J"),
-                        (r"^(?:mesmo )?codigo ", "K"), (r"^ncm ", "L"), (r"^origem (?:invalido|invalida|deve)", "M"),
+                        (r"^(?:mesmo )?codigo ", "K"), (r"^mesmo produto ", "A"), (r"^ncm ", "L"), (r"^origem (?:invalido|invalida|deve)", "M"),
                         (r"^icms (?:invalido|invalida|deve)", "N"), (r"^grupo ", "P"),
                         (r"^descricao no dav com \d+ caracteres", "R"), (r"^descricao deve ser diferente", "O")):
                     if re.match(padrao, detalhe):

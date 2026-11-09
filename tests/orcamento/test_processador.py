@@ -352,15 +352,31 @@ def test_salvo_incerto_nao_cancela_e_nao_reprocessa(tmp_path):
     assert processar_arquivo(p, c, HseFalso()) == "ADIADO"
 
 
-def test_produto_novo_repetido_cadastra_uma_vez(tmp_path):
+def test_produto_novo_repetido_e_recusado_antes_de_cadastrar(tmp_path):
+    # as duas linhas usariam o mesmo produto: o HSE soma as quantidades e o robô não vê item novo (envio #153)
     c = cfg(tmp_path, dry_run=False)
     repetido = {k.replace("3", "4"): v for k, v in NOVO.items()}
     p = planilha(c, {**NOVO, **repetido, "B4": 2})
     hse = HseFalso()
-    assert processar_arquivo(p, c, hse) == "PROCESSADOS"
-    assert [n for n in hse.nomes() if n == "cadastrar_produto"] == ["cadastrar_produto"]
-    assert ("montar_orcamento", "18373", [(1, "13370"), (2, "90001"), (3, "90001")], True) in hse.chamadas
-    assert "Item 3: usou produto existente 90001 - PRODUTO TESTE ROBO (cadastrado no item 2)" in txt(c, "PROCESSADOS")
+    assert processar_arquivo(p, c, hse) == "ERRO"
+    assert not ESCRITA & set(hse.nomes())
+    assert "Item 3: ERRO - mesmo produto do item 2 (produto novo)" in txt(c, "ERRO")
+
+
+def test_linha_sem_codigo_que_cai_no_produto_de_outra_linha_e_recusada(tmp_path):
+    # a planilha só compara a coluna do CÓDIGO HSE; aqui o item 2 chega ao 13370 pela descrição
+    c = cfg(tmp_path, dry_run=False)
+    p = planilha(c, {"A3": MOUSE.descricao, "B3": 1, "C3": 100})
+    hse = HseFalso()
+    assert processar_arquivo(p, c, hse) == "ERRO"
+    assert not ESCRITA & set(hse.nomes())
+    assert "Item 2: ERRO - mesmo produto do item 1 (13370)" in txt(c, "ERRO")
+
+
+def test_busca_por_descricao_acha_o_produto_gravado_com_acento():
+    # envio #85: o HSE guarda "ABRAÇADEIRA" e não acha "ABRACADEIRA"; sem isso o robô cadastra duplicado
+    hse = HseFalso(produtos=[Produto("76815", "ABRAÇADEIRA NYLON", True)])
+    assert list(proc._por_descricao("Abraçadeira Nylon", hse)) == ["76815"]
 
 
 def test_um_arquivo_com_problema_nao_trava_os_outros(tmp_path, monkeypatch):

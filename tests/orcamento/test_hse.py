@@ -394,6 +394,17 @@ def test_so_aviso_informativo_diz_que_o_hse_nao_recusou():
     assert motivo_recusa(html) == "o HSE não mostrou erro; respondeu só: Margem atualizada"
 
 
+def test_so_conta_o_aviso_que_a_resposta_abre_na_tela():
+    # envio #153: a resposta traz o JavaScript da tela; os toasts dentro de funções não apareceram,
+    # e o toastOk solto no fim só informa
+    html = """<script>function resetMargem() { post(function(data) { toastOk('Margem atualizada'); },
+        function(xhr, err) { alert('erro ao atualizar margem'); }); }
+        function incluir() { if (semEstoque) { toastError('Sua filial está configurada para não vender'); return; } }
+        toastOk('Item Atualizado, as quantidades foram somadas !', 2000);</script>"""
+    assert motivo_recusa(html) == ("o HSE não mostrou erro; respondeu só: "
+                                   "Item Atualizado, as quantidades foram somadas !")
+
+
 def _hse_incluir(tmp_path, respostas, entrou):
     hse = Hse.__new__(Hse)
     hse.cfg = SimpleNamespace(pasta_programa=tmp_path)
