@@ -121,105 +121,127 @@ def test_o_cookie_entregue_nao_contem_o_nome_legivel(c, app_web):
     assert "joao" not in r.cookies[app_web.COOKIE]
 
 
-# ------------------------------------------------------- primeiro acesso
-def test_primeiro_acesso_pede_para_escolher_a_senha(c, app_web):
-    _com_conta(app_web, senha=None)
+# ------------------------------------------- primeiro acesso (link de convite)
+# O primeiro acesso NÃO acontece mais na tela de entrar digitando o nome. O
+# admin gera um link com token (abrir_convite) e a pessoa escolhe a senha em
+# /definir-senha?t=<token>. Antes, quem soubesse o nome do vendedor escolhia a
+# senha dele antes dele (tomada de conta) — era o que a auditoria apontou.
 
-    r = c.post("/login", data={"usuario": "joao", "senha": "tanto-faz"})
+def _convite(app_web, nome="joao", horas=72):
+    """Cria a conta (convite aberto) e devolve o token do link."""
+    app_web.banco.criar_conta(nome)
+    return app_web.banco.abrir_convite(nome, horas=horas)
 
+
+def test_a_tela_de_convite_mostra_o_nome_e_pede_a_senha(c, app_web):
+    t = _convite(app_web)
+
+    r = c.get("/definir-senha", params={"t": t})
+
+    assert r.status_code == 200
     assert "Primeiro acesso" in r.text
-    assert app_web.COOKIE not in r.cookies, "ainda não entrou"
+    assert "joao" in r.text
 
 
-def test_toda_resposta_do_login_sai_como_html(c, app_web):
-    """17/09/2026: o ramo do primeiro acesso devolvia str numa rota sem
-    `response_class`, e o FastAPI mandava a página como JSON — a pessoa via
-    o código-fonte escapado, com \\n literal, em vez da tela.
+def test_definir_a_senha_pelo_link_entra_de_uma_vez(c, app_web):
+    t = _convite(app_web)
 
-    O teste anterior não pegou porque conferia só se o texto aparecia, e em
-    JSON ele aparece (escapado). Quem decide se a tela funciona é o tipo de
-    mídia, então é ele que precisa ser conferido — em TODOS os caminhos, que
-    é onde o defeito se escondeu: só um dos cinco estava errado."""
-    _com_conta(app_web, nome="maria", senha=None)          # convite aberto
-    _com_conta(app_web, nome="joao")                       # já tem senha
-
-    respostas = {
-        "conta inexistente":
-            c.post("/login", data={"usuario": "ninguem", "senha": "x"}),
-        "primeiro acesso":
-            c.post("/login", data={"usuario": "maria", "senha": "tanto-faz"}),
-        "senha curta":
-            c.post("/login", data={"usuario": "maria", "senha": "123",
-                                   "confirmacao": "123"}),
-        "senhas diferentes":
-            c.post("/login", data={"usuario": "maria", "senha": "uma-senha-boa",
-                                   "confirmacao": "outra-senha-boa"}),
-        "senha errada":
-            c.post("/login", data={"usuario": "joao", "senha": "chute"}),
-        "tela inicial": c.get("/login"),
-    }
-
-    for caminho, r in respostas.items():
-        assert r.headers["content-type"].startswith("text/html"), caminho
-        assert not r.text.lstrip().startswith('"'), (
-            f"{caminho}: saiu como string JSON, não como página")
-
-
-def test_a_senha_digitada_antes_nao_vira_a_senha_da_conta(c, app_web):
-    """Quem chega no primeiro acesso digitou algo no campo "sua senha" sem
-    saber. Esse valor não pode virar a senha definitiva por acidente."""
-    _com_conta(app_web, senha=None)
-
-    c.post("/login", data={"usuario": "joao", "senha": "digitei-sem-querer"})
-
-    assert app_web.banco.conta("joao")["senha_hash"] is None
-
-
-def test_escolher_a_senha_entra_de_uma_vez(c, app_web):
-    _com_conta(app_web, senha=None)
-
-    r = c.post("/login", data={"usuario": "joao", "senha": "frase-boa-aqui",
-                               "confirmacao": "frase-boa-aqui"})
+    r = c.post("/definir-senha", data={"t": t, "senha": "frase-boa-aqui",
+                                       "confirmacao": "frase-boa-aqui"})
 
     assert r.status_code == 303
+    assert app_web.COOKIE in r.cookies
     assert sessao.senha_confere("frase-boa-aqui",
                                 app_web.banco.conta("joao")["senha_hash"])
 
 
-def test_senhas_diferentes_nao_definem_nada(c, app_web):
-    _com_conta(app_web, senha=None)
-
-    r = c.post("/login", data={"usuario": "joao", "senha": "frase-boa-aqui",
-                               "confirmacao": "frase-boa-daqui"})
-
-    assert r.status_code == 401
-    assert app_web.banco.conta("joao")["senha_hash"] is None
-
-
-def test_senha_curta_e_recusada_com_o_motivo_na_tela(c, app_web):
-    _com_conta(app_web, senha=None)
-
-    r = c.post("/login", data={"usuario": "joao", "senha": "1234",
-                               "confirmacao": "1234"})
-
-    assert r.status_code == 401
-    assert str(sessao.MINIMO_DA_SENHA) in r.text
-    assert app_web.banco.conta("joao")["senha_hash"] is None
-
-
-def test_o_convite_nao_pode_ser_usado_por_quem_chegar_depois(c, app_web):
-    """O invasor que descobre o nome de um vendedor não pode escolher a
-    senha dele depois que a pessoa já escolheu a sua."""
-    _com_conta(app_web, senha=None)
-    c.post("/login", data={"usuario": "joao", "senha": "a-do-joao-mesmo",
-                           "confirmacao": "a-do-joao-mesmo"})
+def test_login_nao_define_mais_senha_pelo_nome(c, app_web):
+    """O buraco principal: com o convite aberto, mandar senha na tela de
+    entrar NÃO podia escolher a senha da conta. Agora /login nunca define."""
+    _convite(app_web)
 
     r = c.post("/login", data={"usuario": "joao", "senha": "a-do-invasor",
                                "confirmacao": "a-do-invasor"})
 
     assert r.status_code == 401
-    assert sessao.senha_confere("a-do-joao-mesmo",
+    assert app_web.banco.conta("joao")["senha_hash"] is None
+
+
+def test_o_login_nao_revela_se_a_conta_existe_ou_espera_senha(c, app_web):
+    """Enumeração: conta inexistente, convite aberto e senha errada têm de dar
+    a MESMA resposta, senão a tela vira detector de nome e de alvo fácil."""
+    _convite(app_web, nome="maria")                 # convite aberto
+    _com_conta(app_web, nome="joao")                # já tem senha
+
+    inexistente = c.post("/login", data={"usuario": "ninguem", "senha": "x"})
+    convite = c.post("/login", data={"usuario": "maria", "senha": "x"})
+    errada = c.post("/login", data={"usuario": "joao", "senha": "chute"})
+
+    # A MENSAGEM é a mesma nos três casos (o nome digitado volta no campo, mas
+    # isso é o input da pessoa, não um sinal de que a conta existe).
+    msg = "Nome ou senha não conferem"
+    assert inexistente.status_code == convite.status_code == errada.status_code == 401
+    assert msg in inexistente.text and msg in convite.text and msg in errada.text
+    # O caminho da conta com convite aberto não mostra a tela de escolher senha
+    # (só o link, que a pessoa tem, leva a ela).
+    assert "Salvar senha e entrar" not in convite.text
+
+
+def test_token_invalido_e_recusado(c, app_web):
+    _convite(app_web)
+
+    get = c.get("/definir-senha", params={"t": "token-que-nao-existe"})
+    post = c.post("/definir-senha", data={"t": "token-que-nao-existe",
+                                          "senha": "uma-senha-boa",
+                                          "confirmacao": "uma-senha-boa"})
+
+    assert get.status_code == 400 and "inválido" in get.text.lower()
+    assert post.status_code == 400
+    assert app_web.banco.conta("joao")["senha_hash"] is None
+
+
+def test_token_expirado_e_recusado(c, app_web):
+    t = _convite(app_web, horas=-1)                 # já nasceu vencido
+
+    r = c.post("/definir-senha", data={"t": t, "senha": "uma-senha-boa",
+                                       "confirmacao": "uma-senha-boa"})
+
+    assert r.status_code == 400
+    assert app_web.banco.conta("joao")["senha_hash"] is None
+
+
+def test_token_e_de_uso_unico(c, app_web):
+    t = _convite(app_web)
+    c.post("/definir-senha", data={"t": t, "senha": "primeira-senha",
+                                   "confirmacao": "primeira-senha"})
+
+    r = c.post("/definir-senha", data={"t": t, "senha": "segunda-senha",
+                                       "confirmacao": "segunda-senha"})
+
+    assert r.status_code == 400
+    assert sessao.senha_confere("primeira-senha",
                                 app_web.banco.conta("joao")["senha_hash"])
+
+
+def test_senhas_diferentes_no_convite_nao_definem_nada(c, app_web):
+    t = _convite(app_web)
+
+    r = c.post("/definir-senha", data={"t": t, "senha": "frase-boa-aqui",
+                                       "confirmacao": "frase-boa-daqui"})
+
+    assert r.status_code == 200          # reexibe a tela de convite
+    assert app_web.banco.conta("joao")["senha_hash"] is None
+
+
+def test_senha_curta_no_convite_recusada_com_o_motivo(c, app_web):
+    t = _convite(app_web)
+
+    r = c.post("/definir-senha", data={"t": t, "senha": "1234",
+                                       "confirmacao": "1234"})
+
+    assert r.status_code == 200
+    assert str(sessao.MINIMO_DA_SENHA) in r.text
+    assert app_web.banco.conta("joao")["senha_hash"] is None
 
 
 # ------------------------------------------- o administrador pela mesma porta

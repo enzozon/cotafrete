@@ -177,13 +177,25 @@ CREATE INDEX IF NOT EXISTS idx_cotacao_usuario ON cotacao(usuario, id DESC);
 CREATE INDEX IF NOT EXISTS idx_resultado_cotacao ON resultado(cotacao_id);
 
 -- Conta de vendedor. O admin cria a conta; a pessoa escolhe a senha no
--- primeiro acesso. Por isso senha_hash nasce NULL: NULL quer dizer "convite
--- aberto, ainda sem dono". Ver core/sessao.py.
+-- primeiro acesso, pelo LINK de convite (tabela `convite`). senha_hash nasce
+-- NULL: NULL quer dizer "ainda sem senha, à espera do primeiro acesso". Sem um
+-- token válido, senha NULL não deixa ninguém entrar. Ver core/sessao.py.
 CREATE TABLE IF NOT EXISTS conta (
     nome        TEXT PRIMARY KEY,
     senha_hash  TEXT,
     criado_em   TEXT NOT NULL,
     definida_em TEXT
+);
+
+-- Convite de primeiro acesso. O admin cria a conta e gera um convite; a
+-- pessoa só escolhe a senha com o LINK (token), nunca mais só com o nome.
+-- Uma conta tem no máximo um convite aberto (PRIMARY KEY nome): abrir outro
+-- substitui o anterior. Guardamos o sha256 do token, não o token, e um prazo.
+CREATE TABLE IF NOT EXISTS convite (
+    nome       TEXT PRIMARY KEY,
+    token_hash TEXT NOT NULL,
+    criado_em  TEXT NOT NULL,
+    expira_em  TEXT NOT NULL
 );
 
 -- Guarda-treco de uma linha só. Hoje serve para o segredo que assina os
@@ -923,17 +935,91 @@ class Banco:
 
     def esquecer_senha(self, nome: str) -> bool:
         """Reabre o convite: a pessoa escolhe outra senha no próximo acesso.
-        É o que o admin usa quando alguém esquece a dela."""
+        É o que o admin usa quando alguém esquece a dela.
+
+        Só zera a senha. Quem gera o novo LINK é `abrir_convite`, chamado logo
+        depois pela tela do admin — sem um token válido, senha NULL não deixa
+        mais ninguém entrar pelo nome."""
         with closing(self._conectar()) as con, con:
             cur = con.execute(
                 "UPDATE conta SET senha_hash = NULL, definida_em = NULL"
                 " WHERE nome = ?", (nome,))
             return cur.rowcount == 1
 
+    # ------------------------------------------------- convite de 1º acesso
+    def abrir_convite(self, nome: str, horas: int = 72) -> str:
+        """Gera o token do link de primeiro acesso e guarda só o hash dele.
+
+        Devolve o token CRU uma única vez — é o que vai no link que o admin
+        envia. Substitui qualquer convite anterior da mesma conta (PRIMARY KEY
+        nome): gerar um novo invalida o antigo."""
+        token = sessao.novo_token_convite()
+        agora = datetime.now()
+        with closing(self._conectar()) as con, con:
+            con.execute(
+                "INSERT OR REPLACE INTO convite"
+                " (nome, token_hash, criado_em, expira_em) VALUES (?, ?, ?, ?)",
+                (nome, sessao.hash_token(token),
+                 agora.isoformat(timespec="seconds"),
+                 (agora + timedelta(hours=horas)).isoformat(timespec="seconds")))
+        return token
+
+    def nome_do_convite(self, token: str) -> str | None:
+        """De qual conta é este token, se ainda vale. Não altera nada —
+        serve para a tela de 'definir senha' saber de quem é o convite.
+
+        Recusa token vencido e conta que já escolheu senha (convite gasto que
+        não foi apagado por algum motivo)."""
+        if not token:
+            return None
+        with closing(self._conectar()) as con:
+            linha = con.execute(
+                "SELECT c.nome AS nome, c.expira_em AS expira_em,"
+                "       a.senha_hash AS senha_hash"
+                "  FROM convite c JOIN conta a ON a.nome = c.nome"
+                " WHERE c.token_hash = ?",
+                (sessao.hash_token(token),)).fetchone()
+        if linha is None or linha["senha_hash"] is not None:
+            return None
+        if datetime.fromisoformat(linha["expira_em"]) < datetime.now():
+            return None
+        return linha["nome"]
+
+    def definir_senha_por_convite(self, token: str,
+                                  senha_hash: str) -> str | None:
+        """Fecha o convite: valida o token, grava a senha e APAGA o convite,
+        tudo numa transação. Devolve o nome da conta, ou None se o token não
+        vale (vencido, inexistente, ou a conta já tem senha).
+
+        A trava `senha_hash IS NULL` continua no UPDATE: mesmo com um token,
+        não se reescreve a senha de quem já usa o sistema."""
+        if not token:
+            return None
+        with closing(self._conectar()) as con, con:
+            linha = con.execute(
+                "SELECT nome, expira_em FROM convite WHERE token_hash = ?",
+                (sessao.hash_token(token),)).fetchone()
+            if linha is None:
+                return None
+            if datetime.fromisoformat(linha["expira_em"]) < datetime.now():
+                con.execute("DELETE FROM convite WHERE nome = ?",
+                            (linha["nome"],))
+                return None
+            cur = con.execute(
+                "UPDATE conta SET senha_hash = ?, definida_em = ?"
+                " WHERE nome = ? AND senha_hash IS NULL",
+                (senha_hash, datetime.now().isoformat(timespec="seconds"),
+                 linha["nome"]))
+            if cur.rowcount != 1:
+                return None
+            con.execute("DELETE FROM convite WHERE nome = ?", (linha["nome"],))
+            return linha["nome"]
+
     def remover_conta(self, nome: str) -> bool:
         """Tira o acesso. As cotações que a pessoa já fez ficam — são
         histórico da empresa, não dela."""
         with closing(self._conectar()) as con, con:
+            con.execute("DELETE FROM convite WHERE nome = ?", (nome,))
             cur = con.execute("DELETE FROM conta WHERE nome = ?", (nome,))
             return cur.rowcount == 1
 

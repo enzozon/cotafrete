@@ -183,3 +183,24 @@ def novo_segredo() -> str:
     Trocá-lo derruba todas as sessões abertas — é o botão de expulsar todo
     mundo, sem precisar manter lista de sessão para administrar."""
     return secrets.token_hex(32)
+
+
+# ------------------------------------------------------- convite de 1º acesso
+def novo_token_convite() -> str:
+    """Token do link de primeiro acesso. Vai na URL que o admin envia ao
+    vendedor; é com ele, e não com o nome, que a pessoa escolhe a senha.
+
+    Longo e aleatório de propósito: adivinhar o nome de alguém é fácil (está
+    na assinatura do e-mail), adivinhar isto não é. Foi o nome sozinho que
+    deixava qualquer um reivindicar a conta antes do dono."""
+    return secrets.token_urlsafe(32)
+
+
+def hash_token(token: str) -> str:
+    """O que fica GUARDADO do token: sha256, nunca o token cru.
+
+    Ao contrário da SENHA (scrypt, cara de propósito para resistir a força
+    bruta), um token já nasce aleatório e longo — não há senha fraca a
+    proteger. sha256 só evita guardar o segredo em claro, para que um banco
+    vazado não entregue convites ainda válidos."""
+    return hashlib.sha256(token.encode()).hexdigest()

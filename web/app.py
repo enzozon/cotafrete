@@ -824,47 +824,27 @@ me_ui.COOKIE = COOKIE
 dav_ui.vendedor = vendedor
 dav_ui.COOKIE = COOKIE
 
-def _tela_login(erro: str = "", nome: str = "",
-                escolher_senha: bool = False) -> str:
-    """A porta da frente, nos seus dois estados: entrar, ou escolher a senha
-    no primeiro acesso."""
+def _tela_login(erro: str = "", nome: str = "") -> str:
+    """A porta da frente. O primeiro acesso NÃO acontece mais aqui — é pelo
+    link /definir-senha que o administrador envia."""
     aviso = (f'<p class="erro" role="alert">{e(erro)}</p>' if erro else "")
     valor = e(nome)
-    if escolher_senha:
-        campos = f"""
-    <input type="hidden" name="usuario" value="{valor}">
-    <input name="senha" type="password" placeholder="Escolha sua senha"
-           autofocus required autocomplete="new-password"
-           style="margin-bottom:12px">
-    <input name="confirmacao" type="password" placeholder="Repita a senha"
-           required autocomplete="new-password" style="margin-bottom:12px">"""
-        titulo = "Primeiro acesso"
-        explicacao = (f"<b>{valor}</b>, escolha a senha que você vai usar "
-                      f"daqui em diante. Mínimo de "
-                      f"{sessao.MINIMO_DA_SENHA} caracteres. Ninguém mais "
-                      f"consegue vê-la — nem o administrador.")
-        botao = "Salvar senha e entrar"
-    else:
-        campos = f"""
+    campos = f"""
     <input name="usuario" placeholder="Seu nome" required
            autocomplete="username" value="{valor}"
            style="margin-bottom:12px"{'' if valor else ' autofocus'}>
     <input name="senha" type="password" placeholder="Sua senha" required
            autocomplete="current-password"
            style="margin-bottom:12px"{' autofocus' if valor else ''}>"""
-        titulo = "Entrar"
-        explicacao = ("Suas cotações ficam separadas das dos outros. Se é "
-                      "seu primeiro acesso, digite qualquer coisa no campo "
-                      "da senha: o sistema vai pedir que você escolha a sua.")
-        botao = "Entrar"
 
     cartao = f"""
 <div class="cartao">
-  <h1>{titulo}</h1>
-  <p class="sub">{explicacao}</p>
+  <h1>Entrar</h1>
+  <p class="sub">Suas cotações ficam separadas das dos outros. O primeiro
+  acesso é pelo link que o administrador envia para você.</p>
   {aviso}
   <form method="post" action="/login">{campos}
-    <button type="submit" style="width:100%">{botao}</button>
+    <button type="submit" style="width:100%">Entrar</button>
   </form>
 </div>"""
     return entrada(
@@ -875,8 +855,57 @@ def _tela_login(erro: str = "", nome: str = "",
         paradas=("sua carga",
                  f"{len(AUTOMATICAS)} cotam sozinhas",
                  "o mais barato"),
-        rodape="Sua conta é criada pelo administrador. A senha quem escolhe "
-               "é você, no primeiro acesso.")
+        rodape="Sua conta é criada pelo administrador, que envia um link para "
+               "você escolher a senha no primeiro acesso.")
+
+
+def _tela_convite(token: str, nome: str, erro: str = "") -> str:
+    """Primeiro acesso pelo link: a pessoa, identificada pelo token, escolhe a
+    senha. O nome vem do convite — não há campo de nome para adivinhar."""
+    aviso = (f'<p class="erro" role="alert">{e(erro)}</p>' if erro else "")
+    cartao = f"""
+<div class="cartao">
+  <h1>Primeiro acesso</h1>
+  <p class="sub"><b>{e(nome)}</b>, escolha a senha que você vai usar daqui em
+  diante. Mínimo de {sessao.MINIMO_DA_SENHA} caracteres. Ninguém mais consegue
+  vê-la — nem o administrador.</p>
+  {aviso}
+  <form method="post" action="/definir-senha">
+    <input type="hidden" name="t" value="{e(token)}">
+    <input name="senha" type="password" placeholder="Escolha sua senha"
+           autofocus required autocomplete="new-password"
+           style="margin-bottom:12px">
+    <input name="confirmacao" type="password" placeholder="Repita a senha"
+           required autocomplete="new-password" style="margin-bottom:12px">
+    <button type="submit" style="width:100%">Salvar senha e entrar</button>
+  </form>
+</div>"""
+    return entrada(
+        "Primeiro acesso", cartao,
+        chamada="Uma carga. Todas as transportadoras.",
+        apoio="Escolha sua senha e entre. Da próxima vez é só o nome e a "
+              "senha, na tela de entrar.",
+        paradas=("sua senha", "sua conta", "pronto"),
+        rodape="Este link é só seu e vale uma vez. Se expirar, peça outro ao "
+               "administrador.")
+
+
+def _tela_convite_invalido() -> str:
+    cartao = """
+<div class="cartao">
+  <h1>Link inválido ou expirado</h1>
+  <p class="sub">Este link de primeiro acesso não vale mais — ou já foi usado,
+  ou passou do prazo. Peça ao administrador para gerar um novo para você.</p>
+  <a href="/login" class="botao2" style="display:inline-block;margin-top:8px">
+    Ir para a tela de entrar</a>
+</div>"""
+    return entrada(
+        "Link inválido", cartao,
+        chamada="Uma carga. Todas as transportadoras.",
+        apoio="O link de primeiro acesso vale uma vez e tem prazo. Um novo "
+              "resolve.",
+        paradas=("peça um link", "escolha a senha", "pronto"),
+        rodape="Sua conta é criada pelo administrador, que envia o link.")
 
 
 @app.get("/_ocupado", include_in_schema=False)
@@ -908,8 +937,8 @@ def _abrir_sessao(nome: str, https: bool = False) -> RedirectResponse:
     return r
 
 
-def _recusar(erro: str, nome: str = "", escolher_senha: bool = False):
-    resposta = HTMLResponse(_tela_login(erro, nome, escolher_senha))
+def _recusar(erro: str, nome: str = ""):
+    resposta = HTMLResponse(_tela_login(erro, nome))
     resposta.status_code = 401
     return resposta
 
@@ -946,33 +975,18 @@ def entrar(request: Request, usuario: str = Form(...), senha: str = Form(""),
 
     conta = banco.conta(nome) if nome else None
 
-    if conta is None:
-        time.sleep(PAUSA_SENHA_ERRADA_S)
-        return _recusar("Nome ou senha não conferem. Se você ainda não tem "
-                        "conta, peça ao administrador para criar a sua.", nome)
-
-    if conta["senha_hash"] is None:
-        # Convite aberto: a primeira visita escolhe a senha. A senha digitada
-        # nesta passada é ignorada de propósito — quem chega aqui ainda não
-        # tem senha, e aproveitar o que foi digitado no campo errado viraria
-        # senha escolhida por engano.
-        if not confirmacao:
-            return _tela_login("", nome, escolher_senha=True)
-        recusa = sessao.recusa_da_senha(senha)
-        if recusa:
-            return _recusar(recusa, nome, escolher_senha=True)
-        if senha != confirmacao:
-            return _recusar("As duas senhas não são iguais.", nome,
-                            escolher_senha=True)
-        if not banco.definir_senha(nome, sessao.hash_senha(senha)):
-            # Só chega aqui se outra aba fechou o convite no meio do caminho.
-            return _recusar("Essa conta já tem senha. Entre com ela.", nome)
-        return _abrir_sessao(nome, https)
-
-    if not sessao.senha_confere(senha, conta["senha_hash"]):
+    # Uma resposta só para TODOS os casos de falha — conta inexistente, convite
+    # ainda aberto (sem senha) e senha errada. Mensagens diferentes
+    # transformavam a tela num detector de "este nome existe" e de "esta conta
+    # ainda não escolheu senha" (o alvo da tomada de conta). O primeiro acesso
+    # NÃO acontece mais aqui: é pelo link /definir-senha que o admin envia.
+    senha_confere = (conta is not None and conta["senha_hash"] is not None
+                     and sessao.senha_confere(senha, conta["senha_hash"]))
+    if not senha_confere:
         time.sleep(PAUSA_SENHA_ERRADA_S)
         # Nunca repetir o que foi digitado: nem na tela, nem em log.
-        return _recusar("Nome ou senha não conferem.", nome)
+        return _recusar("Nome ou senha não conferem. No primeiro acesso, use "
+                        "o link que o administrador enviou para você.", nome)
 
     return _abrir_sessao(nome, https)
 
@@ -982,6 +996,38 @@ def sair():
     r = RedirectResponse("/login", status_code=303)
     r.delete_cookie(COOKIE)
     return r
+
+
+# ---------------------------------------------------- primeiro acesso (convite)
+# A senha do primeiro acesso é escolhida AQUI, pelo link que o admin envia, e
+# não mais na tela de entrar digitando o nome. O token no link identifica a
+# pessoa; sem ele, saber o nome não basta. Isso fecha a tomada de conta (quem
+# soubesse o nome do vendedor escolhia a senha antes dele) descrita na
+# auditoria.
+@app.get("/definir-senha", response_class=HTMLResponse)
+def tela_definir_senha(t: str = ""):
+    nome = banco.nome_do_convite(t)
+    if not nome:
+        return HTMLResponse(_tela_convite_invalido(), status_code=400)
+    return _tela_convite(t, nome)
+
+
+@app.post("/definir-senha", response_class=HTMLResponse)
+def definir_senha_convite(request: Request, t: str = Form(""),
+                          senha: str = Form(""), confirmacao: str = Form("")):
+    nome = banco.nome_do_convite(t)
+    if not nome:
+        return HTMLResponse(_tela_convite_invalido(), status_code=400)
+    recusa = sessao.recusa_da_senha(senha)
+    if recusa:
+        return _tela_convite(t, nome, recusa)
+    if senha != confirmacao:
+        return _tela_convite(t, nome, "As duas senhas não são iguais.")
+    definido = banco.definir_senha_por_convite(t, sessao.hash_senha(senha))
+    if not definido:
+        # O token venceu ou foi usado entre carregar a tela e enviar.
+        return HTMLResponse(_tela_convite_invalido(), status_code=400)
+    return _abrir_sessao(definido, _pedido_https(request))
 
 
 # ---------------------------------------------------------------- formulário

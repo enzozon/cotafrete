@@ -39,7 +39,7 @@ from datetime import date
 from itertools import groupby
 from urllib.parse import quote
 
-from fastapi import APIRouter, Cookie, Form, HTTPException
+from fastapi import APIRouter, Cookie, Form, HTTPException, Request
 from fastapi.responses import (HTMLResponse, JSONResponse,
                                RedirectResponse, Response)
 
@@ -1194,9 +1194,9 @@ def tela_contas(adm: str | None = Cookie(None, alias=COOKIE_ADM),
     # está cheio de nomes que nunca foram conta.
     #
     # A conta NÃO é criada sozinha a partir dessa lista, de propósito: ela
-    # inclui erro de digitação e nome de teste, e cada conta criada é um
-    # convite aberto que a primeira pessoa a adivinhar o nome pode reivindicar.
-    # Quem decide é você, um a um.
+    # inclui erro de digitação e nome de teste, e cada conta criada gera um
+    # link de convite para você enviar — não vale a pena fabricar um monte
+    # para nomes que podem estar errados. Quem decide é você, um a um.
     ja_tem = {c["nome"] for c in lista}
     sugestoes = [u for u in banco.usuarios() if u not in ja_tem]
     if sugestoes:
@@ -1219,8 +1219,9 @@ def tela_contas(adm: str | None = Cookie(None, alias=COOKIE_ADM),
     corpo = f"""
 <div class="cabecalho" id="topo">
   <div><h1>Quem entra</h1>
-  <p class="sub">Contas do Cotafrete. A senha quem escolhe é a própria
-  pessoa, no primeiro acesso — nem você consegue vê-la.</p></div>
+  <p class="sub">Contas do Cotafrete. Ao criar uma conta você recebe um link
+  de primeiro acesso para enviar à pessoa; a senha quem escolhe é ela — nem
+  você consegue vê-la.</p></div>
   <a href="/adm" class="botao2">Voltar ao painel</a>
   {ui.BOTAO_TEMA}
 </div>
@@ -1244,6 +1245,17 @@ def tela_contas(adm: str | None = Cookie(None, alias=COOKIE_ADM),
     return HTMLResponse(ui.pagina_painel("Quem entra", corpo, base="/adm"))
 
 
+def _link_convite(request: Request, token: str) -> str:
+    """O endereço de primeiro acesso para o admin enviar ao vendedor.
+
+    https quando o acesso veio por https (X-Forwarded-Proto do Cloudflare),
+    para o link sair com o endereço público e não com o http da rede local."""
+    proto = request.headers.get("x-forwarded-proto", "").split(",")[0].strip()
+    esquema = "https" if proto == "https" else request.url.scheme
+    host = request.headers.get("host", "")
+    return f"{esquema}://{host}/definir-senha?t={token}"
+
+
 def _voltar(erro: str = "", feito: str = "") -> RedirectResponse:
     destino = "/adm/contas"
     if erro:
@@ -1256,7 +1268,7 @@ def _voltar(erro: str = "", feito: str = "") -> RedirectResponse:
 
 
 @router.post("/contas/criar")
-def criar_conta(nome: str = Form(...),
+def criar_conta(request: Request, nome: str = Form(...),
                 adm: str | None = Cookie(None, alias=COOKIE_ADM)):
     _exigir_montado()
     if not autorizado(adm):
@@ -1272,12 +1284,13 @@ def criar_conta(nome: str = Form(...),
                             f'administrador. Escolha outro nome.')
     if not banco.criar_conta(limpo):
         return _voltar(erro=f"Já existe uma conta com o nome {limpo}.")
-    return _voltar(feito=f"Conta de {limpo} criada. Peça para ela entrar e "
-                         f"escolher a senha.")
+    link = _link_convite(request, banco.abrir_convite(limpo))
+    return _voltar(feito=f"Conta de {limpo} criada. Envie este link para ela "
+                         f"escolher a senha (vale 72 h): {link}")
 
 
 @router.post("/contas/esquecer")
-def esquecer_senha(nome: str = Form(...),
+def esquecer_senha(request: Request, nome: str = Form(...),
                    adm: str | None = Cookie(None, alias=COOKIE_ADM)):
     _exigir_montado()
     if not autorizado(adm):
@@ -1285,8 +1298,9 @@ def esquecer_senha(nome: str = Form(...),
 
     if not banco.esquecer_senha(nome):
         return _voltar(erro="Conta não encontrada.")
-    return _voltar(feito=f"Senha de {nome} apagada. No próximo acesso ela "
-                         f"escolhe outra.")
+    link = _link_convite(request, banco.abrir_convite(nome))
+    return _voltar(feito=f"Senha de {nome} reaberta. Envie o novo link para "
+                         f"ela escolher outra (vale 72 h): {link}")
 
 
 @router.post("/contas/remover")

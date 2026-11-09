@@ -76,6 +76,15 @@ def test_criar_conta_abre_convite_sem_senha(chefe, app_web):
     assert conta["senha_hash"] is None, "quem escolhe a senha é a Maria"
 
 
+def test_criar_conta_mostra_o_link_de_primeiro_acesso(chefe, app_web):
+    """O admin precisa do link para enviar ao vendedor — é com ele, não com o
+    nome, que a pessoa escolhe a senha."""
+    r = chefe.post("/adm/contas/criar", data={"nome": "maria"})
+
+    pagina = chefe.get(r.headers["location"]).text
+    assert "/definir-senha?t=" in pagina
+
+
 def test_nome_repetido_avisa_e_nao_apaga_a_senha_de_quem_ja_usa(chefe, app_web):
     app_web.banco.criar_conta("maria")
     app_web.banco.definir_senha("maria", sessao.hash_senha("a-da-maria"))
@@ -123,9 +132,11 @@ def test_esquecer_reabre_o_convite(chefe, app_web):
     app_web.banco.criar_conta("maria")
     app_web.banco.definir_senha("maria", sessao.hash_senha("a-esquecida"))
 
-    chefe.post("/adm/contas/esquecer", data={"nome": "maria"})
+    r = chefe.post("/adm/contas/esquecer", data={"nome": "maria"})
 
     assert app_web.banco.conta("maria")["senha_hash"] is None
+    # E gera um novo link para a pessoa escolher outra senha.
+    assert "/definir-senha?t=" in chefe.get(r.headers["location"]).text
 
 
 def test_a_tela_nunca_mostra_o_hash_da_senha(chefe, app_web):
