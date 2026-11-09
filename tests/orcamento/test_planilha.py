@@ -239,3 +239,22 @@ def test_descricao_igual_cai_na_coluna_o():
     d = diagnostico({"estado": "rejeitado", "erro": "Item 3: descrição deve ser diferente da do item 2 "
                      "(mesma descrição com NCM, custo diferentes)"}, administrador=False)
     assert d["origem"] == "planilha" and d["campos"] == ["O4"]
+
+
+def test_mesmo_codigo_com_precos_diferentes_e_recusado(tmp_path):
+    # Envio #149: o HSE juntou as duas linhas do mesmo código e recusou o preço da segunda
+    segunda = {"A3": "outra linha", "B3": 5, "C3": 99, "K3": ler(tmp_path, "valida").itens[0].codigo}
+    assert "Item 2: mesmo CÓDIGO HSE do item 1 com outro valor" in erros(tmp_path, "valida", segunda)
+
+
+def test_mesmo_codigo_com_o_mesmo_preco_passa(tmp_path):
+    it = ler(tmp_path, "valida").itens[0]
+    segunda = {"A3": "outra linha", "B3": 5, "C3": it.custo, "K3": it.codigo}
+    assert len(ler(tmp_path, "valida", segunda).itens) == 2
+
+
+def test_codigo_repetido_cai_na_coluna_k():
+    from orcamento.diagnostico import diagnostico
+    d = diagnostico({"estado": "rejeitado", "erro": "Item 2: mesmo CÓDIGO HSE do item 1 com outro valor deve "
+                     "ficar numa linha só, com a quantidade somada (o HSE junta as linhas)"}, administrador=False)
+    assert d["origem"] == "planilha" and d["campos"] == ["K3"]
