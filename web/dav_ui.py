@@ -35,7 +35,7 @@ from orcamento.diagnostico import _financeiro, diagnostico
 from orcamento.processador import SEM_HSE, Conferencia
 from orcamento.relatorio import moeda
 from orcamento.modelo_itens import MAXIMO, PADRAO, gerar_modelo
-from orcamento.planilha import ErroPlanilha, ler_planilha, observacoes_hse
+from orcamento.planilha import ErroPlanilha, colunas_antes, ler_planilha, linha_rodape, observacoes_hse
 from web import adm
 from web.layout import BOTAO_TEMA, CSS_DAV, cabecalho, e, pagina
 
@@ -659,9 +659,12 @@ def conferir(planilha: UploadFile = File(...),
 
 
 def _itens_da_planilha(arquivo: Path) -> set[str]:
-    wb = openpyxl.load_workbook(arquivo, read_only=True, data_only=True)
+    wb = openpyxl.load_workbook(arquivo, data_only=True)
     try:
-        linhas = wb["ORÇAMENTO"].iter_rows(min_row=2, max_row=25, max_col=11, values_only=True)
+        ws = wb["ORÇAMENTO"]
+        d = colunas_antes(ws)   # PRODUTO e CÓDIGO HSE andam com o Nº da coluna A
+        linhas = ws.iter_rows(min_row=2, max_row=linha_rodape(ws, d) - 1, min_col=1 + d, max_col=11 + d,
+                              values_only=True)
         return {str(v).strip().upper() for lin in linhas for v in (lin[0], lin[10]) if str(v or "").strip()}
     finally:
         wb.close()

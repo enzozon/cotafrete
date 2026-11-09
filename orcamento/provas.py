@@ -12,7 +12,7 @@ from typing import Callable
 import openpyxl
 
 from orcamento.hse import _mensagens
-from orcamento.planilha import _texto, celula_real, ler_planilha, linha_rodape
+from orcamento.planilha import _texto, celula_real, colunas_antes, ler_planilha, linha_rodape
 from orcamento.processador import cnpj_valido as _cnpj_valido
 
 NAO_VERIFICADO = "nao_verificado"
@@ -74,12 +74,14 @@ def _ler_planilha(arquivo: Path) -> dict | None:
         pass
     try:
         ws = openpyxl.load_workbook(arquivo, data_only=True)["ORÇAMENTO"]
-        itens = [{"n": r - 1, "codigo": _texto(ws[f"K{r}"].value),
-                  "descricao": _texto(ws[f"O{r}"].value) or _texto(ws[f"A{r}"].value),
-                  "qtd": _texto(ws[f"B{r}"].value), "valor": _texto(ws[f"J{r}"].value),
-                  "ncm": _texto(ws[f"L{r}"].value), "grupo": _texto(ws[f"P{r}"].value),
-                  "marca": _texto(ws[f"Q{r}"].value)}
-                 for r in range(2, linha_rodape(ws)) if ws[f"A{r}"].value or ws[f"K{r}"].value]
+        d = colunas_antes(ws)
+
+        def v(col: str, r: int):   # coluna no layout antigo (A = PRODUTO)
+            return _texto(ws.cell(r, ord(col) - 64 + d).value)
+        itens = [{"n": r - 1, "codigo": v("K", r), "descricao": v("O", r) or v("A", r),
+                  "qtd": v("B", r), "valor": v("J", r), "ncm": v("L", r), "grupo": v("P", r),
+                  "marca": v("Q", r)}
+                 for r in range(2, linha_rodape(ws, d)) if v("A", r) or v("K", r)]
         return {"cliente": _texto(ws[celula_real(ws, "B31")].value), "vendedor": _texto(ws[celula_real(ws, "B33")].value),
                 "local": _texto(ws[celula_real(ws, "B30")].value), "itens": itens}
     except Exception:

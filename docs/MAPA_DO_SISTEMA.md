@@ -258,10 +258,16 @@ ficam em `davs/entrada/<id>.xlsx` e `davs/pdf/` (fora do git). A cada volta, o
   (padrão 24 = o arquivo fixo). `orcamento/modelo_itens.py` monta o arquivo
   editando o XML (openpyxl apagaria as listas x14): repete a linha de item,
   desce o rodapé e ajusta mesclagens, validações, TOTAL e comentários; a
-  proteção da aba fica igual. Coluna S = Nº do item (travada). O leitor
-  (`planilha.linha_rodape`) acha "OBSERVAÇÕES:" na coluna A: itens até a linha
-  antes, rodapé por deslocamento (B30, B31... são os endereços do modelo de 24
-  itens; `celula_real` traduz). As mensagens de erro citam a célula real.
+  proteção da aba fica igual. Coluna A = Nº do item (=ROW()-1, travada), PRODUTO
+  na B: a coluna foi inserida uma vez pelo Excel (que ajustou fórmulas,
+  validações e mesclagens) e `scripts/validacoes_modelo.py` usa esse layout.
+  O leitor acha o PRODUTO na linha 1 (`colunas_antes`) e desloca tudo; acha
+  "OBSERVAÇÕES:" na coluna do rótulo (`linha_rodape`): itens até a linha antes,
+  rodapé por deslocamento. Planilhas antigas (PRODUTO na A, com ou sem Nº na S)
+  continuam valendo. B30, K2... no código e nas correções da IA são endereços do
+  modelo antigo de 24 itens; `celula_real`/`traduzir` dão o real, e o
+  diagnóstico indica as células da planilha do envio (`diagnostico.PLANILHA`).
+  As mensagens de erro citam a célula real.
 - Local de entrega (B30): texto do endereço ou só o número dele ("2" casa com a
   opção "2 - ..."). Sem endereço correspondente, o erro lista os do cliente;
   se um só for bem parecido (erro de digitação, `erro_local_entrega`), o erro diz o número dele.
@@ -296,8 +302,8 @@ ficam em `davs/entrada/<id>.xlsx` e `davs/pdf/` (fora do git). A cada volta, o
     se algo tentar gravar, o diagnóstico falha com alarme). Se o HSE não
     responde, os pedidos ficam "não verificados". Quem decide `criados_no_hse`
     é o código (`provas.coletar`), nunca a IA. As correções passam por lista
-    branca: só B30, B31, B33, K2:K25 e O2:O25 (endereços do modelo de 24
-    itens; `correcao` grava na célula real); preço, quantidade, custo e NCM
+    branca: só B30, B31, B33, K2:K25 e O2:O25 (endereços do modelo antigo;
+    `correcao` grava na célula real e só se o rótulo/cabeçalho dela bater); preço, quantidade, custo e NCM
     nunca. Corrigir só cria um envio para conferir: nunca gera no HSE.
   - Avaliação com envios reais (dados fora do git):
     `python scripts/avaliar_agente.py <pasta_dados> [--ia arquivo|api]`.

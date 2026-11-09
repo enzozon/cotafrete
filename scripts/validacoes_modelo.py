@@ -3,7 +3,7 @@
     python -m scripts.validacoes_modelo [entrada.xlsx] [saida.xlsx]
 
 Pelo XML porque o openpyxl apagaria as listas x14. Mexe só nas validações da aba
-ORÇAMENTO e o resto do arquivo vai igual. Regra: "stop" no que o robô recusaria
+ORÇAMENTO e o resto do arquivo vai igual. Células do modelo com o Nº na coluna A. Regra: "stop" no que o robô recusaria
 de qualquer jeito; "warning" no que vem do HSE, porque a cópia em LISTAS envelhece
 e um nome novo não pode travar o vendedor.
 """
@@ -20,28 +20,28 @@ ABA = "xl/worksheets/sheet1.xml"
 
 # célula: (avisar em vez de barrar, título, mensagem)
 LISTAS = {
-    "B33": (True, "Vendedor", "Este nome não está na lista. O robô confere no HSE: use o nome exato."),
-    "B34": (False, "Forma de pagamento", "Escolha uma das formas de pagamento da lista."),
-    "B35": (True, "Parcelamento", "Este parcelamento não está na lista. Confira antes de seguir."),
-    "B37": (False, "Filial", "Escolha a filial 1, 2 ou 3 na lista."),
-    "B38": (False, "Frete", "Escolha CIF ou FOB na lista."),
-    "M2:M25": (False, "Origem", "Escolha a origem na lista (0 a 8)."),
-    "P2:P25": (True, "Grupo", "Este grupo não está na lista. O produto novo precisa de um grupo do HSE."),
-    "Q2:Q25": (True, "Marca", "Esta marca não está na lista. O produto novo precisa de uma marca do HSE."),
+    "C33": (True, "Vendedor", "Este nome não está na lista. O robô confere no HSE: use o nome exato."),
+    "C34": (False, "Forma de pagamento", "Escolha uma das formas de pagamento da lista."),
+    "C35": (True, "Parcelamento", "Este parcelamento não está na lista. Confira antes de seguir."),
+    "C37": (False, "Filial", "Escolha a filial 1, 2 ou 3 na lista."),
+    "C38": (False, "Frete", "Escolha CIF ou FOB na lista."),
+    "N2:N25": (False, "Origem", "Escolha a origem na lista (0 a 8)."),
+    "Q2:Q25": (True, "Grupo", "Este grupo não está na lista. O produto novo precisa de um grupo do HSE."),
+    "R2:R25": (True, "Marca", "Esta marca não está na lista. O produto novo precisa de uma marca do HSE."),
 }
 
-_NCM = 'LEN(SUBSTITUTE(SUBSTITUTE(L2,".",""),"-",""))=8'
+_NCM = 'LEN(SUBSTITUTE(SUBSTITUTE(M2,".",""),"-",""))=8'
 # (célula, tipo, operador, fórmula 1, fórmula 2, avisar, título, mensagem)
 NUMEROS = [
-    ("B2:B25", "decimal", "greaterThan", "0", None, False, "Quantidade", "A quantidade precisa ser um número maior que zero."),
-    ("C2:F25", "decimal", "greaterThanOrEqual", "0", None, False, "Valor", "Digite só o número, sem letras, zero ou maior."),
-    ("G2:G25", "decimal", "greaterThanOrEqual", "0", None, True, "Margem", "Margem negativa ou que não é número. Confira antes de seguir."),
-    ("L2:L25", "custom", None, _NCM, None, False, "NCM", "O NCM precisa ter 8 dígitos."),
-    ("N2:N25", "decimal", "between", "0", "100", False, "ICMS", "O ICMS precisa ser um número de 0 a 100."),
-    ("R2:R25", "textLength", "lessThanOrEqual", "512", None, False, "Descrição no DAV", "A descrição no DAV aceita até 512 caracteres."),
+    ("C2:C25", "decimal", "greaterThan", "0", None, False, "Quantidade", "A quantidade precisa ser um número maior que zero."),
+    ("D2:G25", "decimal", "greaterThanOrEqual", "0", None, False, "Valor", "Digite só o número, sem letras, zero ou maior."),
+    ("H2:H25", "decimal", "greaterThanOrEqual", "0", None, True, "Margem", "Margem negativa ou que não é número. Confira antes de seguir."),
+    ("M2:M25", "custom", None, _NCM, None, False, "NCM", "O NCM precisa ter 8 dígitos."),
+    ("O2:O25", "decimal", "between", "0", "100", False, "ICMS", "O ICMS precisa ser um número de 0 a 100."),
+    ("S2:S25", "textLength", "lessThanOrEqual", "512", None, False, "Descrição no DAV", "A descrição no DAV aceita até 512 caracteres."),
     # 1024 do HSE menos a linha "FRETE CIF, PRAZO DE ENTREGA 30 DIAS" que o robô acrescenta.
-    ("B26", "textLength", "lessThanOrEqual", "980", None, False, "Observações", "As observações aceitam até 980 caracteres."),
-    ("B32", "whole", "greaterThanOrEqual", "0", None, False, "Prazo de entrega", "O prazo é um número inteiro de dias."),
+    ("C26", "textLength", "lessThanOrEqual", "980", None, False, "Observações", "As observações aceitam até 980 caracteres."),
+    ("C32", "whole", "greaterThanOrEqual", "0", None, False, "Prazo de entrega", "O prazo é um número inteiro de dias."),
 ]
 
 

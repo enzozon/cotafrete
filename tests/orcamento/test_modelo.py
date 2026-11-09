@@ -28,13 +28,13 @@ def _numeros() -> dict[str, str]:
             for d in re.findall(r"<dataValidation .*?</dataValidation>", _xml(), re.S)}
 
 
-@pytest.mark.parametrize("celula", ["B34", "B37", "B38", "M2:M25"])
+@pytest.mark.parametrize("celula", ["C34", "C37", "C38", "N2:N25"])
 def test_lista_que_o_robo_recusaria_barra_o_que_esta_fora(celula):
     d = _listas()[celula]
     assert 'showErrorMessage="1"' in d and "errorStyle" not in d and 'error="' in d
 
 
-@pytest.mark.parametrize("celula", ["B33", "B35", "P2:P25", "Q2:Q25"])
+@pytest.mark.parametrize("celula", ["C33", "C35", "Q2:Q25", "R2:R25"])
 def test_lista_que_vem_do_hse_avisa_mas_deixa_seguir(celula):
     """A cópia em LISTAS envelhece: nome novo no HSE não pode travar o vendedor."""
     d = _listas()[celula]
@@ -43,18 +43,18 @@ def test_lista_que_vem_do_hse_avisa_mas_deixa_seguir(celula):
 
 def test_as_oito_listas_continuam_apontando_para_a_aba_listas():
     assert len(_listas()) == 8
-    assert "LISTAS!$A$2:$A$28" in _listas()["B33"]
+    assert "LISTAS!$A$2:$A$28" in _listas()["C33"]
 
 
 @pytest.mark.parametrize("celula, trecho", [
-    ("B2:B25", 'type="decimal" operator="greaterThan"'),
-    ("C2:F25", 'type="decimal" operator="greaterThanOrEqual"'),
-    ("G2:G25", 'errorStyle="warning"'),
-    ("L2:L25", 'type="custom"'),
-    ("N2:N25", 'type="decimal" operator="between"'),
-    ("R2:R25", 'type="textLength" operator="lessThanOrEqual"'),
-    ("B26", 'type="textLength" operator="lessThanOrEqual"'),
-    ("B32", 'type="whole" operator="greaterThanOrEqual"'),
+    ("C2:C25", 'type="decimal" operator="greaterThan"'),
+    ("D2:G25", 'type="decimal" operator="greaterThanOrEqual"'),
+    ("H2:H25", 'errorStyle="warning"'),
+    ("M2:M25", 'type="custom"'),
+    ("O2:O25", 'type="decimal" operator="between"'),
+    ("S2:S25", 'type="textLength" operator="lessThanOrEqual"'),
+    ("C26", 'type="textLength" operator="lessThanOrEqual"'),
+    ("C32", 'type="whole" operator="greaterThanOrEqual"'),
 ])
 def test_numero_e_tamanho_conferidos_na_digitacao(celula, trecho):
     d = _numeros()[celula]
