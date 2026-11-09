@@ -135,8 +135,11 @@ def test_desconto_acima_do_maximo_e_barrado_antes_de_criar_qualquer_coisa(tmp_pa
 
 
 def test_todos_os_itens_com_desconto_demais_aparecem_de_uma_vez(tmp_path):
-    p = criar(tmp_path, {"B3": 1, "C3": 100, "K3": 13370, "B4": 1, "C4": 100, "K4": 13370}, "orc.xlsx")
-    r = gerar(p, cfg(tmp_path), HseFalso(produtos=[_mouse("400")]), tmp_path / "pdfs")
+    from dataclasses import replace
+    # códigos diferentes: o mesmo CÓDIGO HSE em duas linhas é recusado na leitura da planilha (envio #153)
+    p = criar(tmp_path, {"B3": 1, "C3": 100, "K3": 13371, "B4": 1, "C4": 100, "K4": 13372}, "orc.xlsx")
+    produtos = [replace(_mouse("400"), codigo=c) for c in ("13370", "13371", "13372")]
+    r = gerar(p, cfg(tmp_path), HseFalso(produtos=produtos), tmp_path / "pdfs")
     for n in (1, 2, 3):
         assert f"Item {n}: ERRO - valor unitário R$ 145,00 abaixo do mínimo" in r.relatorio
 

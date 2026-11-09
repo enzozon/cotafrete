@@ -247,10 +247,11 @@ def test_mesmo_codigo_com_precos_diferentes_e_recusado(tmp_path):
     assert "Item 2: mesmo CÓDIGO HSE do item 1 com outro valor" in erros(tmp_path, "valida", segunda)
 
 
-def test_mesmo_codigo_com_o_mesmo_preco_passa(tmp_path):
+def test_mesmo_codigo_com_o_mesmo_preco_e_recusado(tmp_path):
+    # Envio #153: com o mesmo valor o HSE soma as quantidades numa linha só e o robô não vê item novo
     it = ler(tmp_path, "valida").itens[0]
     segunda = {"A3": "outra linha", "B3": 5, "C3": it.custo, "K3": it.codigo}
-    assert len(ler(tmp_path, "valida", segunda).itens) == 2
+    assert "Item 2: mesmo CÓDIGO HSE do item 1" in erros(tmp_path, "valida", segunda)
 
 
 def test_codigo_repetido_cai_na_coluna_k():

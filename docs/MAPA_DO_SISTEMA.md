@@ -284,9 +284,9 @@ ficam em `davs/entrada/<id>.xlsx` e `davs/pdf/` (fora do git). A cada volta, o
   reiniciado) só avisa e libera. Preço acima de 2x a tabela é aviso amarelo.
   Rascunho antigo (`conferencia` nula) segue o fluxo de antes. A geração confere
   tudo de novo antes de salvar.
-- `planilha.ler_planilha` recusa, antes do HSE, o mesmo CÓDIGO HSE em duas linhas com
-  valor diferente: o HSE junta as linhas e recusa o preço da segunda (envio #149).
-  Com o mesmo valor passa.
+- `planilha.ler_planilha` recusa, antes do HSE, o mesmo CÓDIGO HSE em duas linhas:
+  o HSE junta as linhas. Com valor diferente recusa o preço da segunda (envio #149);
+  com o mesmo valor soma as quantidades e o robô não vê item novo (envio #153).
 - Diagnóstico do DAV (`orcamento/agente.py`, `provas.py`, `fila_diagnostico.py`):
   quando um envio vira `erro`, `incerto`, `rejeitado` ou rascunho com
   conferência `erros`, a fila própria (uma thread, uma por vez) junta as
