@@ -293,3 +293,17 @@ def test_preenche_todos_os_campos_do_dom_real(adapter, page):
             .map(el => el.name);
     }""")
     assert vazios == []
+
+
+def test_segunda_passada_repoe_estado_antes_da_cidade():
+    """Cotação #644: estado de destino na tela, cidade em branco. Só a cidade
+    não segurava; o estado de novo remonta a lista pelo `change` do site."""
+    a = DellavolpeAdapter(base_url=URL_FIXTURE)
+    chamadas = []
+    a._preencher = lambda page, campos: chamadas.append(list(campos))
+    so_texto = {"Selecione o estado de destino": "ES",
+                "Selecione a cidade de destino": "Linhares",
+                "WhatsApp": "(27) 99988-7766"}
+    a._segunda_passada(None, ["Selecione a cidade de destino", "WhatsApp"], so_texto)
+    assert chamadas == [["Selecione o estado de destino", "Selecione a cidade de destino"],
+                        ["WhatsApp"]]
