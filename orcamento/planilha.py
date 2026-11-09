@@ -210,6 +210,18 @@ def _descricoes_conflitantes(itens: list[Item], erros: list[str]) -> None:
                          f"(mesma descrição com {', '.join(diferentes)} diferentes)")
 
 
+def _codigos_conflitantes(itens: list[Item], erros: list[str]) -> None:
+    """Mesmo CÓDIGO HSE com valor diferente: o HSE junta as linhas e recusa o preço (envio #149)."""
+    vistos: dict[str, Item] = {}
+    for it in itens:
+        if not it.codigo:
+            continue
+        primeiro = vistos.setdefault(it.codigo, it)
+        if primeiro is not it and primeiro.valor_unit != it.valor_unit:
+            erros.append(f"Item {it.numero}: mesmo CÓDIGO HSE do item {primeiro.numero} com outro valor "
+                         "deve ficar numa linha só, com a quantidade somada (o HSE junta as linhas)")
+
+
 def _filial(v, erros: list[str]) -> int:
     s = _texto(v)
     if not s:
@@ -235,6 +247,7 @@ def ler_planilha(path: Path) -> Orcamento:
     if not itens and not erros:
         erros.append("nenhum item preenchido (linhas 2 a 25, coluna A ou K)")
     _descricoes_conflitantes(itens, erros)
+    _codigos_conflitantes(itens, erros)
 
     obs = _texto(ws["B26"].value) or ""
     cliente = _texto(ws["B31"].value)
