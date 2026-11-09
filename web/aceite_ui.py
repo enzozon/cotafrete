@@ -21,6 +21,7 @@ from html import escape as e
 from carriers.generoso.mapping import (HORARIOS_ALMOCO, HORARIOS_COLETA,
                                        LIMITE_OBSERVACAO)
 from core.aceite import rotulo_validade, vencida
+from web.layout import plural
 
 # Só a Generoso, por enquanto. A tabela `aceite` e a rota já nascem genéricas
 # (levam o slug), mas não vou inventar a abstração de transportadora com uma
@@ -108,7 +109,8 @@ def tela_aceite(c: dict, r: dict, nome_transportadora: str, *,
     avisos = "".join(f'<div class="alerta">{e(x)}</div>'
                      for x in (erros or []))
 
-    prazo = f'{e(str(r["prazo"]))} dias' if r["prazo"] else "—"
+    prazo = (f'{e(str(r["prazo"]))} {plural(r["prazo"], "dia", "dias")}'
+             if r["prazo"] else "—")
     validade = rotulo_validade(r["validade"]) or "não informada"
     preco = str(r["valor"]).replace(".", ",")
     amanha = (date.today() + timedelta(days=1)).isoformat()

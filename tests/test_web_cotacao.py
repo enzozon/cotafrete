@@ -447,6 +447,62 @@ def test_nao_da_para_registrar_abertura_em_cotacao_alheia(app_web, cliente):
     assert app_web.banco.whatsapp_abertos(cotacao_id) == set()
 
 
+# --------- COD-04: abrir é link com efeito; robô não pode contar como clique
+# As rotas de abrir REGISTRAM "aberta". O navegador prefaz (prefetch/prerender)
+# links que acha que a pessoa vai clicar, e um varredor segue todo href — os
+# dois inflavam o contador sem ninguém ter aberto nada. Foi assim que uma
+# varredura marcou 32 cotações de uma vez. O guarda não bloqueia a navegação,
+# só decide se CONTA.
+def test_prefetch_do_navegador_nao_conta_como_abertura(app_web, cliente):
+    cotacao_id = _criar(app_web)
+
+    r = cliente.get(f"/whatsapp/{cotacao_id}/movvi",
+                    headers={"Sec-Purpose": "prefetch;prerender"},
+                    follow_redirects=False)
+
+    # O destino continua saindo — quem clicou de verdade não perde a conversa.
+    assert r.status_code == 303
+    assert r.headers["location"].startswith("https://wa.me/")
+    # Mas o prefetch não é clique: nada foi aberto.
+    assert app_web.banco.whatsapp_abertos(cotacao_id) == set()
+
+
+def test_purpose_prefetch_antigo_tambem_nao_conta(app_web, cliente):
+    """Navegador mais velho manda `Purpose: prefetch` em vez de `Sec-Purpose`."""
+    cotacao_id = _criar(app_web)
+
+    cliente.get(f"/dellavolpe/{cotacao_id}/abrir",
+                headers={"Purpose": "prefetch"}, follow_redirects=False)
+
+    assert app_web.banco.whatsapp_abertos(cotacao_id) == set()
+
+
+def test_navegacao_disparada_por_outro_site_nao_conta(app_web, cliente):
+    """`Sec-Fetch-Site: cross-site`: o pedido foi disparado de outro domínio,
+    não de um clique na nossa página. SameSite=Lax já barra o cookie em
+    recurso embutido; isto cobre a navegação de topo forçada."""
+    cotacao_id = _criar(app_web)
+
+    cliente.get(f"/whatsapp/{cotacao_id}/movvi",
+                headers={"Sec-Fetch-Site": "cross-site"},
+                follow_redirects=False)
+
+    assert app_web.banco.whatsapp_abertos(cotacao_id) == set()
+
+
+def test_clique_da_nossa_pagina_continua_contando(app_web, cliente):
+    """O clique de verdade manda `Sec-Fetch-Site: same-origin` — esse conta,
+    senão o guarda teria matado a contagem inteira."""
+    cotacao_id = _criar(app_web)
+
+    cliente.get(f"/whatsapp/{cotacao_id}/movvi",
+                headers={"Sec-Fetch-Site": "same-origin",
+                         "Sec-Fetch-Mode": "navigate"},
+                follow_redirects=False)
+
+    assert app_web.banco.whatsapp_abertos(cotacao_id) == {"movvi"}
+
+
 # ----------------------------------- Generoso responde por e-mail, nao aqui
 def _aguardando(app_web, cotacao_id: int) -> None:
     """Grava o resultado real da Generoso: recebido, sem preco.
@@ -938,3 +994,22 @@ def test_o_prazo_aparece_ao_lado_do_preco(app_web, cliente):
     linha = linha_de(cliente.get(f"/cotacao/{cid}").text, "jadlog")
 
     assert "4 dias" in linha
+
+
+# ------------------------------------------------ 404 com layout (UX-06)
+def test_404_de_navegador_vira_pagina_com_layout(cliente):
+    """Um link velho caía no JSON cru {"detail":"Not Found"}, que não diz à
+    pessoa o que fazer. Navegação de navegador (Accept: text/html) ganha página."""
+    r = cliente.get("/rota-que-nao-existe", headers={"Accept": "text/html"})
+
+    assert r.status_code == 404
+    assert "Página não encontrada" in r.text and "Voltar ao início" in r.text
+
+
+def test_404_de_api_continua_json(cliente):
+    """O userscript e a extensão do ME pedem JSON — e precisam continuar
+    recebendo JSON, não uma página HTML."""
+    r = cliente.get("/rota-que-nao-existe", headers={"Accept": "application/json"})
+
+    assert r.status_code == 404
+    assert r.json()["detail"] == "Not Found"

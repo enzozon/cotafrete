@@ -150,7 +150,7 @@ def emitido_em(valor: str, dias: int = DIAS_DE_SESSAO) -> int | None:
         return None
 
 
-def cookie_seguro() -> bool:
+def cookie_seguro(https: bool = False) -> bool:
     """Se os cookies de sessão saem com a marca `Secure`.
 
     É a única função deste módulo que olha o ambiente — as outras são puras.
@@ -168,8 +168,13 @@ def cookie_seguro() -> bool:
     todo mundo já estiver entrando pelo endereço público:
 
         setx /M COTAFRETE_COOKIE_SEGURO 1
+
+    `https` vem de quem chama (o pedido chegou por https, direto ou via
+    Cloudflare). Com ele a marca liga SOZINHA no endereço público, sem
+    derrubar o http da rede local — lá o pedido chega por http e `https` é
+    falso. A env continua valendo como liga-mestre para quem quiser forçar.
     """
-    return os.getenv("COTAFRETE_COOKIE_SEGURO", "").strip() == "1"
+    return https or os.getenv("COTAFRETE_COOKIE_SEGURO", "").strip() == "1"
 
 
 def novo_segredo() -> str:
@@ -178,3 +183,24 @@ def novo_segredo() -> str:
     Trocá-lo derruba todas as sessões abertas — é o botão de expulsar todo
     mundo, sem precisar manter lista de sessão para administrar."""
     return secrets.token_hex(32)
+
+
+# ------------------------------------------------------- convite de 1º acesso
+def novo_token_convite() -> str:
+    """Token do link de primeiro acesso. Vai na URL que o admin envia ao
+    vendedor; é com ele, e não com o nome, que a pessoa escolhe a senha.
+
+    Longo e aleatório de propósito: adivinhar o nome de alguém é fácil (está
+    na assinatura do e-mail), adivinhar isto não é. Foi o nome sozinho que
+    deixava qualquer um reivindicar a conta antes do dono."""
+    return secrets.token_urlsafe(32)
+
+
+def hash_token(token: str) -> str:
+    """O que fica GUARDADO do token: sha256, nunca o token cru.
+
+    Ao contrário da SENHA (scrypt, cara de propósito para resistir a força
+    bruta), um token já nasce aleatório e longo — não há senha fraca a
+    proteger. sha256 só evita guardar o segredo em claro, para que um banco
+    vazado não entregue convites ainda válidos."""
+    return hashlib.sha256(token.encode()).hexdigest()

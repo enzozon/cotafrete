@@ -517,3 +517,20 @@ def test_todas_as_telas_levam_o_icone_da_aba():
     for nome, html in cascos.items():
         assert 'rel="icon"' in html, f"{nome} sem icone na aba"
         assert layout.MARCA_SIMBOLO in html, f"{nome} aponta para outro arquivo"
+
+
+# --------------------------------------------------------- plural (CAN-TXT-01)
+# A tela mostrava "1 itens", "1 dias": número dinâmico, substantivo fixo no
+# plural. plural() concorda; a convenção "(s)" do resto do sistema resolve só o
+# plural regular e quebra no irregular (item -> itens), que é onde o bug estava.
+def test_plural_concorda_numero_e_substantivo():
+    assert layout.plural(1, "item", "itens") == "item"
+    assert layout.plural(2, "item", "itens") == "itens"
+    assert layout.plural(0, "item", "itens") == "itens", "zero é plural em pt-BR"
+
+
+def test_plural_aceita_texto_e_so_o_1_exato_vira_singular():
+    assert layout.plural("1", "dia", "dias") == "dia"
+    assert layout.plural("3", "dia", "dias") == "dias"
+    # Faixa não é 1: fica no plural, sem virar "2 a 3 dia".
+    assert layout.plural("2 a 3", "dia", "dias") == "dias"

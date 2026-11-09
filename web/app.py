@@ -26,6 +26,7 @@ fora da rede local sem virar autenticação de verdade.
 
 from __future__ import annotations
 
+import os
 import sqlite3
 import threading
 import time
@@ -40,7 +41,9 @@ from urllib.parse import quote, urlencode
 
 from dotenv import load_dotenv
 from fastapi import Body, Cookie, Depends, FastAPI, Form, HTTPException, Request
+from fastapi.exception_handlers import http_exception_handler as _http_padrao
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
+from starlette.exceptions import HTTPException as _HTTPErro
 from fastapi.staticfiles import StaticFiles
 
 load_dotenv(override=False)
@@ -77,7 +80,7 @@ from web.ficha_ui import (
     quando as quando_humano, quem_e as _quem,
 )
 from web.layout import (MALHA_CORREDORES, cabecalho, e_pdf, entrada, e, moeda,
-                        pagina, print_embutido as _img)
+                        pagina, plural, print_embutido as _img)
 from web.transportadoras import cota_por_volume
 from web.aceite_ui import COM_ACEITE, celula_de_aceite, tela_aceite
 from core.models import (
@@ -139,7 +142,121 @@ async def _vida(_app):
         VIGIA_ME.set()
 
 
-app = FastAPI(title="Cotafrete — Ventura", lifespan=_vida)
+# A documentação interativa da API (/docs, /redoc, /openapi.json) expõe o mapa
+# completo das rotas e dos parâmetros. Em rede local ajuda; na internet é
+# reconhecimento de graça para quem quiser atacar. Fica LIGADA no
+# desenvolvimento e DESLIGADA assim que a env de produção estiver marcada.
+# Ligue no servidor junto com o Secure dos cookies (ver Servidor.bat):
+#     setx /M COTAFRETE_PUBLICO 1
+_PUBLICO = os.getenv("COTAFRETE_PUBLICO", "").strip() == "1"
+app = FastAPI(
+    title="Cotafrete — Ventura",
+    lifespan=_vida,
+    docs_url=None if _PUBLICO else "/docs",
+    redoc_url=None if _PUBLICO else "/redoc",
+    openapi_url=None if _PUBLICO else "/openapi.json",
+)
+
+
+def _pedido_https(request: Request) -> bool:
+    """Se o pedido chegou por https — direto ou via proxy (Cloudflare).
+
+    Atrás do Cloudflare o uvicorn vê http; quem guarda o esquema original é o
+    cabeçalho `X-Forwarded-Proto`. É o que deixa o Secure dos cookies ligar
+    sozinho no endereço público sem quebrar o http da rede local."""
+    encaminhado = request.headers.get("x-forwarded-proto", "")
+    if encaminhado.split(",")[0].strip().lower() == "https":
+        return True
+    return request.url.scheme == "https"
+
+
+def _clique_deliberado(request: Request) -> bool:
+    """Se este GET veio de um clique de verdade do vendedor — e não de um
+    prefetch do navegador, de um varredor, ou de uma navegação forçada por
+    outro site.
+
+    As rotas /whatsapp, /email e /dellavolpe/.../abrir REGISTRAM a abertura
+    (banco.marcar_whatsapp_aberto): são links com efeito. O navegador moderno
+    "prefaz" (prefetch/prerender) links que acha que a pessoa vai clicar, e um
+    varredor que segue todo href também cai aqui — os dois inflariam o contador
+    de "abertas" sem ninguém ter aberto nada. Foi exatamente assim que uma
+    varredura marcou 32 cotações de uma vez.
+
+    O guarda NÃO bloqueia o redirecionamento — a navegação segue igual. Ele só
+    decide se a abertura CONTA. Na dúvida (cliente antigo que não manda estes
+    cabeçalhos), conta, para não perder a abertura de um navegador honesto.
+
+    Deixa a decisão de GET→<form>POST do dono em pé: aqui o link continua link
+    (abre em aba nova, o userscript da Della Volpe continua mandando), e mesmo
+    assim o contador para de subir por conta de robô.
+
+    - `Sec-Purpose` / `Purpose`: o navegador avisa quando o pedido é prefetch.
+    - `Sec-Fetch-Site: cross-site`: disparado por outro domínio (link ou
+      recurso embutido em site de terceiro). O SameSite=Lax já barra o cookie
+      em recurso embutido; isto cobre a navegação de topo forçada."""
+    cab = request.headers
+    proposito = f"{cab.get('sec-purpose', '')} {cab.get('purpose', '')}".lower()
+    if "prefetch" in proposito or "prerender" in proposito:
+        return False
+    if cab.get("sec-fetch-site", "").strip().lower() == "cross-site":
+        return False
+    return True
+
+
+@app.middleware("http")
+async def _cabecalhos_de_seguranca(request: Request, call_next):
+    """Cabeçalhos de segurança em TODA resposta, e `no-store`/`noindex` nas
+    páginas autenticadas. São aditivos: `setdefault` não sobrescreve o que uma
+    rota já definiu (há rotas que mandam o próprio `Cache-Control: no-store`)."""
+    resp = await call_next(request)
+    resp.headers.setdefault("X-Content-Type-Options", "nosniff")
+    resp.headers.setdefault("X-Frame-Options", "DENY")
+    resp.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    resp.headers.setdefault("Permissions-Policy",
+                            "geolocation=(), microphone=(), camera=()")
+    # CSP enxuta: só barra enquadramento em iframe de terceiros (clickjacking).
+    # Não restringe script/style porque a interface usa inline por toda parte;
+    # uma CSP de script aqui quebraria a tela sem aviso. Endurecer depois, com
+    # nonce, é um passo à parte.
+    resp.headers.setdefault("Content-Security-Policy", "frame-ancestors 'none'")
+    if _pedido_https(request):
+        resp.headers.setdefault("Strict-Transport-Security",
+                                "max-age=31536000; includeSubDomains")
+    if request.cookies.get(COOKIE) or request.cookies.get(adm.COOKIE_ADM):
+        resp.headers.setdefault("Cache-Control",
+                                "no-store, no-cache, must-revalidate, private")
+        resp.headers.setdefault("X-Robots-Tag", "noindex, nofollow")
+    # A documentação da API (quando deixada aberta no desenvolvimento) nunca
+    # deve ser indexada por buscador, mesmo sem exigir login.
+    if request.url.path in ("/docs", "/redoc", "/openapi.json"):
+        resp.headers.setdefault("X-Robots-Tag", "noindex, nofollow")
+    return resp
+
+
+@app.exception_handler(_HTTPErro)
+async def _erro_http(request: Request, exc: _HTTPErro):
+    """Um 404 numa navegação de navegador vira página com layout, em vez do JSON
+    cru `{"detail":"Not Found"}` do FastAPI — um link velho caía numa tela de
+    erro de API, que não diz à pessoa o que fazer.
+
+    Só quando o cliente pede HTML: as rotas de API (userscript da Della Volpe,
+    extensão do ME) continuam recebendo JSON, e todo status que não seja 404
+    segue o tratamento padrão — preserva cabeçalhos como o `WWW-Authenticate`
+    de um 401. As respostas de API que já devolvem o próprio JSON de 404 nem
+    passam por aqui (são `return`, não `raise`)."""
+    if exc.status_code == 404 and "text/html" in request.headers.get("accept", ""):
+        corpo = (
+            '<div class="cartao" style="text-align:center;max-width:480px;'
+            'margin:48px auto">'
+            '<h1>Página não encontrada</h1>'
+            '<p class="sub">O endereço não existe ou saiu do ar — pode ter sido '
+            'um link antigo.</p>'
+            '<p style="margin-top:20px">'
+            '<a class="botao" href="/">Voltar ao início</a></p></div>')
+        return HTMLResponse(pagina("Página não encontrada", corpo), status_code=404)
+    return await _http_padrao(request, exc)
+
+
 banco = Banco()
 # Fila do Gerar DAV: a thread só nasce no primeiro DAV (nada sobe no import).
 FILA_DIAGNOSTICO = FilaDiagnostico(banco, Path("davs"), ao_terminar=lambda i: dav_ui.corrigir_sozinho(i))
@@ -756,11 +873,25 @@ def _cookie_vale_para(conta: dict, cookie: str) -> bool:
         # para não prender a pessoa num login que nunca abre.
         return True
     emitido = sessao.emitido_em(cookie)
+    if emitido is None:
+        return False
     try:
         definida = datetime.fromisoformat(conta["definida_em"]).timestamp()
     except (TypeError, ValueError):
         return False
-    return emitido is not None and emitido >= int(definida)
+    if emitido < int(definida):
+        return False
+    # Corte de logout: "Sair" grava `sessoes_ate`; cookie emitido antes dele
+    # (um que foi copiado antes do logout) não vale mais. Sem data, nunca
+    # houve logout e não há o que cortar.
+    corte = conta.get("sessoes_ate")
+    if corte:
+        try:
+            if emitido < int(datetime.fromisoformat(corte).timestamp()):
+                return False
+        except (TypeError, ValueError):
+            return False
+    return True
 
 
 
@@ -770,47 +901,27 @@ me_ui.COOKIE = COOKIE
 dav_ui.vendedor = vendedor
 dav_ui.COOKIE = COOKIE
 
-def _tela_login(erro: str = "", nome: str = "",
-                escolher_senha: bool = False) -> str:
-    """A porta da frente, nos seus dois estados: entrar, ou escolher a senha
-    no primeiro acesso."""
+def _tela_login(erro: str = "", nome: str = "") -> str:
+    """A porta da frente. O primeiro acesso NÃO acontece mais aqui — é pelo
+    link /definir-senha que o administrador envia."""
     aviso = (f'<p class="erro" role="alert">{e(erro)}</p>' if erro else "")
     valor = e(nome)
-    if escolher_senha:
-        campos = f"""
-    <input type="hidden" name="usuario" value="{valor}">
-    <input name="senha" type="password" placeholder="Escolha sua senha"
-           autofocus required autocomplete="new-password"
-           style="margin-bottom:12px">
-    <input name="confirmacao" type="password" placeholder="Repita a senha"
-           required autocomplete="new-password" style="margin-bottom:12px">"""
-        titulo = "Primeiro acesso"
-        explicacao = (f"<b>{valor}</b>, escolha a senha que você vai usar "
-                      f"daqui em diante. Mínimo de "
-                      f"{sessao.MINIMO_DA_SENHA} caracteres. Ninguém mais "
-                      f"consegue vê-la — nem o administrador.")
-        botao = "Salvar senha e entrar"
-    else:
-        campos = f"""
+    campos = f"""
     <input name="usuario" placeholder="Seu nome" required
            autocomplete="username" value="{valor}"
            style="margin-bottom:12px"{'' if valor else ' autofocus'}>
     <input name="senha" type="password" placeholder="Sua senha" required
            autocomplete="current-password"
            style="margin-bottom:12px"{' autofocus' if valor else ''}>"""
-        titulo = "Entrar"
-        explicacao = ("Suas cotações ficam separadas das dos outros. Se é "
-                      "seu primeiro acesso, digite qualquer coisa no campo "
-                      "da senha: o sistema vai pedir que você escolha a sua.")
-        botao = "Entrar"
 
     cartao = f"""
 <div class="cartao">
-  <h1>{titulo}</h1>
-  <p class="sub">{explicacao}</p>
+  <h1>Entrar</h1>
+  <p class="sub">Suas cotações ficam separadas das dos outros. O primeiro
+  acesso é pelo link que o administrador envia para você.</p>
   {aviso}
   <form method="post" action="/login">{campos}
-    <button type="submit" style="width:100%">{botao}</button>
+    <button type="submit" style="width:100%">Entrar</button>
   </form>
 </div>"""
     return entrada(
@@ -821,8 +932,57 @@ def _tela_login(erro: str = "", nome: str = "",
         paradas=("sua carga",
                  f"{len(AUTOMATICAS)} cotam sozinhas",
                  "o mais barato"),
-        rodape="Sua conta é criada pelo administrador. A senha quem escolhe "
-               "é você, no primeiro acesso.")
+        rodape="Sua conta é criada pelo administrador, que envia um link para "
+               "você escolher a senha no primeiro acesso.")
+
+
+def _tela_convite(token: str, nome: str, erro: str = "") -> str:
+    """Primeiro acesso pelo link: a pessoa, identificada pelo token, escolhe a
+    senha. O nome vem do convite — não há campo de nome para adivinhar."""
+    aviso = (f'<p class="erro" role="alert">{e(erro)}</p>' if erro else "")
+    cartao = f"""
+<div class="cartao">
+  <h1>Primeiro acesso</h1>
+  <p class="sub"><b>{e(nome)}</b>, escolha a senha que você vai usar daqui em
+  diante. Mínimo de {sessao.MINIMO_DA_SENHA} caracteres. Ninguém mais consegue
+  vê-la — nem o administrador.</p>
+  {aviso}
+  <form method="post" action="/definir-senha">
+    <input type="hidden" name="t" value="{e(token)}">
+    <input name="senha" type="password" placeholder="Escolha sua senha"
+           autofocus required autocomplete="new-password"
+           style="margin-bottom:12px">
+    <input name="confirmacao" type="password" placeholder="Repita a senha"
+           required autocomplete="new-password" style="margin-bottom:12px">
+    <button type="submit" style="width:100%">Salvar senha e entrar</button>
+  </form>
+</div>"""
+    return entrada(
+        "Primeiro acesso", cartao,
+        chamada="Uma carga. Todas as transportadoras.",
+        apoio="Escolha sua senha e entre. Da próxima vez é só o nome e a "
+              "senha, na tela de entrar.",
+        paradas=("sua senha", "sua conta", "pronto"),
+        rodape="Este link é só seu e vale uma vez. Se expirar, peça outro ao "
+               "administrador.")
+
+
+def _tela_convite_invalido() -> str:
+    cartao = """
+<div class="cartao">
+  <h1>Link inválido ou expirado</h1>
+  <p class="sub">Este link de primeiro acesso não vale mais — ou já foi usado,
+  ou passou do prazo. Peça ao administrador para gerar um novo para você.</p>
+  <a href="/login" class="botao2" style="display:inline-block;margin-top:8px">
+    Ir para a tela de entrar</a>
+</div>"""
+    return entrada(
+        "Link inválido", cartao,
+        chamada="Uma carga. Todas as transportadoras.",
+        apoio="O link de primeiro acesso vale uma vez e tem prazo. Um novo "
+              "resolve.",
+        paradas=("peça um link", "escolha a senha", "pronto"),
+        rodape="Sua conta é criada pelo administrador, que envia o link.")
 
 
 @app.get("/_ocupado", include_in_schema=False)
@@ -841,19 +1001,21 @@ def tela_login() -> str:
     return _tela_login()
 
 
-def _abrir_sessao(nome: str) -> RedirectResponse:
+def _abrir_sessao(nome: str, https: bool = False) -> RedirectResponse:
     r = RedirectResponse("/", status_code=303)
     # httponly: JavaScript não lê, então um XSS não leva a sessão embora.
     # samesite=lax: site de terceiro não consegue postar cotação em nome de
     # quem está logado.
+    # secure: liga sozinho quando o pedido veio por https (público via
+    # Cloudflare); fica desligado no http da rede local.
     r.set_cookie(COOKIE, sessao.assinar(nome, banco.segredo_sessao()),
                  max_age=sessao.DIAS_DE_SESSAO * 86400, httponly=True,
-                 samesite="lax", secure=cookie_seguro())
+                 samesite="lax", secure=cookie_seguro(https))
     return r
 
 
-def _recusar(erro: str, nome: str = "", escolher_senha: bool = False):
-    resposta = HTMLResponse(_tela_login(erro, nome, escolher_senha))
+def _recusar(erro: str, nome: str = ""):
+    resposta = HTMLResponse(_tela_login(erro, nome))
     resposta.status_code = 401
     return resposta
 
@@ -865,7 +1027,7 @@ def _recusar(erro: str, nome: str = "", escolher_senha: bool = False):
 # convite devolvia str crua. Declarado na ROTA, vale para todo `return` dela,
 # inclusive os que vierem depois.
 @app.post("/login", response_class=HTMLResponse)
-def entrar(usuario: str = Form(...), senha: str = Form(""),
+def entrar(request: Request, usuario: str = Form(...), senha: str = Form(""),
            confirmacao: str = Form("")):
     """Uma rota, três caminhos: conta inexistente, primeiro acesso e entrada
     normal.
@@ -874,12 +1036,13 @@ def entrar(usuario: str = Form(...), senha: str = Form(""),
     qualquer pessoa que achasse o endereço na internet se cadastraria
     sozinha, que é exatamente o buraco que este login veio fechar."""
     nome = usuario.strip()[:40]
+    https = _pedido_https(request)
 
     # O administrador entra por aqui também, com a senha do painel. Vem antes
     # da busca de conta porque o nome é reservado: /adm/contas recusa criar
     # conta de vendedor com ele, então não há ambiguidade.
     if adm.nome_reservado(nome):
-        resposta = adm.entrada_pelo_login(senha)
+        resposta = adm.entrada_pelo_login(senha, https)
         if resposta is not None:
             return resposta
         time.sleep(PAUSA_SENHA_ERRADA_S)
@@ -889,42 +1052,64 @@ def entrar(usuario: str = Form(...), senha: str = Form(""),
 
     conta = banco.conta(nome) if nome else None
 
-    if conta is None:
-        time.sleep(PAUSA_SENHA_ERRADA_S)
-        return _recusar("Nome ou senha não conferem. Se você ainda não tem "
-                        "conta, peça ao administrador para criar a sua.", nome)
-
-    if conta["senha_hash"] is None:
-        # Convite aberto: a primeira visita escolhe a senha. A senha digitada
-        # nesta passada é ignorada de propósito — quem chega aqui ainda não
-        # tem senha, e aproveitar o que foi digitado no campo errado viraria
-        # senha escolhida por engano.
-        if not confirmacao:
-            return _tela_login("", nome, escolher_senha=True)
-        recusa = sessao.recusa_da_senha(senha)
-        if recusa:
-            return _recusar(recusa, nome, escolher_senha=True)
-        if senha != confirmacao:
-            return _recusar("As duas senhas não são iguais.", nome,
-                            escolher_senha=True)
-        if not banco.definir_senha(nome, sessao.hash_senha(senha)):
-            # Só chega aqui se outra aba fechou o convite no meio do caminho.
-            return _recusar("Essa conta já tem senha. Entre com ela.", nome)
-        return _abrir_sessao(nome)
-
-    if not sessao.senha_confere(senha, conta["senha_hash"]):
+    # Uma resposta só para TODOS os casos de falha — conta inexistente, convite
+    # ainda aberto (sem senha) e senha errada. Mensagens diferentes
+    # transformavam a tela num detector de "este nome existe" e de "esta conta
+    # ainda não escolheu senha" (o alvo da tomada de conta). O primeiro acesso
+    # NÃO acontece mais aqui: é pelo link /definir-senha que o admin envia.
+    senha_confere = (conta is not None and conta["senha_hash"] is not None
+                     and sessao.senha_confere(senha, conta["senha_hash"]))
+    if not senha_confere:
         time.sleep(PAUSA_SENHA_ERRADA_S)
         # Nunca repetir o que foi digitado: nem na tela, nem em log.
-        return _recusar("Nome ou senha não conferem.", nome)
+        return _recusar("Nome ou senha não conferem. No primeiro acesso, use "
+                        "o link que o administrador enviou para você.", nome)
 
-    return _abrir_sessao(nome)
+    return _abrir_sessao(nome, https)
 
 
 @app.get("/sair")
-def sair():
+def sair(usuario: str | None = Depends(vendedor)):
+    # Além de apagar o cookie no navegador, grava o corte de logout no
+    # servidor: um cookie copiado antes do "Sair" para de valer na hora, em vez
+    # de durar os 7 dias do prazo. Um novo login, emitido depois, vale.
+    if usuario:
+        banco.invalidar_sessoes(usuario)
     r = RedirectResponse("/login", status_code=303)
     r.delete_cookie(COOKIE)
     return r
+
+
+# ---------------------------------------------------- primeiro acesso (convite)
+# A senha do primeiro acesso é escolhida AQUI, pelo link que o admin envia, e
+# não mais na tela de entrar digitando o nome. O token no link identifica a
+# pessoa; sem ele, saber o nome não basta. Isso fecha a tomada de conta (quem
+# soubesse o nome do vendedor escolhia a senha antes dele) descrita na
+# auditoria.
+@app.get("/definir-senha", response_class=HTMLResponse)
+def tela_definir_senha(t: str = ""):
+    nome = banco.nome_do_convite(t)
+    if not nome:
+        return HTMLResponse(_tela_convite_invalido(), status_code=400)
+    return _tela_convite(t, nome)
+
+
+@app.post("/definir-senha", response_class=HTMLResponse)
+def definir_senha_convite(request: Request, t: str = Form(""),
+                          senha: str = Form(""), confirmacao: str = Form("")):
+    nome = banco.nome_do_convite(t)
+    if not nome:
+        return HTMLResponse(_tela_convite_invalido(), status_code=400)
+    recusa = sessao.recusa_da_senha(senha)
+    if recusa:
+        return _tela_convite(t, nome, recusa)
+    if senha != confirmacao:
+        return _tela_convite(t, nome, "As duas senhas não são iguais.")
+    definido = banco.definir_senha_por_convite(t, sessao.hash_senha(senha))
+    if not definido:
+        # O token venceu ou foi usado entre carregar a tela e enviar.
+        return HTMLResponse(_tela_convite_invalido(), status_code=400)
+    return _abrir_sessao(definido, _pedido_https(request))
 
 
 # ---------------------------------------------------------------- formulário
@@ -1814,7 +1999,7 @@ def enviar_dellavolpe(cotacao_id: int, destino: str = Form(...),
 
 
 @app.get("/whatsapp/{cotacao_id}/{slug}")
-def abrir_whatsapp(cotacao_id: int, slug: str,
+def abrir_whatsapp(cotacao_id: int, slug: str, request: Request,
                    usuario: str | None = Depends(vendedor)):
     """Registra a ABERTURA e leva para a conversa com o texto pronto.
 
@@ -1832,14 +2017,15 @@ def abrir_whatsapp(cotacao_id: int, slug: str,
     if c is None or reg is None:
         return HTMLResponse("Não encontrado", status_code=404)
 
-    banco.marcar_whatsapp_aberto(cotacao_id, slug, usuario)
+    if _clique_deliberado(request):
+        banco.marcar_whatsapp_aberto(cotacao_id, slug, usuario)
     texto = quote(mensagem_whatsapp(c))
     return RedirectResponse(f"https://wa.me/{reg.telefone}?text={texto}",
                             status_code=303)
 
 
 @app.get("/email/{cotacao_id}/{slug}", response_class=HTMLResponse)
-def preparar_email(cotacao_id: int, slug: str,
+def preparar_email(cotacao_id: int, slug: str, request: Request,
                    usuario: str | None = Depends(vendedor)):
     """A cotação escrita, pronta para o vendedor copiar e mandar por e-mail.
 
@@ -1866,7 +2052,8 @@ def preparar_email(cotacao_id: int, slug: str,
 
     # Mesma tabela do WhatsApp: o fato registrado é idêntico — a pessoa abriu
     # a coisa pronta. Uma tabela nova só daria duas contagens para conciliar.
-    banco.marcar_whatsapp_aberto(cotacao_id, slug, usuario)
+    if _clique_deliberado(request):
+        banco.marcar_whatsapp_aberto(cotacao_id, slug, usuario)
     texto = mensagem_whatsapp(c)
 
     return HTMLResponse(pagina(f"Cotação {cotacao_id} — {reg.nome}", f"""
@@ -1983,7 +2170,7 @@ def _url_formulario_dv(c: dict) -> str:
 
 
 @app.get("/dellavolpe/{cotacao_id}/abrir")
-def abrir_formulario_dellavolpe(cotacao_id: int,
+def abrir_formulario_dellavolpe(cotacao_id: int, request: Request,
                                 usuario: str | None = Depends(vendedor)):
     """O atalho do cartão "Semiautomática" quando o script está em dia: vai
     direto para o site da Della Volpe já preenchido, sem a tela de instruções.
@@ -1996,7 +2183,8 @@ def abrir_formulario_dellavolpe(cotacao_id: int,
     c = banco.buscar_cotacao(cotacao_id, usuario)
     if c is None:
         return HTMLResponse("Não encontrado", status_code=404)
-    banco.marcar_whatsapp_aberto(cotacao_id, "dellavolpe", usuario)
+    if _clique_deliberado(request):
+        banco.marcar_whatsapp_aberto(cotacao_id, "dellavolpe", usuario)
     return RedirectResponse(_url_formulario_dv(c), status_code=303)
 
 
@@ -2388,7 +2576,7 @@ def ver_cotacao(cotacao_id: int,
             # Sem ele a comparacao e so preco - e frete se decide comparando
             # preco CONTRA prazo.
             if r["prazo"]:
-                prazo = f'{e(str(r["prazo"]))} dias'
+                prazo = f'{e(str(r["prazo"]))} {plural(r["prazo"], "dia", "dias")}'
             # Validade e botão "Aceitar" na MESMA célula: é a validade que
             # decide se ainda vale a pena aceitar, e separá-los faria o
             # vendedor ler "vence hoje" num canto e clicar no outro.

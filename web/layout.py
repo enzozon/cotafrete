@@ -472,12 +472,14 @@ box-shadow:var(--sombra-2)}
 .zap.aberta .marca{opacity:.5}
 .zap.aberta .ir{display:none}
 .zap .jafoi{display:none}
-.zap.aberta .jafoi{display:inline-block;margin-left:auto;color:var(--ok);
+/* Cinza, não verde, e um ponto no lugar do visto: "Aberta" só diz que o link
+   abriu — quem aperta enviar é a pessoa, do outro lado, e disso aqui não chega
+   notícia. Um ✓ verde prometia "enviado", exatamente o que o contador se dá o
+   trabalho de nunca dizer ("abertas, nunca enviadas"). O estado apagado também
+   serve ao propósito original: o olho cai sozinho na próxima da lista. */
+.zap.aberta .jafoi{display:inline-block;margin-left:auto;color:var(--fraco);
 font-size:13px;font-weight:600}
-/* Visto literal, nao escape CSS: o bloco do CSS e uma string normal do
-   Python, e "¹3" ali vira escape OCTAL antes de chegar no navegador --
-   saia "¹3" na tela em vez do visto. */
-.zap.aberta .jafoi::before{content:"✓  "}
+.zap.aberta .jafoi::before{content:"•  "}
 .contador{float:right;font-size:12px;font-weight:400;color:var(--fraco)}
 /* Altura fixa e contain: as logos vêm em tamanhos e proporções diferentes,
    e sem isto a CGB (359KB, quadrada) empurra a linha inteira para baixo. */
@@ -577,6 +579,11 @@ transition:border-color .16s var(--suave),background .16s var(--suave),
 transform .16s var(--suave),box-shadow .16s var(--suave)}
 .botao2:hover{border-color:var(--marca);background:var(--lavagem);
 transform:translateY(-1px);box-shadow:var(--sombra-1)}
+/* Ação destrutiva (ex.: Remover conta): o vermelho distingue do vizinho neutro
+   antes do clique, não depois. Vale nos dois temas — sai dos tokens. */
+.botao2.botao-perigo{color:var(--erro);
+border-color:color-mix(in srgb,var(--erro) 40%,var(--borda-forte))}
+.botao2.botao-perigo:hover{border-color:var(--erro);background:var(--erro-fraco)}
 .login{max-width:380px;margin:70px auto;text-align:center;
 animation:sobe-bloco .5s var(--suave) both}
 .login img{height:64px;margin-bottom:18px}
@@ -1422,6 +1429,23 @@ def moeda(v: Decimal | None) -> str:
     return f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 
+def plural(n, singular: str, plural: str) -> str:
+    """Concorda o substantivo com o número: 1 vira singular, o resto plural.
+
+    Existe porque a tela mostrava "1 itens", "1 dias" — o número é dinâmico, o
+    substantivo vinha fixo no plural. A convenção "(s)" do resto do sistema
+    (transportadora(s), problema(s)) resolve o plural regular, mas quebra no
+    irregular (item → itens, não "iten(s)"), que é justamente onde o bug
+    aparecia. Devolve só o substantivo; o número quem escreve é quem chama, para
+    caber em "N de M itens" e afins.
+
+        f"{n} {plural(n, 'item', 'itens')}"  ->  "1 item", "3 itens"
+
+    Aceita `n` como número ou texto ("1"): só o 1 exato vira singular. Zero e
+    faixas ("2 a 3") ficam no plural, como no português."""
+    return singular if str(n).strip() == "1" else plural
+
+
 # ------------------------------------------------------- a malha do hero
 #
 # O desenho de fundo da tela de entrada, e o mesmo em miniatura na faixa da
@@ -1866,7 +1890,7 @@ def pagina(titulo: str, corpo: str, usuario: str | None = None) -> str:
 <title>{e(titulo)} — Cotafrete</title>{ICONE_ABA}{cabeca_do_tema("claro")}
 <style>{CSS}</style></head><body>
 <a class="pular" href="#conteudo">Pular para o conteúdo</a>
-<div class="topo"><a class="marca-placa" href="/" aria-label="Ventura Comércio — início"><span class="marca-peca marca-lockup" role="img"></span></a>
+<div class="topo"><a class="marca-placa" href="/" aria-label="Ventura Comércio — início"><span class="marca-peca marca-lockup" aria-hidden="true"></span></a>
 {quem}{BOTAO_TEMA}</div>
 <main class="wrap" id="conteudo">{corpo}</main>
 {rodape_do_site(usuario)}{LUPA}{SCRIPT_TEMA}</body></html>"""

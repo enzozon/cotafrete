@@ -47,6 +47,13 @@ def chefe(app_web):
     return c
 
 
+def _csrf(chefe, app_web):
+    """O token anti-CSRF que a tela embute nos formulários, derivado do cookie
+    de admin deste cliente."""
+    cookie = chefe.cookies.get(app_web.adm.COOKIE_ADM)
+    return app_web.adm.csrf_de(cookie)
+
+
 # ------------------------------------------------------------- a barreira
 def test_sem_a_senha_do_painel_ninguem_mexe_em_conta(anonimo, app_web):
     """Todas as portas desta tela, não só a de leitura."""
@@ -68,7 +75,7 @@ def test_sem_a_senha_do_painel_ninguem_mexe_em_conta(anonimo, app_web):
 
 # --------------------------------------------------------------- criar
 def test_criar_conta_abre_convite_sem_senha(chefe, app_web):
-    r = chefe.post("/adm/contas/criar", data={"nome": "maria"})
+    r = chefe.post("/adm/contas/criar", data={"nome": "maria", "csrf": _csrf(chefe, app_web)})
 
     assert r.status_code == 303
     conta = app_web.banco.conta("maria")
@@ -76,18 +83,27 @@ def test_criar_conta_abre_convite_sem_senha(chefe, app_web):
     assert conta["senha_hash"] is None, "quem escolhe a senha é a Maria"
 
 
+def test_criar_conta_mostra_o_link_de_primeiro_acesso(chefe, app_web):
+    """O admin precisa do link para enviar ao vendedor — é com ele, não com o
+    nome, que a pessoa escolhe a senha."""
+    r = chefe.post("/adm/contas/criar", data={"nome": "maria", "csrf": _csrf(chefe, app_web)})
+
+    pagina = chefe.get(r.headers["location"]).text
+    assert "/definir-senha?t=" in pagina
+
+
 def test_nome_repetido_avisa_e_nao_apaga_a_senha_de_quem_ja_usa(chefe, app_web):
     app_web.banco.criar_conta("maria")
     app_web.banco.definir_senha("maria", sessao.hash_senha("a-da-maria"))
 
-    chefe.post("/adm/contas/criar", data={"nome": "maria"})
+    chefe.post("/adm/contas/criar", data={"nome": "maria", "csrf": _csrf(chefe, app_web)})
 
     assert sessao.senha_confere("a-da-maria",
                                 app_web.banco.conta("maria")["senha_hash"])
 
 
 def test_nome_em_branco_nao_cria_conta(chefe, app_web):
-    chefe.post("/adm/contas/criar", data={"nome": "   "})
+    chefe.post("/adm/contas/criar", data={"nome": "   ", "csrf": _csrf(chefe, app_web)})
 
     assert app_web.banco.contas() == []
 
@@ -97,7 +113,7 @@ def test_nome_reservado_ao_administrador_nao_vira_conta(chefe, app_web, reservad
     """A conta existiria e nunca conseguiria entrar: a tela de login
     reconhece esses nomes como porta do painel antes de procurar conta.
     Criá-la seria fabricar uma conta morta."""
-    r = chefe.post("/adm/contas/criar", data={"nome": reservado})
+    r = chefe.post("/adm/contas/criar", data={"nome": reservado, "csrf": _csrf(chefe, app_web)})
 
     assert app_web.banco.contas() == []
     assert "reservado" in chefe.get(r.headers["location"]).text
@@ -123,9 +139,11 @@ def test_esquecer_reabre_o_convite(chefe, app_web):
     app_web.banco.criar_conta("maria")
     app_web.banco.definir_senha("maria", sessao.hash_senha("a-esquecida"))
 
-    chefe.post("/adm/contas/esquecer", data={"nome": "maria"})
+    r = chefe.post("/adm/contas/esquecer", data={"nome": "maria", "csrf": _csrf(chefe, app_web)})
 
     assert app_web.banco.conta("maria")["senha_hash"] is None
+    # E gera um novo link para a pessoa escolher outra senha.
+    assert "/definir-senha?t=" in chefe.get(r.headers["location"]).text
 
 
 def test_a_tela_nunca_mostra_o_hash_da_senha(chefe, app_web):
@@ -147,7 +165,7 @@ def test_remover_tira_o_acesso_e_guarda_o_historico(chefe, app_web):
     app_web.banco.criar_conta("maria")
     app_web.banco.salvar_cotacao("maria", _carga())
 
-    chefe.post("/adm/contas/remover", data={"nome": "maria"})
+    chefe.post("/adm/contas/remover", data={"nome": "maria", "csrf": _csrf(chefe, app_web)})
 
     assert app_web.banco.conta("maria") is None
     assert len(app_web.banco.listar_cotacoes("maria")) == 1
@@ -203,3 +221,40 @@ def test_nome_com_apostrofo_nao_quebra_a_confirmacao_de_remover(chefe, app_web):
     js = html.unescape(re.search(r'onsubmit="([^"]*)"', tela).group(1))
     literal = re.fullmatch(r"return confirm\((.*)\)", js).group(1)
     assert "Joana D'Arc" in json.loads(literal)
+
+
+# --------------------------------------------------------------- csrf
+def test_post_de_conta_sem_csrf_e_recusado(chefe, app_web):
+    """Mesmo com o cookie do painel, um POST sem o token (o que um site de
+    terceiro conseguiria montar) não pode criar conta."""
+    r = chefe.post("/adm/contas/criar", data={"nome": "maria"})
+
+    assert r.status_code == 303
+    assert "Sess" in quote_plus_decode(r.headers["location"])
+    assert app_web.banco.conta("maria") is None
+
+
+def test_post_de_conta_com_csrf_errado_e_recusado(chefe, app_web):
+    r = chefe.post("/adm/contas/criar",
+                   data={"nome": "maria", "csrf": "chute-de-invasor"})
+
+    assert app_web.banco.conta("maria") is None
+
+
+def quote_plus_decode(s: str) -> str:
+    from urllib.parse import unquote_plus
+    return unquote_plus(s)
+
+
+# ---------------------------------------- Esquecer x Remover (UX-04)
+def test_remover_e_destacado_e_esquecer_tambem_pergunta(chefe, app_web):
+    """Os dois botões tinham a MESMA cara e só o Remover perguntava. Agora o
+    Remover (que apaga a conta) é o único vermelho, e o Esquecer — que também
+    derruba o acesso na hora — passou a perguntar antes."""
+    app_web.banco.criar_conta("maria")
+
+    corpo = chefe.get("/adm/contas").text
+
+    assert "botao-perigo" in corpo, "Remover precisa do destaque destrutivo"
+    esquecer = corpo.split('action="/adm/contas/esquecer"')[1].split("</form>")[0]
+    assert "confirm(" in esquecer, "Esquecer precisa perguntar antes"

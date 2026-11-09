@@ -39,7 +39,7 @@ from datetime import date
 from itertools import groupby
 from urllib.parse import quote
 
-from fastapi import APIRouter, Cookie, Form, HTTPException
+from fastapi import APIRouter, Cookie, Form, HTTPException, Request
 from fastapi.responses import (HTMLResponse, JSONResponse,
                                RedirectResponse, Response)
 
@@ -112,6 +112,28 @@ def autorizado(cookie: str | None, agora: float | None = None) -> bool:
     return (agora if agora is not None else time.time()) <= int(prazo_txt)
 
 
+def csrf_de(cookie_adm: str | None) -> str:
+    """Token anti-CSRF para os formulários do painel.
+
+    Derivado do cookie do admin (httponly) + a senha do painel: quem não tem o
+    cookie não produz o token, então um site de terceiro não consegue montar um
+    POST válido para /adm/contas/*. O SameSite=Lax já barra o POST cruzado; este
+    token é a segunda tranca, e também protege de um sub-site do mesmo domínio.
+    Em branco sem sessão — nesse caso o formulário nem chega a aparecer."""
+    senha = senha_configurada()
+    if not senha or not cookie_adm:
+        return ""
+    return hmac.new(senha.encode(), f"csrf|{cookie_adm}".encode(),
+                    "sha256").hexdigest()
+
+
+def _csrf_confere(cookie_adm: str | None, enviado: str) -> bool:
+    esperado = csrf_de(cookie_adm)
+    # compare_digest pelo mesmo motivo de `autorizado`: não vazar tempo.
+    return bool(esperado) and hmac.compare_digest(
+        esperado.encode(), (enviado or "").encode())
+
+
 def _exigir_montado() -> str:
     """404 quando não há senha configurada. Ver a regra 1 no topo."""
     senha = senha_configurada()
@@ -144,13 +166,16 @@ def nome_reservado(nome: str) -> bool:
     return nome.strip().casefold() in NOMES_RESERVADOS
 
 
-def entrada_pelo_login(senha: str):
+def entrada_pelo_login(senha: str, https: bool = False):
     """A entrada no painel, ou None se a senha não confere.
 
     Devolver None em vez de uma tela de erro é de propósito: quem chama é a
     tela do vendedor, e é ela que sabe como mostrar a recusa — com o mesmo
     texto de uma senha de vendedor errada, para a tela não virar um detector
-    de "este nome existe"."""
+    de "este nome existe".
+
+    `https` vem da tela do vendedor (o pedido chegou por https) e liga o
+    Secure do cookie do painel sozinho no endereço público."""
     correta = senha_configurada()
     if not correta:
         return None
@@ -158,7 +183,8 @@ def entrada_pelo_login(senha: str):
         return None
     r = RedirectResponse("/adm", status_code=303)
     r.set_cookie(COOKIE_ADM, token_de(correta), max_age=VALIDADE_S,
-                 httponly=True, samesite="lax", secure=sessao.cookie_seguro())
+                 httponly=True, samesite="lax",
+                 secure=sessao.cookie_seguro(https))
     return r
 
 
@@ -532,6 +558,11 @@ document.addEventListener('mouseover', ev => {
 });
 
 async function pulsar() {
+  // Aba em segundo plano nao le e nao precisa atualizar: parar o pulso ali
+  // poupa rede, bateria do celular e uma batida no servidor a cada 5s por
+  // aba esquecida aberta. Ao voltar, o visibilitychange abaixo atualiza na
+  // hora, entao a tela nunca fica velha na cara de quem esta lendo.
+  if (document.hidden) return;
   // Os filtros da tela vao junto: a tabela depende de dias/quem/falhas, e
   // location.search ja e exatamente isso.
   const busca_url = new URLSearchParams(location.search);
@@ -562,6 +593,14 @@ async function pulsar() {
   }
 }
 setInterval(pulsar, PULSO_MS);
+
+// Voltou para a aba (ou destravou o celular): atualiza na hora, sem esperar o
+// proximo pulso de 5s. O servidor devolve 204 se nada mudou, entao custa quase
+// nada, e a tela nao fica parada no numero velho na frente de quem acabou de
+// olhar.
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) pulsar();
+});
 
 const parado = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -1135,7 +1174,7 @@ def baixar_evidencias_zip(cotacao_id: int,
 # administrador nunca vê senha de ninguém — só consegue reabrir o convite
 # (botão "Esquecer senha"), e aí a pessoa escolhe outra.
 
-def _linha_da_conta(c: dict) -> str:
+def _linha_da_conta(c: dict, csrf: str = "") -> str:
     if c["senha_hash"] is None:
         situacao = ('<span class="etiqueta">convite aberto</span>'
                     ' <span class="sub">ainda vai escolher a senha</span>')
@@ -1150,19 +1189,29 @@ def _linha_da_conta(c: dict) -> str:
     pergunta = e(json.dumps(
         f"Tirar o acesso de {c['nome']}? As cotacoes que ela ja fez "
         f"continuam no historico.", ensure_ascii=False))
+    # Esquecer senha também derruba o acesso na hora (a pessoa só volta pelo
+    # novo link de primeiro acesso). Antes era um clique sem pergunta, com a
+    # MESMA cara do Remover ao lado — fácil de trocar um pelo outro. Agora
+    # pergunta, e o Remover (que apaga a conta) é o único vermelho.
+    aviso_esquecer = e(json.dumps(
+        f"Esquecer a senha de {c['nome']}? Ela perde o acesso agora e escolhe "
+        f"outra pelo link de primeiro acesso.", ensure_ascii=False))
     return f"""
 <tr>
   <td><b>{nome}</b></td>
   <td>{situacao}</td>
   <td style="text-align:right;white-space:nowrap">
-    <form method="post" action="/adm/contas/esquecer" style="display:inline">
+    <form method="post" action="/adm/contas/esquecer" style="display:inline"
+          onsubmit="return confirm({aviso_esquecer})">
       <input type="hidden" name="nome" value="{nome}">
+      <input type="hidden" name="csrf" value="{csrf}">
       <button type="submit" class="botao2">Esquecer senha</button>
     </form>
     <form method="post" action="/adm/contas/remover" style="display:inline"
           onsubmit="return confirm({pergunta})">
       <input type="hidden" name="nome" value="{nome}">
-      <button type="submit" class="botao2">Remover</button>
+      <input type="hidden" name="csrf" value="{csrf}">
+      <button type="submit" class="botao2 botao-perigo">Remover</button>
     </form>
   </td>
 </tr>"""
@@ -1175,8 +1224,9 @@ def tela_contas(adm: str | None = Cookie(None, alias=COOKIE_ADM),
     if not autorizado(adm):
         return RedirectResponse("/login", status_code=303)
 
+    csrf = csrf_de(adm)
     lista = banco.contas()
-    linhas = "".join(_linha_da_conta(c) for c in lista) or (
+    linhas = "".join(_linha_da_conta(c, csrf) for c in lista) or (
         '<tr><td colspan="3" class="sub">Nenhuma conta ainda. Crie a '
         'primeira no campo acima.</td></tr>')
     aviso = ""
@@ -1190,15 +1240,16 @@ def tela_contas(adm: str | None = Cookie(None, alias=COOKIE_ADM),
     # está cheio de nomes que nunca foram conta.
     #
     # A conta NÃO é criada sozinha a partir dessa lista, de propósito: ela
-    # inclui erro de digitação e nome de teste, e cada conta criada é um
-    # convite aberto que a primeira pessoa a adivinhar o nome pode reivindicar.
-    # Quem decide é você, um a um.
+    # inclui erro de digitação e nome de teste, e cada conta criada gera um
+    # link de convite para você enviar — não vale a pena fabricar um monte
+    # para nomes que podem estar errados. Quem decide é você, um a um.
     ja_tem = {c["nome"] for c in lista}
     sugestoes = [u for u in banco.usuarios() if u not in ja_tem]
     if sugestoes:
         botoes = "".join(f"""
       <form method="post" action="/adm/contas/criar" style="display:inline">
         <input type="hidden" name="nome" value="{e(u)}">
+        <input type="hidden" name="csrf" value="{csrf}">
         <button type="submit" class="botao2">{e(u)}</button>
       </form>""" for u in sugestoes)
         pendentes = f"""
@@ -1215,8 +1266,9 @@ def tela_contas(adm: str | None = Cookie(None, alias=COOKIE_ADM),
     corpo = f"""
 <div class="cabecalho" id="topo">
   <div><h1>Quem entra</h1>
-  <p class="sub">Contas do Cotafrete. A senha quem escolhe é a própria
-  pessoa, no primeiro acesso — nem você consegue vê-la.</p></div>
+  <p class="sub">Contas do Cotafrete. Ao criar uma conta você recebe um link
+  de primeiro acesso para enviar à pessoa; a senha quem escolhe é ela — nem
+  você consegue vê-la.</p></div>
   <a href="/adm" class="botao2">Voltar ao painel</a>
   {ui.BOTAO_TEMA}
 </div>
@@ -1227,6 +1279,7 @@ def tela_contas(adm: str | None = Cookie(None, alias=COOKIE_ADM),
           style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px">
       <input name="nome" placeholder="Nome do vendedor" required autofocus
              style="flex:1;min-width:200px">
+      <input type="hidden" name="csrf" value="{csrf}">
       <button type="submit">Criar conta</button>
     </form>
     <table class="tabela"><tbody>{linhas}</tbody></table>
@@ -1238,6 +1291,17 @@ def tela_contas(adm: str | None = Cookie(None, alias=COOKIE_ADM),
     # — clicar nao sai do lugar e a barra inteira parece quebrada. Foi o que
     # aconteceu ate 17/09/2026.
     return HTMLResponse(ui.pagina_painel("Quem entra", corpo, base="/adm"))
+
+
+def _link_convite(request: Request, token: str) -> str:
+    """O endereço de primeiro acesso para o admin enviar ao vendedor.
+
+    https quando o acesso veio por https (X-Forwarded-Proto do Cloudflare),
+    para o link sair com o endereço público e não com o http da rede local."""
+    proto = request.headers.get("x-forwarded-proto", "").split(",")[0].strip()
+    esquema = "https" if proto == "https" else request.url.scheme
+    host = request.headers.get("host", "")
+    return f"{esquema}://{host}/definir-senha?t={token}"
 
 
 def _voltar(erro: str = "", feito: str = "") -> RedirectResponse:
@@ -1252,11 +1316,14 @@ def _voltar(erro: str = "", feito: str = "") -> RedirectResponse:
 
 
 @router.post("/contas/criar")
-def criar_conta(nome: str = Form(...),
+def criar_conta(request: Request, nome: str = Form(...), csrf: str = Form(""),
                 adm: str | None = Cookie(None, alias=COOKIE_ADM)):
     _exigir_montado()
     if not autorizado(adm):
         return RedirectResponse("/login", status_code=303)
+    if not _csrf_confere(adm, csrf):
+        return _voltar(erro="Sessão expirada. Recarregue a página e tente de "
+                            "novo.")
 
     limpo = nome.strip()[:40]
     if not limpo:
@@ -1268,29 +1335,37 @@ def criar_conta(nome: str = Form(...),
                             f'administrador. Escolha outro nome.')
     if not banco.criar_conta(limpo):
         return _voltar(erro=f"Já existe uma conta com o nome {limpo}.")
-    return _voltar(feito=f"Conta de {limpo} criada. Peça para ela entrar e "
-                         f"escolher a senha.")
+    link = _link_convite(request, banco.abrir_convite(limpo))
+    return _voltar(feito=f"Conta de {limpo} criada. Envie este link para ela "
+                         f"escolher a senha (vale 72 h): {link}")
 
 
 @router.post("/contas/esquecer")
-def esquecer_senha(nome: str = Form(...),
+def esquecer_senha(request: Request, nome: str = Form(...), csrf: str = Form(""),
                    adm: str | None = Cookie(None, alias=COOKIE_ADM)):
     _exigir_montado()
     if not autorizado(adm):
         return RedirectResponse("/login", status_code=303)
+    if not _csrf_confere(adm, csrf):
+        return _voltar(erro="Sessão expirada. Recarregue a página e tente de "
+                            "novo.")
 
     if not banco.esquecer_senha(nome):
         return _voltar(erro="Conta não encontrada.")
-    return _voltar(feito=f"Senha de {nome} apagada. No próximo acesso ela "
-                         f"escolhe outra.")
+    link = _link_convite(request, banco.abrir_convite(nome))
+    return _voltar(feito=f"Senha de {nome} reaberta. Envie o novo link para "
+                         f"ela escolher outra (vale 72 h): {link}")
 
 
 @router.post("/contas/remover")
-def remover_conta(nome: str = Form(...),
+def remover_conta(nome: str = Form(...), csrf: str = Form(""),
                   adm: str | None = Cookie(None, alias=COOKIE_ADM)):
     _exigir_montado()
     if not autorizado(adm):
         return RedirectResponse("/login", status_code=303)
+    if not _csrf_confere(adm, csrf):
+        return _voltar(erro="Sessão expirada. Recarregue a página e tente de "
+                            "novo.")
 
     if not banco.remover_conta(nome):
         return _voltar(erro="Conta não encontrada.")

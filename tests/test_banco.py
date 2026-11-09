@@ -462,3 +462,59 @@ def test_evento_antigo_da_anthropic_some_na_subida(tmp_path):
     eventos = [h["detalhe"] for h in banco.Banco(caminho).me_historico(cid)]
 
     assert eventos == ["falta GROQ_API_KEY ou OPENROUTER_API_KEY no .env"]
+
+
+# --------------------------------------------------- convite de 1º acesso
+from core import sessao  # noqa: E402  (agrupado com o resto do módulo)
+
+
+def test_convite_leva_da_abertura_a_senha_definida(db):
+    db.criar_conta("maria")
+    token = db.abrir_convite("maria")
+
+    assert db.nome_do_convite(token) == "maria"
+    nome = db.definir_senha_por_convite(token, sessao.hash_senha("a-da-maria"))
+
+    assert nome == "maria"
+    assert sessao.senha_confere("a-da-maria", db.conta("maria")["senha_hash"])
+    # Gasto: não dá para usar de novo nem consultar.
+    assert db.nome_do_convite(token) is None
+    assert db.definir_senha_por_convite(token, sessao.hash_senha("outra")) is None
+
+
+def test_convite_vencido_nao_vale(db):
+    db.criar_conta("maria")
+    token = db.abrir_convite("maria", horas=-1)
+
+    assert db.nome_do_convite(token) is None
+    assert db.definir_senha_por_convite(token, sessao.hash_senha("a-da-maria")) is None
+    assert db.conta("maria")["senha_hash"] is None
+
+
+def test_abrir_outro_convite_invalida_o_anterior(db):
+    db.criar_conta("maria")
+    antigo = db.abrir_convite("maria")
+    novo = db.abrir_convite("maria")
+
+    assert db.nome_do_convite(antigo) is None
+    assert db.nome_do_convite(novo) == "maria"
+
+
+def test_convite_nao_reescreve_senha_de_quem_ja_entra(db):
+    db.criar_conta("maria")
+    db.definir_senha("maria", sessao.hash_senha("a-verdadeira"))
+    # Um convite emitido por engano numa conta que já tem senha não a troca.
+    token = db.abrir_convite("maria")
+
+    assert db.nome_do_convite(token) is None
+    assert db.definir_senha_por_convite(token, sessao.hash_senha("invasor")) is None
+    assert sessao.senha_confere("a-verdadeira", db.conta("maria")["senha_hash"])
+
+
+def test_invalidar_sessoes_grava_o_corte(db):
+    db.criar_conta("maria")
+    assert db.conta("maria")["sessoes_ate"] is None
+
+    db.invalidar_sessoes("maria")
+
+    assert db.conta("maria")["sessoes_ate"] is not None
