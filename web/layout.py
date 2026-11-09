@@ -472,12 +472,14 @@ box-shadow:var(--sombra-2)}
 .zap.aberta .marca{opacity:.5}
 .zap.aberta .ir{display:none}
 .zap .jafoi{display:none}
-.zap.aberta .jafoi{display:inline-block;margin-left:auto;color:var(--ok);
+/* Cinza, não verde, e um ponto no lugar do visto: "Aberta" só diz que o link
+   abriu — quem aperta enviar é a pessoa, do outro lado, e disso aqui não chega
+   notícia. Um ✓ verde prometia "enviado", exatamente o que o contador se dá o
+   trabalho de nunca dizer ("abertas, nunca enviadas"). O estado apagado também
+   serve ao propósito original: o olho cai sozinho na próxima da lista. */
+.zap.aberta .jafoi{display:inline-block;margin-left:auto;color:var(--fraco);
 font-size:13px;font-weight:600}
-/* Visto literal, nao escape CSS: o bloco do CSS e uma string normal do
-   Python, e "¹3" ali vira escape OCTAL antes de chegar no navegador --
-   saia "¹3" na tela em vez do visto. */
-.zap.aberta .jafoi::before{content:"✓  "}
+.zap.aberta .jafoi::before{content:"•  "}
 .contador{float:right;font-size:12px;font-weight:400;color:var(--fraco)}
 /* Altura fixa e contain: as logos vêm em tamanhos e proporções diferentes,
    e sem isto a CGB (359KB, quadrada) empurra a linha inteira para baixo. */

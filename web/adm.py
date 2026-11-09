@@ -558,6 +558,11 @@ document.addEventListener('mouseover', ev => {
 });
 
 async function pulsar() {
+  // Aba em segundo plano nao le e nao precisa atualizar: parar o pulso ali
+  // poupa rede, bateria do celular e uma batida no servidor a cada 5s por
+  // aba esquecida aberta. Ao voltar, o visibilitychange abaixo atualiza na
+  // hora, entao a tela nunca fica velha na cara de quem esta lendo.
+  if (document.hidden) return;
   // Os filtros da tela vao junto: a tabela depende de dias/quem/falhas, e
   // location.search ja e exatamente isso.
   const busca_url = new URLSearchParams(location.search);
@@ -588,6 +593,14 @@ async function pulsar() {
   }
 }
 setInterval(pulsar, PULSO_MS);
+
+// Voltou para a aba (ou destravou o celular): atualiza na hora, sem esperar o
+// proximo pulso de 5s. O servidor devolve 204 se nada mudou, entao custa quase
+// nada, e a tela nao fica parada no numero velho na frente de quem acabou de
+// olhar.
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) pulsar();
+});
 
 const parado = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
