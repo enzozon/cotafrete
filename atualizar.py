@@ -577,8 +577,10 @@ def resumo_da_semana(pasta: Path = PASTA, agora: datetime | None = None,
 
 # ------------------------------------------------------ teste de fumaça do DAV
 # 8h05, e não 8h: o login do HSE só abre às 8h, e relógio adiantado na VM
-# viraria alarme falso.
+# viraria alarme falso. O usuário do HSE só loga seg–sex, 8h–18h: fora disso
+# o login trava no timeout e virava "FALHOU" todo sábado e domingo (07–08/11/2026).
 HORA_DA_FUMACA = (8, 5)
+FIM_DO_LOGIN_HSE = 18
 
 
 def _rodar_fumaca(pasta: Path) -> tuple[int, str]:
@@ -591,6 +593,8 @@ def fumaca_do_dia(pasta: Path = PASTA, agora: datetime | None = None,
     if not e_producao(pasta):
         return "fora_da_producao"
     agora = agora or datetime.now()
+    if agora.weekday() >= 5 or agora.hour >= FIM_DO_LOGIN_HSE:
+        return "fora_do_horario"
     if (agora.hour, agora.minute) < HORA_DA_FUMACA:
         return "cedo"
     return _uma_vez(pasta, agora, "fumaca-ultimo-dia.txt", rodar_fumaca)
