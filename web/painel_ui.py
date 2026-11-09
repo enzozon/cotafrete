@@ -135,6 +135,9 @@ html{scroll-behavior:smooth}
 background:linear-gradient(175deg,#182c4e 0%,#0a1529 100%);color:#b9c3d4}
 .lateral-fixa{position:sticky;top:0;height:100vh;
 display:flex;flex-direction:column;padding:20px 0 16px}
+/* O hambúrguer só existe no celular (regra em "9. o celular"). No desktop a
+   lateral inteira está sempre à vista e o botão fica fora. */
+.lateral-abrir{display:none}
 .lateral .marca{display:flex;align-items:center;gap:10px;padding:0 20px 20px;
 border-bottom:1px solid rgba(255,255,255,.07);margin-bottom:14px}
 .lateral .marca img{height:34px;width:auto}
@@ -554,12 +557,6 @@ animation-iteration-count:1!important;transition-duration:.01ms!important}}
 
 @media(max-width:880px){
 .painel{display:block}
-.lateral{width:auto}
-.lateral-fixa{height:auto;position:static;flex-direction:row;
-flex-wrap:wrap;align-items:center;padding:12px 16px;gap:4px}
-.lateral .marca{border:0;margin:0;padding:0 14px 0 0}
-.lateral .secao,.lateral .rodape{display:none}
-.lateral a,.lateral a.atual{border-left:0;border-radius:8px;padding:7px 11px}
 .conteudo{padding:16px 14px 48px}
 .periodos{margin-left:0;width:100%;justify-content:space-between}
 .rolagem{margin:0 -20px;padding:0 20px}
@@ -855,14 +852,33 @@ border-bottom:1px solid var(--borda)}
 padding:3px 9px}
 
 /* ---- 9. o celular ---------------------------------------------------------
-   A lateral vira uma barra de rolagem lateral no topo, e o cabeçalho para de
-   grudar: numa tela de 390px uma barra grudada come um terço da altura. */
+   A lateral colapsa num hambúrguer: fechada come só uma barra fina, aberta
+   desce o menu inteiro num toque — em vez de virar uma tira de rolagem lateral
+   onde ME/DAV/Contas/Sair ficavam fora da tela (nunca alcançados sem arrastar
+   ~1100px de lado). Estas regras moram AQUI, no último bloco, de propósito: a
+   largura fixa da lateral (seção "1. a navegação") é redefinida depois do
+   primeiro @media e só um bloco posterior a vence — senão a barra sai com 250px
+   presos no meio da tela. O cabeçalho também para de grudar: numa tela de 390px
+   uma barra grudada come um terço da altura. */
 @media(max-width:880px){
 .conteudo{padding:0 var(--e4) var(--e7)}
-.lateral-fixa{padding:10px var(--e3);gap:var(--e1);flex-wrap:nowrap;
-overflow-x:auto;scrollbar-width:none}
-.lateral-fixa::-webkit-scrollbar{display:none}
-.lateral a{margin:0;white-space:nowrap;flex:none}
+.lateral{width:auto}
+.lateral-abrir{display:flex;align-items:center;gap:10px;width:100%;
+box-sizing:border-box;padding:13px 16px;border:0;background:none;
+color:inherit;font:inherit;font-weight:650;cursor:pointer}
+.lateral-abrir svg{width:22px;height:22px}
+.lateral-abrir b{letter-spacing:2.4px;text-transform:uppercase;font-size:14px}
+.lateral-abrir-txt{margin-left:auto;font-size:12px;color:var(--fraco);
+font-weight:600}
+.lateral-abrir[aria-expanded=true]{color:var(--tinta)}
+.lateral-fixa{height:auto;position:static;display:none;
+flex-direction:column;align-items:stretch;padding:4px 10px 12px;gap:2px}
+.lateral.aberto .lateral-fixa{display:flex}
+.lateral .marca{display:none}
+.lateral .secao{display:block;padding:12px 12px 4px}
+.lateral .rodape{display:none}
+.lateral a{margin:0;white-space:nowrap;border-left:0;border-radius:8px;
+padding:11px 12px}
 .lateral a.atual::before{display:none}
 .cabecalho{position:static;margin:0 calc(-1 * var(--e4)) var(--e4);
 padding:var(--e4)}
@@ -887,6 +903,7 @@ def _icone(caminho: str) -> str:
 
 
 ICONES = {
+    "menu": '<path d="M4 6h16M4 12h16M4 18h16"/>',
     "visao": '<path d="M3 13h4v8H3zM10 3h4v18h-4zM17 9h4v12h-4z"/>',
     "grafico": '<path d="M3 3v18h18"/><path d="M7 14l4-4 3 3 5-6"/>',
     "transportadoras": ('<path d="M1 3h13v13H1z"/><path d="M14 8h4l3 3v5h-7z"/>'
@@ -942,7 +959,11 @@ def _lateral(base: str = "", ativo: str = "") -> str:
         f'<a href="{base}#{alvo}" data-secao="{alvo}">{_icone(ICONES[chave])}'
         f'<span>{e(rotulo)}</span></a>'
         for chave, rotulo, alvo in MENU)
-    return f"""<nav class="lateral"><div class="lateral-fixa">
+    return f"""<nav class="lateral">
+  <button type="button" class="lateral-abrir" aria-expanded="false"
+          aria-controls="lateral-itens" aria-label="Abrir o menu do painel"
+          data-menu-abrir>{_icone(ICONES["menu"])}<b>Painel</b><span class="lateral-abrir-txt">Menu</span></button>
+  <div class="lateral-fixa" id="lateral-itens">
   <div class="marca">{marca}<b>Painel</b></div>
   <div class="secao">Acompanhar</div>
   {itens}
@@ -975,6 +996,27 @@ document.addEventListener('click', ev => {
 </script>"""
 
 
+SCRIPT_MENU = """<script>
+(function(){
+  var botao = document.querySelector('[data-menu-abrir]');
+  if (!botao) return;
+  var nav = botao.closest('.lateral');
+  botao.addEventListener('click', function(){
+    var aberto = nav.classList.toggle('aberto');
+    botao.setAttribute('aria-expanded', aberto ? 'true' : 'false');
+  });
+  // Tocar num item fecha o menu. A navegação já leva embora, mas as âncoras da
+  // mesma página (Visão geral, Movimento...) não recarregam, e o menu ficaria
+  // aberto por cima do conteúdo que a pessoa quer ver.
+  nav.addEventListener('click', function(ev){
+    if (!ev.target.closest('a')) return;
+    nav.classList.remove('aberto');
+    botao.setAttribute('aria-expanded', 'false');
+  });
+})();
+</script>"""
+
+
 def pagina_painel(titulo: str, corpo: str, *, base: str = "", ativo: str = "") -> str:
     """A página inteira do painel. Casco próprio, e não o `pagina()` do
     layout: aquele é uma faixa em cima e uma coluna de 1080px, desenhada para
@@ -985,7 +1027,7 @@ def pagina_painel(titulo: str, corpo: str, *, base: str = "", ativo: str = "") -
 <title>{e(titulo)} — Cotafrete</title>{ICONE_ABA}{cabeca_do_tema("escuro")}
 <style>{CSS_BASE}{CSS}</style></head><body>
 <div class="painel">{_lateral(base, ativo)}<main class="conteudo">{corpo}</main></div>
-{LUPA}{SCRIPT_TEMA}{SCRIPT_TOPO}
+{LUPA}{SCRIPT_TEMA}{SCRIPT_TOPO}{SCRIPT_MENU}
 </body></html>"""
 
 

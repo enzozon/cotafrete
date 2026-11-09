@@ -493,3 +493,25 @@ def test_sem_whatsapp_aberto_diz_isso_em_vez_de_sumir():
 def test_data_torta_no_alerta_nao_derruba_a_tela():
     """`criado_em` é TEXTO no banco."""
     assert ui.dia_e_hora("sem-data") == "sem-data"
+
+
+# ------------------------------------------------- hambúrguer (UX-01 / DASH-05)
+# No celular a lateral colapsa num botão; o menu inteiro desce num toque, em vez
+# da tira de rolagem onde ME/DAV/Contas/Sair ficavam fora da tela.
+def test_a_lateral_traz_o_botao_do_hamburguer_e_os_itens_num_alvo():
+    html = ui.pagina_painel("t", "<div>x</div>")
+    # O botão aponta para o bloco de itens e começa fechado.
+    assert 'data-menu-abrir' in html
+    assert 'aria-expanded="false"' in html
+    assert 'aria-controls="lateral-itens"' in html
+    assert 'id="lateral-itens"' in html
+    # E o script que abre/fecha vai junto (sem CDN, inline como o resto).
+    assert ui.SCRIPT_MENU in html
+
+
+def test_todos_os_itens_do_menu_seguem_no_html_mesmo_com_hamburguer():
+    """O hambúrguer é só CSS/JS: nenhum link pode sumir do HTML — é por ele que
+    o leitor de tela e o desktop chegam a tudo."""
+    html = ui.pagina_painel("t", "<div>x</div>")
+    for destino in ("/adm/me", "/adm/dav", "/adm/contas", "/adm/dellavolpe", "/adm/sair"):
+        assert f'href="{destino}"' in html
