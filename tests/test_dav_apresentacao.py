@@ -28,7 +28,8 @@ def test_vendedor_modelo_b_envio_no_banner_e_quadro(cli):
     s = BeautifulSoup(cli.get("/dav").text, "html.parser")
     assert "Novo orçamento DAV" in s.get_text()
     assert s.select_one('.dav-ola form input[name="planilha"][accept=".xlsx"]')
-    assert s.select_one('.dav-ola a[href="/dav/modelo"]')
+    assert s.select_one('.dav-ola form#dav-baixar[action="/dav/modelo"]')
+    assert s.select_one('.dav-ola input[form="dav-baixar"][name="itens"][min="1"][max="1000"]')
     assert [h.get_text(" ", strip=True).rsplit(" ", 1)[0] for h in s.select('#dav-quadro .dav-col h2')] == [
         "Precisa de você", "Em andamento", "Prontos"]
     assert s.select_one('#historico #dav-historico')

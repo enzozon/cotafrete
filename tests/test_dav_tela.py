@@ -858,3 +858,10 @@ def test_correcao_igual_ao_que_ja_esta_na_planilha_nao_cria_envio(cli, app_web, 
         culpa="planilha", confianca="alta", criados_no_hse=[],
         correcoes=[{"celula": "B33", "valor": str(atual), "motivo": "x"}]))
     assert dav_ui.corrigir_sozinho(1) is None and app_web.banco.dav(2, "ana") is None
+
+
+def test_modelo_com_n_itens(cli):
+    r = cli.get("/dav/modelo?itens=50")
+    assert r.status_code == 200 and "50-itens" in r.headers["content-disposition"]
+    assert cli.get("/dav/modelo?itens=0").status_code == 422
+    assert cli.get("/dav/modelo?itens=1001").status_code == 422

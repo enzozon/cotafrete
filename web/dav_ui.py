@@ -21,7 +21,7 @@ from typing import Callable
 from urllib.parse import parse_qsl, urlencode, urlsplit
 
 import openpyxl
-from fastapi import APIRouter, Cookie, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Cookie, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
 
 from core.banco import Banco, origem_corrigivel
@@ -34,6 +34,7 @@ from orcamento.correcao import aplicar, automaticas, trocas
 from orcamento.diagnostico import _financeiro, diagnostico
 from orcamento.processador import SEM_HSE, Conferencia
 from orcamento.relatorio import moeda
+from orcamento.modelo_itens import MAXIMO, PADRAO, gerar_modelo
 from orcamento.planilha import ErroPlanilha, ler_planilha, observacoes_hse
 from web import adm
 from web.layout import BOTAO_TEMA, CSS_DAV, cabecalho, e, pagina
@@ -49,6 +50,7 @@ agora = datetime.now
 
 MAX_BYTES = 5 * 1024 * 1024
 MODELO = Path(__file__).resolve().parent.parent / "orcamento" / "modelo" / "PLANILHA-BASE-v3.xlsx"
+XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 ESTADOS = {"rascunho": "Conferindo", "fila": "Na fila", "gerando": "Gerando no HSE",
            "pronto": "Pronto", "erro": "Erro", "incerto": "Confira no HSE",
            "simulado": "Simulação (nada salvo)", "rejeitado": "Planilha não aceita"}
@@ -414,8 +416,10 @@ def _tela_envio(usuario: str, aviso: str = "", origem: int | None = None, **filt
 {referencia}<label for="dav-planilha">{'Corrigir envio #' + str(origem) if origem else 'Novo orçamento DAV'}</label>
   <input id="dav-planilha" type="file" name="planilha" accept=".xlsx" required aria-describedby="dav-limites">
   <button type="submit">Conferir planilha →</button>
-  <p id="dav-limites">.xlsx · até 5 MB · <a href="/dav/modelo">Baixar o modelo v3 ↓</a></p>
-</form></section>
+  <p id="dav-limites">.xlsx · até 5 MB · Modelo v3 com
+    <input form="dav-baixar" type="number" name="itens" min="1" max="{MAXIMO}" value="{PADRAO}" required aria-label="Quantidade de itens do modelo">
+    itens <button form="dav-baixar" type="submit">Baixar ↓</button></p>
+</form><form id="dav-baixar" action="/dav/modelo" method="get" hidden></form></section>
 {aviso}{barra_pulso('/dav/agora')}
 <div id="dav-quadro" class="dav-quadro">{quadro_vendedor(dados, filtros)}</div>
 <section class="cartao dav-card" id="historico"><h2>Histórico</h2><p class="dav-note">Somente seus envios · período pela data de submissão · Brasília</p>
@@ -447,10 +451,13 @@ def inicio(usuario: str | None = Depends(_quem), origem: int | None = None,
 
 
 @router.get("/modelo")
-def modelo(usuario: str | None = Depends(_quem)):
+def modelo(usuario: str | None = Depends(_quem), itens: int = Query(PADRAO, ge=1, le=MAXIMO)):
     if not usuario:
         return _login()
-    return FileResponse(MODELO, filename=MODELO.name)
+    if itens == PADRAO:
+        return FileResponse(MODELO, filename=MODELO.name)
+    return Response(gerar_modelo(itens), media_type=XLSX,
+                    headers={"Content-Disposition": f'attachment; filename="PLANILHA-BASE-v3-{itens}-itens.xlsx"'})
 
 
 def _filtrar(textos) -> list[str]:

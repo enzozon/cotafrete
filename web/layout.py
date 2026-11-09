@@ -1837,6 +1837,7 @@ CSS_DAV = """
 .dav-enviar input[type=file]{min-width:0;font-size:12px;color:var(--tinta2)}
 .dav-enviar button{margin:0;white-space:nowrap}
 .dav-enviar #dav-limites{grid-column:1/-1;font-size:11px;color:var(--fraco)}.dav-enviar #dav-limites a{color:var(--tom-marca)}
+.dav-enviar #dav-limites input{width:5.5em;padding:2px 4px;font-size:11px}.dav-enviar #dav-limites button{padding:2px 8px;font-size:11px;background:none;color:var(--tom-marca);border:1px solid currentColor;box-shadow:none}
 .dav-quadro{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:16px;align-items:start;margin-bottom:22px}
 .dav-col{background:var(--cova);border:1px solid var(--borda);border-radius:14px;padding:12px}
 .dav-col h2{display:flex;align-items:center;gap:8px;margin:4px 6px 12px;font-size:12px;letter-spacing:.06em;text-transform:uppercase}
