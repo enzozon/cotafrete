@@ -357,6 +357,14 @@ def test_cabecalhos_de_seguranca_em_toda_resposta(c):
     assert "strict-origin" in r.headers["referrer-policy"]
 
 
+def test_a_doc_da_api_nao_e_indexavel(c):
+    """Mesmo aberta no desenvolvimento, a doc da API não pode ir para o
+    buscador."""
+    r = c.get("/openapi.json")
+
+    assert "noindex" in r.headers.get("x-robots-tag", "")
+
+
 def test_pagina_autenticada_nao_cacheia_nem_indexa(c, app_web):
     _com_conta(app_web)
     entrada = c.post("/login", data={"usuario": "joao",

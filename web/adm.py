@@ -112,6 +112,28 @@ def autorizado(cookie: str | None, agora: float | None = None) -> bool:
     return (agora if agora is not None else time.time()) <= int(prazo_txt)
 
 
+def csrf_de(cookie_adm: str | None) -> str:
+    """Token anti-CSRF para os formulários do painel.
+
+    Derivado do cookie do admin (httponly) + a senha do painel: quem não tem o
+    cookie não produz o token, então um site de terceiro não consegue montar um
+    POST válido para /adm/contas/*. O SameSite=Lax já barra o POST cruzado; este
+    token é a segunda tranca, e também protege de um sub-site do mesmo domínio.
+    Em branco sem sessão — nesse caso o formulário nem chega a aparecer."""
+    senha = senha_configurada()
+    if not senha or not cookie_adm:
+        return ""
+    return hmac.new(senha.encode(), f"csrf|{cookie_adm}".encode(),
+                    "sha256").hexdigest()
+
+
+def _csrf_confere(cookie_adm: str | None, enviado: str) -> bool:
+    esperado = csrf_de(cookie_adm)
+    # compare_digest pelo mesmo motivo de `autorizado`: não vazar tempo.
+    return bool(esperado) and hmac.compare_digest(
+        esperado.encode(), (enviado or "").encode())
+
+
 def _exigir_montado() -> str:
     """404 quando não há senha configurada. Ver a regra 1 no topo."""
     senha = senha_configurada()
@@ -1139,7 +1161,7 @@ def baixar_evidencias_zip(cotacao_id: int,
 # administrador nunca vê senha de ninguém — só consegue reabrir o convite
 # (botão "Esquecer senha"), e aí a pessoa escolhe outra.
 
-def _linha_da_conta(c: dict) -> str:
+def _linha_da_conta(c: dict, csrf: str = "") -> str:
     if c["senha_hash"] is None:
         situacao = ('<span class="etiqueta">convite aberto</span>'
                     ' <span class="sub">ainda vai escolher a senha</span>')
@@ -1161,11 +1183,13 @@ def _linha_da_conta(c: dict) -> str:
   <td style="text-align:right;white-space:nowrap">
     <form method="post" action="/adm/contas/esquecer" style="display:inline">
       <input type="hidden" name="nome" value="{nome}">
+      <input type="hidden" name="csrf" value="{csrf}">
       <button type="submit" class="botao2">Esquecer senha</button>
     </form>
     <form method="post" action="/adm/contas/remover" style="display:inline"
           onsubmit="return confirm({pergunta})">
       <input type="hidden" name="nome" value="{nome}">
+      <input type="hidden" name="csrf" value="{csrf}">
       <button type="submit" class="botao2">Remover</button>
     </form>
   </td>
@@ -1179,8 +1203,9 @@ def tela_contas(adm: str | None = Cookie(None, alias=COOKIE_ADM),
     if not autorizado(adm):
         return RedirectResponse("/login", status_code=303)
 
+    csrf = csrf_de(adm)
     lista = banco.contas()
-    linhas = "".join(_linha_da_conta(c) for c in lista) or (
+    linhas = "".join(_linha_da_conta(c, csrf) for c in lista) or (
         '<tr><td colspan="3" class="sub">Nenhuma conta ainda. Crie a '
         'primeira no campo acima.</td></tr>')
     aviso = ""
@@ -1203,6 +1228,7 @@ def tela_contas(adm: str | None = Cookie(None, alias=COOKIE_ADM),
         botoes = "".join(f"""
       <form method="post" action="/adm/contas/criar" style="display:inline">
         <input type="hidden" name="nome" value="{e(u)}">
+        <input type="hidden" name="csrf" value="{csrf}">
         <button type="submit" class="botao2">{e(u)}</button>
       </form>""" for u in sugestoes)
         pendentes = f"""
@@ -1232,6 +1258,7 @@ def tela_contas(adm: str | None = Cookie(None, alias=COOKIE_ADM),
           style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px">
       <input name="nome" placeholder="Nome do vendedor" required autofocus
              style="flex:1;min-width:200px">
+      <input type="hidden" name="csrf" value="{csrf}">
       <button type="submit">Criar conta</button>
     </form>
     <table class="tabela"><tbody>{linhas}</tbody></table>
@@ -1268,11 +1295,14 @@ def _voltar(erro: str = "", feito: str = "") -> RedirectResponse:
 
 
 @router.post("/contas/criar")
-def criar_conta(request: Request, nome: str = Form(...),
+def criar_conta(request: Request, nome: str = Form(...), csrf: str = Form(""),
                 adm: str | None = Cookie(None, alias=COOKIE_ADM)):
     _exigir_montado()
     if not autorizado(adm):
         return RedirectResponse("/login", status_code=303)
+    if not _csrf_confere(adm, csrf):
+        return _voltar(erro="Sessão expirada. Recarregue a página e tente de "
+                            "novo.")
 
     limpo = nome.strip()[:40]
     if not limpo:
@@ -1290,11 +1320,14 @@ def criar_conta(request: Request, nome: str = Form(...),
 
 
 @router.post("/contas/esquecer")
-def esquecer_senha(request: Request, nome: str = Form(...),
+def esquecer_senha(request: Request, nome: str = Form(...), csrf: str = Form(""),
                    adm: str | None = Cookie(None, alias=COOKIE_ADM)):
     _exigir_montado()
     if not autorizado(adm):
         return RedirectResponse("/login", status_code=303)
+    if not _csrf_confere(adm, csrf):
+        return _voltar(erro="Sessão expirada. Recarregue a página e tente de "
+                            "novo.")
 
     if not banco.esquecer_senha(nome):
         return _voltar(erro="Conta não encontrada.")
@@ -1304,11 +1337,14 @@ def esquecer_senha(request: Request, nome: str = Form(...),
 
 
 @router.post("/contas/remover")
-def remover_conta(nome: str = Form(...),
+def remover_conta(nome: str = Form(...), csrf: str = Form(""),
                   adm: str | None = Cookie(None, alias=COOKIE_ADM)):
     _exigir_montado()
     if not autorizado(adm):
         return RedirectResponse("/login", status_code=303)
+    if not _csrf_confere(adm, csrf):
+        return _voltar(erro="Sessão expirada. Recarregue a página e tente de "
+                            "novo.")
 
     if not banco.remover_conta(nome):
         return _voltar(erro="Conta não encontrada.")

@@ -191,6 +191,10 @@ async def _cabecalhos_de_seguranca(request: Request, call_next):
         resp.headers.setdefault("Cache-Control",
                                 "no-store, no-cache, must-revalidate, private")
         resp.headers.setdefault("X-Robots-Tag", "noindex, nofollow")
+    # A documentação da API (quando deixada aberta no desenvolvimento) nunca
+    # deve ser indexada por buscador, mesmo sem exigir login.
+    if request.url.path in ("/docs", "/redoc", "/openapi.json"):
+        resp.headers.setdefault("X-Robots-Tag", "noindex, nofollow")
     return resp
 
 
