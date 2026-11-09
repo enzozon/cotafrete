@@ -889,13 +889,19 @@ def corrigivel_pelo_adm(d: dict) -> bool:
     return origem_corrigivel(d) and diagnostico(d, administrador=False)["salvamento"] != "incerto"
 
 
-def cartao_diagnostico(d: dict) -> str:
-    """Cartão do agente de diagnóstico (só ADM). O texto vem de uma IA lendo dados de usuário: tudo escapado."""
+def cartao_diagnostico(d: dict, csrf: str = "") -> str:
+    """Cartão do agente de diagnóstico (só ADM). O texto vem de uma IA lendo dados de usuário: tudo escapado.
+
+    `csrf` entra oculto nos dois forms (diagnosticar/corrigir): os dois gastam
+    IA, e sem o token um site de terceiro poderia enfileirar diagnóstico atrás
+    do cookie do painel. O SameSite=Lax já barra o POST cruzado; este é a
+    segunda tranca, igual ao padrão das contas (web/adm.py)."""
+    oculto = f'<input type="hidden" name="csrf" value="{e(csrf)}">'
     estado = d.get("diagnostico_estado")
     if not estado:
         return ""
     botao = (f'<form method="post" action="/adm/dav/{int(d["id"])}/diagnosticar">'
-             '<button class="botao2" type="submit">Diagnosticar de novo</button></form>')
+             f'{oculto}<button class="botao2" type="submit">Diagnosticar de novo</button></form>')
     if estado == "pendente":
         return '<section class="cartao dav-card"><h2>Diagnóstico</h2><p class="dav-note">Diagnosticando…</p></section>'
     try:
@@ -935,7 +941,7 @@ def cartao_diagnostico(d: dict) -> str:
         itens = "".join(f'<li><b>{e(c["celula"])}</b> = {e(c["valor"])} <small>{e(c["motivo"])}</small></li>' for c in ok)
         corrigir = (f'<h3>Correção proposta</h3><ul>{itens}</ul>'
                     f'<form method="post" action="/adm/dav/{int(d["id"])}/corrigir">'
-                    '<button class="botao" type="submit">Aprovar correção</button></form>')
+                    f'{oculto}<button class="botao" type="submit">Aprovar correção</button></form>')
     issue = ""
     if isinstance(j.get("issue"), str) and j["issue"].startswith("https://github.com/"):
         issue = f'<a class="botao2" href="{e(j["issue"])}" target="_blank" rel="noopener">Ver issue no GitHub</a> '
@@ -946,7 +952,7 @@ def cartao_diagnostico(d: dict) -> str:
             f'{corrigir}{issue}{botao}</section>')
 
 
-def detalhe_dav(dav: dict, *, administrador: bool, retorno: str) -> str:
+def detalhe_dav(dav: dict, *, administrador: bool, retorno: str, csrf: str = "") -> str:
     d = dav
     diag = diagnostico(d, administrador=administrador)
     incerto = diag["salvamento"] == "incerto"
@@ -992,7 +998,7 @@ def detalhe_dav(dav: dict, *, administrador: bool, retorno: str) -> str:
             corpo += f'<p>Posição na fila: {posicao}</p>'
     corpo += f'<div class="dav-acoes">{acoes}</div></section>'
     if administrador:
-        corpo += cartao_diagnostico(d) + _bloco_arquivos_hse(d["id"])
+        corpo += cartao_diagnostico(d, csrf) + _bloco_arquivos_hse(d["id"])
     if diag["tem_aviso"]:
         corpo += '<aside class="dav-aviso"><b>! Aviso do HSE</b><p>Consulte os detalhes disponíveis ou o responsável pela operação.</p></aside>'
     dados = [("Cliente", d.get("cliente") or "Cliente não identificado"), ("Vendedor", d["usuario"]),

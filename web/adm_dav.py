@@ -9,7 +9,7 @@ import hashlib
 import os
 from pathlib import Path
 
-from fastapi import APIRouter, Cookie, HTTPException
+from fastapi import APIRouter, Cookie, Form, HTTPException
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 
 from core import painel_dav
@@ -216,7 +216,8 @@ def detalhe_agora(dav_id: int, cookie: str | None = Cookie(None, alias=adm.COOKI
     if d is None:
         raise HTTPException(404)
     retorno = dav_ui.url_dav("/adm/dav", _filtros(dias, estado, vendedor, busca, pagina, categoria))
-    return dav_ui.resposta_pulso({"dav-detalhe": dav_ui.detalhe_dav(d, administrador=True, retorno=retorno)}, v,
+    return dav_ui.resposta_pulso({"dav-detalhe": dav_ui.detalhe_dav(
+                                    d, administrador=True, retorno=retorno, csrf=adm.csrf_de(cookie))}, v,
                                 ativo=d["estado"] in ("fila", "gerando") or d.get("diagnostico_estado") == "pendente")
 
 
@@ -231,7 +232,7 @@ def detalhe(dav_id: int, cookie: str | None = Cookie(None, alias=adm.COOKIE_ADM)
         raise HTTPException(404)
     retorno = dav_ui.url_dav("/adm/dav", _filtros(dias, estado, vendedor, busca, pagina, categoria))
     return _html("Detalhe DAV", dav_ui.barra_pulso(f"/adm/dav/{dav_id}/agora")
-                 + f'<div id="dav-detalhe">{dav_ui.detalhe_dav(d, administrador=True, retorno=retorno)}</div>')
+                 + f'<div id="dav-detalhe">{dav_ui.detalhe_dav(d, administrador=True, retorno=retorno, csrf=adm.csrf_de(cookie))}</div>')
 
 
 @router.get("/{dav_id}/pdf")
@@ -251,10 +252,15 @@ def planilha(dav_id: int, cookie: str | None = Cookie(None, alias=adm.COOKIE_ADM
 
 
 @router.post("/{dav_id}/diagnosticar")
-def diagnosticar(dav_id: int, cookie: str | None = Cookie(None, alias=adm.COOKIE_ADM)):
+def diagnosticar(dav_id: int, cookie: str | None = Cookie(None, alias=adm.COOKIE_ADM),
+                 csrf: str = Form("")):
     porta = _porta(cookie)
     if porta:
         return porta
+    # Gasta IA: sem o token, um site de terceiro enfileiraria diagnóstico atrás
+    # do cookie do painel. Lax já barra o POST cruzado; esta é a segunda tranca.
+    if not adm._csrf_confere(cookie, csrf):
+        return RedirectResponse(f"/adm/dav/{dav_id}", status_code=303)
     if adm.banco.dav(dav_id, None) is None:
         raise HTTPException(404)
     if dav_ui.FILA_DIAGNOSTICO is not None:   # enfileirar já grava "pendente"
@@ -263,11 +269,14 @@ def diagnosticar(dav_id: int, cookie: str | None = Cookie(None, alias=adm.COOKIE
 
 
 @router.post("/{dav_id}/corrigir")
-def corrigir(dav_id: int, cookie: str | None = Cookie(None, alias=adm.COOKIE_ADM)):
+def corrigir(dav_id: int, cookie: str | None = Cookie(None, alias=adm.COOKIE_ADM),
+             csrf: str = Form("")):
     """Aprova as correções da IA: cria um envio novo (do vendedor original) para conferir. Nunca gera no HSE."""
     porta = _porta(cookie)
     if porta:
         return porta
+    if not adm._csrf_confere(cookie, csrf):
+        return RedirectResponse(f"/adm/dav/{dav_id}", status_code=303)
     d = adm.banco.dav(dav_id, None)
     if d is None:
         raise HTTPException(404)
@@ -275,7 +284,7 @@ def corrigir(dav_id: int, cookie: str | None = Cookie(None, alias=adm.COOKIE_ADM
     def falha(msg: str):
         retorno = dav_ui.url_dav("/adm/dav", _filtros())
         return _html("Detalhe DAV", f'<p class="dav-note">{e(msg)}</p>'
-                     + dav_ui.detalhe_dav(d, administrador=True, retorno=retorno))
+                     + dav_ui.detalhe_dav(d, administrador=True, retorno=retorno, csrf=adm.csrf_de(cookie)))
     try:
         diag = json.loads(d.get("diagnostico") or "{}")
         correcoes = diag["correcoes"]

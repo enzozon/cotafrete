@@ -568,7 +568,22 @@ def _adm(app_web, monkeypatch):
     from web import adm
     monkeypatch.setenv("COTAFRETE_ADM_SENHA", "s3nha")
     c = TestClient(app_web.app, follow_redirects=False)
-    c.cookies.set(adm.COOKIE_ADM, adm.token_de("s3nha"))
+    # token_de carrega timestamp (muda a cada segundo): guardo o MESMO valor que
+    # foi para o cookie para derivar o csrf, senão os dois não batem.
+    cookie_val = adm.token_de("s3nha")
+    c.cookies.set(adm.COOKIE_ADM, cookie_val)
+    # Os POSTs de IA do painel (diagnosticar/corrigir) exigem o token anti-CSRF,
+    # derivado do cookie. Em vez de repeti-lo em cada teste, o cliente de admin
+    # já o inclui por padrão — como o cliente das contas (test_adm_contas.py).
+    token = adm.csrf_de(cookie_val)
+    _post = c.post
+
+    def post(url, **kw):
+        if kw.get("files") is None and kw.get("content") is None and kw.get("json") is None:
+            kw["data"] = {"csrf": token, **(kw.get("data") or {})}
+        return _post(url, **kw)
+
+    c.post = post
     return c
 
 
@@ -613,6 +628,44 @@ def test_post_diagnosticar_exige_adm_e_enfileira(cli, app_web, tmp_path, monkeyp
     r = _adm(app_web, monkeypatch).post("/adm/dav/1/diagnosticar")
     assert r.status_code == 303 and r.headers["location"] == "/adm/dav/1" and chamadas == [1]
     assert app_web.banco.dav(1, None)["diagnostico_estado"] == "pendente"
+
+
+# --------------- CSRF nos POSTs de IA do painel (diagnosticar/corrigir)
+# Os dois gastam IA. SameSite=Lax já barra o POST cruzado (chega sem cookie,
+# cai no login); o token é a segunda tranca, igual ao padrão das contas.
+def test_diagnosticar_sem_csrf_nao_enfileira(cli, app_web, tmp_path, monkeypatch):
+    from web import adm, dav_ui
+    enviar(cli, planilha(tmp_path))
+    monkeypatch.setenv("COTAFRETE_ADM_SENHA", "s3nha")
+    chamadas = []
+    monkeypatch.setattr(dav_ui, "FILA_DIAGNOSTICO",
+                        type("F", (), {"enfileirar": lambda s, i: chamadas.append(i)})())
+    # Cliente de admin CRU (sem o auto-csrf do _adm): o cookie vale, o token não vem.
+    c = TestClient(app_web.app, follow_redirects=False)
+    c.cookies.set(adm.COOKIE_ADM, adm.token_de("s3nha"))
+    r = c.post("/adm/dav/1/diagnosticar")
+    assert r.status_code == 303 and r.headers["location"] == "/adm/dav/1"
+    assert chamadas == [], "sem token, nada de IA foi enfileirado"
+
+
+def test_corrigir_sem_csrf_nao_cria_envio(cli, app_web, tmp_path, monkeypatch):
+    from web import adm
+    _com_correcao(cli, app_web, tmp_path, [{"celula": "B30", "valor": "CENTRO", "motivo": "x"}])
+    monkeypatch.setenv("COTAFRETE_ADM_SENHA", "s3nha")
+    c = TestClient(app_web.app, follow_redirects=False)
+    c.cookies.set(adm.COOKIE_ADM, adm.token_de("s3nha"))
+    r = c.post("/adm/dav/1/corrigir")
+    assert r.status_code == 303 and r.headers["location"] == "/adm/dav/1"
+    assert app_web.banco.dav(2, "ana") is None, "sem token, nenhum envio novo"
+
+
+def test_form_de_ia_traz_o_token(cli, app_web, tmp_path, monkeypatch):
+    """O form renderizado leva o campo oculto — senão o clique legítimo cairia
+    na própria recusa."""
+    enviar(cli, planilha(tmp_path))
+    app_web.banco.dav_atualizar(1, estado="erro", diagnostico=_diag(), diagnostico_estado="feito")
+    t = _adm(app_web, monkeypatch).get("/adm/dav/1").text
+    assert "Diagnosticar de novo" in t and 'name="csrf"' in t
 
 
 def test_cartao_mostra_produtos_cadastrados_e_rascunhos(cli, app_web, tmp_path, monkeypatch):
