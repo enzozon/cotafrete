@@ -214,14 +214,16 @@ def _descricoes_conflitantes(itens: list[Item], erros: list[str]) -> None:
 
 
 def _codigos_conflitantes(itens: list[Item], erros: list[str]) -> None:
-    """Mesmo CÓDIGO HSE com valor diferente: o HSE junta as linhas e recusa o preço (envio #149)."""
+    """Mesmo CÓDIGO HSE em duas linhas: o HSE junta as linhas. Com valor diferente recusa o preço
+    (envio #149); com o mesmo valor soma as quantidades e o robô não vê item novo (envio #153)."""
     vistos: dict[str, Item] = {}
     for it in itens:
         if not it.codigo:
             continue
         primeiro = vistos.setdefault(it.codigo, it)
-        if primeiro is not it and primeiro.valor_unit != it.valor_unit:
-            erros.append(f"Item {it.numero}: mesmo CÓDIGO HSE do item {primeiro.numero} com outro valor "
+        if primeiro is not it:
+            outro = " com outro valor" if primeiro.valor_unit != it.valor_unit else ""
+            erros.append(f"Item {it.numero}: mesmo CÓDIGO HSE do item {primeiro.numero}{outro} "
                          "deve ficar numa linha só, com a quantidade somada (o HSE junta as linhas)")
 
 
