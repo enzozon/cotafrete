@@ -577,6 +577,11 @@ transition:border-color .16s var(--suave),background .16s var(--suave),
 transform .16s var(--suave),box-shadow .16s var(--suave)}
 .botao2:hover{border-color:var(--marca);background:var(--lavagem);
 transform:translateY(-1px);box-shadow:var(--sombra-1)}
+/* Ação destrutiva (ex.: Remover conta): o vermelho distingue do vizinho neutro
+   antes do clique, não depois. Vale nos dois temas — sai dos tokens. */
+.botao2.botao-perigo{color:var(--erro);
+border-color:color-mix(in srgb,var(--erro) 40%,var(--borda-forte))}
+.botao2.botao-perigo:hover{border-color:var(--erro);background:var(--erro-fraco)}
 .login{max-width:380px;margin:70px auto;text-align:center;
 animation:sobe-bloco .5s var(--suave) both}
 .login img{height:64px;margin-bottom:18px}

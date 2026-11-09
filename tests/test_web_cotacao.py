@@ -994,3 +994,22 @@ def test_o_prazo_aparece_ao_lado_do_preco(app_web, cliente):
     linha = linha_de(cliente.get(f"/cotacao/{cid}").text, "jadlog")
 
     assert "4 dias" in linha
+
+
+# ------------------------------------------------ 404 com layout (UX-06)
+def test_404_de_navegador_vira_pagina_com_layout(cliente):
+    """Um link velho caía no JSON cru {"detail":"Not Found"}, que não diz à
+    pessoa o que fazer. Navegação de navegador (Accept: text/html) ganha página."""
+    r = cliente.get("/rota-que-nao-existe", headers={"Accept": "text/html"})
+
+    assert r.status_code == 404
+    assert "Página não encontrada" in r.text and "Voltar ao início" in r.text
+
+
+def test_404_de_api_continua_json(cliente):
+    """O userscript e a extensão do ME pedem JSON — e precisam continuar
+    recebendo JSON, não uma página HTML."""
+    r = cliente.get("/rota-que-nao-existe", headers={"Accept": "application/json"})
+
+    assert r.status_code == 404
+    assert r.json()["detail"] == "Not Found"

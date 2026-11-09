@@ -244,3 +244,17 @@ def test_post_de_conta_com_csrf_errado_e_recusado(chefe, app_web):
 def quote_plus_decode(s: str) -> str:
     from urllib.parse import unquote_plus
     return unquote_plus(s)
+
+
+# ---------------------------------------- Esquecer x Remover (UX-04)
+def test_remover_e_destacado_e_esquecer_tambem_pergunta(chefe, app_web):
+    """Os dois botões tinham a MESMA cara e só o Remover perguntava. Agora o
+    Remover (que apaga a conta) é o único vermelho, e o Esquecer — que também
+    derruba o acesso na hora — passou a perguntar antes."""
+    app_web.banco.criar_conta("maria")
+
+    corpo = chefe.get("/adm/contas").text
+
+    assert "botao-perigo" in corpo, "Remover precisa do destaque destrutivo"
+    esquecer = corpo.split('action="/adm/contas/esquecer"')[1].split("</form>")[0]
+    assert "confirm(" in esquecer, "Esquecer precisa perguntar antes"

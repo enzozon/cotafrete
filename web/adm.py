@@ -1176,12 +1176,20 @@ def _linha_da_conta(c: dict, csrf: str = "") -> str:
     pergunta = e(json.dumps(
         f"Tirar o acesso de {c['nome']}? As cotacoes que ela ja fez "
         f"continuam no historico.", ensure_ascii=False))
+    # Esquecer senha também derruba o acesso na hora (a pessoa só volta pelo
+    # novo link de primeiro acesso). Antes era um clique sem pergunta, com a
+    # MESMA cara do Remover ao lado — fácil de trocar um pelo outro. Agora
+    # pergunta, e o Remover (que apaga a conta) é o único vermelho.
+    aviso_esquecer = e(json.dumps(
+        f"Esquecer a senha de {c['nome']}? Ela perde o acesso agora e escolhe "
+        f"outra pelo link de primeiro acesso.", ensure_ascii=False))
     return f"""
 <tr>
   <td><b>{nome}</b></td>
   <td>{situacao}</td>
   <td style="text-align:right;white-space:nowrap">
-    <form method="post" action="/adm/contas/esquecer" style="display:inline">
+    <form method="post" action="/adm/contas/esquecer" style="display:inline"
+          onsubmit="return confirm({aviso_esquecer})">
       <input type="hidden" name="nome" value="{nome}">
       <input type="hidden" name="csrf" value="{csrf}">
       <button type="submit" class="botao2">Esquecer senha</button>
@@ -1190,7 +1198,7 @@ def _linha_da_conta(c: dict, csrf: str = "") -> str:
           onsubmit="return confirm({pergunta})">
       <input type="hidden" name="nome" value="{nome}">
       <input type="hidden" name="csrf" value="{csrf}">
-      <button type="submit" class="botao2">Remover</button>
+      <button type="submit" class="botao2 botao-perigo">Remover</button>
     </form>
   </td>
 </tr>"""

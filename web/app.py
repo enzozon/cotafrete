@@ -41,7 +41,9 @@ from urllib.parse import quote, urlencode
 
 from dotenv import load_dotenv
 from fastapi import Body, Cookie, Depends, FastAPI, Form, HTTPException, Request
+from fastapi.exception_handlers import http_exception_handler as _http_padrao
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
+from starlette.exceptions import HTTPException as _HTTPErro
 from fastapi.staticfiles import StaticFiles
 
 load_dotenv(override=False)
@@ -229,6 +231,30 @@ async def _cabecalhos_de_seguranca(request: Request, call_next):
     if request.url.path in ("/docs", "/redoc", "/openapi.json"):
         resp.headers.setdefault("X-Robots-Tag", "noindex, nofollow")
     return resp
+
+
+@app.exception_handler(_HTTPErro)
+async def _erro_http(request: Request, exc: _HTTPErro):
+    """Um 404 numa navegação de navegador vira página com layout, em vez do JSON
+    cru `{"detail":"Not Found"}` do FastAPI — um link velho caía numa tela de
+    erro de API, que não diz à pessoa o que fazer.
+
+    Só quando o cliente pede HTML: as rotas de API (userscript da Della Volpe,
+    extensão do ME) continuam recebendo JSON, e todo status que não seja 404
+    segue o tratamento padrão — preserva cabeçalhos como o `WWW-Authenticate`
+    de um 401. As respostas de API que já devolvem o próprio JSON de 404 nem
+    passam por aqui (são `return`, não `raise`)."""
+    if exc.status_code == 404 and "text/html" in request.headers.get("accept", ""):
+        corpo = (
+            '<div class="cartao" style="text-align:center;max-width:480px;'
+            'margin:48px auto">'
+            '<h1>Página não encontrada</h1>'
+            '<p class="sub">O endereço não existe ou saiu do ar — pode ter sido '
+            'um link antigo.</p>'
+            '<p style="margin-top:20px">'
+            '<a class="botao" href="/">Voltar ao início</a></p></div>')
+        return HTMLResponse(pagina("Página não encontrada", corpo), status_code=404)
+    return await _http_padrao(request, exc)
 
 
 banco = Banco()
