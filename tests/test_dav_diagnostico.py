@@ -175,7 +175,8 @@ def test_validacao_sem_criacao_orienta_corrigir_e_reenviar():
     ("O HSE recusou o login do robô: acesso negado", "acesso_hse", []),
     ("Item 3: tela ficou com qtd/preço (1, 2), esperado (3, 4)", "automacao", []),
     ("Falha jamais vista B31 Item 3", "desconhecida", []),
-    ("Item 25: quantidade inválida", "desconhecida", []),
+    ("Item 0: quantidade inválida", "desconhecida", []),
+    ("Item 25: quantidade inválida", "planilha", ["B26"]),   # modelo com mais de 24 itens
 ])
 def test_origem_e_celulas_confirmadas(erro, origem, campos):
     from orcamento.diagnostico import diagnostico
@@ -250,7 +251,10 @@ def test_conferencia_legada_invalida_nao_quebra_diagnostico(texto):
     ("VENDEDOR (B33) é obrigatório", "B33"),
     ("Forma de pagamento (B34) desconhecida", "B34"),
     ("Filial inválida; use 1, 2 ou 3", "B37"),
+    ("Filial (B63) inválida ('9'); use 1, 2 ou 3", "B63"),
     ("FRETE (B38) deve ser CIF ou FOB", "B38"),
+    ("Cliente (B57) é obrigatório", "B57"),   # modelo de 50 itens: o rodapé desceu 26 linhas
+    ("Item 40: código 49025 não encontrado no HSE", "K41"),
 ])
 def test_referencias_do_modelo(erro, celula):
     from orcamento.diagnostico import diagnostico

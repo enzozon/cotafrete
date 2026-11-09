@@ -12,7 +12,7 @@ from typing import Callable
 import openpyxl
 
 from orcamento.hse import _mensagens
-from orcamento.planilha import _texto, ler_planilha
+from orcamento.planilha import _texto, celula_real, ler_planilha, linha_rodape
 from orcamento.processador import cnpj_valido as _cnpj_valido
 
 NAO_VERIFICADO = "nao_verificado"
@@ -79,9 +79,9 @@ def _ler_planilha(arquivo: Path) -> dict | None:
                   "qtd": _texto(ws[f"B{r}"].value), "valor": _texto(ws[f"J{r}"].value),
                   "ncm": _texto(ws[f"L{r}"].value), "grupo": _texto(ws[f"P{r}"].value),
                   "marca": _texto(ws[f"Q{r}"].value)}
-                 for r in range(2, 26) if ws[f"A{r}"].value or ws[f"K{r}"].value]
-        return {"cliente": _texto(ws["B31"].value), "vendedor": _texto(ws["B33"].value),
-                "local": _texto(ws["B30"].value), "itens": itens}
+                 for r in range(2, linha_rodape(ws)) if ws[f"A{r}"].value or ws[f"K{r}"].value]
+        return {"cliente": _texto(ws[celula_real(ws, "B31")].value), "vendedor": _texto(ws[celula_real(ws, "B33")].value),
+                "local": _texto(ws[celula_real(ws, "B30")].value), "itens": itens}
     except Exception:
         return None
 
