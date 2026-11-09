@@ -45,7 +45,7 @@ def _origem(mensagens: list[str], rejeitado: bool) -> dict:
             comparar = True
         else:
             item = re.match(r"item (\d+):\s*(.*)", t)
-            if item and 1 <= int(item[1]) <= 24:
+            if item and int(item[1]) >= 1:
                 detalhe = item[2]
                 # O campo vem antes do valor interpolado; palavras dentro do valor não são estrutura.
                 for padrao, coluna in ((r"^quantidade (?:invalido|invalida|deve)", "B"),
@@ -70,14 +70,17 @@ def _origem(mensagens: list[str], rejeitado: bool) -> dict:
                 else:
                     referencias = []
             else:
-                for padrao, celula in ((r"^cliente \(b31\).*obrigatorio", "B31"),
-                        (r"^vendedor \(b33\).*obrigatorio", "B33"),
-                        (r"^prazo de entrega \(b32\).*(invalido|obrigatorio)", "B32"),
-                        (r"^forma de pagamento \(b34\).*desconhecida", "B34"),
-                        (r"^filial invalida", "B37"), (r"^frete \(b38\).*deve", "B38")):
-                    if re.search(padrao, t):
-                        origem, referencias = "planilha", [celula]
+                # a célula vem na mensagem: com mais ou menos itens o rodapé muda de linha
+                for padrao in (r"^cliente \((b\d+)\).*obrigatorio", r"^vendedor \((b\d+)\).*obrigatorio",
+                               r"^prazo de entrega \((b\d+)\).*(invalido|obrigatorio)",
+                               r"^forma de pagamento \((b\d+)\).*desconhecida", r"^frete \((b\d+)\).*deve",
+                               r"^filial \((b\d+)\) invalida"):
+                    if m := re.search(padrao, t):
+                        origem, referencias = "planilha", [m[1].upper()]
                         break
+                else:
+                    if t.startswith("filial invalida"):   # mensagem antiga, sem a célula
+                        origem, referencias = "planilha", ["B37"]
         origens.add(origem)
         campos.extend(c for c in referencias if c not in campos)
     origem = next(iter(origens)) if len(origens) == 1 else "desconhecida"

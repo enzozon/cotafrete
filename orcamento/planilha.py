@@ -8,7 +8,8 @@ from pathlib import Path
 
 import openpyxl
 
-LINHA_INI, LINHA_FIM = 2, 25
+LINHA_INI = 2
+RODAPE_PADRAO = 26  # "OBSERVAÇÕES:" no modelo de 24 itens
 MAX_OBS = 1024
 MAX_DESCRICAO = 512  # maxLength do #dsObsItem_<cdItem> no HSE (visto em 29/10/2026)
 FRETES = ("CIF", "FOB")
@@ -60,7 +61,7 @@ class Orcamento:
     ordem_compra: str | None
     filial: int
     avisos: tuple[str, ...]
-    frete: str | None = None  # B38: CIF ou FOB
+    frete: str | None = None  # B38 (no modelo de 24 itens): CIF ou FOB
 
 
 class ErroPlanilha(Exception):
@@ -121,7 +122,7 @@ def _com_frete(obs: str, frete: str | None, prazo: int | None) -> str:
 
 
 def observacoes_hse(orc: Orcamento) -> str:
-    """Texto do #txObservacao: observações da B26 e, numa linha abaixo, o frete."""
+    """Texto do #txObservacao: observações (B26 no modelo de 24 itens) e, numa linha abaixo, o frete."""
     return _com_frete(orc.observacoes, orc.frete, orc.prazo_dias)
 
 
@@ -222,15 +223,30 @@ def _codigos_conflitantes(itens: list[Item], erros: list[str]) -> None:
                          "deve ficar numa linha só, com a quantidade somada (o HSE junta as linhas)")
 
 
-def _filial(v, erros: list[str]) -> int:
+def _filial(v, celula: str, erros: list[str]) -> int:
     s = _texto(v)
     if not s:
         return 1
     m = re.match(r"\s*(\d+)", s)
     if not m or int(m.group(1)) not in FILIAIS:
-        erros.append(f"Filial inválida ({s!r}); use 1, 2 ou 3")
+        erros.append(f"Filial ({celula}) inválida ({s!r}); use 1, 2 ou 3")
         return 1
     return int(m.group(1))
+
+
+def linha_rodape(ws) -> int:
+    """Linha de "OBSERVAÇÕES:" na coluna A: os itens vão até a linha antes dela e o rodapé anda junto."""
+    for linha in range(LINHA_INI, ws.max_row + 1):
+        if normalizar(ws[f"A{linha}"].value).startswith("OBSERVACOES"):
+            return linha
+    return RODAPE_PADRAO
+
+
+def celula_real(ws, celula: str) -> str:
+    """Célula do rodapé no endereço do modelo de 24 itens (B30, B33...) → endereço nesta planilha."""
+    col, linha = re.fullmatch(r"([A-Z]+)(\d+)", celula).groups()
+    linha = int(linha)
+    return f"{col}{linha + linha_rodape(ws) - RODAPE_PADRAO}" if linha >= RODAPE_PADRAO else celula
 
 
 def ler_planilha(path: Path) -> Orcamento:
@@ -242,55 +258,60 @@ def ler_planilha(path: Path) -> Orcamento:
     erros: list[str] = []
     avisos: list[str] = []
 
-    itens = [it for linha in range(LINHA_INI, LINHA_FIM + 1)
+    r = linha_rodape(ws)
+    b = {campo: f"B{r + d}" for campo, d in (("obs", 0), ("local", 4), ("cliente", 5), ("prazo", 6),
+                                              ("vendedor", 7), ("forma", 8), ("parcelamento", 9),
+                                              ("oc", 10), ("filial", 11), ("frete", 12))}
+    itens = [it for linha in range(LINHA_INI, r)
              if (it := _ler_item(ws, linha, erros, avisos))]
     if not itens and not erros:
-        erros.append("nenhum item preenchido (linhas 2 a 25, coluna A ou K)")
+        erros.append(f"nenhum item preenchido (linhas {LINHA_INI} a {r - 1}, coluna A ou K)")
     _descricoes_conflitantes(itens, erros)
     _codigos_conflitantes(itens, erros)
 
-    obs = _texto(ws["B26"].value) or ""
-    cliente = _texto(ws["B31"].value)
+    obs = _texto(ws[b["obs"]].value) or ""
+    cliente = _texto(ws[b["cliente"]].value)
     if not cliente:
-        erros.append("Cliente (B31) é obrigatório")
-    vendedor = _texto(ws["B33"].value)
+        erros.append(f"Cliente ({b['cliente']}) é obrigatório")
+    vendedor = _texto(ws[b["vendedor"]].value)
     if not vendedor:
-        erros.append("VENDEDOR (B33) é obrigatório")
+        erros.append(f"VENDEDOR ({b['vendedor']}) é obrigatório")
 
     prazo = None
     try:
-        p = _num(ws["B32"].value)
+        p = _num(ws[b["prazo"]].value)
         if p is not None:
             if p < 0 or p != p.to_integral():
                 raise ValueError(p)
             prazo = int(p)
     except ValueError:
-        erros.append(f"Prazo de entrega (B32) inválido ({ws['B32'].value!r})")
+        erros.append(f"Prazo de entrega ({b['prazo']}) inválido ({ws[b['prazo']].value!r})")
 
-    forma = _texto(ws["B34"].value)
+    forma = _texto(ws[b["forma"]].value)
     if forma:
         codigo = FORMAS_PG.get(normalizar(forma))
         if not codigo:
-            erros.append(f"Forma de pagamento (B34) desconhecida ({forma!r})")
+            erros.append(f"Forma de pagamento ({b['forma']}) desconhecida ({forma!r})")
         forma = codigo
 
-    # Só o modelo com a linha "Frete" (A38) tem o FRETE na B38; no anterior ela é a linha "ITEM 1".
-    frete = (normalizar(ws["B38"].value) or None) if normalizar(ws["A38"].value) == "FRETE" else None
+    # Só o modelo com a linha "Frete" (A38 no de 24 itens) tem o FRETE na coluna B; no anterior ela é a linha "ITEM 1".
+    a_frete = f"A{r + 12}"
+    frete = (normalizar(ws[b["frete"]].value) or None) if normalizar(ws[a_frete].value) == "FRETE" else None
     if frete and frete not in FRETES:
-        erros.append(f"FRETE (B38) deve ser CIF ou FOB ({ws['B38'].value!r})")
+        erros.append(f"FRETE ({b['frete']}) deve ser CIF ou FOB ({ws[b['frete']].value!r})")
     elif frete and not prazo:
-        erros.append("Prazo de entrega (B32) é obrigatório quando o FRETE (B38) está marcado")
+        erros.append(f"Prazo de entrega ({b['prazo']}) é obrigatório quando o FRETE ({b['frete']}) está marcado")
     texto = _com_frete(obs, frete if frete in FRETES else None, prazo)
     if len(texto) > MAX_OBS:
         com = " + linha do FRETE" if texto != obs else ""
         erros.append(f"OBSERVAÇÕES{com} com {len(texto)} caracteres (máximo {MAX_OBS})")
 
-    filial = _filial(ws["B37"].value, erros)
+    filial = _filial(ws[b["filial"]].value, b["filial"], erros)
     if erros:
         raise ErroPlanilha(erros)
     return Orcamento(
         arquivo=Path(path), itens=tuple(itens), observacoes=obs,
-        local_entrega=_texto(ws["B30"].value), cliente=cliente, prazo_dias=prazo,
-        vendedor=vendedor, forma_pg=forma, parcelamento=_texto(ws["B35"].value),
-        ordem_compra=_texto(ws["B36"].value), filial=filial, avisos=tuple(avisos), frete=frete,
+        local_entrega=_texto(ws[b["local"]].value), cliente=cliente, prazo_dias=prazo,
+        vendedor=vendedor, forma_pg=forma, parcelamento=_texto(ws[b["parcelamento"]].value),
+        ordem_compra=_texto(ws[b["oc"]].value), filial=filial, avisos=tuple(avisos), frete=frete,
     )
