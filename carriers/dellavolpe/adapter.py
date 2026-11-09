@@ -11,6 +11,7 @@ automação sobreviver a mudança de layout do site.
 
 from __future__ import annotations
 
+import logging
 import os
 from datetime import datetime
 from decimal import Decimal
@@ -24,6 +25,8 @@ from carriers.base import (
 from carriers.dellavolpe import mapping as m
 from carriers.dellavolpe.planilha import gerar_planilha_volumes
 from core.models import CotacaoRequest, StatusCotacao
+
+log = logging.getLogger(__name__)
 
 URL_PRODUCAO = "https://dellavolpe.com.br/#cotacao"
 
@@ -447,12 +450,13 @@ class DellavolpeAdapter:
                 # Uma vez, e não em laço: se a segunda passada também não
                 # segurar, o site está recusando de verdade, e insistir
                 # trocaria um cartão honesto por um timeout.
+                #
+                # Cidade vazia volta COM o estado: escolher o estado de novo
+                # dispara o `change` que remonta a lista de cidades. Cotação
+                # #644 (09/11/2026): estado de destino na tela, cidade em
+                # branco, e repreencher só a cidade não segurou.
                 if recusados:
-                    for rotulo in recusados:
-                        try:
-                            self._preencher(page, {rotulo: so_texto[rotulo]})
-                        except Exception:
-                            continue
+                    self._segunda_passada(page, recusados, so_texto)
                     page.wait_for_timeout(800)
                     recusados = campos_que_o_site_recusou(
                         so_texto, self._ler_de_volta(page, texto))
@@ -634,6 +638,19 @@ class DellavolpeAdapter:
                 loc.select_option(valor)
             else:
                 loc.fill(valor)
+
+    def _segunda_passada(self, page, recusados: list[str],
+                         so_texto: dict[str, str]) -> None:
+        """Repreenche o que voltou vazio; cidade vai junto com o estado dela."""
+        for rotulo in recusados:
+            estado = rotulo.replace("a cidade", "o estado")
+            par = {estado: so_texto[estado]} if (
+                estado != rotulo and estado in so_texto) else {}
+            try:
+                self._preencher(page, {**par, rotulo: so_texto[rotulo]})
+            except Exception as exc:
+                log.warning("Della Volpe: 2ª passada em %r falhou: %s",
+                            rotulo, (str(exc).splitlines() or [""])[0][:200])
 
     def _ler_de_volta(self, page, campos: dict[str, Any]) -> dict[str, str]:
         """O que a tela ficou mostrando, campo a campo.

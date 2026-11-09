@@ -496,7 +496,10 @@ class Banco:
     def _conectar(self) -> sqlite3.Connection:
         """Sempre use com `closing(...)`: o `with` do sqlite3 faz commit e
         rollback, mas NÃO fecha a conexão. Cada cotação abre cinco delas."""
-        con = sqlite3.connect(self.caminho)
+        # timeout=30, e não os 5s padrão: cotação #644 (09/11/2026), sete
+        # transportadoras gravando junto com a VM no limite, e a Favorita levou
+        # "database is locked". O preço dela se perdeu e só o erro foi gravado.
+        con = sqlite3.connect(self.caminho, timeout=30)
         con.row_factory = sqlite3.Row
         con.execute("PRAGMA foreign_keys = ON")
         # WAL: leitor e escritor deixam de brigar pelo arquivo. Sem isso o

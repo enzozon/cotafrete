@@ -94,6 +94,9 @@ Os `<select>` dela vão por `select_option(valor)`, que casa value **ou**
 label de uma vez. `label=` com `value=` no `except` esperava o tempo limite
 (45s) a cada UF, porque a UF vai como sigla e o site mostra o nome: ~90s
 parados em toda cotação até 03/11/2026.
+As cidades vêm de um `json-cidade.json` montado pelo `change` do estado. Na
+2ª passada (campo que voltou vazio), cidade é repreenchida junto com o estado
+dela, que remonta a lista (cotação #644, 09/11/2026).
 
 "Ainda não atendemos essa origem" (embaixo do CEP) pode aparecer só **depois**
 do Próximo: `_conferir_cobertura` roda antes e depois dele. Na Favorita a
