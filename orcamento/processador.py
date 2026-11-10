@@ -369,19 +369,24 @@ def validar_online(orc: Orcamento, hse: HseApi, rel: Relatorio,
 
 
 def _recusar_repetidos(resolucoes: list[Resolucao]) -> list[Resolucao]:
-    """Duas linhas que dão no mesmo produto: o HSE junta as linhas, soma as quantidades e o robô não
-    vê item novo (envio #153). A planilha só compara a coluna do CÓDIGO HSE; aqui entram também a
-    linha achada pela descrição e o produto novo repetido, antes de cadastrar ou criar qualquer coisa."""
-    vistos: dict[tuple[bool, str], int] = {}
+    """Duas linhas que dão no mesmo produto: o HSE junta as linhas e soma as quantidades (envio #153).
+
+    Com o mesmo CÓDIGO HSE digitado nas duas o robô marca "Ins. individual" e cada linha vira um item
+    (hse.codigos_repetidos). Aqui ficam os casos em que o vendedor não disse que é o mesmo produto: a
+    linha achada pela descrição e o produto novo repetido, barrados antes de cadastrar ou criar."""
+    vistos: dict[tuple[bool, str], Resolucao] = {}
     saida = []
     for r in resolucoes:
         if not r.erro and (r.produto or r.por == "novo"):
             chave = (True, r.produto.codigo) if r.produto else (False, normalizar(r.item.descricao_cadastro))
-            primeiro = vistos.setdefault(chave, r.item.numero)
-            if primeiro != r.item.numero:
-                qual = r.produto.codigo if r.produto else "produto novo"
-                r = replace(r, erro=f"mesmo produto do item {primeiro} ({qual}): deve ficar numa linha só, "
-                                    "com a quantidade somada (o HSE junta as linhas)")
+            primeiro = vistos.setdefault(chave, r)
+            if primeiro is not r and not (r.por == primeiro.por == "codigo"):
+                n = primeiro.item.numero
+                r = replace(r, erro=(
+                    f"mesmo produto do item {n}: preencha o CÓDIGO HSE {r.produto.codigo} nas duas linhas "
+                    "(o robô insere uma por uma) ou junte numa linha só" if r.produto else
+                    f"mesmo produto novo do item {n}: deve ficar numa linha só, com a quantidade somada "
+                    "(o HSE junta as linhas)"))
         saida.append(r)
     return saida
 

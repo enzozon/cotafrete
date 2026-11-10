@@ -405,6 +405,35 @@ def test_so_conta_o_aviso_que_a_resposta_abre_na_tela():
                                    "Item Atualizado, as quantidades foram somadas !")
 
 
+def test_codigos_repetidos_nao_dependem_da_posicao():
+    from orcamento.hse import codigos_repetidos
+    p = lambda c: SimpleNamespace(codigo=c)  # noqa: E731
+    vizinhos = [(1, p("6395")), (2, p("6395")), (3, p("13370"))]
+    pontas = [(1, p("6395")), (2, p("13370")), (3, None), (4, p("6395"))]  # None: produto novo no DRY_RUN
+    assert codigos_repetidos(vizinhos) == codigos_repetidos(pontas) == {"6395"}
+    assert codigos_repetidos([(1, p("6395")), (2, p("63950"))]) == set()  # só o código exatamente igual
+
+
+def test_insercao_individual_marca_a_caixa_do_hse():
+    marcadas = []
+    hse = Hse.__new__(Hse)
+    hse._insercao_individual(SimpleNamespace(set_checked=lambda sel, v: marcadas.append((sel, v))),
+                             SimpleNamespace(numero=2), SimpleNamespace(codigo="6395"))
+    assert marcadas == [("#checkIndividual", True)]
+
+
+def test_caixa_que_nao_marca_barra_o_item_em_vez_de_somar():
+    from orcamento.hse import PlaywrightError
+    from orcamento.processador import ErroHse
+
+    def nao_marca(sel, v):
+        raise PlaywrightError("Clicking the checkbox did not change its state")
+    hse = Hse.__new__(Hse)
+    with pytest.raises(ErroHse, match="Item 2: não consegui marcar 'Ins. individual'"):
+        hse._insercao_individual(SimpleNamespace(set_checked=nao_marca),
+                                 SimpleNamespace(numero=2), SimpleNamespace(codigo="6395"))
+
+
 def _hse_incluir(tmp_path, respostas, entrou):
     hse = Hse.__new__(Hse)
     hse.cfg = SimpleNamespace(pasta_programa=tmp_path)

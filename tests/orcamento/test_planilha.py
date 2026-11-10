@@ -241,21 +241,18 @@ def test_descricao_igual_cai_na_coluna_o():
     assert d["origem"] == "planilha" and d["campos"] == ["O4"]
 
 
-def test_mesmo_codigo_com_precos_diferentes_e_recusado(tmp_path):
-    # Envio #149: o HSE juntou as duas linhas do mesmo código e recusou o preço da segunda
-    segunda = {"A3": "outra linha", "B3": 5, "C3": 99, "K3": ler(tmp_path, "valida").itens[0].codigo}
-    assert "Item 2: mesmo CÓDIGO HSE do item 1 com outro valor" in erros(tmp_path, "valida", segunda)
-
-
-def test_mesmo_codigo_com_o_mesmo_preco_e_recusado(tmp_path):
-    # Envio #153: com o mesmo valor o HSE soma as quantidades numa linha só e o robô não vê item novo
-    it = ler(tmp_path, "valida").itens[0]
-    segunda = {"A3": "outra linha", "B3": 5, "C3": it.custo, "K3": it.codigo}
-    assert "Item 2: mesmo CÓDIGO HSE do item 1" in erros(tmp_path, "valida", segunda)
+def test_mesmo_codigo_em_duas_linhas_e_aceito(tmp_path):
+    # O robô marca "Ins. individual" no HSE e cada linha vira um item (pedido 16669, 10/11/2026);
+    # antes a planilha era recusada (envios #149 e #153)
+    codigo = ler(tmp_path, "valida").itens[0].codigo
+    for custo in (99, ler(tmp_path, "valida").itens[0].custo):  # com outro valor e com o mesmo valor
+        orc = ler(tmp_path, "valida", {"A3": "outra linha", "B3": 5, "C3": custo, "K3": codigo})
+        assert [it.codigo for it in orc.itens] == [codigo, codigo]
 
 
 def test_codigo_repetido_cai_na_coluna_k():
     from orcamento.diagnostico import diagnostico
-    d = diagnostico({"estado": "rejeitado", "erro": "Item 2: mesmo CÓDIGO HSE do item 1 com outro valor deve "
-                     "ficar numa linha só, com a quantidade somada (o HSE junta as linhas)"}, administrador=False)
+    # mensagem de processador._recusar_repetidos: uma linha tem o código e a outra chegou nele pela descrição
+    d = diagnostico({"estado": "rejeitado", "erro": "Item 2: mesmo produto do item 1: preencha o CÓDIGO HSE "
+                     "13370 nas duas linhas (o robô insere uma por uma) ou junte numa linha só"}, administrador=False)
     assert d["origem"] == "planilha" and d["campos"] == ["K3"]

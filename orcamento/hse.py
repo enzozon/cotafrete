@@ -2,6 +2,7 @@
 import functools
 import logging
 import re
+from collections import Counter
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
@@ -116,6 +117,12 @@ def erro_local_entrega(local: str, opcoes: list[tuple[str, str]]) -> str:
         if numero:
             return f"{msg}. Parece ser o {numero[1]} ({notas[0][1]}): escreva {numero[1]} na B30"
     return f"{msg}; escreva na B30 só o número do endereço ({'; '.join(t for _, t in opcoes)})"
+
+
+def codigos_repetidos(itens: list[tuple[Item, Produto | None]]) -> set[str]:
+    """Códigos que aparecem em mais de uma linha do orçamento, em qualquer posição."""
+    vezes = Counter(p.codigo for _, p in itens if p is not None)
+    return {codigo for codigo, n in vezes.items() if n > 1}
 
 
 def recusa_do_incluir(numero: int, codigo: str, valor: Decimal, html: str) -> str:
@@ -361,10 +368,11 @@ class Hse:
         page.select_option("#cdVendedor", self._lista_vendedores()[normalizar(orc.vendedor)])
         self._escolher_cliente(page, cliente)
         self._preencher_cabecalho(page, orc)
+        repetidos = codigos_repetidos(itens)
         for item, produto in itens:
             if produto is None:  # produto novo no DRY_RUN: ainda não existe no HSE
                 continue
-            self._preencher_item(page, item, produto, incluir)
+            self._preencher_item(page, item, produto, incluir, individual=produto.codigo in repetidos)
         self._conferir_pagamento(page, orc)
         self._orc = orc
 
@@ -450,7 +458,18 @@ class Hse:
         if not ok():
             raise ErroHse(f"não consegui manter forma '{orc.forma_pg}' / parcelamento '{orc.parcelamento}'")
 
-    def _preencher_item(self, page: Page, item: Item, produto: Produto, incluir: bool) -> None:
+    def _insercao_individual(self, page: Page, item: Item, produto: Produto) -> None:
+        """Marca "Ins. individual" (#checkIndividual): sem ela o HSE junta as linhas do mesmo produto,
+        soma as quantidades e fica com o último preço (envios #149 e #153). Com ela cada Incluir vira
+        uma linha (pedido 16669, 10/11/2026). Marca antes de cada Incluir: a tela pode redesenhar."""
+        try:
+            page.set_checked("#checkIndividual", True)  # confere o estado e levanta se não marcou
+        except PlaywrightError as e:
+            raise ErroHse(f"Item {item.numero}: não consegui marcar 'Ins. individual' para repetir o produto "
+                          f"{produto.codigo} ({str(e).splitlines()[0][:120]})") from None
+
+    def _preencher_item(self, page: Page, item: Item, produto: Produto, incluir: bool,
+                        individual: bool = False) -> None:
         self._fechar_aviso(page)
         self._autocomplete(page, "dsProduto", produto.codigo)
         alvo = page.locator(f"[id^=searchItemClick_dsProduto_][onclick*=\"itemSelected_dsProduto('{produto.codigo}'\"]")
@@ -467,6 +486,8 @@ class Hse:
             page.keyboard.type(valor)
             page.keyboard.press("Tab")
             page.wait_for_load_state("networkidle")
+        if individual:  # também no DRY_RUN (a conferência acusa se a caixa sumir) e antes de conferir qtd/preço
+            self._insercao_individual(page, item, produto)
         na_tela = (page.input_value("#qtProduto"), page.input_value("#vlUnitario"))
         if na_tela != (_qtd(item.quantidade), br(item.valor_unit)):
             raise ErroHse(f"Item {item.numero}: tela ficou com qtd/preço {na_tela}, "
