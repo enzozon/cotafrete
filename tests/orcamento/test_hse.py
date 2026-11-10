@@ -214,17 +214,6 @@ def test_sem_linha_nova_tambem_vira_nota():
     assert "Item 2: descrição não gravada no HSE" in hse.notas[0]
 
 
-def test_local_de_entrega_ignora_pontuacao():
-    # DAV 20 (29/10/2026): "Barão de cocais MG" não casava com ".../BARÃO DE COCAIS/MG" por causa da barra
-    from orcamento.hse import enderecos_do_local
-    opcoes = [("8410", "1 - Cadastral - R NEIDE FERREIRA DE LACERDA, 75, GARCIA II, BARÃO DE COCAIS/MG"),
-              ("9000", "2 - Entrega - AV BRASIL, 10, CENTRO, ITABIRA/MG")]
-    assert enderecos_do_local("Barão de cocais MG", opcoes) == ["8410"]
-    assert enderecos_do_local("centro", opcoes) == ["9000"]
-    assert enderecos_do_local("MG", opcoes) == ["8410", "9000"]
-    assert enderecos_do_local("Vitória ES", opcoes) == []
-
-
 @pytest.mark.parametrize("html", [
     "<script>alert('Produto sem tabela de preço nesta filial');</script>",
     '<script>toastError("Produto sem tabela de preço nesta filial");</script>',
@@ -232,13 +221,6 @@ def test_local_de_entrega_ignora_pontuacao():
 def test_recusa_sem_desconto_mostra_o_aviso_do_hse(html):
     # DAV 23 (29/10/2026): o HSE recusou a caixa 76701 sem erroDescontoMsg e o relatório ficou sem motivo
     assert motivo_recusa(html) == "Produto sem tabela de preço nesta filial"
-
-
-def test_local_de_entrega_com_acento_e_barra():
-    # DAV 33 (29/10/2026): "São luis MA" contra "SÃO LUÍS/MA"
-    from orcamento.hse import enderecos_do_local
-    opcoes = [("1", "1 - Cadastral - AV DOS PORTUGUESES, S/N, ITAQUI, SÃO LUÍS/MA")]
-    assert enderecos_do_local("São luis MA", opcoes) == ["1"]
 
 
 class _Busca:
@@ -276,18 +258,6 @@ def test_busca_longa_cola_o_texto_e_digita_so_a_ultima_letra():
     Hse._autocomplete(pagina, "dsProduto", "A" * 544)
     assert pagina.feito == [("fill", "#dsProduto", "A" * 543), ("type", "#dsProduto", "A")]
 
-
-
-def test_local_de_entrega_pelo_numero_do_endereco():
-    # PETROBRAS (29/10/2026): o CEP não aparece na lista do HSE e "Rio de Janeiro" casava com os 2 endereços
-    from orcamento.hse import enderecos_do_local
-    opcoes = [("101", "1 - Cadastral - RUA FRANCISCO DE S E MELO, 2, CORDOVIL, RIO DE JANEIRO/RJ"),
-              ("102", "2 - Entrega - RUA CARLOS SEIDL, 188, CAJU, RIO DE JANEIRO/RJ")]
-    assert enderecos_do_local("2", opcoes) == ["102"]  # o número da lista, não o "2" da rua do endereço 1
-    assert enderecos_do_local(" 1 ", opcoes) == ["101"]
-    assert enderecos_do_local("2 - Entrega", opcoes) == ["102"]
-    assert enderecos_do_local("20931902", opcoes) == []
-    assert enderecos_do_local("Rio de Janeiro", opcoes) == ["101", "102"]
 
 
 class _BuscaLenta(_Busca):
@@ -343,18 +313,6 @@ def test_guarda_deixa_passar_leitura():
     guarda_gravacao(get, bloqueados)
     assert leitura.chamadas == get.chamadas == ["continue"]
     assert bloqueados == []
-
-
-def test_endereco_fica_com_a_opcao_escolhida():
-    opcoes = [["101", "1 - Cadastral - RUA A, 2, RIO DE JANEIRO/RJ"],
-              ["102", "2 - Entrega - RUA X, 188, CAJU, RIO DE JANEIRO/RJ"]]
-    pagina = SimpleNamespace(eval_on_selector_all=lambda *a: opcoes, evaluate=lambda *a: None)
-    hse = Hse.__new__(Hse)
-    hse.endereco = ""
-    orc = SimpleNamespace(local_entrega="2", forma_pg=None, parcelamento=None, prazo_dias=None,
-                          ordem_compra=None, observacoes=None, frete=None)
-    hse._preencher_cabecalho(pagina, orc)
-    assert hse.endereco == "2 - Entrega - RUA X, 188, CAJU, RIO DE JANEIRO/RJ"
 
 
 def test_hse_so_leitura_instala_a_guarda_depois_do_login(monkeypatch):
@@ -508,37 +466,6 @@ _ENDERECOS = [("8410", "1 - Cadastral - R NEIDE FERREIRA DE LACERDA, 75, GARCIA 
               ("9000", "2 - Entrega - AV BRASIL, 10, CENTRO, ITABIRA/MG")]
 
 
-def test_b30_com_erro_de_digitacao_sugere_o_endereco_parecido():
-    from orcamento.hse import erro_local_entrega
-    msg = erro_local_entrega("Itabra MG", _ENDERECOS)
-    assert msg.startswith("Local de entrega 'Itabra MG': 0 endereço(s)")  # o diagnóstico depende deste começo
-    assert "Parece ser o 2 (2 - Entrega - AV BRASIL, 10, CENTRO, ITABIRA/MG): escreva 2 na B30" in msg
-    assert "Parece ser o 1" in erro_local_entrega("barao de cocas", _ENDERECOS)
-
-
-def test_b30_sem_nada_parecido_nao_sugere():
-    from orcamento.hse import erro_local_entrega
-    msg = erro_local_entrega("Vitória ES", _ENDERECOS)
-    assert "Parece ser" not in msg and "1 - Cadastral" in msg  # continua listando os endereços
-
-
-def test_b30_que_casa_com_varios_nao_sugere_um_so():
-    from orcamento.hse import erro_local_entrega
-    msg = erro_local_entrega("MG", _ENDERECOS)
-    assert msg.startswith("Local de entrega 'MG': 2 endereço(s)") and "Parece ser" not in msg
-
-
-def test_b30_parecida_com_dois_enderecos_nao_escolhe():
-    from orcamento.hse import erro_local_entrega
-    iguais = [("1", "1 - Entrega - RUA A, 1, CENTRO, ITABIRA/MG"), ("2", "2 - Entrega - RUA B, 2, CENTRO, ITABIRA/MG")]
-    assert "Parece ser" not in erro_local_entrega("Itabra", iguais)
-
-
-_CRU_16541 = {"pedido": "16541", "cliente": "1061", "data": "04/11/2026", "linhas": [
-    ['1', '', '', '76817', '', 'MAQUINA FONTE PLASMA', '84569000', '', '1', '1', '2,000000', 'PC',
-     '8.300,940000', '0,000000', '0,00', '8.300,940000', '16.601,880000']]}
-
-
 class _PaginaPedido:
     def __init__(self, cru, sem_cdpedido=False):
         self.cru, self.fechada, self.sem_cdpedido = cru, False, sem_cdpedido
@@ -552,6 +479,12 @@ class _PaginaPedido:
 
     def close(self):
         self.fechada = True
+
+
+_CRU_16541 = {"pedido": "16541", "cliente": "1061", "data": "04/11/2026", "linhas": [
+    ['1', '', '', '76817', '', 'MAQUINA FONTE PLASMA', '84569000', '', '1', '1', '2,000000', 'PC',
+     '8.300,940000', '0,000000', '0,00', '8.300,940000', '16.601,880000']]}
+
 
 
 def test_ler_pedido_monta_itens():
@@ -599,25 +532,13 @@ def test_ler_pedido_linhas_irreconheciveis_levanta():
         _hse_com(pg).ler_pedido(1)
 
 
-def _cabecalho(local, opcoes):
-    pagina = SimpleNamespace(eval_on_selector_all=lambda *a: opcoes, evaluate=lambda *a: None)
+def test_cabecalho_guarda_o_endereco_que_o_hse_trouxe():
+    # sem o Local de entrega na planilha, o endereço é o do cadastro do cliente, já escolhido pela tela
+    pagina = SimpleNamespace(evaluate=lambda js, *a: "1 - Cadastral - RUA A, 10, CENTRO, SERRA/ES")
     hse = Hse.__new__(Hse)
     hse.endereco, hse.notas = "", []
-    orc = SimpleNamespace(local_entrega=local, forma_pg=None, parcelamento=None, prazo_dias=None,
-                          ordem_compra=None, observacoes=None, frete=None)
-    hse._preencher_cabecalho(pagina, orc)
-    return hse
+    hse._preencher_cabecalho(pagina, SimpleNamespace(forma_pg=None, parcelamento=None, prazo_dias=None,
+                                                     ordem_compra=None, observacoes=None, frete=None))
+    assert hse.endereco == "1 - Cadastral - RUA A, 10, CENTRO, SERRA/ES"
 
 
-def test_b30_com_erro_de_digitacao_e_um_endereco_so_usa_esse_e_avisa():
-    # DAV #36 (04/11/2026): "STRADA" (sem o E) num cliente que só tem o endereço cadastral
-    unico = [["1", "1 - Cadastral - ESTRADA DA ILHA DA MADEIRA, S/N, ITAGUAI, ITAGUAÍ/RJ"]]
-    hse = _cabecalho("STRADA DA ILHA DA MADEIRA, S/N, ITAGUAI, ITAGUAÍ/RJ", unico)
-    assert hse.endereco == unico[0][1]
-    assert hse.notas[0].startswith("Local de entrega 'STRADA") and hse.notas[0].endswith("confira")
-
-
-def test_b30_sem_nada_parecido_e_um_endereco_so_continua_barrando():
-    from orcamento.hse import ErroHse
-    with pytest.raises(ErroHse, match="0 endereço"):
-        _cabecalho("Vitória ES", [["1", "1 - Cadastral - ESTRADA DA ILHA DA MADEIRA, S/N, ITAGUAI, ITAGUAÍ/RJ"]])

@@ -587,7 +587,6 @@ def _resumo(o, dav_id: int, d: dict | None = None) -> str:
 <section class="cartao dav-card dav-entrada">{passos}{aviso_ia(d) if d else ""}{avisos}{_bloco_hse(conf)}
 {guia}
 <dl class="dav-dados"><div><dt>Cliente</dt><dd>{e(o.cliente)}</dd></div><div><dt>Vendedor</dt><dd>{e(o.vendedor)}</dd></div>
-<div><dt>Local de entrega</dt><dd>{e(o.local_entrega or 'Não informado')}</dd></div>
 <div>
 <dt>Filial</dt><dd>{e(o.filial)}</dd>
 </div><div>

@@ -27,7 +27,7 @@ VARIANTES: dict[str, dict] = {
     "obs_longa": {"B26": "x" * 1025},
     "filial_invalida": {"B37": "7 - NAO EXISTE"},
     "pagamento_invalido": {"B34": "Cheque"},
-    "completa": {**NOVO, "B26": "Obs teste", "B30": "CENTRO", "B32": 10, "B34": "Pix",
+    "completa": {**NOVO, "B26": "Obs teste", "B32": 10, "B34": "Pix",
                  "B35": "30 DIAS", "B36": "OC-1", "B37": "2 - ALIANCA COMERCIO DE TECNOLOGIAS LTDA"},
 }
 

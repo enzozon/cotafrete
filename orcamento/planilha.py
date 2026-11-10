@@ -16,6 +16,11 @@ MAX_DESCRICAO = 512  # maxLength do #dsObsItem_<cdItem> no HSE (visto em 29/10/2
 FRETES = ("CIF", "FOB")
 FILIAIS = {1, 2, 3}
 ICMS_PADRAO = Decimal("17")
+# O Local de entrega saiu do modelo em 10/11/2026: o HSE já traz o endereço do cadastro do cliente e o
+# texto digitado dava mais erro do que ajudava. No modelo novo a linha fica escondida e sem rótulo.
+PLANILHA_ANTIGA = ("Planilha antiga: o Local de entrega saiu da planilha (o endereço vem do cadastro do cliente "
+                   "no HSE). Baixe a planilha nova em Orçamentos DAV, no botão Baixar, copie os dados para ela "
+                   "e envie de novo.")
 CENTAVO = Decimal("0.01")
 
 # A planilha usa listas suspensas x14; só lemos, então o aviso do openpyxl é ruído.
@@ -53,7 +58,6 @@ class Orcamento:
     arquivo: Path
     itens: tuple[Item, ...]
     observacoes: str
-    local_entrega: str | None
     cliente: str
     prazo_dias: int | None
     vendedor: str
@@ -289,7 +293,9 @@ def ler_planilha(path: Path) -> Orcamento:
     desloc = colunas_antes(ws)
     r = linha_rodape(ws, desloc)
     rotulo, valor = _coluna("A", desloc), _coluna("B", desloc)
-    b = {campo: f"{valor}{r + d}" for campo, d in (("obs", 0), ("local", 4), ("cliente", 5), ("prazo", 6),
+    if normalizar(ws[f"{rotulo}{r + 4}"].value).startswith("LOCAL DE ENTREGA"):
+        raise ErroPlanilha([PLANILHA_ANTIGA])  # sozinho: o vendedor vai refazer na planilha nova
+    b = {campo: f"{valor}{r + d}" for campo, d in (("obs", 0), ("cliente", 5), ("prazo", 6),
                                               ("vendedor", 7), ("forma", 8), ("parcelamento", 9),
                                               ("oc", 10), ("filial", 11), ("frete", 12))}
     itens = [it for linha in range(LINHA_INI, r)
@@ -341,7 +347,7 @@ def ler_planilha(path: Path) -> Orcamento:
         raise ErroPlanilha(erros)
     return Orcamento(
         arquivo=Path(path), itens=tuple(itens), observacoes=obs,
-        local_entrega=_texto(ws[b["local"]].value), cliente=cliente, prazo_dias=prazo,
+        cliente=cliente, prazo_dias=prazo,
         vendedor=vendedor, forma_pg=forma, parcelamento=_texto(ws[b["parcelamento"]].value),
         ordem_compra=_texto(ws[b["oc"]].value), filial=filial, avisos=tuple(avisos), frete=frete,
     )

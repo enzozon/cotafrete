@@ -59,7 +59,7 @@ def _origem(mensagens: list[str], rejeitado: bool, real: Callable[[str], str] = 
         elif re.match(r"^(?:item \d+: tela ficou com qtd/preco |nao consegui manter forma '|"
                       r"tela abriu na filial \d+, esperado \d+)", t):
             origem = "automacao"
-        elif (t.startswith("nao foi possivel abrir a planilha:") or
+        elif (t.startswith(("nao foi possivel abrir a planilha:", "planilha antiga:")) or
               (rejeitado and t in ("envie um arquivo .xlsx (a planilha-base v3).", "o arquivo passa de 5 mb."))):
             origem = "planilha"
         elif t.startswith("cliente sem endereco cadastrado no hse"):
@@ -172,7 +172,11 @@ def diagnostico(dav: dict, *, administrador: bool) -> dict:
     categoria, etapa = "desconhecido", None
     motivo = "Motivo não identificado; consulte os detalhes disponíveis ou o responsável pelo robô."
     orientacao = "Consulte o responsável pelo robô antes de reenviar se houver dúvida sobre o salvamento."
-    if "local de entrega" in falha:
+    if "planilha antiga:" in falha:   # antes do "local de entrega": a mensagem cita o campo que saiu do modelo
+        categoria, etapa = "planilha", "Validação da planilha"
+        motivo = "A planilha é do modelo antigo, que ainda tem o Local de entrega."
+        orientacao = "Baixe a planilha nova em Orçamentos DAV (botão Baixar), copie os dados para ela e envie de novo."
+    elif "local de entrega" in falha:
         categoria, etapa = "endereco", "Local de entrega"
         motivo = "O local de entrega informado não foi aceito pelo HSE."
         orientacao = "Compare o local de entrega da planilha com o cadastro do cliente no HSE e corrija o arquivo."

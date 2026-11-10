@@ -69,17 +69,11 @@ def test_planilha_com_erro_vira_erros_sem_chamar_o_hse(tmp_path):
     assert c.estado == "erros" and c.erros and hse.chamadas == []
 
 
-def test_local_de_entrega_sem_endereco_vira_erros(tmp_path):
-    class Recusa(HseFalso):
-        def montar_orcamento(self, *a, **k):
-            raise ErroHse("Local de entrega 'XYZ' não encontrado no HSE")
-    c = conferir(criar(tmp_path, {"B30": "XYZ"}, "o.xlsx"), cfg(tmp_path), Recusa())
-    assert c.estado == "erros" and c.erros == ("Local de entrega 'XYZ' não encontrado no HSE",)
-
-
-def test_sem_local_de_entrega_mostra_cadastral(tmp_path):
-    c = conferir(criar(tmp_path, None, "o.xlsx"), cfg(tmp_path), HseFalso())
-    assert c.estado == "ok" and c.endereco == "Cadastral do cliente (B30 vazia)"
+def test_endereco_e_o_que_o_hse_trouxe_do_cadastro(tmp_path):
+    hse = HseFalso()
+    hse.endereco = "1 - Cadastral - RUA A, 10, CENTRO, SERRA/ES"
+    c = conferir(criar(tmp_path, None, "o.xlsx"), cfg(tmp_path), hse)
+    assert c.estado == "ok" and c.endereco == "1 - Cadastral - RUA A, 10, CENTRO, SERRA/ES"
 
 
 def test_preco_acima_de_2x_avisa_na_fronteira():
