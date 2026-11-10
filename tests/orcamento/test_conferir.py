@@ -76,19 +76,12 @@ def test_endereco_e_o_que_o_hse_trouxe_do_cadastro(tmp_path):
     assert c.estado == "ok" and c.endereco == "1 - Cadastral - RUA A, 10, CENTRO, SERRA/ES"
 
 
-def test_preco_acima_de_2x_avisa_na_fronteira():
+def test_preco_acima_da_tabela_nao_avisa(tmp_path):
+    # 10/11/2026: vender acima da tabela é o normal; o aviso "N× acima" saiu
     prod = Produto("123", "PRODUTO X", True, Decimal("100"))
-    assert aviso_preco_acima(Resolucao(_item("200.00"), prod, "codigo")) is None
-    assert aviso_preco_acima(Resolucao(_item("200.01"), prod, "codigo")) == (
-        "Item 1: R$ 200,01 está 2,0× acima da tabela (R$ 100,00) do código 123 – PRODUTO X; "
-        "confira se o código está certo")
-    assert aviso_preco_acima(Resolucao(_item("500"), _produto(), "codigo")) is None
-    assert aviso_preco_acima(Resolucao(_item("500"), prod, "codigo", erro="x")) is None
-
-
-def test_preco_acima_de_2x_vira_aviso_na_conferencia(tmp_path):
+    assert aviso_preco_acima(Resolucao(_item("500"), prod, "codigo")) is None
     c = conferir(criar(tmp_path, None, "o.xlsx"), cfg(tmp_path), HseFalso(produtos=[_produto("50")]))
-    assert c.estado == "ok" and any("2,9× acima da tabela" in a for a in c.avisos)
+    assert c.estado == "ok" and not any("acima da tabela" in a for a in c.avisos)
 
 
 def test_aviso_lista_o_que_foi_preenchido_automaticamente():
