@@ -223,8 +223,6 @@ ficam em `davs/entrada/<id>.xlsx` e `davs/pdf/` (fora do git). A cada volta, o
 - Conferência de itens (`processador.py`): tabela até R$ 0,05 (`TABELA_MINIMA`) só gera aviso,
   porque quem decide é o HSE (ele aceitou 0,01 no orçamento 16600); código cuja descrição no HSE não tem nenhuma
   palavra em comum com a da planilha gera aviso (`aviso_codigo_de_outro_produto`).
-  B30 que não casa: só escolhe sozinho quando o cliente tem um endereço e ele é parecido
-  (`hse.PARECIDO`), com aviso "Local de entrega ... confira"; com dois ou mais, só sugere.
   Vendedor (B33) com erro de digitação sugere o nome parecido da lista do HSE. CNPJ (B31)
   com dígito verificador errado: o HSE só acha CNPJ inteiro, então a conferência procura os
   CNPJs válidos a um dígito de distância (`cnpjs_vizinhos`) e sugere se achar um só. Nunca escolhe.
@@ -267,13 +265,17 @@ ficam em `davs/entrada/<id>.xlsx` e `davs/pdf/` (fora do git). A cada volta, o
   O leitor acha o PRODUTO na linha 1 (`colunas_antes`) e desloca tudo; acha
   "OBSERVAÇÕES:" na coluna do rótulo (`linha_rodape`): itens até a linha antes,
   rodapé por deslocamento. Planilhas antigas (PRODUTO na A, com ou sem Nº na S)
-  continuam valendo. B30, K2... no código e nas correções da IA são endereços do
+  continuam valendo no layout, mas são recusadas por terem o Local de entrega (abaixo). B31, K2... no código e nas correções da IA são endereços do
   modelo antigo de 24 itens; `celula_real`/`traduzir` dão o real, e o
   diagnóstico indica as células da planilha do envio (`diagnostico.PLANILHA`).
   As mensagens de erro citam a célula real.
-- Local de entrega (B30): texto do endereço ou só o número dele ("2" casa com a
-  opção "2 - ..."). Sem endereço correspondente, o erro lista os do cliente;
-  se um só for bem parecido (erro de digitação, `erro_local_entrega`), o erro diz o número dele.
+- Local de entrega: saiu em 10/11/2026 (dava mais erro do que ajudava). O orçamento usa o
+  endereço que o HSE traz do cadastro do cliente (a 1ª opção de `#cdEndereco`; a Petrobras 6244
+  tem "2 - Entrega" e fica na "1 - Cadastral"), e `hse.endereco` guarda o texto para a
+  conferência. No modelo a linha 30 continua lá, escondida e sem rótulo, para Cliente (31),
+  Vendedor (33) etc. não mudarem de célula. Planilha que ainda tem o rótulo "Local de
+  entrega" é recusada na leitura só com `planilha.PLANILHA_ANTIGA`, que manda baixar a nova.
+  Testado no HSE real: orçamento 16688.
 - Conferência com o HSE antes do Gerar (`orcamento/conferencia.py`,
   `processador.conferir`): ao enviar, o rascunho nasce `conferencia="conferindo"`
   e uma fila própria (uma thread, uma vaga de `VAGA_NAVEGADOR`, até 120 s) roda a
@@ -315,7 +317,7 @@ ficam em `davs/entrada/<id>.xlsx` e `davs/pdf/` (fora do git). A cada volta, o
     se algo tentar gravar, o diagnóstico falha com alarme). Se o HSE não
     responde, os pedidos ficam "não verificados". Quem decide `criados_no_hse`
     é o código (`provas.coletar`), nunca a IA. As correções passam por lista
-    branca: só B30, B31, B33, K2:K25 e O2:O25 (endereços do modelo antigo;
+    branca: só B31, B33, K2:K25 e O2:O25 (endereços do modelo antigo;
     `correcao` grava na célula real e só se o rótulo/cabeçalho dela bater); preço, quantidade, custo e NCM
     nunca. Corrigir só cria um envio para conferir: nunca gera no HSE.
   - Avaliação com envios reais (dados fora do git):
@@ -521,7 +523,7 @@ interessa.
   inferir vínculos antigos por nome de arquivo ou cliente.
 - **Correção automática da IA** (`dav_ui.corrigir_sozinho`, ligada no `ao_terminar`
   da `FilaDiagnostico`): só culpa `planilha`, confiança alta, `criados_no_hse == []`
-  e todas as correções em B30/B33 (`correcao.automaticas`). CNPJ e código de produto
+  e todas as correções em B33 (`correcao.automaticas`). CNPJ e código de produto
   continuam no "Aprovar correção": um dígito errado vira outro cliente ou produto que
   passa na conferência. Cria o mesmo envio do Aprovar (`criar_envio_corrigido`), passa
   pela conferência e espera o vendedor clicar em Gerar. Nunca gera no HSE. A coluna

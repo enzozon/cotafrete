@@ -65,6 +65,14 @@ def enviar(c, caminho, nome=None, conteudo=None):
                   files={"planilha": (nome or caminho.name, dados)})
 
 
+def test_planilha_antiga_e_rejeitada_com_o_aviso_para_baixar_a_nova(cli, app_web, tmp_path):
+    r = enviar(cli, planilha(tmp_path, {"A30": "Local de entrega", "B30": "CENTRO"}))
+    d = app_web.banco.dav(1, "ana")
+    assert d["estado"] == "rejeitado" and d["erro"].startswith("Planilha antiga: o Local de entrega saiu")
+    tela = r.text + cli.get("/dav/1").text   # na hora do envio e depois, no detalhe
+    assert "/gerar" not in r.text and "Planilha antiga" in r.text and "Planilha antiga" in tela and "Baixe a planilha nova" in tela and "Procure Enzo" not in tela
+
+
 def test_sem_login_vai_para_login(app_web):
     r = TestClient(app_web.app, follow_redirects=False).get("/dav")
     assert (r.status_code, r.headers["location"]) == (303, "/login")
@@ -325,7 +333,7 @@ def test_reabrir_rascunho_preserva_confirmacao(cli, app_web, tmp_path):
     enviar(cli, planilha(tmp_path))
     t = cli.get("/dav/1/conferir")
     assert t.status_code == 200 and "/dav/1/gerar" in t.text
-    assert "Local de entrega" in t.text and "Pagamento" in t.text and "Observações" in t.text
+    assert "Local de entrega" not in t.text and "Pagamento" in t.text and "Observações" in t.text
     assert app_web.banco.dav(2, None) is None and not DISPARADOS
     outro = entrar(TestClient(app_web.app, follow_redirects=False), app_web, "bia")
     assert outro.get("/dav/1/conferir").status_code == 404
@@ -650,7 +658,7 @@ def test_diagnosticar_sem_csrf_nao_enfileira(cli, app_web, tmp_path, monkeypatch
 
 def test_corrigir_sem_csrf_nao_cria_envio(cli, app_web, tmp_path, monkeypatch):
     from web import adm
-    _com_correcao(cli, app_web, tmp_path, [{"celula": "B30", "valor": "CENTRO", "motivo": "x"}])
+    _com_correcao(cli, app_web, tmp_path, [{"celula": "B33", "valor": "CENTRO", "motivo": "x"}])
     monkeypatch.setenv("COTAFRETE_ADM_SENHA", "s3nha")
     c = TestClient(app_web.app, follow_redirects=False)
     c.cookies.set(adm.COOKIE_ADM, adm.token_de("s3nha"))
@@ -688,16 +696,16 @@ def test_botao_aprovar_correcao_so_com_correcoes(cli, app_web, tmp_path, monkeyp
     _com_correcao(cli, app_web, tmp_path, [])
     assert "Aprovar correção" not in adm.get("/adm/dav/1").text
     app_web.banco.dav_atualizar(1, diagnostico=_diag(criados_no_hse=[], correcoes=[
-        {"celula": "J2", "valor": "1", "motivo": "x"}, {"celula": "B30", "valor": "<i>CENTRO</i>", "motivo": "bairro"}]))
+        {"celula": "J2", "valor": "1", "motivo": "x"}, {"celula": "B33", "valor": "<i>CENTRO</i>", "motivo": "bairro"}]))
     t = adm.get("/adm/dav/1").text
-    assert "Aprovar correção" in t and "B30" in t and "&lt;i&gt;CENTRO" in t and "J2" not in t.split("Aprovar")[0].split("Diagnóstico")[-1]
+    assert "Aprovar correção" in t and "B33" in t and "&lt;i&gt;CENTRO" in t and "J2" not in t.split("Aprovar")[0].split("Diagnóstico")[-1]
     assert "Aprovar correção" not in cli.get("/dav/1").text
 
 
 def test_post_corrigir_cria_envio_novo_do_vendedor(cli, app_web, tmp_path, monkeypatch):
     import openpyxl
     from web import dav_ui
-    _com_correcao(cli, app_web, tmp_path, [{"celula": "B30", "valor": "CENTRO", "motivo": "bairro"}])
+    _com_correcao(cli, app_web, tmp_path, [{"celula": "B33", "valor": "CENTRO", "motivo": "bairro"}])
     monkeypatch.setenv("COTAFRETE_ADM_SENHA", "s3nha")
     r = TestClient(app_web.app, follow_redirects=False).post("/adm/dav/1/corrigir")
     assert r.status_code == 303 and "/login" in r.headers["location"]
@@ -706,13 +714,13 @@ def test_post_corrigir_cria_envio_novo_do_vendedor(cli, app_web, tmp_path, monke
     novo = app_web.banco.dav(2, "ana")
     assert novo["arquivo"] == "corrigida_orc.xlsx" and novo["estado"] != "fila" and novo["estado"] == "rascunho"
     assert novo["conferencia"] in ("conferindo", "ok")
-    assert openpyxl.load_workbook(dav_ui.FILA.planilha(2))["ORÇAMENTO"]["B30"].value == "CENTRO"
+    assert openpyxl.load_workbook(dav_ui.FILA.planilha(2))["ORÇAMENTO"]["B33"].value == "CENTRO"
     assert app_web.banco.dav(1, "ana")["estado"] == "rejeitado"
     assert DISPARADOS == []
 
 
 def test_post_corrigir_duas_vezes_um_so_envio(cli, app_web, tmp_path, monkeypatch):
-    _com_correcao(cli, app_web, tmp_path, [{"celula": "B30", "valor": "CENTRO", "motivo": "x"}])
+    _com_correcao(cli, app_web, tmp_path, [{"celula": "B33", "valor": "CENTRO", "motivo": "x"}])
     adm = _adm(app_web, monkeypatch)
     assert adm.post("/adm/dav/1/corrigir").headers["location"] == "/adm/dav/2"
     assert adm.post("/adm/dav/1/corrigir").headers["location"] == "/adm/dav/2"
@@ -720,7 +728,7 @@ def test_post_corrigir_duas_vezes_um_so_envio(cli, app_web, tmp_path, monkeypatc
 
 
 def test_corrigir_envio_incerto_nao_da_500_nem_cria_orfao(cli, app_web, tmp_path, monkeypatch):
-    _com_correcao(cli, app_web, tmp_path, [{"celula": "B30", "valor": "CENTRO", "motivo": "x"}])
+    _com_correcao(cli, app_web, tmp_path, [{"celula": "B33", "valor": "CENTRO", "motivo": "x"}])
     app_web.banco.dav_atualizar(1, estado="incerto", numero="55")
     adm = _adm(app_web, monkeypatch)
     assert "Aprovar correção" not in adm.get("/adm/dav/1").text
@@ -752,8 +760,8 @@ def test_issue_automatica_e_conserto_aparecem_no_cartao(cli, app_web, tmp_path, 
 @pytest.mark.parametrize("criados", [[16533], "nao_verificado", None])
 def test_sem_criados_confirmados_vazios_nao_oferece_nem_aceita_correcao(cli, app_web, tmp_path, monkeypatch, criados):
     import json
-    _com_correcao(cli, app_web, tmp_path, [{"celula": "B30", "valor": "CENTRO", "motivo": "x"}])
-    d = json.loads(_diag(correcoes=[{"celula": "B30", "valor": "CENTRO", "motivo": "x"}]))
+    _com_correcao(cli, app_web, tmp_path, [{"celula": "B33", "valor": "CENTRO", "motivo": "x"}])
+    d = json.loads(_diag(correcoes=[{"celula": "B33", "valor": "CENTRO", "motivo": "x"}]))
     if criados is None:
         del d["criados_no_hse"]
     else:
@@ -768,7 +776,7 @@ def test_sem_criados_confirmados_vazios_nao_oferece_nem_aceita_correcao(cli, app
 
 def test_corrigir_falha_ao_gravar_planilha_marca_erro(cli, app_web, tmp_path, monkeypatch):
     from pathlib import Path
-    _com_correcao(cli, app_web, tmp_path, [{"celula": "B30", "valor": "CENTRO", "motivo": "x"}])
+    _com_correcao(cli, app_web, tmp_path, [{"celula": "B33", "valor": "CENTRO", "motivo": "x"}])
 
     def quebra(self, alvo):
         raise OSError("disco cheio")
@@ -805,7 +813,7 @@ def test_outra_cotacao_nao_resolve_a_origem(tmp_path, monkeypatch):
 def _erro_basico(app_web, cli, tmp_path, **campos):
     from web import dav_ui
     base = dict(culpa="planilha", confianca="alta", criados_no_hse=[],
-                correcoes=[{"celula": "B30", "valor": "CENTRO", "motivo": "bairro"}])
+                correcoes=[{"celula": "B33", "valor": "CENTRO", "motivo": "bairro"}])
     _com_correcao(cli, app_web, tmp_path, [])
     app_web.banco.dav_atualizar(1, diagnostico=_diag(**{**base, **campos}))
     return dav_ui.corrigir_sozinho(1)
@@ -817,10 +825,10 @@ def test_erro_basico_a_ia_corrige_e_o_vendedor_ainda_gera(cli, app_web, tmp_path
     assert _erro_basico(app_web, cli, tmp_path) == 2
     novo = app_web.banco.dav(2, "ana")
     assert novo["arquivo"] == "corrigida_orc.xlsx" and novo["estado"] == "rascunho"
-    assert openpyxl.load_workbook(dav_ui.FILA.planilha(2))["ORÇAMENTO"]["B30"].value == "CENTRO"
+    assert openpyxl.load_workbook(dav_ui.FILA.planilha(2))["ORÇAMENTO"]["B33"].value == "CENTRO"
     assert DISPARADOS == []   # nada foi para o HSE
     t = cli.get("/dav/2/conferir").text
-    assert "corrigido pela IA na planilha" in t and "Local de entrega" in t and "CENTRO" in t
+    assert "corrigido pela IA na planilha" in t and "Vendedor" in t and "CENTRO" in t
     assert "bairro" not in t.split("corrigido pela IA")[1].split("</div>")[0]   # motivo é texto livre da IA
     assert "Conferir a correção da IA" in cli.get("/dav/1").text
     assert "Corrigido pela IA: conferir" in cli.get("/dav").text
@@ -831,8 +839,8 @@ def test_erro_basico_a_ia_corrige_e_o_vendedor_ainda_gera(cli, app_web, tmp_path
     {"criados_no_hse": "nao_verificado"},
     {"correcoes": [{"celula": "B31", "valor": "33592510000154", "motivo": "x"}]},
     {"correcoes": [{"celula": "K2", "valor": "123", "motivo": "x"}]},
-    {"correcoes": [{"celula": "B30", "valor": "CENTRO", "motivo": "x"}, {"celula": "K2", "valor": "123", "motivo": "x"}]},
-    {"correcoes": [{"celula": "B30", "valor": "informar o bairro correto", "motivo": "x"}]},
+    {"correcoes": [{"celula": "B33", "valor": "CENTRO", "motivo": "x"}, {"celula": "K2", "valor": "123", "motivo": "x"}]},
+    {"correcoes": [{"celula": "B33", "valor": "informar o bairro correto", "motivo": "x"}]},
 ])
 def test_o_que_nao_e_basico_fica_para_uma_pessoa(cli, app_web, tmp_path, campos):
     assert _erro_basico(app_web, cli, tmp_path, **campos) is None
@@ -845,7 +853,7 @@ def test_ia_nao_corrige_o_proprio_envio_nem_duas_vezes(cli, app_web, tmp_path):
     assert dav_ui.corrigir_sozinho(1) is None
     app_web.banco.dav_atualizar(2, estado="rascunho", conferencia="erros", diagnostico_estado="feito",
                                 diagnostico=_diag(culpa="planilha", confianca="alta", criados_no_hse=[], correcoes=[
-                                    {"celula": "B30", "valor": "OUTRO", "motivo": "x"}]))
+                                    {"celula": "B33", "valor": "OUTRO", "motivo": "x"}]))
     assert dav_ui.corrigir_sozinho(2) is None and app_web.banco.dav(3, "ana") is None
 
 

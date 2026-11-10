@@ -78,3 +78,14 @@ def test_regravar_nao_muda_nada(tmp_path):
     V.aplicar(MODELO, saida)
     with zipfile.ZipFile(saida) as z:
         assert z.read("xl/worksheets/sheet1.xml").decode("utf-8") == _xml()
+
+
+def test_modelo_nao_tem_mais_o_local_de_entrega():
+    """10/11/2026: a linha fica escondida e sem rótulo, para as outras células não mudarem de lugar."""
+    from orcamento.modelo_itens import gerar_modelo
+    import io as _io
+    import openpyxl
+    for itens, linha in ((24, 30), (3, 9), (60, 66)):
+        ws = openpyxl.load_workbook(_io.BytesIO(gerar_modelo(itens)))["ORÇAMENTO"]
+        assert ws.row_dimensions[linha].hidden and ws.cell(linha, 2).value is None
+        assert ws.cell(linha + 1, 2).value.startswith("Cliente")

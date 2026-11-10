@@ -53,7 +53,7 @@ def test_correcao_em_preco_descartada():
 
 
 def test_correcoes_limites():
-    cs = [{"celula": "K2", "valor": "x" * 201, "motivo": "m"}] + [{"celula": "B30", "valor": "ok", "motivo": ""}] * 15
+    cs = [{"celula": "K2", "valor": "x" * 201, "motivo": "m"}] + [{"celula": "B33", "valor": "ok", "motivo": ""}] * 15
     r = agente.filtrar_correcoes(cs)
     assert len(r) == 10 and all(len(c["valor"]) <= 200 for c in r)
 
@@ -144,7 +144,7 @@ def test_tag_de_fechamento_em_qualquer_forma_nao_fecha_dados():
 
 
 def test_correcao_que_vira_formula_e_descartada():
-    cs = [{"celula": "B30", "valor": v, "motivo": ""} for v in ("=1+1", "+cmd", "-2", "@SUM(A1)", "  =x", "CENTRO")]
+    cs = [{"celula": "B33", "valor": v, "motivo": ""} for v in ("=1+1", "+cmd", "-2", "@SUM(A1)", "  =x", "CENTRO")]
     assert [c["valor"] for c in agente.filtrar_correcoes(cs)] == ["CENTRO"]
 
 

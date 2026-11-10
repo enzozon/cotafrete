@@ -66,7 +66,7 @@ def _ler_planilha(arquivo: Path) -> dict | None:
         return None
     try:
         o = ler_planilha(arquivo)
-        return {"cliente": o.cliente, "vendedor": o.vendedor, "local": o.local_entrega,
+        return {"cliente": o.cliente, "vendedor": o.vendedor,
                 "itens": [{"n": i.numero, "codigo": i.codigo, "descricao": i.descricao_cadastro,
                            "qtd": str(i.quantidade), "valor": str(i.valor_unit),
                            "ncm": i.ncm, "grupo": i.grupo, "marca": i.marca} for i in o.itens]}
@@ -82,8 +82,7 @@ def _ler_planilha(arquivo: Path) -> dict | None:
                   "qtd": v("B", r), "valor": v("J", r), "ncm": v("L", r), "grupo": v("P", r),
                   "marca": v("Q", r)}
                  for r in range(2, linha_rodape(ws, d)) if v("A", r) or v("K", r)]
-        return {"cliente": _texto(ws[celula_real(ws, "B31")].value), "vendedor": _texto(ws[celula_real(ws, "B33")].value),
-                "local": _texto(ws[celula_real(ws, "B30")].value), "itens": itens}
+        return {"cliente": _texto(ws[celula_real(ws, "B31")].value), "vendedor": _texto(ws[celula_real(ws, "B33")].value), "itens": itens}
     except Exception:
         return None
 

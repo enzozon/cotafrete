@@ -13,7 +13,7 @@ from playwright.sync_api import Page, sync_playwright
 
 from orcamento.config import Config
 from orcamento.planilha import Item, Orcamento, normalizar, observacoes_hse
-from orcamento.processador import PARECIDO, Cliente, ErroHse, HseIndisponivel, Produto, SalvoIncerto, _parecido, _so_palavras
+from orcamento.processador import Cliente, ErroHse, HseIndisponivel, Produto, SalvoIncerto
 
 log = logging.getLogger("robo")
 
@@ -94,31 +94,6 @@ def motivo_recusa(html: str) -> str:
     return motivo
 
 
-def enderecos_do_local(local: str, opcoes: list[tuple[str, str]]) -> list[str]:
-    """Endereços do cliente que contêm o texto da B30, sem ligar para pontuação.
-
-    "Barão de cocais MG" não casava com ".../BARÃO DE COCAIS/MG" por causa da barra (DAV 20, 29/10/2026).
-    Só um número ("2") escolhe pelo número da lista do HSE ("2 - Entrega - ..."): o CEP não aparece na lista
-    e o nome da cidade pode casar com vários endereços (PETROBRAS, 29/10/2026)."""
-    if re.fullmatch(r"\s*\d{1,3}\s*", local):
-        return [v for v, t in opcoes if re.match(rf"\s*{int(local)}\s*-", t)]
-    alvo = f" {_so_palavras(local)} "
-    return [v for v, t in opcoes if alvo in f" {_so_palavras(t)} "]
-
-
-def erro_local_entrega(local: str, opcoes: list[tuple[str, str]]) -> str:
-    """Erro da B30 que não escolheu um endereço só. Se nenhum contém o texto mas um é claramente
-    parecido (erro de digitação), diz qual é; nunca escolhe sozinho, porque o HSE é produção."""
-    achados = enderecos_do_local(local, opcoes)
-    msg = f"Local de entrega '{local}': {len(achados)} endereço(s) do cliente contém esse texto"
-    notas = sorted(((_parecido(local, t), t) for _, t in opcoes), reverse=True)
-    if not achados and notas and notas[0][0] >= PARECIDO and (len(notas) == 1 or notas[1][0] < notas[0][0]):
-        numero = re.match(r"\s*(\d+)", notas[0][1])
-        if numero:
-            return f"{msg}. Parece ser o {numero[1]} ({notas[0][1]}): escreva {numero[1]} na B30"
-    return f"{msg}; escreva na B30 só o número do endereço ({'; '.join(t for _, t in opcoes)})"
-
-
 def codigos_repetidos(itens: list[tuple[Item, Produto | None]]) -> set[str]:
     """Códigos que aparecem em mais de uma linha do orçamento, em qualquer posição."""
     vezes = Counter(p.codigo for _, p in itens if p is not None)
@@ -156,7 +131,7 @@ class Hse:
     def __init__(self, cfg: Config):
         self.cfg = cfg
         self.rascunho: str | None = None
-        self.endereco = ""  # texto do endereço de entrega escolhido em #cdEndereco
+        self.endereco = ""  # texto do endereço de entrega que o HSE trouxe em #cdEndereco
         self.avisos: list[str] = []  # avisos do HSE fechados pelo robô (vão para o relatório)
         self.notas: list[str] = []  # descrições de item que não gravaram (vão para o relatório)
         self._pw = self._browser = self._ctx = None
@@ -400,26 +375,9 @@ class Hse:
         page.evaluate("() => jQuery('#modalAlert').modal('hide')")
         page.wait_for_timeout(800)  # animação de saída do modal
 
-    @staticmethod
-    def _set_select_oculto(page: Page, seletor: str, valor: str) -> None:
-        page.evaluate("""([s, v]) => { const e = document.querySelector(s); e.value = v;
-            if (window.$) { $(e).trigger('change'); if ($(e).selectpicker) $(e).selectpicker('refresh'); }
-            else e.dispatchEvent(new Event('change')); }""", [seletor, valor])
-
     def _preencher_cabecalho(self, page: Page, orc: Orcamento) -> None:
-        if orc.local_entrega:
-            opcoes = page.eval_on_selector_all("#cdEndereco option",
-                                               "os => os.filter(o => o.value).map(o => [o.value, o.text])")
-            achados = enderecos_do_local(orc.local_entrega, opcoes)
-            if not achados and len(opcoes) == 1 and _parecido(orc.local_entrega, opcoes[0][1]) >= PARECIDO:
-                # cliente com um endereço só e B30 com erro de digitação ("STRADA", DAV #36): não há outro
-                achados = [opcoes[0][0]]
-                self.notas.append(f"Local de entrega '{orc.local_entrega}' não bate com o cadastro; usei o "
-                                  f"único endereço do cliente: {opcoes[0][1]}; confira")
-            if len(achados) != 1:
-                raise ErroHse(erro_local_entrega(orc.local_entrega, opcoes))
-            self._set_select_oculto(page, "#cdEndereco", achados[0])
-            self.endereco = next(t for v, t in opcoes if v == achados[0])
+        # O endereço é o que o HSE traz do cadastro do cliente; o robô só guarda o texto para a conferência.
+        self.endereco = page.evaluate("() => document.querySelector('#cdEndereco')?.selectedOptions[0]?.text || ''")
         self._pagamento(page, orc)
         if orc.prazo_dias is not None:
             previsao = date.today() + timedelta(days=orc.prazo_dias)

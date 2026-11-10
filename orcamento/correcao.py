@@ -8,13 +8,13 @@ import openpyxl
 from orcamento.agente import filtrar_correcoes
 from orcamento.planilha import RODAPE_PADRAO, celula_real, normalizar
 
-# Local de entrega e vendedor: a conferência confere os dois contra o HSE. CNPJ e código de produto
+# Vendedor: a conferência confere contra o HSE. CNPJ e código de produto
 # ficam de fora: um dígito errado vira outro cliente ou outro produto que também passa na conferência.
-# As células vêm no endereço do modelo antigo de 24 itens sem o Nº (B30, B33, K2); celula_real acha
+# As células vêm no endereço do modelo antigo de 24 itens sem o Nº (B33, K2); celula_real acha
 # a de verdade quando a planilha tem o Nº na coluna A ou outro número de linhas de item.
-CAMPOS_AUTOMATICOS = {"B30": "Local de entrega", "B33": "Vendedor"}
+CAMPOS_AUTOMATICOS = {"B33": "Vendedor"}
 # O que tem de estar ao lado (rótulo do rodapé) ou no topo (cabeçalho da coluna) da célula real.
-_ANCORAS = {"B30": "LOCAL DE ENTREGA", "B31": "CLIENTE", "B33": "VENDEDOR", "K": "CODIGO HSE", "O": "DESCRICAO"}
+_ANCORAS = {"B31": "CLIENTE", "B33": "VENDEDOR", "K": "CODIGO HSE", "O": "DESCRICAO"}
 
 
 def _destino(ws, celula: str) -> str | None:

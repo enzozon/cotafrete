@@ -52,9 +52,19 @@ def test_completa(tmp_path):
     assert orc.parcelamento == "30 DIAS"
     assert orc.prazo_dias == 10
     assert orc.filial == 2
-    assert orc.local_entrega == "CENTRO"
     assert orc.ordem_compra == "OC-1"
     assert orc.observacoes == "Obs teste"
+
+
+def test_planilha_antiga_com_local_de_entrega_pede_a_nova(tmp_path):
+    # 10/11/2026: o Local de entrega saiu do modelo; quem manda a planilha antiga recebe só este aviso
+    from orcamento.planilha import PLANILHA_ANTIGA
+    assert "Planilha antiga" in PLANILHA_ANTIGA and "Baixar" in PLANILHA_ANTIGA
+    for celulas in ({"A30": "Local de entrega"}, {"A30": "Local de entrega", "B30": "CENTRO", "B31": None}):
+        assert erros(tmp_path, "valida", celulas) == PLANILHA_ANTIGA
+    from orcamento.diagnostico import diagnostico   # não pode cair em "causa não identificada, procure o Enzo"
+    d = diagnostico({"estado": "rejeitado", "erro": PLANILHA_ANTIGA}, administrador=False)
+    assert d["origem"] == "planilha" and "modelo antigo" in d["motivo"] and "Baixe a planilha nova" in d["orientacao"]
 
 
 def test_valor_cacheado_usado(tmp_path):

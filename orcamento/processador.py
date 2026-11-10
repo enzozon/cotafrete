@@ -717,9 +717,8 @@ def conferir(path: Path, cfg: Config, hse: HseApi) -> Conferencia:
     def pronto(estado: str) -> Conferencia:
         texto = rel.texto()
         erros = tuple(l[len("ERRO: "):] for l in texto.splitlines() if l.startswith("ERRO: "))
-        infos = tuple(l for l in texto.splitlines() if l.startswith(("O HSE avisou:", "Local de entrega")))
-        endereco = ("" if orc is None else getattr(hse, "endereco", "") if orc.local_entrega
-                    else "Cadastral do cliente (B30 vazia)")
+        infos = tuple(l for l in texto.splitlines() if l.startswith("O HSE avisou:"))
+        endereco = "" if orc is None else getattr(hse, "endereco", "")
         return Conferencia(estado, texto, _nome_cliente(cliente), endereco, orc.vendedor if orc else "",
                            tuple(_item_conferido(r) for r in resolucoes), tuple(avisos) + infos, erros)
 
