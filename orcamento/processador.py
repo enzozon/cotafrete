@@ -630,14 +630,14 @@ def _sem_segredo(texto: str | None) -> str | None:
 
 def aviso_preco_acima(r: Resolucao) -> str | None:
     p = r.produto
+    # Só a tabela de mentira avisa. "N× acima da tabela" saiu em 10/11/2026: vender acima da
+    # tabela é o normal (a tabela do HSE fica sempre abaixo) e o aviso só fazia barulho.
     if r.erro or p is None or p.preco is None or r.item.valor_unit <= p.preco * PRECO_ACIMA_TABELA:
         return None
     if p.preco <= TABELA_MINIMA:  # orçamento 16600 (06/11/2026): o HSE aceita, então não barra
         return (f"Item {r.item.numero}: tabela de {moeda(p.preco)} no HSE para o código {p.codigo} – {p.descricao}; "
                 f"o desconto não foi conferido, confira se o código está certo")
-    razao = f"{r.item.valor_unit / p.preco:.1f}".replace(".", ",")
-    return (f"Item {r.item.numero}: {moeda(r.item.valor_unit)} está {razao}× acima da tabela "
-            f"({moeda(p.preco)}) do código {p.codigo} – {p.descricao}; confira se o código está certo")
+    return None
 
 
 def aviso_sem_preco_tabela(r: Resolucao) -> str | None:

@@ -283,7 +283,7 @@ ficam em `davs/entrada/<id>.xlsx` e `davs/pdf/` (fora do git). A cada volta, o
   (`ok`, `erros`, `nao_conferido`) e o JSON do que o HSE achou ficam em
   `dav.conferencia` / `dav.conferencia_relatorio`. Com `erros` o Gerar some e o
   POST de gerar é recusado; `nao_conferido` (HSE lento, fora ou servidor
-  reiniciado) só avisa e libera. Preço acima de 2x a tabela é aviso amarelo.
+  reiniciado) só avisa e libera. Preço acima da tabela não avisa (saiu em 10/11/2026: é o normal); só a tabela de mentira (≤ TABELA_MINIMA) avisa.
   Rascunho antigo (`conferencia` nula) segue o fluxo de antes. A geração confere
   tudo de novo antes de salvar.
 - Mesmo CÓDIGO HSE em duas ou mais linhas (vizinhas ou não) é aceito: `hse.codigos_repetidos`
