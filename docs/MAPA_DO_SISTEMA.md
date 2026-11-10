@@ -284,12 +284,14 @@ ficam em `davs/entrada/<id>.xlsx` e `davs/pdf/` (fora do git). A cada volta, o
   reiniciado) só avisa e libera. Preço acima de 2x a tabela é aviso amarelo.
   Rascunho antigo (`conferencia` nula) segue o fluxo de antes. A geração confere
   tudo de novo antes de salvar.
-- `planilha.ler_planilha` recusa, antes do HSE, o mesmo CÓDIGO HSE em duas linhas:
-  o HSE junta as linhas. Com valor diferente recusa o preço da segunda (envio #149);
-  com o mesmo valor soma as quantidades e o robô não vê item novo (envio #153).
-  `processador._recusar_repetidos` faz o mesmo depois de achar os produtos no HSE: pega a
-  linha sem código que cai, pela descrição, no produto de outra linha, e o produto novo
-  repetido (antes o robô cadastrava um só e reaproveitava, o que o HSE também junta).
+- Mesmo CÓDIGO HSE em duas ou mais linhas (vizinhas ou não) é aceito: `hse.codigos_repetidos`
+  acha os códigos repetidos e `_insercao_individual` marca "Ins. individual"
+  (`#checkIndividual`) antes de cada Incluir deles, e cada linha vira um item com a sua
+  quantidade e o seu preço. Sem a caixa o HSE junta as linhas, soma as quantidades e fica com
+  o último preço (envios #149 e #153). Testado no HSE real em 10/11/2026 (orçamentos 16671 a
+  16674). `processador._recusar_repetidos` ainda barra, antes de criar, o que o vendedor não
+  marcou como o mesmo produto: a linha sem código que cai, pela descrição, no produto de
+  outra linha, e o produto novo repetido.
 - `hse.motivo_recusa` só conta o alert/toast solto no `<script>` da resposta; os que estão
   dentro de função são o JavaScript da tela e não apareceram. `toastOk` só informa.
 - Diagnóstico do DAV (`orcamento/agente.py`, `provas.py`, `fila_diagnostico.py`):

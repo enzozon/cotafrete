@@ -360,7 +360,7 @@ def test_produto_novo_repetido_e_recusado_antes_de_cadastrar(tmp_path):
     hse = HseFalso()
     assert processar_arquivo(p, c, hse) == "ERRO"
     assert not ESCRITA & set(hse.nomes())
-    assert "Item 3: ERRO - mesmo produto do item 2 (produto novo)" in txt(c, "ERRO")
+    assert "Item 3: ERRO - mesmo produto novo do item 2: deve ficar numa linha só" in txt(c, "ERRO")
 
 
 def test_linha_sem_codigo_que_cai_no_produto_de_outra_linha_e_recusada(tmp_path):
@@ -370,7 +370,20 @@ def test_linha_sem_codigo_que_cai_no_produto_de_outra_linha_e_recusada(tmp_path)
     hse = HseFalso()
     assert processar_arquivo(p, c, hse) == "ERRO"
     assert not ESCRITA & set(hse.nomes())
-    assert "Item 2: ERRO - mesmo produto do item 1 (13370)" in txt(c, "ERRO")
+    assert ("Item 2: ERRO - mesmo produto do item 1: preencha o CÓDIGO HSE 13370 nas duas linhas"
+            in txt(c, "ERRO"))
+
+
+@pytest.mark.parametrize("linhas", [
+    {"A3": "vizinho", "B3": 5, "C3": 100, "K3": 13370},                       # um do lado do outro
+    {**NOVO, "A4": "no fim", "B4": 2, "C4": 99, "K4": 13370},                  # primeiro e último item
+])
+def test_mesmo_codigo_digitado_em_duas_linhas_gera_o_orcamento(tmp_path, linhas):
+    c = cfg(tmp_path, dry_run=False)
+    hse = HseFalso()
+    assert processar_arquivo(planilha(c, linhas), c, hse) == "PROCESSADOS"
+    montado = next(ch for ch in hse.chamadas if ch[0] == "montar_orcamento")[2]
+    assert [cod for _, cod in montado].count("13370") == 2
 
 
 def test_busca_por_descricao_acha_o_produto_gravado_com_acento():
