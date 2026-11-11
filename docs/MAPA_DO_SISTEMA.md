@@ -116,6 +116,15 @@ cotação #630). O seletor muda a cada campanha, então `_clicar_calcular` escon
 qualquer camada `position: fixed` sobre o centro do botão, antes do clique e de
 novo se ele não passar em 10 s. Só cobre o "Calcular Envio".
 
+### Braspress: fora das automáticas (11/11/2026)
+
+O login do portal ganhou reCAPTCHA v2 e o robô não passa. Saiu de
+`AUTOMATICAS_FIXAS` (`web/transportadoras.py`), de `FABRICAS` e de
+`AUTOMATICA_DESDE` (`web/app.py`); o adapter e `_cotar_braspress` ficam no
+código. Para voltar: repor as três coisas, com a data da nova subida em
+`AUTOMATICA_DESDE`. Pendente: o vendedor não tem cartão manual da Braspress
+(falta WhatsApp/e-mail em `web/transportadoras.py`).
+
 ### Braspress: recusa antes do preço
 
 `normalizar_resposta` confere a caixa de recusa (`alert-danger`) antes do

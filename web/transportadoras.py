@@ -175,6 +175,11 @@ COTAM_POR_VOLUME = ("jadlog",)
 # não entra aqui, mesmo continuando cadastrada em NOMES_AUTOMATICAS para os
 # resultados antigos que ainda têm o nome dela para mostrar.
 #
+# A Braspress SAIU em 11/11/2026: o login do portal ganhou reCAPTCHA v2 e o
+# robô não passa (7 falhas seguidas no /adm). Continua em NOMES_AUTOMATICAS
+# para os resultados antigos. Para voltar: acrescentar "braspress" aqui e a
+# fábrica `_cotar_braspress` em FABRICAS (web/app.py).
+#
 # A Della Volpe VOLTA quando o .env disser (ver carriers/dellavolpe/caixa.py):
 # `DV_AUTOMATICA_DESDE` com a data em que foi ligada, e a trava de envio real
 # liberada. A decisão fica no .env, e não numa linha de código, por causa da
@@ -184,7 +189,7 @@ COTAM_POR_VOLUME = ("jadlog",)
 # Sem as duas chaves, nada muda: ela continua assistida, pelo cartão
 # "Semiautomática" da tela da cotação.
 AUTOMATICAS_FIXAS: tuple[str, ...] = (
-    "camilo", "jadlog", "translovato", "generoso", "braspress", "favorita")
+    "camilo", "jadlog", "translovato", "generoso", "favorita")
 
 
 def automaticas(ambiente=None) -> tuple[str, ...]:
