@@ -57,12 +57,34 @@ AVISO_NAO_CADASTRADO = "não cadastrado, para prosseguir informe o cep"
 ESPERA_BUSCA_MS = 3_500
 
 
+class LoginBarradoPorCaptcha(CredencialRecusada):
+    """O login do portal está atrás de reCAPTCHA (visto em 10/11/2026).
+
+    Herda de CredencialRecusada só pelo efeito: vira INTERVENCAO_NECESSARIA e
+    a retentativa não insiste. Quem resolve é uma pessoa, não o .env."""
+
+
+def _tela_pede_captcha(page) -> bool:
+    try:
+        if page.locator(".g-recaptcha, iframe[src*='recaptcha']").count():
+            return True
+        return "não é um robô" in page.locator("body").inner_text().lower()
+    except Exception:
+        return False
+
+
 def _falhar_login(page) -> None:
     """Olha a tela parada, diz o que de fato aconteceu e levanta.
 
     Mesma lógica da Generoso: senha recusada é CredencialRecusada (não
     repete — três tentativas travam a conta da Ventura); formulário que nem
     chegou a ser enviado é erro comum."""
+    if _tela_pede_captcha(page):
+        raise LoginBarradoPorCaptcha(
+            "a Braspress passou a exigir reCAPTCHA ('Confirme que você não é "
+            "um robô') no login do portal, e o robô não resolve captcha. "
+            "Não adianta repetir. Solução: pedir à Braspress o acesso à API "
+            "de cotação (credencial própria) e trocar o adapter para ela.")
     try:
         preenchida = bool(
             page.locator('input[name="pass"]').first.input_value().strip())
