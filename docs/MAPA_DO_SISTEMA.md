@@ -121,6 +121,13 @@ novo se ele não passar em 10 s. Só cobre o "Calcular Envio".
 `normalizar_resposta` confere a caixa de recusa (`alert-danger`) antes do
 sucesso. Sucesso sem valor de frete vira ERRO, não COTADO.
 
+### Braspress: login com reCAPTCHA
+
+Desde 10/11/2026 o login do portal tem reCAPTCHA v2. `_falhar_login` detecta e
+levanta `LoginBarradoPorCaptcha` (INTERVENCAO_NECESSARIA, sem retentativa). O
+robô não resolve captcha: a saída é a API de cotação da Braspress (credencial
+própria; o login do portal dá 401 lá) e trocar o adapter para ela.
+
 ### Braspress: CNPJ sem cadastro
 
 O site escreve "não cadastrado, para prosseguir informe o CEP de Destino". O
