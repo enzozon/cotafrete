@@ -378,7 +378,7 @@ AUTOMATICA_DESDE = {
     "jadlog": "2026-08-14T00:00:00",
     "translovato": "2026-08-18T17:28:00",
     "generoso": "2026-08-24T10:47:15",
-    "braspress": "2026-09-03T08:51:41",
+    # Braspress saiu em 11/11/2026; ao voltar, usar a data da nova subida.
     # Merge do PR #59 às 11:02 de 14/10; o atualizar.py sobe em até 5 min
     # (mais a espera das cotações em curso). 11:30 fica DEPOIS da subida:
     # antes disso nenhuma cotação teve a Favorita, então nada vira fantasma.
@@ -1770,7 +1770,10 @@ def request_da_cotacao(c: dict) -> CotacaoRequest:
 # uma thread do executor, e lá um KeyError vira cartão girando para sempre.
 FABRICAS = {"camilo": _cotar_camilo, "jadlog": _cotar_jadlog,
             "translovato": _cotar_translovato, "generoso": _cotar_generoso,
-            "braspress": _cotar_braspress, "favorita": _cotar_favorita}
+            "favorita": _cotar_favorita}
+# Braspress fora desde 11/11/2026 (reCAPTCHA no login). `_cotar_braspress`
+# fica definida: para voltar, é só pôr "braspress" de novo aqui e em
+# AUTOMATICAS_FIXAS (web/transportadoras.py).
 # Só com ela ligada: fábrica de quem não está em AUTOMATICAS nunca roda, e
 # tests/test_dellavolpe_automatica.py não deixa sobrar fábrica órfã.
 if "dellavolpe" in AUTOMATICAS:

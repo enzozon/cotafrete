@@ -72,7 +72,7 @@ def cliente(tmp_path, monkeypatch):
 
 GRUPO_RECEBENDO = {**FORM_VALIDO, "cnpj_remetente": "60.042.686/0001-05",
                    "cnpj_destinatario": "08.310.365/0001-24",
-                   "transportadora": ["generoso", "braspress"]}
+                   "transportadora": ["generoso", "favorita"]}
 
 
 def test_aviso_para_antes_de_gravar(cliente):
@@ -91,7 +91,7 @@ def test_corrigir_troca_para_fob_e_cota(cliente):
     assert r.status_code == 303
     [c] = cliente.modulo.banco.listar_cotacoes("enzo")
     assert cliente.modulo.banco.buscar_cotacao(c["id"], "enzo")["tipo_frete"] == "fob"
-    assert set(cliente.disparadas) == {"generoso", "braspress"}
+    assert set(cliente.disparadas) == {"generoso", "favorita"}
 
 
 def test_confirmar_cota_como_estava(cliente):
