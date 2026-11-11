@@ -13,4 +13,4 @@ pytest-cov>=7.1.0
 # Parser HTML usado nos testes das telas DAV (import bs4).
 beautifulsoup4>=4.15.0
 pypdf>=6.21.4
-anthropic>=0.40
+anthropic>=2.6.0
