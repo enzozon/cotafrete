@@ -311,7 +311,7 @@ ficam em `davs/entrada/<id>.xlsx` e `davs/pdf/` (fora do git). A cada volta, o
   (padrão 24 = o arquivo fixo). `orcamento/modelo_itens.py` monta o arquivo
   editando o XML (openpyxl apagaria as listas x14): repete a linha de item,
   desce o rodapé e ajusta mesclagens, validações, TOTAL e comentários; a
-  proteção da aba fica igual. Coluna A = Nº do item (=ROW()-1, travada), PRODUTO
+  aba não tem proteção. Coluna A = Nº do item (=ROW()-1), PRODUTO
   na B: a coluna foi inserida uma vez pelo Excel (que ajustou fórmulas,
   validações e mesclagens) e `scripts/validacoes_modelo.py` usa esse layout.
   O leitor acha o PRODUTO na linha 1 (`colunas_antes`) e desloca tudo; acha
@@ -382,8 +382,9 @@ ficam em `davs/entrada/<id>.xlsx` e `davs/pdf/` (fora do git). A cada volta, o
 - O modelo tem 2 cópias que precisam ficar iguais: esta e o `public/PLANILHA
   BASE.xlsx` + `public/vendor/template_planilha_base.js` (base64) do Maestro. A
   pasta pública `ORCAMENTO` saiu de uso em 06/11/2026. Grave o modelo pelo XML
-  (o openpyxl apaga as listas suspensas x14) e mantenha a aba protegida com as
-  células de digitação desbloqueadas. As regras de digitação ficam em
+  (o openpyxl apaga as listas suspensas x14). A aba fica sem proteção desde
+  12/11/2026 (pedido do comercial: todo mundo pode editar); o robô continua
+  lendo posição fixa, então coluna ou linha nova no meio quebra a leitura. As regras de digitação ficam em
   `scripts/validacoes_modelo.py`: barra o que o robô recusaria e só avisa no que
   vem do HSE (vendedor, parcelamento, grupo, marca). Colar por cima passa pela
   validação do Excel; quem pega é a conferência do robô.

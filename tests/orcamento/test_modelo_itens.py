@@ -44,8 +44,7 @@ def test_modelo_com_n_itens(tmp_path, n):
     for col in "NQR":   # listas x14 cobrem todas as linhas de item
         assert f"<xm:sqref>{col}2:{col}{n + 1}</xm:sqref>" in xml
     assert f"<xm:sqref>C{n + 9}</xm:sqref>" in xml and f'sqref="C2:C{n + 1}"' in xml
-    original = re.search(r"<sheetProtection [^>]*/>", _aba(MODELO.read_bytes()))[0]
-    assert original in xml and ws.protection.sheet
+    assert "<sheetProtection" not in xml and not ws.protection.sheet   # aba sem senha desde 12/11/2026
 
     p = _preencher(tmp_path, n)
     orc = ler_planilha(p)

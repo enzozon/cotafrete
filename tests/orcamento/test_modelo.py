@@ -67,8 +67,8 @@ def test_limites_do_excel_para_a_mensagem():
         assert len(re.search(r' error="(.*?)"', d)[1]) <= 255
 
 
-def test_senha_da_aba_e_partes_do_arquivo_ficam():
-    assert "<sheetProtection " in _xml()
+def test_aba_sem_senha_e_partes_do_arquivo_ficam():
+    assert "<sheetProtection" not in _xml()   # 12/11/2026: todo mundo pode editar a planilha
     with zipfile.ZipFile(MODELO) as z:
         assert z.namelist()[0] == "[Content_Types].xml" and z.testzip() is None
 
