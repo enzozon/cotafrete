@@ -305,8 +305,9 @@ def test_cep_diferente_digita_o_da_ficha():
     a._campo = lambda page, seletor: (
         _Cep(True) if "cep" in seletor else type("N", (), {
             "input_value": lambda self: "10"})())
-    assert a._usar_cep_da_cotacao(None, montar(), "destino", "x",
-                                  CADASTRO_CATU) == novo
+    # A tela é lida depois do CEP digitado (aviso "mesma UF do cadastro").
+    assert a._usar_cep_da_cotacao(_PaginaFalsa("Dados do destino"), montar(),
+                                  "destino", "x", CADASTRO_CATU) == novo
 
 
 def test_cep_travado_recusa_nomeando_a_cidade_do_cadastro():

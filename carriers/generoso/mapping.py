@@ -92,6 +92,21 @@ def recusa_endereco_do_cadastro(cnpj: str, lado: str, cidade_cadastro: str,
         f"WhatsApp, no botão aqui embaixo.")
 
 
+# A UF do CADASTRO, na resposta da busca de CNPJ (`…"cidade":"VILA VELHA",
+# "uf":"ES"…`). A recusa das #665/#666 da Favorita (11/11/2026) saiu
+# "Guarulhos/RS": a cidade do cadastro com a UF do CEP da cotação, lida do
+# campo `state` da tela. A resposta da busca é o cadastro mesmo, e não muda
+# com o que o site ou o robô escrevem nos campos.
+RE_UF_DO_CADASTRO = re.compile(
+    r'"cidade"\s*:\s*"[^"]*"\s*,\s*"uf"\s*:\s*"([A-Z]{2})"')
+
+
+def uf_do_cadastro(corpo: str) -> str | None:
+    """A UF que a busca de CNPJ devolveu, ou None se ela não respondeu."""
+    achado = RE_UF_DO_CADASTRO.search(corpo or "")
+    return achado.group(1) if achado else None
+
+
 def recusa_coleta_sem_cadastro(cnpj: str,
                                transportadora: str = "Favorita") -> str:
     """Remetente sem cadastro numa cotação COM COLETA.
@@ -204,6 +219,37 @@ def recusa_cidade_nao_atendida(lado: str, cidade: str,
             f"no botão aqui embaixo.")
 
 
+# "Ainda não realizamos transporte entre as cidades informadas. Confira as
+# cidades atendidas clicando aqui: Cidades Atendidas." — também na tela de
+# resultado, depois do "Aguardando validação: <uuid>" (Favorita, #654 e #655,
+# 05 a 11/11/2026). A frase não diz o lado: a recusa nomeia as duas cidades.
+RE_SEM_TRANSPORTE_ENTRE = re.compile(
+    r"n[ãa]o\s+realizamos\s+transporte\s+entre", re.IGNORECASE)
+
+
+def sem_transporte_entre(texto: str) -> tuple[str, str] | None:
+    """(origem, destino) como "Cidade/UF" se a tela de resultado recusou o
+    par de cidades. Cada uma sai do resumo da tela; vazia se não estiver lá."""
+    if not RE_SEM_TRANSPORTE_ENTRE.search(texto or ""):
+        return None
+    cidades = []
+    for secao in ("coleta", "destino"):
+        cidade = re.compile(RE_CIDADE_DO_RESUMO.pattern.format(secao=secao),
+                            RE_CIDADE_DO_RESUMO.flags).search(texto)
+        cidades.append(f"{cidade.group(1).strip()}/{cidade.group(2).upper()}"
+                       if cidade else "")
+    return cidades[0], cidades[1]
+
+
+def recusa_sem_transporte_entre(origem: str, destino: str,
+                                transportadora: str = "Generoso") -> str:
+    onde = (f"{origem} e {destino}" if origem and destino
+            else "as cidades informadas")
+    return (f"A {transportadora} não faz transporte entre {onde}. Cote com "
+            f"outra transportadora, ou fale com a {transportadora} pelo "
+            f"WhatsApp, no botão aqui embaixo.")
+
+
 # O outro aviso vermelho que pode aparecer no mesmo lugar: "CEP de destino
 # não pode ser o mesmo de coleta" (ou a ordem invertida, "CEP de coleta não
 # pode ser o mesmo de destino" — o site usa as duas conforme qual lado está
@@ -215,6 +261,14 @@ def recusa_cidade_nao_atendida(lado: str, cidade: str,
 # compartilham a mesma sede em Vila Velha no cadastro da Generoso. A conta
 # resolve os dois lados para o mesmo CEP, e o site recusa.
 AVISO_MESMO_CEP = "não pode ser o mesmo de"
+
+
+# Mais um aviso vermelho embaixo do CEP: "CEP deve ser da mesma UF do
+# cadastro (SP)". O CNPJ é cadastrado noutra UF e o site não aceita o CEP da
+# cotação: mantém a cidade do cadastro e o Próximo não avança (Generoso, #632,
+# #633, #665 e #666, 05 a 11/11/2026). Como a cidade não fica vazia, virava o
+# genérico "a etapa do destino não avançou".
+AVISO_MESMA_UF = "mesma uf do cadastro"
 
 
 def recusa_mesmo_cep(transportadora: str = "Generoso") -> str:

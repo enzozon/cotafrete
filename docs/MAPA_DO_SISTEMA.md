@@ -108,6 +108,18 @@ coleta vem travado e só a equipe dela cadastra endereço novo
 O CNPJ do lado livre preenche o endereço **cadastrado** dele, que pode não ser
 o da cotação. `_usar_cep_da_cotacao` digita o CEP da ficha por cima; se não
 der, recusa nomeando a cidade do cadastro. Nunca cotar o endereço do cadastro.
+Avisos medidos de 05 a 12/11/2026 (`tests/test_generoso_erros_1211.py`):
+"CEP deve ser da mesma UF do cadastro" embaixo do CEP (`AVISO_MESMA_UF`) é a
+mesma recusa, com a UF do cadastro lida da resposta da busca de CNPJ
+(`uf_do_cadastro`) e não do campo da tela; "Ainda não realizamos transporte
+entre as cidades informadas" na tela de resultado é RECUSADO com as duas
+cidades (`sem_transporte_entre`). "Sem número" é marcado num lugar só, no
+laço das pontas do `cotar`, quando o campo do número está aberto e vazio. Na
+Favorita, CNPJ que não trouxe endereço com o CEP editável tem o endereço
+digitado mesmo sem o "nao cadastrado" da busca.
+Site lento: `_campo` espera `ESPERA_CAMPO_MS` a etapa desenhar antes do
+"campo não encontrado", e o `_entrar` só levanta `CredencialRecusada` se o
+site respondeu ao envio do login; sem resposta é erro comum, que repete.
 
 ### Jadlog: oferta na frente do botão
 
