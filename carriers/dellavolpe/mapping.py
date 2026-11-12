@@ -31,6 +31,19 @@ FATOR_CUBAGEM = Decimal(300)
 
 PESO_MIN_KG = Decimal(1)
 PESO_MAX_KG = Decimal(34_000)
+# Máximo de cada medida, em cm. LIDO em 12/11/2026 do JavaScript da própria
+# página (https://dellavolpe.com.br/#cotacao, script inline do formulário):
+#     var minAltura = 1.0, maxAltura = 290.0;
+#     var minLargura = 1.0, maxLargura = 250.0;
+#     var minComprimento = 1.0, maxComprimento = 1250.0;
+# No blur, valor > máximo apaga o campo e escreve "Valor maior que o máximo
+# permitido." (o máximo exato passa). Os <input> não têm atributo `max`, e
+# maxlength=400 não diz nada. Cotação #628 (06/11/2026): altura 300,0.
+MEDIDA_MAX_CM = {
+    "comprimento": Decimal(1_250),
+    "largura": Decimal(250),
+    "altura": Decimal(290),
+}
 
 # Rótulos exatos do <select> de serviço (atenção ao espaço antes do hífen)
 ROTULO_SERVICO = {
@@ -134,6 +147,15 @@ def validar(req: CotacaoRequest) -> list[ErroValidacao]:
             f"Della Volpe aceita de {PESO_MIN_KG} a {num_br(PESO_MAX_KG, 0)} kg; "
             f"a carga tem {peso_br(peso)} kg.",
         ))
+
+    for medida, limite in MEDIDA_MAX_CM.items():
+        maior = max(getattr(v, f"{medida}_cm") for v in req.volumes)
+        if maior > limite:
+            erros.append(ErroValidacao(
+                "volumes",
+                f"Della Volpe aceita {medida} até {num_br(limite, 0)} cm; "
+                f"a carga tem {medida_br(maior)} cm.",
+            ))
 
     if req.servico is Servico.LOTACAO_FTL:
         if not req.veiculo_desejado:

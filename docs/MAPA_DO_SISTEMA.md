@@ -97,6 +97,9 @@ parados em toda cotação até 03/11/2026.
 As cidades vêm de um `json-cidade.json` montado pelo `change` do estado. Na
 2ª passada (campo que voltou vazio), cidade é repreenchida junto com o estado
 dela, que remonta a lista (cotação #644, 09/11/2026).
+Medida acima do máximo do site (comprimento 1.250, largura 250, altura 290 cm:
+`mapping.MEDIDA_MAX_CM`, lido do JavaScript da página em 12/11/2026) é
+RECUSADO no `validar`, sem abrir navegador (cotação #628).
 
 "Ainda não atendemos essa origem" (embaixo do CEP) pode aparecer só **depois**
 do Próximo: `_conferir_cobertura` roda antes e depois dele. Na Favorita a
