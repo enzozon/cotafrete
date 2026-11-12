@@ -65,13 +65,15 @@ from carriers.base import (
     recusa_por_validacao,
 )
 from carriers.generoso.mapping import (
-    AVISO_CEP_NAO_ATENDIDO, AVISO_MESMO_CEP, EMPRESAS, bairro_vazio,
+    AVISO_CEP_NAO_ATENDIDO, AVISO_MESMA_UF, AVISO_MESMO_CEP, EMPRESAS,
+    bairro_vazio,
     cidade_nao_atendida, cliente_nao_cadastrado,
     conflito_cif_fob, empresa_alvo, empresa_de, ponta_travada_sem_o_grupo,
     recusa_cadastro_sem_bairro,
     recusa_cep_nao_atendido, recusa_cidade_nao_atendida,
     recusa_coleta_sem_cadastro, recusa_endereco_do_cadastro,
     recusa_cliente_nao_cadastrado, recusa_mesmo_cep,
+    recusa_sem_transporte_entre, sem_transporte_entre, uf_do_cadastro,
     validar_agendamento,
 )
 from core import cnpj as buscador_cnpj
@@ -99,6 +101,10 @@ VAR_AGENDAMENTO_AUTORIZADO = "GENEROSO_AGENDAMENTO_AUTORIZADO"
 CNPJ_CONTA = "08.310.365/0001-24"
 ESPERA_LOGIN_MS = 30_000
 ESPERA_RESULTADO_MS = 60_000    # teto do "Registrando cotação..." pós-confirmar
+# Quanto o `_campo` espera a etapa desenhar antes de dizer "campo não
+# encontrado". Com a internet da VM lenta (12/11/2026, #670 a #672) a etapa
+# seguinte ainda não estava na tela e a cotação caía na hora.
+ESPERA_CAMPO_MS = 10_000
 
 # O portal é um SPA: `fill()` escreve no DOM e o React re-renderiza por cima
 # com o estado dele, que ainda está vazio — o campo volta a ficar em branco e
@@ -619,6 +625,13 @@ class GenerosoAdapter:
         loc = page.locator(f"{seletor}:visible")
         total = loc.count()
         if not total:
+            # Site lento: a etapa pode não ter desenhado ainda (#670 a #672).
+            try:
+                loc.last.wait_for(state="visible", timeout=ESPERA_CAMPO_MS)
+            except Exception:
+                pass
+            total = loc.count()
+        if not total:
             raise RuntimeError(f"campo não encontrado: {seletor}")
         return loc.nth(total - 1)
 
@@ -761,12 +774,32 @@ class GenerosoAdapter:
         page.goto(self.url_base + "/login", wait_until="domcontentloaded")
         page.wait_for_selector('input[name="email"]')
         self._preencher_login(page)
-        page.get_by_role("button", name="Entrar").click()
+        # "Credencial recusada" só vale se o site RESPONDEU ao envio. Em
+        # 12/11/2026 (#670), com a internet da VM lenta, a espera estourou
+        # com o formulário ainda na tela e a senha certa virou "a Generoso
+        # não aceitou o login" — a #669 tinha cotado minutos antes.
+        respondeu: list[int] = []
+
+        def guardar(resposta) -> None:
+            if resposta.request.method == "POST":
+                respondeu.append(resposta.status)
+
+        page.on("response", guardar)
         try:
-            page.wait_for_url("**/dashboard", timeout=ESPERA_LOGIN_MS)
-        except Exception:
-            _falhar_login(page, self.nome_curto, self.prefixo_env,
-                          self.url_base + "/login")
+            page.get_by_role("button", name="Entrar").click()
+            try:
+                page.wait_for_url("**/dashboard", timeout=ESPERA_LOGIN_MS)
+            except Exception:
+                if not respondeu:
+                    raise RuntimeError(
+                        f"o login na {self.nome_curto} não passou: o site "
+                        f"não respondeu ao envio em {ESPERA_LOGIN_MS // 1000}"
+                        " s (site ou internet lentos). Costuma passar "
+                        "sozinho na tentativa seguinte.")
+                _falhar_login(page, self.nome_curto, self.prefixo_env,
+                              self.url_base + "/login")
+        finally:
+            page.remove_listener("response", guardar)
 
     def _reativar_cep(self, page) -> None:
         """Acorda a busca de endereço SEM apagar o CEP.
@@ -825,6 +858,11 @@ class GenerosoAdapter:
                 achado = self._esperar_endereco(page)
             finally:
                 page.remove_listener("response", guardar)
+            # A UF do cadastro é a da resposta da busca, não a do campo da
+            # tela (#665/#666: "Guarulhos/RS").
+            uf = uf_do_cadastro("\n".join(corpos))
+            if uf and achado["city"]:
+                achado["state"] = uf
             return achado, "\n".join(corpos)
 
         # Ponta travada. No CIF (origem) ela vem completa. No FOB (destino) o
@@ -876,8 +914,6 @@ class GenerosoAdapter:
             campo = self._campo(page, f'input[name="{nome}"]')
             if valor and campo.is_enabled() and not campo.input_value():
                 self._digitar(page, f'input[name="{nome}"]', valor)
-        if not self._campo(page, 'input[name="number"]').input_value():
-            page.get_by_text("Sem número", exact=True).click()
         page.wait_for_timeout(1_000)
         return self._esperar_endereco(page, tentativas=2)
 
@@ -905,9 +941,10 @@ class GenerosoAdapter:
         if not novo["city"]:
             self._conferir_cobertura(page, lado, req)  # "não atendemos"?
             raise recusa
-        if not self._campo(page, 'input[name="number"]').input_value():
-            page.get_by_text("Sem número", exact=True).click()
-            page.wait_for_timeout(500)
+        # "CEP deve ser da mesma UF do cadastro (SP)": a cidade do cadastro
+        # continua na tela e o Próximo não avança (#632, #633, #665, #666).
+        if AVISO_MESMA_UF in page.locator("body").inner_text().lower():
+            raise recusa
         return novo
 
     def _conferir_cobertura(self, page, lado: str,
@@ -1027,6 +1064,13 @@ class GenerosoAdapter:
                 motivo_recusa=recusa_cidade_nao_atendida(
                     *nao_atendida, self.nome_curto))
 
+        sem_transporte = sem_transporte_entre(texto)
+        if sem_transporte:
+            return ResultadoCotacao(
+                self.slug, StatusCotacao.RECUSADO, raw_response=texto[:800],
+                motivo_recusa=recusa_sem_transporte_entre(
+                    *sem_transporte, self.nome_curto))
+
         if carga_excede_limites(texto):
             return ResultadoCotacao(
                 self.slug, StatusCotacao.RECUSADO, raw_response=texto[:800],
@@ -1112,7 +1156,12 @@ class GenerosoAdapter:
                         page, cnpj)
                     sem_cadastro = (None if achado["city"] else
                                     cliente_nao_cadastrado(resposta_da_busca))
-                    if sem_cadastro and self.cota_sem_cadastro:
+                    # #610 (Favorita): o CNPJ não trouxe endereço, o site
+                    # não disse nada e os campos ficaram abertos. Digita o
+                    # endereço como no "nao cadastrado".
+                    if self.cota_sem_cadastro and (sem_cadastro or (
+                            cnpj and not achado["city"] and self._campo(
+                                page, 'input[name="cep"]').is_enabled())):
                         achado = self._endereco_a_mao(page, req, lado, cnpj)
                     elif cnpj and achado["city"]:
                         achado = self._usar_cep_da_cotacao(
@@ -1143,6 +1192,15 @@ class GenerosoAdapter:
                             and not bairro.is_enabled()):
                         raise ClienteNaoCadastrado(recusa_cadastro_sem_bairro(
                             cnpj or "da conta", lado, self.nome_curto))
+                    # Cadastro sem número (#613): "Número é obrigatório
+                    # quando não marcado "Sem número"" e o Próximo não avança.
+                    # Aqui, e não em cada caminho: vale para o endereço do
+                    # cadastro, o digitado e o da Receita.
+                    numero_casa = page.locator('input[name="number"]:visible')
+                    if (numero_casa.count() and numero_casa.last.is_enabled()
+                            and not numero_casa.last.input_value()):
+                        page.get_by_text("Sem número", exact=True).click()
+                        page.wait_for_timeout(500)
                     evidencias += print_seguro(
                         page, run / f"etapa{numero}_{lado}.png")
                     self._avancar(page)
