@@ -130,7 +130,10 @@ não avançou e fechar não destrava. Vira RECUSADO com as palavras do portal
 12/11/2026 (#670 a #675): "Para ativar a cotação de frete no site, entre em
 contato com o nosso time comercial", nas duas, para as três empresas, com a
 server action devolvendo `{"status":500,"message":"fetch failed"}`: era o
-portal fora, não a conta desativada.
+portal fora, não a conta desativada. A recusa leva junto o erro técnico que
+o portal devolveu ao Próximo (`mapping.erro_tecnico_do_portal`: "status 500,
+fetch failed" de manhã, "status 403, 403 Forbidden" à tarde), para quem for
+corrigir ver na tela da cotação.
 
 ### Jadlog: oferta na frente do botão
 

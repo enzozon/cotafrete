@@ -271,8 +271,29 @@ AVISO_MESMO_CEP = "não pode ser o mesmo de"
 AVISO_MESMA_UF = "mesma uf do cadastro"
 
 
-def recusa_aviso_do_portal(texto: str,
-                           transportadora: str = "Generoso") -> str:
+# O erro que a server action do Próximo devolve por baixo do pop-up. Medido
+# em 12/11/2026 (recon, cotações #670 a #675), corpo em formato RSC:
+#     1:{"status":500,"message":"fetch failed","error":true}
+RE_ERRO_TECNICO = re.compile(
+    r'"status":\s*(\d{3})\s*,\s*"message":\s*"([^"]*)"\s*,\s*"error":\s*true')
+
+
+def erro_tecnico_do_portal(respostas: str) -> str:
+    """'status 500, "fetch failed"' se o portal devolveu erro; "" se não."""
+    achado = RE_ERRO_TECNICO.search(respostas or "")
+    if not achado:
+        return ""
+    # Mais tarde no mesmo dia a mensagem passou a ser uma página HTML
+    # inteira ("<html>...<title>403 Forbidden</title>..."): fica o título.
+    mensagem = achado.group(2)
+    titulo = re.search(r"<title>(.*?)</title>", mensagem, re.IGNORECASE)
+    if titulo:
+        mensagem = titulo.group(1)
+    return f'status {achado.group(1)}, "{mensagem.strip()[:80]}"'
+
+
+def recusa_aviso_do_portal(texto: str, transportadora: str = "Generoso",
+                           erro_tecnico: str = "") -> str:
     """O pop-up que o portal abre em cima do formulário depois do Próximo,
     com as palavras dele. `texto` é o inner_text do diálogo: título, frase e
     os rótulos dos botões ("Fechar", "Falar com suporte", "Close"), que saem.
@@ -284,8 +305,10 @@ def recusa_aviso_do_portal(texto: str,
     botoes = {"fechar", "falar com suporte", "close", "atenção"}
     linhas = [l.strip() for l in (texto or "").splitlines()]
     dito = " ".join(l for l in linhas if l and l.lower() not in botoes)
+    tecnico = (f" Erro técnico devolvido pelo portal ao clicar em Próximo: "
+               f"{erro_tecnico}." if erro_tecnico else "")
     return (f"A {transportadora} não deixou cotar pelo site. O portal dela "
-            f"respondeu: \"{dito or 'aviso sem texto'}\" Pode ser falha "
+            f"respondeu: \"{dito or 'aviso sem texto'}\"{tecnico} Pode ser falha "
             f"passageira do portal: tente de novo mais tarde, ou fale com a "
             f"{transportadora} pelo WhatsApp, no botão aqui embaixo.")
 

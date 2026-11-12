@@ -455,6 +455,20 @@ class _ComPopup:
     def get_by_role(self, *_a, **_k):
         return MagicMock()
 
+    def on(self, _evento, ouvinte) -> None:
+        """O portal responde ao Próximo com o erro medido em 12/11/2026."""
+        if self.aberto:
+            resposta = MagicMock()
+            resposta.request.method = "POST"
+            resposta.url = "https://cliente.generoso.com.br/cotacao"
+            resposta.text.return_value = (
+                '0:{"a":"$@1","q":"","i":false}\n'
+                '1:{"status":500,"message":"fetch failed","error":true}\n')
+            ouvinte(resposta)
+
+    def remove_listener(self, *_a) -> None:
+        pass
+
     def wait_for_timeout(self, _ms) -> None:
         pass
 
@@ -477,6 +491,21 @@ def test_popup_depois_do_proximo_vira_aviso_com_as_palavras_do_site():
     assert ("Para ativar a cotação de frete no site, entre em contato com o "
             "nosso time comercial. CNPJ: 08.310.365/0001-24.") in frase
     assert "Fechar" not in frase and "Close" not in frase
+    # O nome do erro vai junto, para quem for corrigir.
+    assert ('Erro técnico devolvido pelo portal ao clicar em Próximo: '
+            'status 500, "fetch failed".') in frase
+
+
+def test_erro_tecnico_em_html_fica_so_com_o_titulo():
+    """Medido às 16h de 12/11/2026: o 500 virou uma página 403 inteira."""
+    corpo = ('1:{"status":403,"message":"<html>\r\n<head><title>403 Forbidden'
+             '</title></head>\r\n<body></body>\r\n</html>\r\n","error":true}')
+    assert m.erro_tecnico_do_portal(corpo) == 'status 403, "403 Forbidden"'
+
+
+def test_sem_erro_tecnico_a_frase_nao_inventa_um():
+    assert m.erro_tecnico_do_portal('1:"$undefined"') == ""
+    assert "Erro técnico" not in m.recusa_aviso_do_portal(POPUP, "Generoso")
 
 
 def test_sem_popup_o_proximo_segue():
