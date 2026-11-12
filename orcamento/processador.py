@@ -259,10 +259,17 @@ def _por_descricao(texto: str, hse: HseApi) -> dict[str, Produto]:
     return {}
 
 
+# ponytail: lista curta de unidades; medida nova que barrar produto novo entra aqui
+_MEDIDA = re.compile(r"\d+(?:[MGK]?BAUD|[MGK]BPS|V[CA]C|VCA|VDC|MAH|RPM|BTUS?|WATTS?|LUMENS|POL|[MGK]?HZ|KVA|DPI|PPM)")
+
+
 def _referencias(texto: str) -> set[str]:
-    """Códigos de modelo/referência (letras E números, 6+ caracteres), ex.: MDRT572EVD013."""
+    """Códigos de modelo/referência (letras E números, 6+ caracteres), ex.: MDRT572EVD013.
+
+    Medida não é modelo: "100MBAUD" apontaria como já cadastrado qualquer produto de 100 Mbaud (envio #199)."""
     return {t for t in re.findall(r"[A-Z0-9]+", normalizar(texto))
-            if len(t) >= MIN_REFERENCIA and re.search(r"[A-Z]", t) and re.search(r"\d", t)}
+            if len(t) >= MIN_REFERENCIA and re.search(r"[A-Z]", t) and re.search(r"\d", t)
+            and not _MEDIDA.fullmatch(t)}
 
 
 def _por_referencia(item: Item, hse: HseApi) -> str:

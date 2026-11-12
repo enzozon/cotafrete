@@ -77,6 +77,8 @@ def _origem(mensagens: list[str], rejeitado: bool, real: Callable[[str], str] = 
                 # O campo vem antes do valor interpolado; palavras dentro do valor não são estrutura.
                 for padrao, coluna in ((r"^quantidade (?:invalido|invalida|deve)", "B"),
                         (r"^(?:valor unitario|valor de venda unitario|preco) ", "J"),
+                        # envios #154 e #199: a conferência achou o produto no HSE e só falta o código na K
+                        (r"^possivel produto ja cadastrado", "K"), (r"^descricao encontrada em varios produtos", "K"),
                         (r"^(?:mesmo )?codigo ", "K"), (r"^mesmo produto do item \d+: preencha o codigo", "K"), (r"^mesmo produto ", "A"), (r"^ncm ", "L"), (r"^origem (?:invalido|invalida|deve)", "M"),
                         (r"^icms (?:invalido|invalida|deve)", "N"), (r"^grupo ", "P"),
                         (r"^descricao no dav com \d+ caracteres", "R"), (r"^descricao deve ser diferente", "O")):
@@ -90,7 +92,7 @@ def _origem(mensagens: list[str], rejeitado: bool, real: Callable[[str], str] = 
                 estrutura = re.sub(r"^valor unitario \(coluna [a-z]+\) ", "valor unitario ", detalhe).partition(" (")[0]
                 if referencias and any(s in estrutura for s in ("invalido", "invalida", "deve", "sem ",
                         "abaixo do minimo", "caracteres", "nao encontrado", "nao existe", "inativo",
-                        "preencha")):
+                        "preencha", "ja cadastrado", "varios produtos")):
                     origem = "planilha"
                     if any(s in estrutura for s in ("nao encontrado", "nao existe", "inativo")):
                         origem, comparar = "desconhecida", True

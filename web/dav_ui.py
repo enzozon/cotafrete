@@ -188,6 +188,8 @@ def _selo(d: dict) -> str:
         tom, texto = "atencao", "Criado com aviso"
     if estado == "rascunho" and d.get("conferencia") == "erros":
         tom, texto = "erro", "Com erros"
+    if estado == "rascunho" and d.get("conferencia") == "ok":  # ficava "Conferindo" por dias (#171, #189)
+        texto = "Conferido, falta gerar"
     simbolo = {"ok": "✓", "erro": "×", "atencao": "!", "marca": "◷"}.get(tom, "·")
     return f'<span class="dav-selo {tom}">{simbolo} {e(texto)}</span>'
 
