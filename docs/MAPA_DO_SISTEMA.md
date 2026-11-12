@@ -130,12 +130,22 @@ código. Para voltar: repor as três coisas, com a data da nova subida em
 `normalizar_resposta` confere a caixa de recusa (`alert-danger`) antes do
 sucesso. Sucesso sem valor de frete vira ERRO, não COTADO.
 
-### Braspress: login com reCAPTCHA
+### Braspress: reCAPTCHA no login
 
 Desde 10/11/2026 o login do portal tem reCAPTCHA v2. `_falhar_login` detecta e
 levanta `LoginBarradoPorCaptcha` (INTERVENCAO_NECESSARIA, sem retentativa). O
 robô não resolve captcha: a saída é a API de cotação da Braspress (credencial
 própria; o login do portal dá 401 lá) e trocar o adapter para ela.
+
+- O robô não clica, não resolve e não contorna o captcha: só reconhece (texto
+  "não é um robô" ou iframe/`.g-recaptcha`) e avisa. A frase do vendedor está
+  em `MENSAGENS_DE_ERRO["braspress"]` (`web/app.py`), o que também tira o erro
+  da IA e da issue automática.
+- O login só conta como passado em `_abrir_cotacao`: espera `#tipoFrete` ou o
+  campo de senha, o que vier primeiro. Voltou para o login, erra na hora (antes
+  eram 45 s de timeout em `#tipoFrete`, #653 a #661).
+- `BRASPRESS_HEADLESS` no `.env` (lida como a `DAV_HEADLESS`): sem ela o
+  navegador fica escondido; `0` abre a janela.
 
 ### Braspress: CNPJ sem cadastro
 

@@ -601,6 +601,15 @@ MENSAGENS_DE_ERRO = {
     ),
 }
 
+# O erro já nasce classificado (LoginBarradoPorCaptcha); a entrada é para ele
+# não ir para a IA nem virar issue automática a cada cotação.
+MENSAGENS_DE_ERRO["braspress"] = (
+    ("nao sou um robo",
+     "A Braspress passou a pedir a confirmação \"Não sou um robô\" no "
+     "login, e o robô não passa por ela. Cote a Braspress à mão no site "
+     "até isso ser resolvido."),
+)
+
 # Mesmo portal, mesmo adapter, mesmas marcas: só muda o nome na frase.
 MENSAGENS_DE_ERRO["favorita"] = tuple(
     (marca, frase.replace("Generoso", "Favorita"))
@@ -1706,11 +1715,19 @@ def _cotar_generoso(req, cotacao_id=None):
     return GenerosoAdapter().cotar(req, confirmar_envio=True)
 
 
+def _braspress_headless() -> bool:
+    """BRASPRESS_HEADLESS no .env, lida como a DAV_HEADLESS: sem a variável
+    fica escondido (o padrão de sempre); "0" abre a janela."""
+    from orcamento.config import _bool
+    return _bool(os.getenv("BRASPRESS_HEADLESS") or "1")
+
+
 def _cotar_braspress(req, cotacao_id=None):
     """"Calcular" é cálculo automático (como o "Simular" da Camilo) — não
     entra em fila de vendedor nem cria pendência na conta da Ventura, então
     o envio é confirmado aqui: sem confirmar não existe preço na tela."""
-    return BraspressAdapter().cotar(req, confirmar_envio=True)
+    return BraspressAdapter(headless=_braspress_headless()).cotar(
+        req, confirmar_envio=True)
 
 
 def _cotar_favorita(req, cotacao_id=None):

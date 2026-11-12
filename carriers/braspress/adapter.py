@@ -26,6 +26,7 @@ razão social e endereço inteiros sozinha a partir do CNPJ.
 from __future__ import annotations
 
 import os
+import unicodedata
 from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
@@ -68,7 +69,10 @@ def _tela_pede_captcha(page) -> bool:
     try:
         if page.locator(".g-recaptcha, iframe[src*='recaptcha']").count():
             return True
-        return "não é um robô" in page.locator("body").inner_text().lower()
+        texto = unicodedata.normalize(
+            "NFD", page.locator("body").inner_text().lower())
+        return "nao e um robo" in "".join(
+            c for c in texto if not unicodedata.combining(c))
     except Exception:
         return False
 
@@ -81,10 +85,11 @@ def _falhar_login(page) -> None:
     chegou a ser enviado é erro comum."""
     if _tela_pede_captcha(page):
         raise LoginBarradoPorCaptcha(
-            "a Braspress passou a exigir reCAPTCHA ('Confirme que você não é "
-            "um robô') no login do portal, e o robô não resolve captcha. "
-            "Não adianta repetir. Solução: pedir à Braspress o acesso à API "
-            "de cotação (credencial própria) e trocar o adapter para ela.")
+            "a Braspress passou a pedir a confirmação 'Não sou um robô' "
+            "(reCAPTCHA) no login, e o robô não passa por ela. Cote a "
+            "Braspress à mão no site até isso ser resolvido. Não adianta "
+            "repetir. Solução: pedir à Braspress o acesso à API de cotação "
+            "(credencial própria) e trocar o adapter para ela.")
     try:
         preenchida = bool(
             page.locator('input[name="pass"]').first.input_value().strip())
@@ -217,6 +222,25 @@ class BraspressAdapter:
             _falhar_login(page)
 
     @staticmethod
+    def _abrir_cotacao(page) -> None:
+        """O login só conta como passado quando o formulário chega.
+
+        #653 a #661 (10/11/2026): o campo de senha sumiu, `_entrar` deu o
+        login por feito, e a cotação voltou para a tela de login — 45 s
+        esperando um `#tipoFrete` que não vinha. Aqui a espera acaba no que
+        aparecer primeiro, e tela de login vira erro de login na hora."""
+        page.goto(URL_COTACAO, wait_until="domcontentloaded")
+        page.locator('#tipoFrete:visible, input[type="password"]:visible'
+                     ).first.wait_for()
+        if page.locator("#tipoFrete:visible").count():
+            return
+        if _tela_pede_captcha(page):
+            _falhar_login(page)
+        raise RuntimeError(
+            "o login na Braspress não se manteve: a tela de cotação voltou "
+            "para a tela de login.")
+
+    @staticmethod
     def _fechar_popup_comunica(page) -> None:
         """"Braspress Comunica" é só marketing (pede XML de NF-e por
         e-mail), mas cobre o formulário inteiro e trava clique/digitação até
@@ -339,8 +363,7 @@ class BraspressAdapter:
             try:
                 self._entrar(page)
 
-                page.goto(URL_COTACAO, wait_until="domcontentloaded")
-                page.wait_for_selector("#tipoFrete")
+                self._abrir_cotacao(page)
                 page.wait_for_timeout(1_500)
                 self._fechar_popup_comunica(page)
 
