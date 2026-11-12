@@ -9,7 +9,7 @@ import pytest
 from openpyxl import load_workbook
 from pydantic import ValidationError
 
-from carriers.base import Severidade
+from carriers.base import Severidade, recusa_por_validacao
 from carriers.dellavolpe import mapping as dv
 from carriers.dellavolpe.planilha import gerar_planilha_volumes
 from core.models import (
@@ -313,6 +313,40 @@ def test_peso_acima_de_34t_bloqueia():
                                peso_kg=Decimal(35_000))])
     erros = dv.bloqueantes(dv.validar(r))
     assert any(e.campo == "peso_total_kg" for e in erros)
+
+
+def test_altura_acima_do_limite_do_site_e_recusa_sem_abrir_navegador():
+    """Cotação #628 (06/11/2026): 6 volumes de 100 × 80 × 300 cm. O site
+    apagou a altura ("Valor maior que o máximo permitido.") e o cartão saiu
+    como ERRO, com retentativa para ouvir o mesmo não."""
+    r = montar(volumes=[Volume(qtd=6, comprimento_cm=Decimal(100),
+                               largura_cm=Decimal(80), altura_cm=Decimal(300),
+                               peso_kg=Decimal(50))])
+    erros = dv.bloqueantes(dv.validar(r))
+    assert [e.mensagem for e in erros] == [
+        "Della Volpe aceita altura até 290 cm; a carga tem 300,0 cm."]
+    assert recusa_por_validacao(dv.SLUG, erros).status is StatusCotacao.RECUSADO
+
+
+def test_medidas_no_limite_exato_do_site_passam():
+    r = montar(volumes=[Volume(qtd=1, comprimento_cm=Decimal(1250),
+                               largura_cm=Decimal(250), altura_cm=Decimal(290),
+                               peso_kg=Decimal(50))])
+    assert dv.bloqueantes(dv.validar(r)) == []
+
+
+def test_medida_grande_demais_em_qualquer_volume_bloqueia():
+    r = montar(volumes=[
+        Volume(qtd=1, comprimento_cm=Decimal(1300), largura_cm=Decimal(50),
+               altura_cm=Decimal(40), peso_kg=Decimal(10)),
+        Volume(qtd=1, comprimento_cm=Decimal(80), largura_cm=Decimal("250.1"),
+               altura_cm=Decimal(30), peso_kg=Decimal(8)),
+    ])
+    mensagens = [e.mensagem for e in dv.bloqueantes(dv.validar(r))]
+    assert mensagens == [
+        "Della Volpe aceita comprimento até 1.250 cm; a carga tem 1.300,0 cm.",
+        "Della Volpe aceita largura até 250 cm; a carga tem 250,1 cm.",
+    ]
 
 
 def test_ftl_sem_veiculo_bloqueia():
