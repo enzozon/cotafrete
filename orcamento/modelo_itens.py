@@ -2,8 +2,8 @@
 
 openpyxl apagaria as listas suspensas x14 (vendedor, grupo, marca...), então o arquivo é montado
 direto no XML: as linhas de item são repetidas, o rodapé desce (ou sobe) junto e as referências
-(mesclagens, validações, TOTAL, comentários) acompanham. A proteção da aba fica como está.
-A coluna A do modelo é o Nº do item (=ROW()-1, travada); o resto vem copiado da linha modelo.
+(mesclagens, validações, TOTAL, comentários) acompanham. A aba não tem proteção (12/11/2026).
+A coluna A do modelo é o Nº do item (=ROW()-1); o resto vem copiado da linha modelo.
 """
 import io
 import re
