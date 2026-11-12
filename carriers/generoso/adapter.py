@@ -72,7 +72,8 @@ from carriers.generoso.mapping import (
     recusa_cadastro_sem_bairro,
     recusa_cep_nao_atendido, recusa_cidade_nao_atendida,
     recusa_coleta_sem_cadastro, recusa_endereco_do_cadastro,
-    recusa_aviso_do_portal, recusa_cliente_nao_cadastrado, recusa_mesmo_cep,
+    erro_tecnico_do_portal, recusa_aviso_do_portal,
+    recusa_cliente_nao_cadastrado, recusa_mesmo_cep,
     recusa_sem_transporte_entre, sem_transporte_entre, uf_do_cadastro,
     validar_agendamento,
 )
@@ -985,6 +986,25 @@ class GenerosoAdapter:
             return {}
 
     def _avancar(self, page) -> None:
+        # O que o portal respondeu ao Próximo: é de onde sai o erro técnico
+        # ("status 500, fetch failed") que vai junto do aviso do pop-up.
+        corpos: list[str] = []
+
+        def guardar(resposta) -> None:
+            if _e_busca_de_cnpj(resposta):
+                try:
+                    corpos.append(resposta.text())
+                except Exception:
+                    pass
+
+        page.on("response", guardar)
+        try:
+            self._clicar_proximo(page)
+        finally:
+            page.remove_listener("response", guardar)
+        self._conferir_popup(page, "\n".join(corpos))
+
+    def _clicar_proximo(self, page) -> None:
         page.get_by_role("button", name=BOTAO_PROXIMO).last.click()
         page.wait_for_timeout(2_500)
         # O botão vira "Consultando pagador..." enquanto o site confere a
@@ -996,6 +1016,8 @@ class GenerosoAdapter:
                 timeout=ESPERA_CONSULTA_MS)
         except Exception:
             pass  # quem vem depois confere se a etapa avançou
+
+    def _conferir_popup(self, page, respostas: str = "") -> None:
         # Pop-up em cima do formulário: a etapa NÃO avançou, e fechar não
         # destrava. Medido em 12/11/2026 (#670 a #675, Generoso e Favorita,
         # as três empresas, CIF e FOB): a server action do Próximo voltava
@@ -1006,7 +1028,8 @@ class GenerosoAdapter:
         aviso = page.locator('[role="dialog"]:visible')
         if aviso.count():
             raise AvisoDoPortal(recusa_aviso_do_portal(
-                aviso.first.inner_text(), self.nome_curto))
+                aviso.first.inner_text(), self.nome_curto,
+                erro_tecnico_do_portal(respostas)))
 
     def _esperar_endereco(self, page, tentativas: int = 12) -> dict[str, str]:
         """Espera cidade e rua chegarem, e devolve o endereço que o site achou.
