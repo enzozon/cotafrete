@@ -437,3 +437,54 @@ def test_login_que_o_site_respondeu_e_nao_entrou_continua_recusado():
     """O que protege a conta: senha enviada, site respondeu, não entrou."""
     assert isinstance(_entrar(200), CredencialRecusada)
     assert isinstance(_entrar(401), CredencialRecusada)
+
+
+# --------------------------------------------------------------------------
+# 7. #670 a #675 (12/11, as duas): pop-up "Atenção" depois do Próximo.
+#    Texto copiado do diálogo real (recon de 12/11/2026).
+POPUP = ("Atenção\n\nPara ativar a cotação de frete no site, entre em contato "
+         "com o nosso time comercial. CNPJ: 08.310.365/0001-24.\n\nFechar\n"
+         "Falar com suporte\nClose")
+
+
+class _ComPopup:
+    """Página depois do Próximo: `aberto` diz se há um diálogo na tela."""
+    def __init__(self, aberto: bool) -> None:
+        self.aberto = aberto
+
+    def get_by_role(self, *_a, **_k):
+        return MagicMock()
+
+    def wait_for_timeout(self, _ms) -> None:
+        pass
+
+    def wait_for_function(self, *_a, **_k) -> None:
+        pass
+
+    def locator(self, seletor: str):
+        assert seletor == '[role="dialog"]:visible'
+        loc = MagicMock()
+        loc.count.return_value = 1 if self.aberto else 0
+        loc.first.inner_text.return_value = POPUP
+        return loc
+
+
+def test_popup_depois_do_proximo_vira_aviso_com_as_palavras_do_site():
+    with pytest.raises(modulo.AvisoDoPortal) as erro:
+        FavoritaAdapter()._avancar(_ComPopup(aberto=True))
+    frase = str(erro.value)
+    assert "A Favorita não deixou cotar pelo site" in frase
+    assert ("Para ativar a cotação de frete no site, entre em contato com o "
+            "nosso time comercial. CNPJ: 08.310.365/0001-24.") in frase
+    assert "Fechar" not in frase and "Close" not in frase
+
+
+def test_sem_popup_o_proximo_segue():
+    GenerosoAdapter()._avancar(_ComPopup(aberto=False))
+
+
+def test_aviso_do_portal_sai_recusado_e_nao_repete():
+    """Mesmo `except` do ForaDeArea: RECUSADO, sem retentativa."""
+    import inspect
+    fonte = inspect.getsource(GenerosoAdapter.cotar)
+    assert "except (ForaDeArea, AvisoDoPortal) as fora:" in fonte
