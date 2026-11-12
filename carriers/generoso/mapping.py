@@ -271,6 +271,25 @@ AVISO_MESMO_CEP = "não pode ser o mesmo de"
 AVISO_MESMA_UF = "mesma uf do cadastro"
 
 
+def recusa_aviso_do_portal(texto: str,
+                           transportadora: str = "Generoso") -> str:
+    """O pop-up que o portal abre em cima do formulário depois do Próximo,
+    com as palavras dele. `texto` é o inner_text do diálogo: título, frase e
+    os rótulos dos botões ("Fechar", "Falar com suporte", "Close"), que saem.
+
+    Medido em 12/11/2026: o aviso era "Para ativar a cotação de frete no
+    site, entre em contato com o nosso time comercial", mas vinha para todas
+    as empresas junto de um erro 500 do próprio portal — por isso a frase
+    não afirma que a conta foi desativada."""
+    botoes = {"fechar", "falar com suporte", "close", "atenção"}
+    linhas = [l.strip() for l in (texto or "").splitlines()]
+    dito = " ".join(l for l in linhas if l and l.lower() not in botoes)
+    return (f"A {transportadora} não deixou cotar pelo site. O portal dela "
+            f"respondeu: \"{dito or 'aviso sem texto'}\" Pode ser falha "
+            f"passageira do portal: tente de novo mais tarde, ou fale com a "
+            f"{transportadora} pelo WhatsApp, no botão aqui embaixo.")
+
+
 def recusa_mesmo_cep(transportadora: str = "Generoso") -> str:
     """Origem e destino colidiram no mesmo CEP dentro do cadastro da
     Generoso — normalmente porque o CNPJ do lado livre é (ou coincide com)

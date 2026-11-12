@@ -72,7 +72,7 @@ from carriers.generoso.mapping import (
     recusa_cadastro_sem_bairro,
     recusa_cep_nao_atendido, recusa_cidade_nao_atendida,
     recusa_coleta_sem_cadastro, recusa_endereco_do_cadastro,
-    recusa_cliente_nao_cadastrado, recusa_mesmo_cep,
+    recusa_aviso_do_portal, recusa_cliente_nao_cadastrado, recusa_mesmo_cep,
     recusa_sem_transporte_entre, sem_transporte_entre, uf_do_cadastro,
     validar_agendamento,
 )
@@ -364,6 +364,12 @@ class ClienteNaoCadastrado(Exception):
 
     Resposta da transportadora, não falha nossa: vira RECUSADO, e portanto
     NÃO é repetida. Como `ForaDeArea` e `SemTabela` na Translovato."""
+
+
+class AvisoDoPortal(Exception):
+    """O Próximo abriu um pop-up e a etapa não seguiu. Resposta do portal,
+    não falha nossa: vira RECUSADO com as palavras dele, e NÃO é repetida
+    (cada repetição é um login a mais na conta para ouvir o mesmo aviso)."""
 
 
 class ForaDeArea(Exception):
@@ -990,6 +996,17 @@ class GenerosoAdapter:
                 timeout=ESPERA_CONSULTA_MS)
         except Exception:
             pass  # quem vem depois confere se a etapa avançou
+        # Pop-up em cima do formulário: a etapa NÃO avançou, e fechar não
+        # destrava. Medido em 12/11/2026 (#670 a #675, Generoso e Favorita,
+        # as três empresas, CIF e FOB): a server action do Próximo voltava
+        # {"status":500,"message":"fetch failed"} e o portal mostrava
+        # "Atenção — Para ativar a cotação de frete no site, entre em contato
+        # com o nosso time comercial. CNPJ: ...". Sem ler isto, saía o
+        # genérico "campo não encontrado: input[name="document"]".
+        aviso = page.locator('[role="dialog"]:visible')
+        if aviso.count():
+            raise AvisoDoPortal(recusa_aviso_do_portal(
+                aviso.first.inner_text(), self.nome_curto))
 
     def _esperar_endereco(self, page, tentativas: int = 12) -> dict[str, str]:
         """Espera cidade e rua chegarem, e devolve o endereço que o site achou.
@@ -1292,7 +1309,7 @@ class GenerosoAdapter:
                     motivo_recusa=str(sem_cadastro),
                     evidencias=evidencias
                     + print_seguro(page, run / "sem_cadastro.png"))
-            except ForaDeArea as fora:
+            except (ForaDeArea, AvisoDoPortal) as fora:
                 return ResultadoCotacao(
                     self.slug, StatusCotacao.RECUSADO, enviado_em=enviado,
                     motivo_recusa=str(fora),

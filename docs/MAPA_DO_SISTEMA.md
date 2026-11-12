@@ -124,6 +124,14 @@ Site lento: `_campo` espera `ESPERA_CAMPO_MS` a etapa desenhar antes do
 "campo não encontrado", e o `_entrar` só levanta `CredencialRecusada` se o
 site respondeu ao envio do login; sem resposta é erro comum, que repete.
 
+Pop-up depois do Próximo (`_avancar`): se abrir um `[role="dialog"]`, a etapa
+não avançou e fechar não destrava. Vira RECUSADO com as palavras do portal
+(`AvisoDoPortal`, `mapping.recusa_aviso_do_portal`), sem retentativa. Medido em
+12/11/2026 (#670 a #675): "Para ativar a cotação de frete no site, entre em
+contato com o nosso time comercial", nas duas, para as três empresas, com a
+server action devolvendo `{"status":500,"message":"fetch failed"}`: era o
+portal fora, não a conta desativada.
+
 ### Jadlog: oferta na frente do botão
 
 O site abre ofertas por cima do painel (a "11.11" custou 45 s e uma falha na
