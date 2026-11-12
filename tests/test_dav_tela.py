@@ -471,6 +471,10 @@ def test_rascunho_com_erros_aparece_com_erros_no_historico(cli, app_web, tmp_pat
     for linha, esperado, outro in ((1, "Com erros", "Conferindo"), (2, "Conferindo", "Com erros")):
         selo = cli.get("/dav").text.split(f'data-dav="{linha}"')[1].split("</tr>")[0]
         assert esperado in selo and outro not in selo
+    # conferência ok e ninguém gerou: ficava "Conferindo" por dias (#171, #189)
+    app_web.banco.dav_atualizar(2, conferencia="ok")
+    selo = cli.get("/dav").text.split('data-dav="2"')[1].split("</tr>")[0]
+    assert "Conferido, falta gerar" in selo and "Conferindo" not in selo
 
 
 @pytest.mark.parametrize("estado", ["conferindo", "erros"])

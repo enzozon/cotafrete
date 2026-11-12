@@ -177,6 +177,10 @@ def test_validacao_sem_criacao_orienta_corrigir_e_reenviar():
     ("Falha jamais vista B31 Item 3", "desconhecida", []),
     ("Item 0: quantidade inválida", "desconhecida", []),
     ("Item 25: quantidade inválida", "planilha", ["B26"]),   # modelo com mais de 24 itens
+    # envio #199 (12/11/2026): saía "Causa não identificada, procure Enzo" para um erro que é só preencher a K
+    ("Item 1: possível produto já cadastrado (mesma referência): 76160 - GATEWAY DFE33B SEW (DFE33B); "
+     "confira e preencha o CÓDIGO HSE", "planilha", ["K2"]),
+    ("Item 2: descrição encontrada em vários produtos ativos (111, 222); preencha o CÓDIGO HSE", "planilha", ["K3"]),
 ])
 def test_origem_e_celulas_confirmadas(erro, origem, campos):
     from orcamento.diagnostico import diagnostico
@@ -326,3 +330,10 @@ def test_rascunho_com_erro_da_conferencia_mostra_o_motivo():
     d = diagnostico(registro("rascunho", conferencia="erros", conferencia_relatorio=conf.para_json()),
                     administrador=False)
     assert d["motivo"] == "Cliente 123 não encontrado no HSE"
+
+
+def test_medida_nao_e_referencia_de_modelo():
+    # envio #199 (12/11/2026): "100MBAUD" contava como código de modelo junto do DFE33B
+    from orcamento.processador import _referencias
+    assert _referencias("GATEWAY REDE ETHERNET DFE33B SEW 24VCC 10/100MBAUD 15000RPM") == {"DFE33B"}
+    assert _referencias("MOCHILA TARGUS TSB226LA MDRT572EVD013") == {"TSB226LA", "MDRT572EVD013"}
