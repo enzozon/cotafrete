@@ -628,7 +628,7 @@ class Conferencia:
 
 
 def _sem_segredo(texto: str | None) -> str | None:
-    for chave in ("HSE_SENHA", "ANTHROPIC_API_KEY"):
+    for chave in ("HSE_SENHA", "ANTHROPIC_API_KEY", "DAV_API_TOKEN"):
         segredo = (os.environ.get(chave) or "").strip()
         if segredo and texto:
             texto = texto.replace(segredo, "***")

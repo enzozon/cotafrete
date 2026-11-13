@@ -353,7 +353,10 @@ CREATE INDEX IF NOT EXISTS idx_dav_correcao_destino ON dav_correcao(destino_id);
 """
 
 CAMPOS_DAV_NOVOS = ("conferencia", "conferencia_relatorio",
-                    "diagnostico", "diagnostico_estado", "correcao_ia")
+                    "diagnostico", "diagnostico_estado", "correcao_ia",
+                    # Nº da cotação do Maestro (Coupa/Vale) quando o DAV veio
+                    # pela API (web/api_dav.py); NULL = enviado pela tela /dav.
+                    "api_cotacao")
 
 CAMPOS_CARGA = (
     "cep_origem", "cep_destino", "cidade_origem", "uf_origem",
@@ -1351,6 +1354,14 @@ class Banco:
                 " OR (estado = 'erro' AND COALESCE(numero, '') <> ''))"
                 " ORDER BY id DESC LIMIT 1", (usuario, hash_planilha)).fetchone()
             return dict(r) if r else None
+
+    def dav_api_parados(self) -> list[int]:
+        """Rascunhos da API já conferidos (ok / nao_conferido) que não seguiram
+        para a fila: o servidor caiu entre a conferência e o Gerar automático."""
+        with closing(self._conectar()) as con, con:
+            return [r[0] for r in con.execute(
+                "SELECT id FROM dav WHERE api_cotacao IS NOT NULL AND estado = 'rascunho'"
+                " AND conferencia IN ('ok', 'nao_conferido') ORDER BY id")]
 
     def dav_interromper(self) -> list[int]:
         """Na partida: `gerando` vira `incerto` (nunca roda de novo sozinho);

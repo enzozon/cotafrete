@@ -19,7 +19,7 @@ trabalhos: **cotar o frete**, **responder cotações dos portais** e
 
 | sistema | repositório / local | o que faz | roda onde |
 |---|---|---|---|
-| **Cotafrete** | este repo, `web/` + `core/` + `carriers/` | um formulário e cotação em várias transportadoras | VM Windows 10 no servidor, `cotafrete.ventura.inf.br` |
+| **Cotafrete** | este repo, `web/` + `core/` + `carriers/` | um formulário e cotação em várias transportadoras | VM Windows 11 no servidor, `cotafrete.ventura.inf.br` |
 | **Mercado Eletrônico** | este repo, `mercado_eletronico/` + `web/me_ui.py` | lê cotações do ME, calcula impostos e prazos, preenche rascunho | VM, junto do Cotafrete |
 | **Gerar DAV** | este repo, `orcamento/` + `web/dav_ui.py` | vendedor envia a PLANILHA-BASE v3, confere, e o robô gera o orçamento (DAV) no HSE; PDF e histórico por vendedor | VM, junto do Cotafrete |
 | **Serviço de NF** | este repo, `cruzar_nf/` | busca NFs no ERP HSE e preenche nos pedidos do Maestro | SERVIDOR2 (Server 2012 R2) |
@@ -266,6 +266,20 @@ ficam em `davs/entrada/<id>.xlsx` e `davs/pdf/` (fora do git). A cada volta, o
   diz "já gerou o orçamento N". Servidor reiniciado com DAV "gerando" vira
   "confira no HSE", nunca roda de novo sozinho.
 - O HSE é produção. Só o `DAV_DRY_RUN=0` salva de verdade.
+- **API do DAV para o Maestro** (`web/api_dav.py`, `/api/dav`): o gerenciador do
+  Maestro (`ponte_dav.py`) manda a Planilha Base e pergunta pelo id até o DAV
+  ficar pronto; o Cotafrete nunca chama o Maestro. Token obrigatório
+  (`Authorization: Bearer`, `DAV_API_TOKEN` no `.env`; sem ele a API responde 503).
+  Mesmo caminho da tela, sem o clique: conferência automática; `erros` para,
+  `ok`/avisos/`nao_conferido` seguem sozinhos para a fila do Gerar
+  (`api_dav.seguir`, chamado no fim da conferência; `api_dav.retomar` na partida).
+  Dono no banco: `maestro:<vendedor>`; coluna `api_cotacao` = nº da cotação. O
+  token só abre linhas da API. Mesma planilha devolve o DAV que já existe;
+  `incerto` nunca é refeito. NCM por item vem do relatório do robô: `planilha`,
+  `IA` ou `cadastro HSE` (este ainda sem o NCM: o Cotafrete não lê o NCM do
+  produto cadastrado). Testes: `tests/test_api_dav.py`. Se alguém fizer
+  `setx /M COTAFRETE_HOST 127.0.0.1`, a rede local fecha e o Maestro mostra
+  "Cotafrete fora do alcance".
 - **Teste de fumaça:** `orcamento/fumaca.py` roda às 8h05 pelo `atualizar.py`
   (`fumaca_do_dia`, uma tentativa por dia, só seg–sex antes das 18h: fora disso
   o usuário do HSE não loga). Confere um DAV de mentira com
@@ -280,6 +294,7 @@ ficam em `davs/entrada/<id>.xlsx` e `davs/pdf/` (fora do git). A cada volta, o
   CNPJs válidos a um dígito de distância (`cnpjs_vizinhos`) e sugere se achar um só. Nunca escolhe.
 - `.env` do Cotafrete: `HSE_USUARIO`, `HSE_SENHA`, `HSE_CLIENT_ID`,
   `DAV_DRY_RUN`, `DAV_HEADLESS`, `IA`, `IA_MODELO`, `ANTHROPIC_API_KEY`,
+  `DAV_API_TOKEN` (API do DAV para o Maestro; igual ao `COTAFRETE_TOKEN` do gerenciador),
   `IA_LIMITE_DIA_USD` (padrão 0,30), `SMTP_USER` e `SMTP_PASSWORD` (resumo diário de erros por e-mail, `core/resumo_email.py`, às 19h pelo `atualizar.py`; destino em `RESUMO_EMAIL_PARA`). Senha e chave nunca em log, banco,
   relatório ou tela. `GITHUB_TOKEN_ISSUES` (opcional): token fine-grained só com
   Issues read/write no `enzozon/cotafrete`; com ele, diagnóstico com culpa robo e
