@@ -75,7 +75,7 @@ from core.evidencias import limpar_antigas, montar_zip_de_prints
 from core.retentativa import (
     ESPERA_MAXIMA_S, SEM_REPETICAO, TENTATIVAS_MAXIMAS, cotar_com_retentativa,
 )
-from web import adm, adm_dav, adm_me, dav_ui, me_extensao, me_ui, transportadoras
+from web import adm, adm_dav, adm_me, api_dav, dav_ui, me_extensao, me_ui, transportadoras
 from web.ficha_ui import (
     ficha_da_cotacao, kg as _kg, pagador_da_cotacao, peso_por_volume,
     quando as quando_humano, quem_e as _quem,
@@ -117,6 +117,10 @@ async def _vida(_app):
         FILA_CONFERENCIA.retomar()
     except Exception as exc:  # noqa: BLE001
         print(f"[cotafrete] Fila da conferência: retomar falhou ({exc!r}); o servidor sobe assim mesmo.")
+    try:
+        api_dav.retomar()   # API do Maestro: conferido que não chegou à fila
+    except Exception as exc:  # noqa: BLE001
+        print(f"[cotafrete] API do DAV: retomar falhou ({exc!r}); o servidor sobe assim mesmo.")
     try:
         FILA_DIAGNOSTICO.retomar()
     except Exception as exc:  # noqa: BLE001
@@ -270,7 +274,15 @@ def _diagnosticar_se_falhou(dav_id: int) -> None:
 
 
 FILA_DAV = FilaDav(banco, Path("davs"), ao_terminar=_diagnosticar_se_falhou)
-FILA_CONFERENCIA = FilaConferencia(banco, Path("davs"), ao_terminar=_diagnosticar_se_falhou)
+
+
+def _depois_da_conferencia(dav_id: int) -> None:
+    # DAV que veio do Maestro (web/api_dav.py) segue sozinho para o Gerar.
+    api_dav.seguir(dav_id)
+    _diagnosticar_se_falhou(dav_id)
+
+
+FILA_CONFERENCIA = FilaConferencia(banco, Path("davs"), ao_terminar=_depois_da_conferencia)
 
 # Faxina dos prints velhos (>30 dias) a cada início do servidor — não há
 # scheduler no projeto, e reiniciar já é rotina (ver core/evidencias.py).
@@ -287,12 +299,17 @@ app.include_router(dav_ui.router)
 # /adm, que ele lê por `adm.banco`.
 app.include_router(adm_me.router)
 app.include_router(adm_dav.router)
+app.include_router(api_dav.router)   # o gerenciador do Maestro gera o DAV por aqui (token)
 me_ui.banco = banco
 dav_ui.banco = banco
 dav_ui.FILA = FILA_DAV
 diagnostico_dav.PLANILHA = FILA_DAV.planilha   # células indicadas no endereço da planilha do envio
 dav_ui.FILA_CONFERENCIA = FILA_CONFERENCIA
 dav_ui.FILA_DIAGNOSTICO = FILA_DIAGNOSTICO
+api_dav.banco = banco
+api_dav.FILA = FILA_DAV
+api_dav.FILA_CONFERENCIA = FILA_CONFERENCIA
+api_dav.FILA_DIAGNOSTICO = FILA_DIAGNOSTICO
 # Cada chamada à IA (core/ia.py) fica registrada no banco para o /adm/me
 # mostrar quem respondeu. Lambda, e não o método: os testes trocam `banco`.
 ia.REGISTRO = lambda **kw: banco.ia_registrar(**kw)
